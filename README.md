@@ -143,6 +143,11 @@ ad-hoc 署名はローカル再現用です。公開配布では Developer ID Ap
 完成判定の証跡台帳と現在状態は `docs/completion-checklist.md` にまとめています。
 詳細な実機検証手順、既知の失敗条件と回復手順は `docs/verification.md` にまとめています。
 Issue #6 / #12 の runtime event 証跡は `sh scripts/collect-runtime-event-evidence.sh` で収集します。人間作業は TCC 権限付与や実機操作など、自動化できない最後の手段に限定します。
+実利用する `.build/NapeGesture.app` に権限を集約する場合は、次のように `.app` 作成と検証を含めて実行します。
+
+```sh
+NAPE_RUNTIME_EVENT_USE_APP_BUNDLE=1 sh scripts/collect-runtime-event-evidence.sh
+```
 
 1. `nape-gesture log --duration <秒> --out <path>` で純正トラックパッド、Nape Pro、生成イベントを同じ形式で記録する
 2. `nape-gesture analyze-log <path>` で移動量分布と `deadZonePoints` 候補を確認する

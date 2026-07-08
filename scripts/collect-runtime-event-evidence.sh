@@ -20,6 +20,14 @@ if [ ! -f Package.swift ] || [ "$git_root" != "$repo_root" ]; then
 fi
 
 artifact_root=${NAPE_RUNTIME_EVENT_ARTIFACT_ROOT:-"artifacts/completion/$(date +%F)/runtime-event-evidence"}
+use_app_bundle=${NAPE_RUNTIME_EVENT_USE_APP_BUNDLE:-0}
+if [ "${NAPE_RUNTIME_EVENT_TOOL+x}" ]; then
+  tool_path=$NAPE_RUNTIME_EVENT_TOOL
+elif [ "$use_app_bundle" = "1" ]; then
+  tool_path=".build/NapeGesture.app/Contents/MacOS/nape-gesture"
+else
+  tool_path=".build/debug/nape-gesture"
+fi
 commands_file="$artifact_root/commands.txt"
 summary_file="$artifact_root/summary.md"
 build_dir="$artifact_root/build"
@@ -38,6 +46,7 @@ cat > "$summary_file" <<EOF
 - 証跡 root: \`$artifact_root\`
 - 実行日時: $(date '+%F %T %z')
 - 対象: Issue #6 の元入力抑制、Issue #12 のキルスイッチ漏れ抑制、通常入力復帰
+- 実行ツール: \`$tool_path\`
 
 ## コマンド結果
 
@@ -212,8 +221,8 @@ run_scenario_with_no_leaks() {
   rm -f "$target_log" "$ready_file"
 
   printf '%s\n' "実行中: $title"
-  printf '$ .build/debug/nape-gesture run --config %s > %s 2>&1 &\n' "$config_path" "$daemon_log" >> "$commands_file"
-  .build/debug/nape-gesture run --config "$config_path" > "$daemon_log" 2>&1 &
+  printf '$ %s run --config %s > %s 2>&1 &\n' "$tool_path" "$config_path" "$daemon_log" >> "$commands_file"
+  "$tool_path" run --config "$config_path" > "$daemon_log" 2>&1 &
   daemon_pid=$!
   if ! wait_for_daemon_started "$daemon_log" "$daemon_pid"; then
     append_summary "失敗" "$title daemon 起動" "-" "$daemon_log"
@@ -222,8 +231,8 @@ run_scenario_with_no_leaks() {
     return
   fi
 
-  printf '$ .build/debug/nape-gesture target --out %s --duration 5 --ready-file %s > %s 2> %s &\n' "$target_log" "$ready_file" "$target_stdout" "$target_stderr" >> "$commands_file"
-  .build/debug/nape-gesture target --out "$target_log" --duration 5 --ready-file "$ready_file" > "$target_stdout" 2> "$target_stderr" &
+  printf '$ %s target --out %s --duration 5 --ready-file %s > %s 2> %s &\n' "$tool_path" "$target_log" "$ready_file" "$target_stdout" "$target_stderr" >> "$commands_file"
+  "$tool_path" target --out "$target_log" --duration 5 --ready-file "$ready_file" > "$target_stdout" 2> "$target_stderr" &
   target_pid=$!
 
   if ! wait_for_ready_file "$ready_file"; then
@@ -233,8 +242,8 @@ run_scenario_with_no_leaks() {
     return
   fi
 
-  printf '$ .build/debug/nape-gesture system-test run --scenario %s > %s 2>&1\n' "$scenario" "$system_log" >> "$commands_file"
-  .build/debug/nape-gesture system-test run --scenario "$scenario" > "$system_log" 2>&1
+  printf '$ %s system-test run --scenario %s > %s 2>&1\n' "$tool_path" "$scenario" "$system_log" >> "$commands_file"
+  "$tool_path" system-test run --scenario "$scenario" > "$system_log" 2>&1
   system_status=$?
   wait "$target_pid" 2>/dev/null || true
   target_pid=""
@@ -246,8 +255,17 @@ run_scenario_with_no_leaks() {
     return
   fi
 
-  printf '$ .build/debug/nape-gesture analyze-target-log %s --json --assert-no-leaks > %s 2> %s\n' "$target_log" "$analysis_json" "$analysis_stderr" >> "$commands_file"
-  .build/debug/nape-gesture analyze-target-log "$target_log" --json --assert-no-leaks > "$analysis_json" 2> "$analysis_stderr"
+  if [ "$scenario" = "kill-switch" ]; then
+    if grep -q "キルスイッチによりジェスチャーを無効化しました" "$daemon_log"; then
+      append_summary "成功" "$title daemon 停止ログ" "0" "$daemon_log"
+    else
+      append_summary "失敗" "$title daemon 停止ログ" "-" "$daemon_log"
+      remember_failure "$daemon_log"
+    fi
+  fi
+
+  printf '$ %s analyze-target-log %s --json --assert-no-leaks > %s 2> %s\n' "$tool_path" "$target_log" "$analysis_json" "$analysis_stderr" >> "$commands_file"
+  "$tool_path" analyze-target-log "$target_log" --json --assert-no-leaks > "$analysis_json" 2> "$analysis_stderr"
   analysis_status=$?
 
   if [ "$analysis_status" -eq 0 ]; then
@@ -275,8 +293,8 @@ run_normal_after_release() {
   rm -f "$target_log" "$ready_file"
 
   printf '%s\n' "実行中: $title"
-  printf '$ .build/debug/nape-gesture run --config %s > %s 2>&1 &\n' "$config_path" "$daemon_log" >> "$commands_file"
-  .build/debug/nape-gesture run --config "$config_path" > "$daemon_log" 2>&1 &
+  printf '$ %s run --config %s > %s 2>&1 &\n' "$tool_path" "$config_path" "$daemon_log" >> "$commands_file"
+  "$tool_path" run --config "$config_path" > "$daemon_log" 2>&1 &
   daemon_pid=$!
   if ! wait_for_daemon_started "$daemon_log" "$daemon_pid"; then
     append_summary "失敗" "$title daemon 起動" "-" "$daemon_log"
@@ -285,8 +303,8 @@ run_normal_after_release() {
     return
   fi
 
-  printf '$ .build/debug/nape-gesture target --out %s --duration 5 --ready-file %s > %s 2> %s &\n' "$target_log" "$ready_file" "$target_stdout" "$target_stderr" >> "$commands_file"
-  .build/debug/nape-gesture target --out "$target_log" --duration 5 --ready-file "$ready_file" > "$target_stdout" 2> "$target_stderr" &
+  printf '$ %s target --out %s --duration 5 --ready-file %s > %s 2> %s &\n' "$tool_path" "$target_log" "$ready_file" "$target_stdout" "$target_stderr" >> "$commands_file"
+  "$tool_path" target --out "$target_log" --duration 5 --ready-file "$ready_file" > "$target_stdout" 2> "$target_stderr" &
   target_pid=$!
 
   if ! wait_for_ready_file "$ready_file"; then
@@ -296,8 +314,8 @@ run_normal_after_release() {
     return
   fi
 
-  printf '$ .build/debug/nape-gesture system-test run --scenario normal-after-release > %s 2>&1\n' "$system_log" >> "$commands_file"
-  .build/debug/nape-gesture system-test run --scenario normal-after-release > "$system_log" 2>&1
+  printf '$ %s system-test run --scenario normal-after-release > %s 2>&1\n' "$tool_path" "$system_log" >> "$commands_file"
+  "$tool_path" system-test run --scenario normal-after-release > "$system_log" 2>&1
   system_status=$?
   wait "$target_pid" 2>/dev/null || true
   target_pid=""
@@ -309,8 +327,8 @@ run_normal_after_release() {
     return
   fi
 
-  printf '$ .build/debug/nape-gesture analyze-target-log %s --json --assert-has-unmarked-input > %s 2> %s\n' "$target_log" "$analysis_json" "$analysis_stderr" >> "$commands_file"
-  .build/debug/nape-gesture analyze-target-log "$target_log" --json --assert-has-unmarked-input > "$analysis_json" 2> "$analysis_stderr"
+  printf '$ %s analyze-target-log %s --json --assert-has-unmarked-input > %s 2> %s\n' "$tool_path" "$target_log" "$analysis_json" "$analysis_stderr" >> "$commands_file"
+  "$tool_path" analyze-target-log "$target_log" --json --assert-has-unmarked-input > "$analysis_json" 2> "$analysis_stderr"
   analysis_status=$?
 
   if [ "$analysis_status" -eq 0 ]; then
@@ -330,18 +348,44 @@ run_combined_success \
   "swift build --scratch-path .build" \
   swift build --scratch-path .build || finish_summary
 
+if [ "$use_app_bundle" = "1" ]; then
+  run_combined_success \
+    "runtime 用 release build" \
+    "$build_dir/swift-build-release.log" \
+    "swift build -c release --scratch-path .build" \
+    swift build -c release --scratch-path .build || finish_summary
+
+  run_combined_success \
+    "runtime 用 .app 作成" \
+    "$build_dir/bundle-app.log" \
+    ".build/release/nape-gesture bundle-app --out .build/NapeGesture.app --replace" \
+    .build/release/nape-gesture bundle-app --out .build/NapeGesture.app --replace || finish_summary
+
+  run_combined_success \
+    "runtime 用 .app 検証" \
+    "$build_dir/verify-bundle.log" \
+    ".build/release/nape-gesture verify-bundle .build/NapeGesture.app" \
+    .build/release/nape-gesture verify-bundle .build/NapeGesture.app || finish_summary
+fi
+
+if [ ! -x "$tool_path" ]; then
+  append_summary "失敗" "実行ツール確認" "-" "$tool_path"
+  remember_failure "$tool_path"
+  finish_summary
+fi
+
 run_combined_success \
   "検証用 allow-unmatched 設定作成" \
   "$doctor_dir/init-config.log" \
-  ".build/debug/nape-gesture init-config --allow-unmatched --out $config_path" \
-  .build/debug/nape-gesture init-config --allow-unmatched --out "$config_path" || finish_summary
+  "$tool_path init-config --allow-unmatched --out $config_path" \
+  "$tool_path" init-config --allow-unmatched --out "$config_path" || finish_summary
 
 run_split_success \
   "doctor JSON" \
   "$doctor_dir/doctor-debug.json" \
   "$doctor_dir/doctor-debug.stderr.log" \
-  ".build/debug/nape-gesture doctor --config $config_path --probe-hid --benchmark-events 1000 --json" \
-  .build/debug/nape-gesture doctor --config "$config_path" --probe-hid --benchmark-events 1000 --json || finish_summary
+  "$tool_path doctor --config $config_path --probe-hid --benchmark-events 1000 --json" \
+  "$tool_path" doctor --config "$config_path" --probe-hid --benchmark-events 1000 --json || finish_summary
 
 if ! grep -q '"accessibilityTrusted" : true' "$doctor_dir/doctor-debug.json"; then
   append_summary "外部ブロッカー" "Accessibility 未許可のため runtime event シナリオを未実行" "-" "$doctor_dir/doctor-debug.json"
