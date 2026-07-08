@@ -38,6 +38,9 @@ struct SystemBehaviorTestCommand {
               space-right
                   水平ピクセルスクロールを右Spaces方向として連続生成します。
 
+              horizontal-scroll
+                  通常の横スクロール割り当て相当の水平スクロールイベント列を生成します。
+
               mission-control
                   Mission Control相当のアクションを生成します。
 
@@ -124,9 +127,26 @@ struct SystemBehaviorTestCommand {
 
         switch plan.scenario {
         case .spaceLeft:
-            postHorizontalCommands(makeHorizontalCommands(sign: -1, plan: plan, now: now), poster: poster, interval: plan.interval)
+            postScrollCommands(
+                makeHorizontalCommands(sign: -1, plan: plan, now: now),
+                poster: poster,
+                mode: .forcedHorizontal(sign: -1),
+                interval: plan.interval
+            )
         case .spaceRight:
-            postHorizontalCommands(makeHorizontalCommands(sign: 1, plan: plan, now: now), poster: poster, interval: plan.interval)
+            postScrollCommands(
+                makeHorizontalCommands(sign: 1, plan: plan, now: now),
+                poster: poster,
+                mode: .forcedHorizontal(sign: 1),
+                interval: plan.interval
+            )
+        case .horizontalScroll:
+            postScrollCommands(
+                makeHorizontalCommands(sign: 1, plan: plan, now: now),
+                poster: poster,
+                mode: .horizontal,
+                interval: plan.interval
+            )
         case .missionControl:
             poster.postMissionControl()
         case .pageBack:
@@ -179,9 +199,14 @@ struct SystemBehaviorTestCommand {
         return commands
     }
 
-    private func postHorizontalCommands(_ commands: [GestureCommand], poster: EventPoster, interval: TimeInterval) {
+    private func postScrollCommands(
+        _ commands: [GestureCommand],
+        poster: EventPoster,
+        mode: ScrollPostMode,
+        interval: TimeInterval
+    ) {
         for command in commands {
-            poster.postScroll(command: command, mode: .free)
+            poster.postScroll(command: command, mode: mode)
             Thread.sleep(forTimeInterval: interval)
         }
     }
@@ -215,10 +240,13 @@ struct SystemBehaviorTestCommand {
         switch plan.scenario {
         case .spaceLeft:
             return makeHorizontalCommands(sign: -1, plan: plan, now: startTime)
-                .map { scrollRecord(command: $0, mode: .free) }
+                .map { scrollRecord(command: $0, mode: .forcedHorizontal(sign: -1)) }
         case .spaceRight:
             return makeHorizontalCommands(sign: 1, plan: plan, now: startTime)
-                .map { scrollRecord(command: $0, mode: .free) }
+                .map { scrollRecord(command: $0, mode: .forcedHorizontal(sign: 1)) }
+        case .horizontalScroll:
+            return makeHorizontalCommands(sign: 1, plan: plan, now: startTime)
+                .map { scrollRecord(command: $0, mode: .horizontal) }
         case .missionControl:
             return shortcutRecords(keyCode: CGKeyCode(kVK_UpArrow), flags: .maskControl, startTime: startTime)
         case .pageBack:
@@ -328,6 +356,7 @@ struct SystemBehaviorTestCommand {
             return unmarkedNormalAfterReleaseEvents(plan: plan, startTime: startTime)
         case .spaceLeft,
              .spaceRight,
+             .horizontalScroll,
              .missionControl,
              .pageBack,
              .pageForward,
@@ -651,6 +680,7 @@ private struct SystemTestPlan {
 private enum SystemTestScenario: String {
     case spaceLeft = "space-left"
     case spaceRight = "space-right"
+    case horizontalScroll = "horizontal-scroll"
     case missionControl = "mission-control"
     case pageBack = "page-back"
     case pageForward = "page-forward"
@@ -669,6 +699,7 @@ private enum SystemTestScenario: String {
             return 240
         case .spaceLeft,
              .spaceRight,
+             .horizontalScroll,
              .missionControl,
              .pageBack,
              .pageForward,
@@ -686,6 +717,7 @@ private enum SystemTestScenario: String {
             return 2
         case .spaceLeft,
              .spaceRight,
+             .horizontalScroll,
              .missionControl,
              .pageBack,
              .pageForward,

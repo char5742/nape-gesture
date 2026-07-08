@@ -71,6 +71,8 @@ swift run nape-gesture generate-scroll --x 1200 --y 0 --steps 30 --mode space-ri
 swift run nape-gesture system-test list
 swift run nape-gesture system-test run --scenario space-left --target finder --dry-run
 swift run nape-gesture system-test run --scenario space-left --target finder --dry-run --log-json --out system-space-left.jsonl
+swift run nape-gesture system-test run --scenario horizontal-scroll --dry-run --log-json --out system-horizontal-scroll.jsonl
+swift run nape-gesture analyze-log system-horizontal-scroll.jsonl --json
 swift run nape-gesture benchmark --events 200000 --json
 swift run nape-gesture doctor --probe-hid --benchmark-events 50000 --json
 swift run nape-gesture init-config --out nape-gesture.config.json
@@ -144,10 +146,10 @@ ad-hoc 署名はローカル再現用です。公開配布では Developer ID Ap
 5. `nape-gesture target --out <path>` で AppKit に届くイベント差分を画面と JSON Lines の両方で確認し、`analyze-target-log <path>` で集計する
 6. `generate-scroll --dry-run --json` で began / changed / ended / momentum の生成計画を固定し、`--dry-run --log-json` で `compare-log` 用 JSON Lines を作る
 7. `system-test list` でシナリオを確認し、`system-test run --scenario space-left --target finder --dry-run` で生成計画を確認する
-8. `system-test run --scenario space-left --target finder --dry-run --log-json --out <path>` で System Behavior Test の生成予定イベントを JSON Lines として保存する
+8. `system-test run --scenario space-left --target finder --dry-run --log-json --out <path>` や `system-test run --scenario horizontal-scroll --dry-run --log-json --out <path>` で System Behavior Test の生成予定イベントを JSON Lines として保存する
 9. `benchmark --events 200000 --json` で認識器とスクロール計画の純粋ロジック処理時間を記録する
 10. `doctor --benchmark-events 50000 --json` で権限、対象デバイス、実行主体、ベンチマークを一括記録する
-11. `system-test run --scenario space-left --target finder` や `system-test run --scenario mission-control` で Spaces / Mission Control / Safari / Finder の挙動を実測する
+11. `system-test run --scenario space-left --target finder` や `system-test run --scenario mission-control` で Spaces / Mission Control / Safari / Finder の挙動を実測する。Issue #10 の横スクロールは Safari / 対応アプリでの画面挙動確認が残るため、この dry-run 証跡だけでは完了扱いにしない
 12. 公開 API だけで連続 Spaces 操作が成立しない場合は、ログと画面挙動を根拠に限界を明文化する
 
 `benchmark` と `doctor` 内の benchmark は `measurementKind: "pureLogic"` の証跡であり、イベントタップから投稿、AppKit 受信、画面反映までの入力遅延実測ではありません。

@@ -31,6 +31,8 @@ jobs:
           .build/debug/nape-gesture analyze-log /tmp/generated-scroll.jsonl
           .build/debug/nape-gesture system-test run --scenario space-left --target finder --dry-run --log-json --out /tmp/system-space-left.jsonl
           .build/debug/nape-gesture analyze-log /tmp/system-space-left.jsonl
+          .build/debug/nape-gesture system-test run --scenario horizontal-scroll --dry-run --log-json --out /tmp/system-horizontal-scroll.jsonl
+          .build/debug/nape-gesture analyze-log /tmp/system-horizontal-scroll.jsonl --json
           .build/debug/nape-gesture compare-log Fixtures/sample-trackpad-scroll-log.jsonl Fixtures/sample-generated-scroll-log.jsonl
           .build/debug/nape-gesture analyze-hid-log Fixtures/sample-hid-log.jsonl
           .build/debug/nape-gesture analyze-target-log Fixtures/sample-target-log.jsonl
