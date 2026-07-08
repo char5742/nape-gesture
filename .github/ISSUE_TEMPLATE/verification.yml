@@ -1,0 +1,42 @@
+name: 実機検証
+description: Nape Pro、権限、Spaces、Mission Control など実機証跡が必要な検証
+title: "[検証] "
+labels:
+  - type:qa
+  - area:verification
+body:
+  - type: textarea
+    id: scenario
+    attributes:
+      label: シナリオ
+      description: 検証対象の操作、アプリ、入力デバイスを書いてください。
+    validations:
+      required: true
+  - type: textarea
+    id: prerequisites
+    attributes:
+      label: 前提条件
+      description: アクセシビリティ、入力監視、対象デバイス、設定ファイルを書いてください。
+    validations:
+      required: true
+  - type: textarea
+    id: commands
+    attributes:
+      label: 実行コマンド
+      description: `doctor`、`log`、`hid-log`、`system-test`、`target` などを記録してください。
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 証跡
+      description: 画面挙動、CGEvent ログ、HID ログ、AppKit 受信ログ、体感差分を書いてください。
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: 判定
+      description: 成功、失敗、公開 API の限界、次の調整項目を書いてください。
+    validations:
+      required: true

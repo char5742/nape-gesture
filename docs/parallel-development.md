@@ -1,0 +1,224 @@
+# 並列開発運用
+
+## 基本方針
+
+メインスレッドは、Issue 整理、PR レビュー、マージ判断、完成判定の証跡確認に集中する。
+実装はサブエージェントに分割し、各サブエージェントは明確な所有範囲を持つ。
+現在のローカル repository は初回コミット前なので、サブエージェントによる本格的な実装分岐を始める前に、まず baseline commit を作る。
+
+## メインスレッドの責務
+
+- ゴール要件を維持し、MVP に縮小しない
+- GitHub Issue の粒度、依存関係、優先度を管理する
+- PR の差分をレビューし、仕様逸脱、入力安全性、テスト不足を指摘する
+- CI、ローカル検証、実機検証の証跡を確認する
+- 複数 PR の統合順序を決める
+- 完成判定を Issue 単位ではなくゴール全体で行う
+- `Package.swift`、CLI 入口、README、docs の最終統合を持つ
+
+## サブエージェントの責務
+
+- 割り当てられた Issue だけを実装する
+- 自分の所有範囲外のファイルを不用意に編集しない
+- 他エージェントの変更を戻さない
+- 変更ファイル、実行した検証、未検証事項を PR 本文に明記する
+- 実機が必要な項目は、モックや狭いテストだけで完了扱いにしない
+
+## 推奨ブランチ
+
+- `codex/issue-002-ci`
+- `codex/issue-003-review-checklist`
+- `codex/issue-004-nape-hid-profile`
+- `codex/issue-005-device-association`
+- `codex/issue-009-system-behavior-matrix`
+- `codex/issue-011-permission-runtime-identity`
+- `codex/issue-014-performance-baseline`
+- `codex/issue-015-release-bundle`
+
+## 衝突しにくい所有範囲
+
+### Core Agent
+
+対象:
+
+- `Sources/MacGestureCore/`
+- `Sources/mac-gesture-core-tests/main.swift`
+
+主な Issue:
+
+- GestureRecognizer
+- MomentumEngine
+- ScrollGenerationPlanner
+- SettingsValidator
+- TargetDeviceGate
+
+レビュー観点:
+
+- 通常入力通過を壊していないか
+- ジェスチャーボタン中だけ処理しているか
+- 終了後に必ず idle へ戻るか
+- テストが狭すぎないか
+
+### Runtime Agent
+
+対象:
+
+- `Sources/mac-gesture/MacGestureRuntime.swift`
+- `Sources/mac-gesture/MacGestureDaemon.swift`
+- `Sources/mac-gesture/EventPoster.swift`
+- `Sources/mac-gesture/EventLogger.swift`
+- `Sources/mac-gesture/CGEventUtilities.swift`
+- `Sources/mac-gesture/KillSwitchShortcut.swift`
+
+主な Issue:
+
+- イベントタップ
+- 元入力抑制
+- 生成イベント再入力防止
+- キルスイッチ
+- 権限喪失時の停止
+
+レビュー観点:
+
+- 入力ループを起こさないか
+- 自前生成イベントを無視できるか
+- 例外時に安全停止するか
+- Accessibility 依存を曖昧にしていないか
+
+### HID Agent
+
+対象:
+
+- `Sources/mac-gesture/HIDInputMonitor.swift`
+- `Sources/mac-gesture/HIDLogCommand.swift`
+- `Sources/mac-gesture/HIDDeviceMatch.swift`
+- `Sources/mac-gesture/DeviceLister.swift`
+- `Sources/mac-gesture/DeviceInventory.swift`
+- `Sources/mac-gesture/SharedTargetDeviceGate.swift`
+
+主な Issue:
+
+- Nape Pro 実機識別
+- usage/value range 解析
+- 対象デバイス照合
+- 入力監視権限の扱い
+
+レビュー観点:
+
+- 全デバイス誤適用を避けているか
+- 複合 HID を見落としていないか
+- 対象未検出時に安全停止するか
+- 実機ログに基づく設定になっているか
+
+### UI Agent
+
+対象:
+
+- `Sources/mac-gesture/StatusApp.swift`
+- `Sources/mac-gesture/SettingsWindowController.swift`
+- `Sources/mac-gesture/ReferenceTargetApp.swift`
+
+主な Issue:
+
+- 設定 UI
+- 権限導線
+- Reference Target App
+- 常駐 UI の状態表示
+
+レビュー観点:
+
+- アプリ別設定を増やしていないか
+- 設定保存前に不正値を止めるか
+- 権限付与対象が分かるか
+- UI で実行状態と自動再試行状態が分かるか
+
+### Verification Agent
+
+対象:
+
+- `docs/verification.md`
+- `docs/requirements.md`
+- `Fixtures/`
+- `Sources/mac-gesture/SystemBehaviorTestCommand.swift`
+- `Sources/mac-gesture/AnalyzeLogCommand.swift`
+- `Sources/mac-gesture/CompareLogCommand.swift`
+- `Sources/mac-gesture/AnalyzeTargetLogCommand.swift`
+- `Sources/mac-gesture/AnalyzeHIDLogCommand.swift`
+- `Sources/mac-gesture/BenchmarkCommand.swift`
+
+主な Issue:
+
+- System Behavior Test
+- ログ比較
+- 実機検証マトリクス
+- 性能測定
+- 完成判定証跡
+
+レビュー観点:
+
+- ログ形式が同じか
+- 純正入力と生成イベントを比較できるか
+- 実機が必要な項目を dry-run で済ませていないか
+- 失敗条件と回避策が残っているか
+
+### Release Agent
+
+対象:
+
+- `Package.swift`
+- `README.md`
+- `LICENSE`
+- `THIRD_PARTY_NOTICES.md`
+- `Sources/mac-gesture/BundleAppCommand.swift`
+- `Sources/mac-gesture/BundleVerifier.swift`
+- `.github/workflows/`
+
+主な Issue:
+
+- CI
+- `.app` バンドル
+- 署名/公証
+- ライセンス同梱
+- 配布手順
+
+レビュー観点:
+
+- debug/release 両方で壊れていないか
+- `.app` の権限付与導線が正しいか
+- ライセンスが同梱されているか
+- 署名や公証の未決事項が明記されているか
+
+## PR レビューゲート
+
+PR は最低限次を満たすまでマージしない。
+
+- 対応 Issue が明記されている
+- 変更ファイルの所有範囲が説明されている
+- `swift build` が成功している
+- `mac-gesture-core-tests` が成功している
+- runtime / HID / Accessibility に触る場合は、実機未検証か実機検証済みかが明記されている
+- 既知の未完了事項を「完了」と言い換えていない
+
+## 統合順序
+
+1. Issue 1: repository foundation
+2. Issue 2: CI
+3. Issue 3: PR review checklist
+4. Issue 7: phase encoding correctness
+5. Issue 5: device association
+6. Issue 11: permission/runtime identity
+7. Issue 4: Nape Pro HID profile
+8. Issue 8-10: calibration and system behavior verification
+9. Issue 12-14: resident app robustness and performance
+10. Issue 15-16: release and completion evidence
+
+## サブエージェント起動時の標準指示
+
+```text
+あなたは nape-gesture のサブエージェントです。
+担当 Issue だけを扱ってください。
+他のエージェントも同じコードベースで作業しているため、他者の変更を戻さないでください。
+所有範囲外のファイルを編集する必要が出た場合は、理由を明記してください。
+ユーザーに見えるコメント、ドキュメント、エラー文は日本語で書いてください。
+実行した検証と未検証事項を最後に報告してください。
+```

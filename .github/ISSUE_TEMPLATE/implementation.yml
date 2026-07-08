@@ -1,0 +1,41 @@
+name: 実装タスク
+description: 機能実装、修正、リファクタリングを管理する Issue
+title: "[実装] "
+labels:
+  - type:feature
+body:
+  - type: textarea
+    id: purpose
+    attributes:
+      label: 目的
+      description: ゴール要件のどの部分を前進させるかを書いてください。
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: 変更範囲
+      description: 想定するファイル、モジュール、所有エージェントを書いてください。
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: 完了条件
+      description: テスト、ログ、実機証跡など、完了を証明する条件を書いてください。
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: 入力安全性の確認
+      description: 通常入力通過、元入力抑制、生成イベント再入力防止への影響を書いてください。
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: 検証方法
+      description: 自動テスト、dry-run、実機検証、未検証ブロッカーを書いてください。
+    validations:
+      required: true

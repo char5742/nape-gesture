@@ -1,0 +1,429 @@
+import Foundation
+
+public struct InputLogRecord: Codable, Equatable, Sendable {
+    public var timestamp: UInt64
+    public var typeName: String
+    public var typeRaw: Int
+    public var generatedByMacGesture: Bool
+    public var buttonNumber: Int64
+    public var deltaX: Int64
+    public var deltaY: Int64
+    public var scrollDeltaX: Int64
+    public var scrollDeltaY: Int64
+    public var pointDeltaX: Double
+    public var pointDeltaY: Double
+    public var scrollPhase: Int64
+    public var momentumPhase: Int64
+    public var isContinuous: Int64
+    public var keyCode: Int64
+    public var flags: UInt64
+
+    public init(
+        timestamp: UInt64,
+        typeName: String,
+        typeRaw: Int,
+        generatedByMacGesture: Bool,
+        buttonNumber: Int64,
+        deltaX: Int64,
+        deltaY: Int64,
+        scrollDeltaX: Int64,
+        scrollDeltaY: Int64,
+        pointDeltaX: Double,
+        pointDeltaY: Double,
+        scrollPhase: Int64,
+        momentumPhase: Int64,
+        isContinuous: Int64,
+        keyCode: Int64,
+        flags: UInt64
+    ) {
+        self.timestamp = timestamp
+        self.typeName = typeName
+        self.typeRaw = typeRaw
+        self.generatedByMacGesture = generatedByMacGesture
+        self.buttonNumber = buttonNumber
+        self.deltaX = deltaX
+        self.deltaY = deltaY
+        self.scrollDeltaX = scrollDeltaX
+        self.scrollDeltaY = scrollDeltaY
+        self.pointDeltaX = pointDeltaX
+        self.pointDeltaY = pointDeltaY
+        self.scrollPhase = scrollPhase
+        self.momentumPhase = momentumPhase
+        self.isContinuous = isContinuous
+        self.keyCode = keyCode
+        self.flags = flags
+    }
+}
+
+public struct LogAnalysis: Codable, Equatable, Sendable {
+    public var totalEvents: Int
+    public var generatedEvents: Int
+    public var moveEvents: Int
+    public var scrollEvents: Int
+    public var buttonEvents: Int
+    public var keyEvents: Int
+    public var preciseScrollEvents: Int
+    public var preciseScrollRatio: Double
+    public var scrollDeltaXTotal: Int64
+    public var scrollDeltaYTotal: Int64
+    public var pointDeltaXTotal: Double
+    public var pointDeltaYTotal: Double
+    public var maximumMoveMagnitude: Double
+    public var p95MoveMagnitude: Double
+    public var p99MoveMagnitude: Double
+    public var suggestedDeadZonePoints: Double
+    public var buttonCounts: [String: Int]
+    public var keyCounts: [String: Int]
+    public var scrollPhaseCounts: [String: Int]
+    public var momentumPhaseCounts: [String: Int]
+
+    public init(
+        totalEvents: Int,
+        generatedEvents: Int,
+        moveEvents: Int,
+        scrollEvents: Int,
+        buttonEvents: Int,
+        keyEvents: Int,
+        preciseScrollEvents: Int,
+        preciseScrollRatio: Double,
+        scrollDeltaXTotal: Int64,
+        scrollDeltaYTotal: Int64,
+        pointDeltaXTotal: Double,
+        pointDeltaYTotal: Double,
+        maximumMoveMagnitude: Double,
+        p95MoveMagnitude: Double,
+        p99MoveMagnitude: Double,
+        suggestedDeadZonePoints: Double,
+        buttonCounts: [String: Int],
+        keyCounts: [String: Int],
+        scrollPhaseCounts: [String: Int],
+        momentumPhaseCounts: [String: Int]
+    ) {
+        self.totalEvents = totalEvents
+        self.generatedEvents = generatedEvents
+        self.moveEvents = moveEvents
+        self.scrollEvents = scrollEvents
+        self.buttonEvents = buttonEvents
+        self.keyEvents = keyEvents
+        self.preciseScrollEvents = preciseScrollEvents
+        self.preciseScrollRatio = preciseScrollRatio
+        self.scrollDeltaXTotal = scrollDeltaXTotal
+        self.scrollDeltaYTotal = scrollDeltaYTotal
+        self.pointDeltaXTotal = pointDeltaXTotal
+        self.pointDeltaYTotal = pointDeltaYTotal
+        self.maximumMoveMagnitude = maximumMoveMagnitude
+        self.p95MoveMagnitude = p95MoveMagnitude
+        self.p99MoveMagnitude = p99MoveMagnitude
+        self.suggestedDeadZonePoints = suggestedDeadZonePoints
+        self.buttonCounts = buttonCounts
+        self.keyCounts = keyCounts
+        self.scrollPhaseCounts = scrollPhaseCounts
+        self.momentumPhaseCounts = momentumPhaseCounts
+    }
+}
+
+public enum InputLogAnalyzer {
+    public static func analyze(_ records: [InputLogRecord]) -> LogAnalysis {
+        let moveRecords = records.filter(\.isMoveEvent)
+        let scrollRecords = records.filter(\.isScrollEvent)
+        let buttonRecords = records.filter(\.isButtonEvent)
+        let keyRecords = records.filter(\.isKeyEvent)
+        let magnitudes = moveRecords
+            .map { hypot(Double($0.deltaX), Double($0.deltaY)) }
+            .sorted()
+
+        let p95 = percentile(magnitudes, fraction: 0.95)
+        let p99 = percentile(magnitudes, fraction: 0.99)
+        let maxMagnitude = magnitudes.last ?? 0
+        let suggestedDeadZone = max(4, ceil(p95 * 1.5))
+        let preciseScrollEvents = scrollRecords.filter { $0.isContinuous != 0 || $0.pointDeltaX != 0 || $0.pointDeltaY != 0 }.count
+
+        return LogAnalysis(
+            totalEvents: records.count,
+            generatedEvents: records.filter(\.generatedByMacGesture).count,
+            moveEvents: moveRecords.count,
+            scrollEvents: scrollRecords.count,
+            buttonEvents: buttonRecords.count,
+            keyEvents: keyRecords.count,
+            preciseScrollEvents: preciseScrollEvents,
+            preciseScrollRatio: ratio(numerator: preciseScrollEvents, denominator: scrollRecords.count),
+            scrollDeltaXTotal: scrollRecords.reduce(Int64(0)) { $0 + $1.scrollDeltaX },
+            scrollDeltaYTotal: scrollRecords.reduce(Int64(0)) { $0 + $1.scrollDeltaY },
+            pointDeltaXTotal: scrollRecords.reduce(0) { $0 + $1.pointDeltaX },
+            pointDeltaYTotal: scrollRecords.reduce(0) { $0 + $1.pointDeltaY },
+            maximumMoveMagnitude: maxMagnitude,
+            p95MoveMagnitude: p95,
+            p99MoveMagnitude: p99,
+            suggestedDeadZonePoints: suggestedDeadZone,
+            buttonCounts: counts(buttonRecords.map { String($0.buttonNumber) }),
+            keyCounts: counts(keyRecords.map { "\($0.typeName):\($0.keyCode)" }),
+            scrollPhaseCounts: counts(scrollRecords.map { String($0.scrollPhase) }),
+            momentumPhaseCounts: counts(scrollRecords.map { String($0.momentumPhase) })
+        )
+    }
+
+    public static func japaneseReport(for analysis: LogAnalysis) -> String {
+        """
+        ログ解析結果
+        総イベント数: \(analysis.totalEvents)
+        生成イベント数: \(analysis.generatedEvents)
+        移動イベント数: \(analysis.moveEvents)
+        スクロールイベント数: \(analysis.scrollEvents)
+        ボタンイベント数: \(analysis.buttonEvents)
+        キーイベント数: \(analysis.keyEvents)
+        precise/continuous スクロール数: \(analysis.preciseScrollEvents)
+        precise/continuous 率: \(format(analysis.preciseScrollRatio * 100))%
+        scrollDelta 合計: x=\(analysis.scrollDeltaXTotal), y=\(analysis.scrollDeltaYTotal)
+        pointDelta 合計: x=\(format(analysis.pointDeltaXTotal)), y=\(format(analysis.pointDeltaYTotal))
+        最大移動量: \(format(analysis.maximumMoveMagnitude)) pt
+        移動量 p95: \(format(analysis.p95MoveMagnitude)) pt
+        移動量 p99: \(format(analysis.p99MoveMagnitude)) pt
+        推奨 deadZonePoints: \(format(analysis.suggestedDeadZonePoints)) pt
+        ボタン出現数: \(formatCounts(analysis.buttonCounts))
+        キー出現数: \(formatCounts(analysis.keyCounts))
+        scrollPhase 出現数: \(formatCounts(analysis.scrollPhaseCounts))
+        momentumPhase 出現数: \(formatCounts(analysis.momentumPhaseCounts))
+        """
+    }
+
+    private static func percentile(_ sortedValues: [Double], fraction: Double) -> Double {
+        guard !sortedValues.isEmpty else {
+            return 0
+        }
+        let clamped = min(max(fraction, 0), 1)
+        let index = Int((Double(sortedValues.count - 1) * clamped).rounded())
+        return sortedValues[index]
+    }
+
+    private static func counts(_ values: [String]) -> [String: Int] {
+        var result: [String: Int] = [:]
+        for value in values {
+            result[value, default: 0] += 1
+        }
+        return result
+    }
+
+    private static func format(_ value: Double) -> String {
+        String(format: "%.2f", value)
+    }
+
+    private static func formatCounts(_ counts: [String: Int]) -> String {
+        if counts.isEmpty {
+            return "-"
+        }
+        return counts
+            .sorted { lhs, rhs in lhs.key < rhs.key }
+            .map { "\($0.key)=\($0.value)" }
+            .joined(separator: ", ")
+    }
+
+    private static func ratio(numerator: Int, denominator: Int) -> Double {
+        guard denominator > 0 else {
+            return 0
+        }
+        return Double(numerator) / Double(denominator)
+    }
+}
+
+public struct LogComparison: Codable, Equatable, Sendable {
+    public var baseline: LogAnalysis
+    public var candidate: LogAnalysis
+    public var totalEventDelta: Int
+    public var generatedEventDelta: Int
+    public var scrollEventDelta: Int
+    public var keyEventDelta: Int
+    public var preciseScrollRatioDelta: Double
+    public var p95MoveMagnitudeDelta: Double
+    public var p99MoveMagnitudeDelta: Double
+    public var scrollDeltaXTotalDelta: Int64
+    public var scrollDeltaYTotalDelta: Int64
+    public var pointDeltaXTotalDelta: Double
+    public var pointDeltaYTotalDelta: Double
+    public var scrollPhaseDelta: [String: Int]
+    public var momentumPhaseDelta: [String: Int]
+    public var keyDelta: [String: Int]
+    public var findings: [String]
+
+    public init(
+        baseline: LogAnalysis,
+        candidate: LogAnalysis,
+        totalEventDelta: Int,
+        generatedEventDelta: Int,
+        scrollEventDelta: Int,
+        keyEventDelta: Int,
+        preciseScrollRatioDelta: Double,
+        p95MoveMagnitudeDelta: Double,
+        p99MoveMagnitudeDelta: Double,
+        scrollDeltaXTotalDelta: Int64,
+        scrollDeltaYTotalDelta: Int64,
+        pointDeltaXTotalDelta: Double,
+        pointDeltaYTotalDelta: Double,
+        scrollPhaseDelta: [String: Int],
+        momentumPhaseDelta: [String: Int],
+        keyDelta: [String: Int],
+        findings: [String]
+    ) {
+        self.baseline = baseline
+        self.candidate = candidate
+        self.totalEventDelta = totalEventDelta
+        self.generatedEventDelta = generatedEventDelta
+        self.scrollEventDelta = scrollEventDelta
+        self.keyEventDelta = keyEventDelta
+        self.preciseScrollRatioDelta = preciseScrollRatioDelta
+        self.p95MoveMagnitudeDelta = p95MoveMagnitudeDelta
+        self.p99MoveMagnitudeDelta = p99MoveMagnitudeDelta
+        self.scrollDeltaXTotalDelta = scrollDeltaXTotalDelta
+        self.scrollDeltaYTotalDelta = scrollDeltaYTotalDelta
+        self.pointDeltaXTotalDelta = pointDeltaXTotalDelta
+        self.pointDeltaYTotalDelta = pointDeltaYTotalDelta
+        self.scrollPhaseDelta = scrollPhaseDelta
+        self.momentumPhaseDelta = momentumPhaseDelta
+        self.keyDelta = keyDelta
+        self.findings = findings
+    }
+}
+
+public extension InputLogAnalyzer {
+    static func compare(baseline baselineRecords: [InputLogRecord], candidate candidateRecords: [InputLogRecord]) -> LogComparison {
+        let baseline = analyze(baselineRecords)
+        let candidate = analyze(candidateRecords)
+        let scrollPhaseDelta = deltaCounts(baseline.scrollPhaseCounts, candidate.scrollPhaseCounts)
+        let momentumPhaseDelta = deltaCounts(baseline.momentumPhaseCounts, candidate.momentumPhaseCounts)
+        let keyDelta = deltaCounts(baseline.keyCounts, candidate.keyCounts)
+
+        return LogComparison(
+            baseline: baseline,
+            candidate: candidate,
+            totalEventDelta: candidate.totalEvents - baseline.totalEvents,
+            generatedEventDelta: candidate.generatedEvents - baseline.generatedEvents,
+            scrollEventDelta: candidate.scrollEvents - baseline.scrollEvents,
+            keyEventDelta: candidate.keyEvents - baseline.keyEvents,
+            preciseScrollRatioDelta: candidate.preciseScrollRatio - baseline.preciseScrollRatio,
+            p95MoveMagnitudeDelta: candidate.p95MoveMagnitude - baseline.p95MoveMagnitude,
+            p99MoveMagnitudeDelta: candidate.p99MoveMagnitude - baseline.p99MoveMagnitude,
+            scrollDeltaXTotalDelta: candidate.scrollDeltaXTotal - baseline.scrollDeltaXTotal,
+            scrollDeltaYTotalDelta: candidate.scrollDeltaYTotal - baseline.scrollDeltaYTotal,
+            pointDeltaXTotalDelta: candidate.pointDeltaXTotal - baseline.pointDeltaXTotal,
+            pointDeltaYTotalDelta: candidate.pointDeltaYTotal - baseline.pointDeltaYTotal,
+            scrollPhaseDelta: scrollPhaseDelta,
+            momentumPhaseDelta: momentumPhaseDelta,
+            keyDelta: keyDelta,
+            findings: findings(
+                baseline: baseline,
+                candidate: candidate,
+                scrollPhaseDelta: scrollPhaseDelta,
+                momentumPhaseDelta: momentumPhaseDelta,
+                keyDelta: keyDelta
+            )
+        )
+    }
+
+    static func japaneseReport(for comparison: LogComparison) -> String {
+        """
+        ログ比較結果
+        baseline: events=\(comparison.baseline.totalEvents), scroll=\(comparison.baseline.scrollEvents), precise率=\(formatPercent(comparison.baseline.preciseScrollRatio))
+        candidate: events=\(comparison.candidate.totalEvents), scroll=\(comparison.candidate.scrollEvents), precise率=\(formatPercent(comparison.candidate.preciseScrollRatio))
+        総イベント数差: \(formatSigned(comparison.totalEventDelta))
+        生成イベント数差: \(formatSigned(comparison.generatedEventDelta))
+        スクロールイベント数差: \(formatSigned(comparison.scrollEventDelta))
+        キーイベント数差: \(formatSigned(comparison.keyEventDelta))
+        precise/continuous 率差: \(formatSignedPercent(comparison.preciseScrollRatioDelta))
+        移動量 p95 差: \(formatSigned(comparison.p95MoveMagnitudeDelta)) pt
+        移動量 p99 差: \(formatSigned(comparison.p99MoveMagnitudeDelta)) pt
+        scrollDelta 合計差: x=\(formatSigned(comparison.scrollDeltaXTotalDelta)), y=\(formatSigned(comparison.scrollDeltaYTotalDelta))
+        pointDelta 合計差: x=\(formatSigned(comparison.pointDeltaXTotalDelta)), y=\(formatSigned(comparison.pointDeltaYTotalDelta))
+        scrollPhase 差: \(formatCounts(comparison.scrollPhaseDelta))
+        momentumPhase 差: \(formatCounts(comparison.momentumPhaseDelta))
+        キー差: \(formatCounts(comparison.keyDelta))
+        所見: \(comparison.findings.isEmpty ? "大きな差分は検出されませんでした。" : comparison.findings.joined(separator: " / "))
+        """
+    }
+
+    private static func deltaCounts(_ baseline: [String: Int], _ candidate: [String: Int]) -> [String: Int] {
+        var result: [String: Int] = [:]
+        for key in Set(baseline.keys).union(candidate.keys) {
+            let delta = (candidate[key] ?? 0) - (baseline[key] ?? 0)
+            if delta != 0 {
+                result[key] = delta
+            }
+        }
+        return result
+    }
+
+    private static func findings(
+        baseline: LogAnalysis,
+        candidate: LogAnalysis,
+        scrollPhaseDelta: [String: Int],
+        momentumPhaseDelta: [String: Int],
+        keyDelta: [String: Int]
+    ) -> [String] {
+        var result: [String] = []
+        if baseline.generatedEvents == 0, candidate.generatedEvents > 0 {
+            result.append("candidate には MacGesture 生成イベントが含まれています。")
+        }
+        if candidate.scrollEvents != baseline.scrollEvents {
+            result.append("スクロールイベント数が baseline と異なります。")
+        }
+        if candidate.preciseScrollRatio + 0.1 < baseline.preciseScrollRatio {
+            result.append("precise/continuous スクロール率が 10ポイント以上低下しています。")
+        }
+        if !scrollPhaseDelta.isEmpty {
+            result.append("scrollPhase 分布が異なります。")
+        }
+        if !momentumPhaseDelta.isEmpty {
+            result.append("momentumPhase 分布が異なります。")
+        }
+        if !keyDelta.isEmpty {
+            result.append("キーイベント分布が異なります。")
+        }
+        return result
+    }
+
+    private static func formatSigned(_ value: Int) -> String {
+        value >= 0 ? "+\(value)" : "\(value)"
+    }
+
+    private static func formatSigned(_ value: Int64) -> String {
+        value >= 0 ? "+\(value)" : "\(value)"
+    }
+
+    private static func formatSigned(_ value: Double) -> String {
+        let formatted = String(format: "%.2f", value)
+        return value >= 0 ? "+\(formatted)" : formatted
+    }
+
+    private static func formatPercent(_ value: Double) -> String {
+        String(format: "%.2f%%", value * 100)
+    }
+
+    private static func formatSignedPercent(_ value: Double) -> String {
+        let formatted = String(format: "%.2f%%", value * 100)
+        return value >= 0 ? "+\(formatted)" : formatted
+    }
+}
+
+public extension InputLogRecord {
+    var isMoveEvent: Bool {
+        typeName == "mouseMoved"
+            || typeName == "leftMouseDragged"
+            || typeName == "rightMouseDragged"
+            || typeName == "otherMouseDragged"
+    }
+
+    var isScrollEvent: Bool {
+        typeName == "scrollWheel"
+    }
+
+    var isButtonEvent: Bool {
+        typeName == "leftMouseDown"
+            || typeName == "leftMouseUp"
+            || typeName == "rightMouseDown"
+            || typeName == "rightMouseUp"
+            || typeName == "otherMouseDown"
+            || typeName == "otherMouseUp"
+    }
+
+    var isKeyEvent: Bool {
+        typeName == "keyDown" || typeName == "keyUp"
+    }
+}
