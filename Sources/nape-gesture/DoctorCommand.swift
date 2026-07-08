@@ -60,9 +60,10 @@ struct DoctorCommand {
         let inventory = makeInventory(settings: settings, findings: &findings)
         let probe = shouldProbeHID
             ? makeHIDProbe(settings: settings, matchedDevices: inventory.matchedDevices, findings: &findings)
-            : DoctorHIDProbe(requested: false, succeeded: nil, error: nil, remediation: nil)
+            : DoctorHIDProbe(requested: false, succeeded: nil, error: nil, failureCode: nil, remediation: nil)
         let benchmark = BenchmarkRunner.run(events: benchmarkEvents)
         let tccStatus = DoctorTCCStatus(
+            runtimeIdentity: runtimeIdentity,
             accessibilityTrusted: accessibilityTrusted,
             hidProbe: probe,
             inputMonitoringRemediation: remediation(forInputMonitoringProbe: probe)
@@ -167,7 +168,7 @@ struct DoctorCommand {
         do {
             try monitor.start()
             monitor.stop()
-            return DoctorHIDProbe(requested: true, succeeded: true, error: nil, remediation: nil)
+            return DoctorHIDProbe(requested: true, succeeded: true, error: nil, failureCode: nil, remediation: nil)
         } catch {
             monitor.stop()
             let message = describe(error)
@@ -177,6 +178,7 @@ struct DoctorCommand {
                 requested: true,
                 succeeded: false,
                 error: message,
+                failureCode: hidProbeFailureCode(for: error),
                 remediation: remediation
             )
         }
@@ -211,6 +213,24 @@ struct DoctorCommand {
             return "`hid-log --all` ではなく、`devices --all --json` で確認した vendor/product/usage 条件を指定してください。"
         default:
             return IOReturnDiagnostic.describe(code)
+        }
+    }
+
+    private func hidProbeFailureCode(for error: Error) -> String? {
+        guard case let ToolError.hidManagerOpenFailed(code) = error else {
+            return nil
+        }
+        switch code {
+        case kIOReturnNotPermitted:
+            return "notPermitted"
+        case kIOReturnNotPrivileged:
+            return "notPrivileged"
+        case kIOReturnNoDevice:
+            return "noDevice"
+        case kIOReturnExclusiveAccess:
+            return "exclusiveAccess"
+        default:
+            return "ioReturn.\(code)"
         }
     }
 
@@ -555,19 +575,23 @@ private struct DoctorRuntimeReadinessFailure: Codable {
 }
 
 private struct DoctorTCCStatus: Codable {
+    var permissionTarget: DoctorTCCPermissionTarget
     var accessibility: DoctorTCCPermissionStatus
     var inputMonitoring: DoctorTCCPermissionStatus
 
     init(
+        runtimeIdentity: RuntimeIdentity,
         accessibilityTrusted: Bool,
         hidProbe: DoctorHIDProbe,
         inputMonitoringRemediation: String?
     ) {
+        permissionTarget = DoctorTCCPermissionTarget(runtimeIdentity: runtimeIdentity)
         accessibility = DoctorTCCPermissionStatus(
             service: "accessibility",
             checked: true,
             granted: accessibilityTrusted,
             status: accessibilityTrusted ? "granted" : "missing",
+            grantRequired: !accessibilityTrusted,
             remediation: accessibilityTrusted
                 ? nil
                 : "runtimeIdentity の実行主体をシステム設定のアクセシビリティで許可し、プロセスを再起動してください。"
@@ -579,6 +603,7 @@ private struct DoctorTCCStatus: Codable {
                 checked: false,
                 granted: nil,
                 status: "notProbed",
+                grantRequired: nil,
                 remediation: inputMonitoringRemediation
             )
         } else if hidProbe.succeeded == true {
@@ -587,6 +612,7 @@ private struct DoctorTCCStatus: Codable {
                 checked: true,
                 granted: true,
                 status: "granted",
+                grantRequired: false,
                 remediation: nil
             )
         } else {
@@ -595,9 +621,32 @@ private struct DoctorTCCStatus: Codable {
                 checked: true,
                 granted: false,
                 status: "probeFailed",
+                grantRequired: hidProbe.failureCode == "notPermitted" ? true : nil,
                 remediation: inputMonitoringRemediation
             )
         }
+    }
+}
+
+private struct DoctorTCCPermissionTarget: Codable {
+    var description: String
+    var preferredGrantTarget: String
+    var processName: String
+    var executablePath: String
+    var bundleIdentifier: String?
+    var bundlePath: String
+    var isAppBundle: Bool
+    var restartRequiredAfterGrant: Bool
+
+    init(runtimeIdentity: RuntimeIdentity) {
+        description = runtimeIdentity.permissionTargetDescription
+        preferredGrantTarget = runtimeIdentity.isAppBundle ? "appBundle" : "executable"
+        processName = runtimeIdentity.processName
+        executablePath = runtimeIdentity.executablePath
+        bundleIdentifier = runtimeIdentity.bundleIdentifier
+        bundlePath = runtimeIdentity.bundlePath
+        isAppBundle = runtimeIdentity.isAppBundle
+        restartRequiredAfterGrant = true
     }
 }
 
@@ -606,6 +655,7 @@ private struct DoctorTCCPermissionStatus: Codable {
     var checked: Bool
     var granted: Bool?
     var status: String
+    var grantRequired: Bool?
     var remediation: String?
 }
 
@@ -613,6 +663,7 @@ private struct DoctorHIDProbe: Codable {
     var requested: Bool
     var succeeded: Bool?
     var error: String?
+    var failureCode: String?
     var remediation: String?
 }
 

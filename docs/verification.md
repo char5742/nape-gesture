@@ -45,12 +45,15 @@ executablePath: /Users/fujino/Documents/mac-gesture/.build/NapeGesture.app/Conte
 - `runtimeReadiness.failures` が空
 - `tccStatus.accessibility.status` が `granted`
 - `tccStatus.inputMonitoring.status` が `granted`
+- `tccStatus.permissionTarget` が、実際に日常利用する `.app` または実行ファイルを指している
+- TCC 未許可時は `tccStatus.<service>.grantRequired` が `true` になり、許可対象を `tccStatus.permissionTarget` から説明できる
 - `runtimeIdentity` が、実際に日常利用する `.app` または実行ファイルを指している
 - `requireMatchingTargetDevice` が `true` の場合、`matchedTargetDeviceCount` が `1` 以上
 - `targetDeviceDiagnostics.status` が `matched`、または未一致時に `targetDeviceDiagnostics.candidates[].bestEvaluation.mismatches` で外れた matcher 条件を説明できる
 - `--assert-runtime-ready` の終了コードが 0
 
 権限付与先を迷う場合は、`doctor --json` の `runtimeIdentity` を見る。
+`tccStatus.permissionTarget` には同じ権限付与対象が `description`、`preferredGrantTarget`、`bundleIdentifier`、`bundlePath`、`executablePath` として入るため、Issue コメントや人間作業依頼ではこの値を引用する。
 `.app` として使うなら `runtimeIdentity.isAppBundle` が `true` になる経路で確認し、システム設定でもその `.app` を許可する。
 SwiftPM や debug バイナリを直接実行している場合は、`runtimeIdentity.executablePath` に出た実行ファイルを許可対象として扱う。
 `--assert-runtime-ready` は JSON 出力後に runtime 開始前提を検査する。アクセシビリティ未許可、HID probe 未実行、HID probe 失敗、対象デバイス必須時の不一致、設定不正、HID inventory 失敗があれば非ゼロ終了する。
@@ -366,8 +369,8 @@ JSON Lines では、通常スクロールの `began` / `changed` / `ended` は `
 | 誤爆または暴走 | 意図しないスクロール、慣性継続、生成イベントが止まらない | 設定値、対象デバイス識別、公開 API の挙動差分 | `Control + Option + Command + G` を押してジェスチャー生成と慣性を即座に停止する。再開は常駐UIの停止/開始またはプロセス再起動で行う |
 | 設定ファイルが不正 | `run` / `check-config` が設定エラーで開始しない、`doctor --json` の `settingsValidationIssues` が空ではない | JSON の直接編集、負の感度、0以下の慣性フレーム間隔、0以下の対象入力紐づけ秒、空の対象条件など | `settingsValidationIssues` の path を修正する。設定UIから保存し直すか、`init-config` でテンプレートを再生成する |
 | 対象入力の紐づけ秒が長すぎる | 別デバイスのクリック、ドラッグ、ホイールがジェスチャー処理へ巻き込まれる | `targetDeviceAssociation.associationWindow` が実測時刻差より大きすぎる | まず `0.12` 秒へ戻す。Nape Pro の HID ログ、イベントタップログ、Reference Target App の受信ログを同一シナリオで取り、巻き込みが出ない最小値へ調整する |
-| アクセシビリティ未許可 | `accessibilityTrusted: false`、`run` / `log` / 実イベント投稿が開始できない | 許可が現在の実行主体に付いていない | `doctor --json` の `runtimeIdentity` を見て、該当 `.app` または実行ファイルをシステム設定のアクセシビリティへ追加し、プロセスを再起動する |
-| 入力監視未許可 | `hidProbe.succeeded: false`、`kIOReturnNotPermitted` | IOHID を開く権限が現在の実行主体に付いていない | システム設定の入力監視で `runtimeIdentity` の対象を許可し、再起動後に `doctor --probe-hid` を再実行する |
+| アクセシビリティ未許可 | `accessibilityTrusted: false`、`tccStatus.accessibility.grantRequired: true`、`run` / `log` / 実イベント投稿が開始できない | 許可が現在の実行主体に付いていない | `doctor --json` の `tccStatus.permissionTarget` を見て、該当 `.app` または実行ファイルをシステム設定のアクセシビリティへ追加し、プロセスを再起動する |
+| 入力監視未許可 | `hidProbe.succeeded: false`、`hidProbe.failureCode: "notPermitted"`、`tccStatus.inputMonitoring.grantRequired: true` | IOHID を開く権限が現在の実行主体に付いていない | システム設定の入力監視で `tccStatus.permissionTarget` の対象を許可し、再起動後に `doctor --probe-hid` を再実行する |
 | 対象条件が空 | 対象デバイス一致必須のまま起動できない | 全デバイス誤適用を防ぐ安全停止 | `init-config` または設定UIで vendor/product/usage/製品名のいずれかを設定する |
 | 一致対象デバイスが0 | Nape Pro 操作を拾えない | matcher が実デバイスの HID 情報とずれている、または未接続 | `devices --all --json`、`hid-log`、`analyze-hid-log` で usage と値域を再特定する |
 | `hid-log --all` が失敗 | 排他アクセスや一部デバイスで IOHID が開けない | 全 HID を一括で開こうとしている | `devices --all --json` で候補を絞り、vendor/product/usage を指定して記録する |

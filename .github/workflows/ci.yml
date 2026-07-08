@@ -129,6 +129,8 @@ jobs:
           .build/debug/nape-gesture doctor --benchmark-events 50000 --json > /tmp/nape-doctor.json
           grep -q '"runtimeReadiness"' /tmp/nape-doctor.json
           grep -q '"tccStatus"' /tmp/nape-doctor.json
+          grep -q '"permissionTarget"' /tmp/nape-doctor.json
+          grep -q '"grantRequired"' /tmp/nape-doctor.json
           grep -q '"targetDeviceDiagnostics"' /tmp/nape-doctor.json
 
       - name: Build release
