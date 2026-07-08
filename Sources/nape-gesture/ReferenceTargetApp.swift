@@ -160,12 +160,24 @@ final class EventCaptureView: NSView {
         emit("otherMouseUp", event: event)
     }
 
+    override func rightMouseDown(with event: NSEvent) {
+        emit("rightMouseDown", event: event)
+    }
+
+    override func rightMouseUp(with event: NSEvent) {
+        emit("rightMouseUp", event: event)
+    }
+
     override func mouseDragged(with event: NSEvent) {
         emit("mouseDragged", event: event)
     }
 
     override func otherMouseDragged(with event: NSEvent) {
         emit("otherMouseDragged", event: event)
+    }
+
+    override func rightMouseDragged(with event: NSEvent) {
+        emit("rightMouseDragged", event: event)
     }
 
     override func keyDown(with event: NSEvent) {
@@ -200,6 +212,7 @@ struct TargetEventRecord: Codable, Equatable {
     var clickCount: Int
     var modifierFlags: UInt
     var keyCode: UInt16?
+    var generatedByNapeGesture: Bool
 
     init(name: String, event: NSEvent, position: NSPoint) {
         self.timestamp = event.timestamp
@@ -219,6 +232,50 @@ struct TargetEventRecord: Codable, Equatable {
         clickCount = event.clickCount
         modifierFlags = event.modifierFlags.rawValue
         keyCode = name == "keyDown" || name == "keyUp" ? event.keyCode : nil
+        generatedByNapeGesture = event.cgEvent.map(CGEventUtilities.isGeneratedByThisTool) ?? false
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case timestamp
+        case name
+        case locationX
+        case locationY
+        case deltaX
+        case deltaY
+        case scrollingDeltaX
+        case scrollingDeltaY
+        case phase
+        case momentumPhase
+        case hasPreciseScrollingDeltas
+        case magnification
+        case rotation
+        case buttonNumber
+        case clickCount
+        case modifierFlags
+        case keyCode
+        case generatedByNapeGesture
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        timestamp = try container.decode(TimeInterval.self, forKey: .timestamp)
+        name = try container.decode(String.self, forKey: .name)
+        locationX = try container.decode(Double.self, forKey: .locationX)
+        locationY = try container.decode(Double.self, forKey: .locationY)
+        deltaX = try container.decode(Double.self, forKey: .deltaX)
+        deltaY = try container.decode(Double.self, forKey: .deltaY)
+        scrollingDeltaX = try container.decode(Double.self, forKey: .scrollingDeltaX)
+        scrollingDeltaY = try container.decode(Double.self, forKey: .scrollingDeltaY)
+        phase = try container.decode(UInt.self, forKey: .phase)
+        momentumPhase = try container.decode(UInt.self, forKey: .momentumPhase)
+        hasPreciseScrollingDeltas = try container.decode(Bool.self, forKey: .hasPreciseScrollingDeltas)
+        magnification = try container.decode(Double.self, forKey: .magnification)
+        rotation = try container.decode(Double.self, forKey: .rotation)
+        buttonNumber = try container.decode(Int.self, forKey: .buttonNumber)
+        clickCount = try container.decode(Int.self, forKey: .clickCount)
+        modifierFlags = try container.decode(UInt.self, forKey: .modifierFlags)
+        keyCode = try container.decodeIfPresent(UInt16.self, forKey: .keyCode)
+        generatedByNapeGesture = try container.decodeIfPresent(Bool.self, forKey: .generatedByNapeGesture) ?? false
     }
 
     var displayLine: String {
@@ -237,9 +294,11 @@ struct TargetEventRecord: Codable, Equatable {
             return base + " rotation=\(format(rotation)) phase=\(phase)"
         case "mouseDragged":
             return base + " dx=\(format(deltaX)) dy=\(format(deltaY))"
-        case "otherMouseDown", "otherMouseUp":
+        case "otherMouseDown", "otherMouseUp", "rightMouseDown", "rightMouseUp":
             return base + " button=\(buttonNumber)"
         case "otherMouseDragged":
+            return base + " button=\(buttonNumber) dx=\(format(deltaX)) dy=\(format(deltaY))"
+        case "rightMouseDragged":
             return base + " button=\(buttonNumber) dx=\(format(deltaX)) dy=\(format(deltaY))"
         case "keyDown", "keyUp":
             return base

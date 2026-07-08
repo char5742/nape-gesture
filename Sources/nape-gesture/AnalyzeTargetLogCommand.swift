@@ -53,12 +53,17 @@ struct AnalyzeTargetLogCommand {
 
 struct TargetEventLogAnalysis: Codable, Equatable {
     var totalEvents: Int
+    var generatedEvents: Int
+    var unmarkedEvents: Int
     var scrollEvents: Int
     var preciseScrollEvents: Int
     var swipeEvents: Int
     var magnifyEvents: Int
     var rotateEvents: Int
     var mouseEvents: Int
+    var unmarkedMouseEvents: Int
+    var unmarkedScrollEvents: Int
+    var unmarkedKeyEvents: Int
     var scrollingDeltaXTotal: Double
     var scrollingDeltaYTotal: Double
     var deltaXTotal: Double
@@ -68,6 +73,8 @@ struct TargetEventLogAnalysis: Codable, Equatable {
     var eventCounts: [String: Int]
     var phaseCounts: [String: Int]
     var momentumPhaseCounts: [String: Int]
+    var leakCandidateEvents: [TargetEventRecord]
+    var leakCandidateCounts: [String: Int]
 }
 
 enum TargetEventLogAnalyzer {
@@ -76,23 +83,27 @@ enum TargetEventLogAnalyzer {
         let swipeRecords = records.filter { $0.name == "swipe" }
         let magnifyRecords = records.filter { $0.name == "magnify" }
         let rotateRecords = records.filter { $0.name == "rotate" }
-        let mouseRecords = records.filter {
-            $0.name == "mouseDown"
-                || $0.name == "mouseUp"
-                || $0.name == "mouseDragged"
-                || $0.name == "otherMouseDown"
-                || $0.name == "otherMouseUp"
-                || $0.name == "otherMouseDragged"
-        }
+        let mouseRecords = records.filter(isMouseEvent)
+        let generatedRecords = records.filter(\.generatedByNapeGesture)
+        let unmarkedRecords = records.filter { !$0.generatedByNapeGesture }
+        let unmarkedMouseRecords = unmarkedRecords.filter(isMouseEvent)
+        let unmarkedScrollRecords = unmarkedRecords.filter(isScrollEvent)
+        let unmarkedKeyRecords = unmarkedRecords.filter(isKeyEvent)
+        let leakCandidateRecords = unmarkedRecords.filter(isLeakCandidate)
 
         return TargetEventLogAnalysis(
             totalEvents: records.count,
+            generatedEvents: generatedRecords.count,
+            unmarkedEvents: unmarkedRecords.count,
             scrollEvents: scrollRecords.count,
             preciseScrollEvents: scrollRecords.filter(\.hasPreciseScrollingDeltas).count,
             swipeEvents: swipeRecords.count,
             magnifyEvents: magnifyRecords.count,
             rotateEvents: rotateRecords.count,
             mouseEvents: mouseRecords.count,
+            unmarkedMouseEvents: unmarkedMouseRecords.count,
+            unmarkedScrollEvents: unmarkedScrollRecords.count,
+            unmarkedKeyEvents: unmarkedKeyRecords.count,
             scrollingDeltaXTotal: scrollRecords.reduce(0) { $0 + $1.scrollingDeltaX },
             scrollingDeltaYTotal: scrollRecords.reduce(0) { $0 + $1.scrollingDeltaY },
             deltaXTotal: records.reduce(0) { $0 + $1.deltaX },
@@ -101,7 +112,9 @@ enum TargetEventLogAnalyzer {
             rotationTotal: rotateRecords.reduce(0) { $0 + $1.rotation },
             eventCounts: counts(records.map(\.name)),
             phaseCounts: counts(records.map { String($0.phase) }),
-            momentumPhaseCounts: counts(scrollRecords.map { String($0.momentumPhase) })
+            momentumPhaseCounts: counts(scrollRecords.map { String($0.momentumPhase) }),
+            leakCandidateEvents: leakCandidateRecords,
+            leakCandidateCounts: counts(leakCandidateRecords.map(\.name))
         )
     }
 
@@ -109,12 +122,19 @@ enum TargetEventLogAnalyzer {
         """
         Targetログ解析結果
         総イベント数: \(analysis.totalEvents)
+        Nape Gesture生成イベント: \(analysis.generatedEvents)
+        未マークイベント: \(analysis.unmarkedEvents)
         scrollWheel: \(analysis.scrollEvents)
         precise scrollWheel: \(analysis.preciseScrollEvents)
         swipe: \(analysis.swipeEvents)
         magnify: \(analysis.magnifyEvents)
         rotate: \(analysis.rotateEvents)
         mouse系: \(analysis.mouseEvents)
+        未マークmouse系: \(analysis.unmarkedMouseEvents)
+        未マークscroll系: \(analysis.unmarkedScrollEvents)
+        未マークkey系: \(analysis.unmarkedKeyEvents)
+        漏れ候補: \(analysis.leakCandidateEvents.count)
+        漏れ候補出現数: \(formatCounts(analysis.leakCandidateCounts))
         scrollingDelta 合計: x=\(format(analysis.scrollingDeltaXTotal)), y=\(format(analysis.scrollingDeltaYTotal))
         delta 合計: x=\(format(analysis.deltaXTotal)), y=\(format(analysis.deltaYTotal))
         magnification 合計: \(format(analysis.magnificationTotal))
@@ -131,6 +151,36 @@ enum TargetEventLogAnalyzer {
             result[value, default: 0] += 1
         }
         return result
+    }
+
+    private static func isLeakCandidate(_ record: TargetEventRecord) -> Bool {
+        isMouseEvent(record) || isScrollEvent(record) || isKeyEvent(record)
+    }
+
+    private static func isMouseEvent(_ record: TargetEventRecord) -> Bool {
+        switch record.name {
+        case "mouseDown",
+             "mouseUp",
+             "rightMouseDown",
+             "rightMouseUp",
+             "otherMouseDown",
+             "otherMouseUp",
+             "mouseMoved",
+             "mouseDragged",
+             "rightMouseDragged",
+             "otherMouseDragged":
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static func isScrollEvent(_ record: TargetEventRecord) -> Bool {
+        record.name == "scrollWheel"
+    }
+
+    private static func isKeyEvent(_ record: TargetEventRecord) -> Bool {
+        record.name == "keyDown" || record.name == "keyUp"
     }
 
     private static func format(_ value: Double) -> String {
