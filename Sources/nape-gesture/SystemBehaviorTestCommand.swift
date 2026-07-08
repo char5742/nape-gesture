@@ -56,21 +56,34 @@ struct SystemBehaviorTestCommand {
               kill-switch
                   キルスイッチ相当の Control + Option + Command + G を未マークのキーイベントとして生成します。
 
+              gesture-drag
+                  既定の activation button 押下、左ドラッグ、解放を未マークのマウスイベントとして生成します。
+
+              gesture-wheel
+                  既定の activation button 押下中のホイールを未マークのスクロールイベントとして生成します。
+
+              normal-after-release
+                  既定の activation button 解放後に通常の移動とホイールを未マークイベントとして生成します。
+
             例:
               nape-gesture system-test run --scenario space-left --target finder --amount 1800 --steps 36
+              nape-gesture system-test run --scenario gesture-drag --dry-run --log-json
               nape-gesture system-test run --scenario mission-control --dry-run
             """
         )
     }
 
     private func runScenario(options: [String]) throws {
-        let scenario = try requiredValue("--scenario", in: options)
+        let scenarioName = try requiredValue("--scenario", in: options)
+        guard let scenario = SystemTestScenario(rawValue: scenarioName) else {
+            throw ToolError.invalidValue("--scenario", scenarioName)
+        }
         let target = value("--target", in: options)
         let dryRun = options.contains("--dry-run")
         let outputLogJSON = options.contains("--log-json")
         let outputPath = value("--out", in: options)
-        let amount = try doubleValue("--amount", in: options, defaultValue: 1600)
-        let steps = try intValue("--steps", in: options, defaultValue: 32)
+        let amount = try doubleValue("--amount", in: options, defaultValue: scenario.defaultAmount)
+        let steps = try intValue("--steps", in: options, defaultValue: scenario.defaultSteps)
         let interval = try doubleValue("--interval", in: options, defaultValue: 0.008)
         let plan = try SystemTestPlan(
             scenario: scenario,
@@ -126,6 +139,8 @@ struct SystemBehaviorTestCommand {
             poster.postZoomOut()
         case .killSwitch:
             postUnmarkedKeyShortcut(keyCode: killSwitchKeyCode, flags: killSwitchFlags)
+        case .gestureDrag, .gestureWheel, .normalAfterRelease:
+            postUnmarkedInputEvents(unmarkedInputEvents(for: plan, startTime: now))
         }
     }
 
@@ -221,6 +236,8 @@ struct SystemBehaviorTestCommand {
                 startTime: startTime,
                 generatedByNapeGesture: false
             )
+        case .gestureDrag, .gestureWheel, .normalAfterRelease:
+            return unmarkedInputEvents(for: plan, startTime: startTime).map { $0.logRecord() }
         }
     }
 
@@ -301,6 +318,174 @@ struct SystemBehaviorTestCommand {
         )
     }
 
+    private func unmarkedInputEvents(for plan: SystemTestPlan, startTime: TimeInterval) -> [UnmarkedInputEvent] {
+        switch plan.scenario {
+        case .gestureDrag:
+            return unmarkedGestureDragEvents(plan: plan, startTime: startTime)
+        case .gestureWheel:
+            return unmarkedGestureWheelEvents(plan: plan, startTime: startTime)
+        case .normalAfterRelease:
+            return unmarkedNormalAfterReleaseEvents(plan: plan, startTime: startTime)
+        case .spaceLeft,
+             .spaceRight,
+             .missionControl,
+             .pageBack,
+             .pageForward,
+             .zoomIn,
+             .zoomOut,
+             .killSwitch:
+            return []
+        }
+    }
+
+    private func unmarkedGestureDragEvents(plan: SystemTestPlan, startTime: TimeInterval) -> [UnmarkedInputEvent] {
+        var events = [
+            unmarkedMouseEvent(
+                type: .otherMouseDown,
+                time: startTime,
+                buttonNumber: plan.activationButtonNumber
+            )
+        ]
+        let deltas = quantizedDeltas(total: -plan.amount, steps: plan.steps)
+        for (index, deltaX) in deltas.enumerated() {
+            events.append(
+                unmarkedMouseEvent(
+                    type: .otherMouseDragged,
+                    time: startTime + Double(index + 1) * plan.interval,
+                    buttonNumber: plan.activationButtonNumber,
+                    deltaX: deltaX
+                )
+            )
+        }
+        events.append(
+            unmarkedMouseEvent(
+                type: .otherMouseUp,
+                time: startTime + Double(plan.steps + 1) * plan.interval,
+                buttonNumber: plan.activationButtonNumber
+            )
+        )
+        return events
+    }
+
+    private func unmarkedGestureWheelEvents(plan: SystemTestPlan, startTime: TimeInterval) -> [UnmarkedInputEvent] {
+        var events = [
+            unmarkedMouseEvent(
+                type: .otherMouseDown,
+                time: startTime,
+                buttonNumber: plan.activationButtonNumber
+            )
+        ]
+        let deltas = quantizedDeltas(total: -plan.amount, steps: plan.steps)
+        for (index, deltaY) in deltas.enumerated() {
+            events.append(
+                unmarkedScrollEvent(
+                    time: startTime + Double(index + 1) * plan.interval,
+                    deltaY: deltaY
+                )
+            )
+        }
+        events.append(
+            unmarkedMouseEvent(
+                type: .otherMouseUp,
+                time: startTime + Double(plan.steps + 1) * plan.interval,
+                buttonNumber: plan.activationButtonNumber
+            )
+        )
+        return events
+    }
+
+    private func unmarkedNormalAfterReleaseEvents(plan: SystemTestPlan, startTime: TimeInterval) -> [UnmarkedInputEvent] {
+        var events = [
+            unmarkedMouseEvent(
+                type: .otherMouseDown,
+                time: startTime,
+                buttonNumber: plan.activationButtonNumber
+            ),
+            unmarkedMouseEvent(
+                type: .otherMouseUp,
+                time: startTime + plan.interval,
+                buttonNumber: plan.activationButtonNumber
+            )
+        ]
+        let deltas = quantizedDeltas(total: plan.amount, steps: plan.steps)
+        for (index, deltaX) in deltas.enumerated() {
+            events.append(
+                unmarkedMouseEvent(
+                    type: .mouseMoved,
+                    time: startTime + Double(index + 2) * plan.interval,
+                    deltaX: deltaX
+                )
+            )
+        }
+        let wheelDelta = -max(Int64(1), abs(quantizeInt64(plan.amount / Double(max(plan.steps, 1)))))
+        events.append(
+            unmarkedScrollEvent(
+                time: startTime + Double(plan.steps + 2) * plan.interval,
+                deltaY: wheelDelta
+            )
+        )
+        return events
+    }
+
+    private func unmarkedMouseEvent(
+        type: CGEventType,
+        time: TimeInterval,
+        buttonNumber: Int64 = 0,
+        deltaX: Int64 = 0,
+        deltaY: Int64 = 0
+    ) -> UnmarkedInputEvent {
+        UnmarkedInputEvent(
+            type: type,
+            time: time,
+            buttonNumber: buttonNumber,
+            deltaX: deltaX,
+            deltaY: deltaY,
+            scrollDeltaX: 0,
+            scrollDeltaY: 0,
+            pointDeltaX: 0,
+            pointDeltaY: 0,
+            scrollPhase: 0,
+            momentumPhase: 0,
+            isContinuous: 0
+        )
+    }
+
+    private func unmarkedScrollEvent(time: TimeInterval, deltaY: Int64) -> UnmarkedInputEvent {
+        UnmarkedInputEvent(
+            type: .scrollWheel,
+            time: time,
+            buttonNumber: 0,
+            deltaX: 0,
+            deltaY: 0,
+            scrollDeltaX: 0,
+            scrollDeltaY: deltaY,
+            pointDeltaX: 0,
+            pointDeltaY: Double(deltaY),
+            scrollPhase: 0,
+            momentumPhase: 0,
+            isContinuous: 1
+        )
+    }
+
+    private func postUnmarkedInputEvents(_ events: [UnmarkedInputEvent]) {
+        let source = CGEventSource(stateID: .hidSystemState)
+        source?.setLocalEventsFilterDuringSuppressionState([], state: .eventSuppressionStateSuppressionInterval)
+        var cursorPosition = currentPointerLocation()
+        var previousTime: TimeInterval?
+
+        for plannedEvent in events {
+            if let previousTime {
+                Thread.sleep(forTimeInterval: max(plannedEvent.time - previousTime, 0))
+            }
+            guard let event = plannedEvent.makeCGEvent(source: source, cursorPosition: &cursorPosition) else {
+                previousTime = plannedEvent.time
+                continue
+            }
+            event.post(tap: .cghidEventTap)
+            previousTime = plannedEvent.time
+        }
+    }
+
     private func postUnmarkedKeyShortcut(keyCode: CGKeyCode, flags: CGEventFlags) {
         let source = CGEventSource(stateID: .hidSystemState)
         source?.setLocalEventsFilterDuringSuppressionState([], state: .eventSuppressionStateSuppressionInterval)
@@ -318,8 +503,40 @@ struct SystemBehaviorTestCommand {
         }
     }
 
+    private func currentPointerLocation() -> CGPoint {
+        CGEvent(source: nil)?.location ?? .zero
+    }
+
+    private func quantizedDeltas(total: Double, steps: Int) -> [Int64] {
+        let total = quantizeInt64(total)
+        guard steps > 0 else {
+            return []
+        }
+
+        let sign: Int64 = total < 0 ? -1 : 1
+        let magnitude = total == Int64.min ? Int64.max : abs(total)
+        let base = magnitude / Int64(steps)
+        let remainder = magnitude % Int64(steps)
+
+        return (0..<steps).map { index in
+            let extra: Int64 = Int64(index) < remainder ? 1 : 0
+            return sign * (base + extra)
+        }
+    }
+
     private func timestamp(_ time: TimeInterval) -> UInt64 {
         UInt64(max(time, 0) * 1_000_000_000)
+    }
+
+    private func quantizeInt64(_ value: Double) -> Int64 {
+        let rounded = value.rounded()
+        if rounded > Double(Int64.max) {
+            return Int64.max
+        }
+        if rounded < Double(Int64.min) {
+            return Int64.min
+        }
+        return Int64(rounded)
     }
 
     private func quantize(_ value: Double) -> Int32 {
@@ -392,17 +609,17 @@ private struct SystemTestPlan {
     var amount: Double
     var steps: Int
     var interval: TimeInterval
+    var activationButtonNumber: Int64 {
+        Int64(GestureConfiguration.default.activationButton.rawValue)
+    }
 
     init(
-        scenario: String,
+        scenario: SystemTestScenario,
         target: String?,
         amount: Double,
         steps: Int,
         interval: TimeInterval
     ) throws {
-        guard let scenario = SystemTestScenario(rawValue: scenario) else {
-            throw ToolError.invalidValue("--scenario", scenario)
-        }
         self.scenario = scenario
 
         if let target {
@@ -440,9 +657,166 @@ private enum SystemTestScenario: String {
     case zoomIn = "zoom-in"
     case zoomOut = "zoom-out"
     case killSwitch = "kill-switch"
+    case gestureDrag = "gesture-drag"
+    case gestureWheel = "gesture-wheel"
+    case normalAfterRelease = "normal-after-release"
+
+    var defaultAmount: Double {
+        switch self {
+        case .normalAfterRelease:
+            return 24
+        case .gestureWheel:
+            return 240
+        case .spaceLeft,
+             .spaceRight,
+             .missionControl,
+             .pageBack,
+             .pageForward,
+             .zoomIn,
+             .zoomOut,
+             .killSwitch,
+             .gestureDrag:
+            return 1600
+        }
+    }
+
+    var defaultSteps: Int {
+        switch self {
+        case .normalAfterRelease:
+            return 2
+        case .spaceLeft,
+             .spaceRight,
+             .missionControl,
+             .pageBack,
+             .pageForward,
+             .zoomIn,
+             .zoomOut,
+             .killSwitch,
+             .gestureDrag,
+             .gestureWheel:
+            return 32
+        }
+    }
 }
 
 private enum SystemTestTarget: String {
     case finder
     case safari
+}
+
+private struct UnmarkedInputEvent {
+    var type: CGEventType
+    var time: TimeInterval
+    var buttonNumber: Int64
+    var deltaX: Int64
+    var deltaY: Int64
+    var scrollDeltaX: Int64
+    var scrollDeltaY: Int64
+    var pointDeltaX: Double
+    var pointDeltaY: Double
+    var scrollPhase: Int64
+    var momentumPhase: Int64
+    var isContinuous: Int64
+
+    func logRecord() -> InputLogRecord {
+        InputLogRecord(
+            timestamp: UInt64(max(time, 0) * 1_000_000_000),
+            typeName: stableTypeName,
+            typeRaw: Int(type.rawValue),
+            generatedByNapeGesture: false,
+            buttonNumber: buttonNumber,
+            deltaX: deltaX,
+            deltaY: deltaY,
+            scrollDeltaX: scrollDeltaX,
+            scrollDeltaY: scrollDeltaY,
+            pointDeltaX: pointDeltaX,
+            pointDeltaY: pointDeltaY,
+            scrollPhase: scrollPhase,
+            momentumPhase: momentumPhase,
+            isContinuous: isContinuous,
+            keyCode: 0,
+            flags: 0
+        )
+    }
+
+    func makeCGEvent(source: CGEventSource?, cursorPosition: inout CGPoint) -> CGEvent? {
+        let event: CGEvent?
+        if type == .scrollWheel {
+            event = CGEvent(
+                scrollWheelEvent2Source: source,
+                units: .pixel,
+                wheelCount: 2,
+                wheel1: int32(scrollDeltaY),
+                wheel2: int32(scrollDeltaX),
+                wheel3: 0
+            )
+            event?.setIntegerValueField(.scrollWheelEventScrollPhase, value: scrollPhase)
+            event?.setIntegerValueField(.scrollWheelEventMomentumPhase, value: momentumPhase)
+            event?.setIntegerValueField(.scrollWheelEventIsContinuous, value: isContinuous)
+            event?.setDoubleValueField(.scrollWheelEventPointDeltaAxis1, value: pointDeltaY)
+            event?.setDoubleValueField(.scrollWheelEventPointDeltaAxis2, value: pointDeltaX)
+        } else {
+            cursorPosition.x += CGFloat(deltaX)
+            cursorPosition.y += CGFloat(deltaY)
+            event = CGEvent(
+                mouseEventSource: source,
+                mouseType: type,
+                mouseCursorPosition: cursorPosition,
+                mouseButton: mouseButton
+            )
+            event?.setIntegerValueField(.mouseEventButtonNumber, value: buttonNumber)
+            event?.setIntegerValueField(.mouseEventDeltaX, value: deltaX)
+            event?.setIntegerValueField(.mouseEventDeltaY, value: deltaY)
+        }
+
+        return event
+    }
+
+    private var stableTypeName: String {
+        switch type {
+        case .mouseMoved:
+            return "mouseMoved"
+        case .otherMouseDown:
+            return "otherMouseDown"
+        case .otherMouseUp:
+            return "otherMouseUp"
+        case .otherMouseDragged:
+            return "otherMouseDragged"
+        case .scrollWheel:
+            return "scrollWheel"
+        default:
+            return "raw-\(type.rawValue)"
+        }
+    }
+
+    private var mouseButton: CGMouseButton {
+        switch type {
+        case .mouseMoved:
+            return .left
+        case .leftMouseDown, .leftMouseUp, .leftMouseDragged:
+            return .left
+        case .rightMouseDown, .rightMouseUp, .rightMouseDragged:
+            return .right
+        case .otherMouseDown, .otherMouseUp, .otherMouseDragged:
+            guard buttonNumber >= 0,
+                  buttonNumber <= Int64(UInt32.max),
+                  let button = CGMouseButton(rawValue: UInt32(buttonNumber))
+            else {
+                return .center
+            }
+            return button
+        default:
+            return .center
+        }
+    }
+
+    private func int32(_ value: Int64) -> Int32 {
+        if value > Int64(Int32.max) {
+            return Int32.max
+        }
+        if value < Int64(Int32.min) {
+            return Int32.min
+        }
+        return Int32(value)
+    }
 }
