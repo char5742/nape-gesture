@@ -99,7 +99,7 @@ sh scripts/collect-completion-evidence.sh
 NAPE_COMPLETION_ARTIFACT_ROOT=/tmp/nape-completion-machine-evidence sh scripts/collect-completion-evidence.sh
 ```
 
-スクリプトは `commands.txt` と `summary.md` を出力し、debug / release build、core tests、app bundle 作成と検証、未署名時の署名必須検証の期待失敗、ad-hoc 署名、署名済み bundle 検証、ライセンス原本一致、doctor、`doctor --json` の `runtimeReadiness` / `tccStatus` 存在確認、`doctor --probe-hid`、`doctor --assert-runtime-ready` の期待失敗と failure code、`benchmark --assert-baseline`、system-test dry-run、生成スクロール dry-run、fixture 解析、`derive-parameters --json --assert-complete`、`devices --all --json` を収集します。
+スクリプトは `commands.txt` と `summary.md` を出力し、debug / release build、core tests、app bundle 作成と検証、未署名時の署名必須検証の期待失敗、ad-hoc 署名、署名済み bundle 検証、ライセンス原本一致、doctor、`doctor --json` の `runtimeReadiness` / `tccStatus` 存在確認、`doctor --probe-hid`、`doctor --assert-runtime-ready` の期待失敗と failure code、`benchmark --assert-baseline`、system-test dry-run と `analyze-log --assert-system-scenario`、生成スクロール dry-run、fixture 解析、`derive-parameters --json --assert-complete`、`devices --all --json` を収集します。
 `Fixtures/clean-association-event-log.jsonl` の `analyze-association --assert-valid-window --target-stable-id <ID>` は、解析対象イベントがすべて `associationWindow` 内に収まることを記録します。
 `Fixtures/sample-association-event-log.jsonl` の `analyze-association --assert-valid-window --target-stable-id <ID>` は、window 外のイベントを検出して非ゼロ終了することを期待値として記録します。
 `Fixtures/empty-association-hid-log.jsonl`、`Fixtures/association-scroll-mismatch-*.jsonl`、`Fixtures/association-ac-pan-*.jsonl`、`Fixtures/association-button-mismatch-*.jsonl`、`Fixtures/association-non-target-*.jsonl`、`Fixtures/association-mixed-device-*.jsonl` は、空 HID、usage 不一致、runtime 非対応 AC Pan、対象外デバイス単体、複数 HID デバイス採用を有効な対象デバイス紐づけ証跡として扱わないことを expected failure として記録します。
@@ -112,7 +112,7 @@ NAPE_COMPLETION_ARTIFACT_ROOT=/tmp/nape-completion-machine-evidence sh scripts/c
 `Fixtures/gesture-target-log.jsonl` の `analyze-target-log --assert-has-gesture` は、Reference Target App が `swipe`、`magnify`、`rotate` を同じ target log 形式で解析できることを記録します。
 `system-test run --scenario kill-switch --dry-run --log-json` と `analyze-log --assert-kill-switch-shortcut` は、物理キーボード操作なしで `Control + Option + Command + G` 相当の未生成 `keyDown` / `keyUp` と modifier flags を生成できることを記録します。
 `system-test run --scenario gesture-wheel-then-kill-switch --dry-run --log-json` と `analyze-log --assert-kill-switch-shortcut --assert-gesture-before-kill-switch` は、未生成ホイール入力がある進行中ジェスチャー状態でキルスイッチを投入する前段証跡を記録します。
-`system-test run --scenario page-back/page-forward/zoom-in/zoom-out --dry-run --log-json` は、Safari や対応アプリで実操作する前に、離散割り当ての keyDown / keyUp 列を同じ JSON Lines 形式で記録します。
+`system-test run --scenario page-back/page-forward/zoom-in/zoom-out --dry-run --log-json` と `analyze-log --json --assert-system-scenario <name>` は、Safari や対応アプリで実操作する前に、`systemTestScenario`、`sequenceIndex`、離散割り当ての keyDown / keyUp、keyCode、余計な modifier を含まない exact modifier flags を同じ JSON Lines 形式と終了コードで記録します。
 `GestureAction.settingsSelectableActions` の core test は、設定 UI の割り当て候補が Mission Control、Spaces、ページ戻る/進む、ズーム、横スクロールを含む全 `GestureAction` を網羅することを記録します。
 `Fixtures/sample-tuning-trackpad-log.jsonl` の `derive-parameters --json --assert-complete` は、純正トラックパッド実測ログ取得後に deadZone、加速度、慣性候補を同じ形式で保存し、未導出や警告がない場合だけ完了証跡として扱えることを記録します。
 `Fixtures/sample-log.jsonl` の `derive-parameters --json --assert-complete` は、移動速度、慣性、timestamp 品質が足りないログを完了証跡として扱わず非ゼロ終了することを期待値として記録します。

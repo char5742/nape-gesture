@@ -17,6 +17,8 @@ public struct InputLogRecord: Codable, Equatable, Sendable {
     public var isContinuous: Int64
     public var keyCode: Int64
     public var flags: UInt64
+    public var systemTestScenario: String?
+    public var sequenceIndex: Int?
 
     private enum CodingKeys: String, CodingKey {
         case timestamp
@@ -36,6 +38,8 @@ public struct InputLogRecord: Codable, Equatable, Sendable {
         case isContinuous
         case keyCode
         case flags
+        case systemTestScenario
+        case sequenceIndex
     }
 
     public init(
@@ -54,7 +58,9 @@ public struct InputLogRecord: Codable, Equatable, Sendable {
         momentumPhase: Int64,
         isContinuous: Int64,
         keyCode: Int64,
-        flags: UInt64
+        flags: UInt64,
+        systemTestScenario: String? = nil,
+        sequenceIndex: Int? = nil
     ) {
         self.timestamp = timestamp
         self.typeName = typeName
@@ -72,6 +78,8 @@ public struct InputLogRecord: Codable, Equatable, Sendable {
         self.isContinuous = isContinuous
         self.keyCode = keyCode
         self.flags = flags
+        self.systemTestScenario = systemTestScenario
+        self.sequenceIndex = sequenceIndex
     }
 
     public init(from decoder: Decoder) throws {
@@ -94,6 +102,8 @@ public struct InputLogRecord: Codable, Equatable, Sendable {
         isContinuous = try container.decode(Int64.self, forKey: .isContinuous)
         keyCode = try container.decode(Int64.self, forKey: .keyCode)
         flags = try container.decode(UInt64.self, forKey: .flags)
+        systemTestScenario = try container.decodeIfPresent(String.self, forKey: .systemTestScenario)
+        sequenceIndex = try container.decodeIfPresent(Int.self, forKey: .sequenceIndex)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -114,6 +124,8 @@ public struct InputLogRecord: Codable, Equatable, Sendable {
         try container.encode(isContinuous, forKey: .isContinuous)
         try container.encode(keyCode, forKey: .keyCode)
         try container.encode(flags, forKey: .flags)
+        try container.encodeIfPresent(systemTestScenario, forKey: .systemTestScenario)
+        try container.encodeIfPresent(sequenceIndex, forKey: .sequenceIndex)
     }
 }
 
@@ -131,8 +143,15 @@ public struct LogAnalysis: Codable, Equatable, Sendable {
     public var scrollEvents: Int
     public var buttonEvents: Int
     public var keyEvents: Int
+    public var generatedKeyEvents: Int
+    public var unmarkedKeyEvents: Int
+    public var generatedScrollEvents: Int
     public var preciseScrollEvents: Int
     public var preciseScrollRatio: Double
+    public var momentumScrollEvents: Int
+    public var positiveHorizontalScrollEvents: Int
+    public var negativeHorizontalScrollEvents: Int
+    public var zeroHorizontalScrollEvents: Int
     public var scrollDeltaXTotal: Int64
     public var scrollDeltaYTotal: Int64
     public var pointDeltaXTotal: Double
@@ -143,6 +162,7 @@ public struct LogAnalysis: Codable, Equatable, Sendable {
     public var suggestedDeadZonePoints: Double
     public var buttonCounts: [String: Int]
     public var keyCounts: [String: Int]
+    public var keySignatureCounts: [String: Int]
     public var scrollPhaseCounts: [String: Int]
     public var momentumPhaseCounts: [String: Int]
 
@@ -160,8 +180,15 @@ public struct LogAnalysis: Codable, Equatable, Sendable {
         scrollEvents: Int,
         buttonEvents: Int,
         keyEvents: Int,
+        generatedKeyEvents: Int,
+        unmarkedKeyEvents: Int,
+        generatedScrollEvents: Int,
         preciseScrollEvents: Int,
         preciseScrollRatio: Double,
+        momentumScrollEvents: Int,
+        positiveHorizontalScrollEvents: Int,
+        negativeHorizontalScrollEvents: Int,
+        zeroHorizontalScrollEvents: Int,
         scrollDeltaXTotal: Int64,
         scrollDeltaYTotal: Int64,
         pointDeltaXTotal: Double,
@@ -172,6 +199,7 @@ public struct LogAnalysis: Codable, Equatable, Sendable {
         suggestedDeadZonePoints: Double,
         buttonCounts: [String: Int],
         keyCounts: [String: Int],
+        keySignatureCounts: [String: Int],
         scrollPhaseCounts: [String: Int],
         momentumPhaseCounts: [String: Int]
     ) {
@@ -188,8 +216,15 @@ public struct LogAnalysis: Codable, Equatable, Sendable {
         self.scrollEvents = scrollEvents
         self.buttonEvents = buttonEvents
         self.keyEvents = keyEvents
+        self.generatedKeyEvents = generatedKeyEvents
+        self.unmarkedKeyEvents = unmarkedKeyEvents
+        self.generatedScrollEvents = generatedScrollEvents
         self.preciseScrollEvents = preciseScrollEvents
         self.preciseScrollRatio = preciseScrollRatio
+        self.momentumScrollEvents = momentumScrollEvents
+        self.positiveHorizontalScrollEvents = positiveHorizontalScrollEvents
+        self.negativeHorizontalScrollEvents = negativeHorizontalScrollEvents
+        self.zeroHorizontalScrollEvents = zeroHorizontalScrollEvents
         self.scrollDeltaXTotal = scrollDeltaXTotal
         self.scrollDeltaYTotal = scrollDeltaYTotal
         self.pointDeltaXTotal = pointDeltaXTotal
@@ -200,6 +235,7 @@ public struct LogAnalysis: Codable, Equatable, Sendable {
         self.suggestedDeadZonePoints = suggestedDeadZonePoints
         self.buttonCounts = buttonCounts
         self.keyCounts = keyCounts
+        self.keySignatureCounts = keySignatureCounts
         self.scrollPhaseCounts = scrollPhaseCounts
         self.momentumPhaseCounts = momentumPhaseCounts
     }
@@ -225,6 +261,9 @@ public enum InputLogAnalyzer {
         let keyRecords = records.filter(\.isKeyEvent)
         let unmarkedMoveRecords = moveRecords.filter { !$0.generatedByNapeGesture }
         let unmarkedScrollRecords = scrollRecords.filter { !$0.generatedByNapeGesture }
+        let generatedScrollRecords = scrollRecords.filter(\.generatedByNapeGesture)
+        let generatedKeyRecords = keyRecords.filter(\.generatedByNapeGesture)
+        let unmarkedKeyRecords = keyRecords.filter { !$0.generatedByNapeGesture }
         let unmarkedClickRecords = records.filter { !$0.generatedByNapeGesture && $0.isNormalClickEvent }
         let unmarkedClickDownRecords = records.filter { !$0.generatedByNapeGesture && $0.isNormalClickDownEvent }
         let unmarkedClickUpRecords = records.filter { !$0.generatedByNapeGesture && $0.isNormalClickUpEvent }
@@ -239,6 +278,7 @@ public enum InputLogAnalyzer {
         let maxMagnitude = magnitudes.last ?? 0
         let suggestedDeadZone = max(4, ceil(p95 * 1.5))
         let preciseScrollEvents = scrollRecords.filter { $0.isContinuous != 0 || $0.pointDeltaX != 0 || $0.pointDeltaY != 0 }.count
+        let horizontalScrollDeltas = scrollRecords.map(horizontalScrollDelta)
 
         return LogAnalysis(
             totalEvents: records.count,
@@ -254,8 +294,15 @@ public enum InputLogAnalyzer {
             scrollEvents: scrollRecords.count,
             buttonEvents: buttonRecords.count,
             keyEvents: keyRecords.count,
+            generatedKeyEvents: generatedKeyRecords.count,
+            unmarkedKeyEvents: unmarkedKeyRecords.count,
+            generatedScrollEvents: generatedScrollRecords.count,
             preciseScrollEvents: preciseScrollEvents,
             preciseScrollRatio: ratio(numerator: preciseScrollEvents, denominator: scrollRecords.count),
+            momentumScrollEvents: scrollRecords.filter { $0.momentumPhase != 0 }.count,
+            positiveHorizontalScrollEvents: horizontalScrollDeltas.filter { $0 > 0 }.count,
+            negativeHorizontalScrollEvents: horizontalScrollDeltas.filter { $0 < 0 }.count,
+            zeroHorizontalScrollEvents: horizontalScrollDeltas.filter { $0 == 0 }.count,
             scrollDeltaXTotal: scrollRecords.reduce(Int64(0)) { $0 + $1.scrollDeltaX },
             scrollDeltaYTotal: scrollRecords.reduce(Int64(0)) { $0 + $1.scrollDeltaY },
             pointDeltaXTotal: scrollRecords.reduce(0) { $0 + $1.pointDeltaX },
@@ -266,6 +313,7 @@ public enum InputLogAnalyzer {
             suggestedDeadZonePoints: suggestedDeadZone,
             buttonCounts: counts(buttonRecords.map { String($0.buttonNumber) }),
             keyCounts: counts(keyRecords.map { "\($0.typeName):\($0.keyCode)" }),
+            keySignatureCounts: counts(keyRecords.map(keySignature)),
             scrollPhaseCounts: counts(scrollRecords.map { String($0.scrollPhase) }),
             momentumPhaseCounts: counts(scrollRecords.map { String($0.momentumPhase) })
         )
@@ -287,8 +335,13 @@ public enum InputLogAnalyzer {
         スクロールイベント数: \(analysis.scrollEvents)
         ボタンイベント数: \(analysis.buttonEvents)
         キーイベント数: \(analysis.keyEvents)
+        生成キーイベント数: \(analysis.generatedKeyEvents)
+        未生成キーイベント数: \(analysis.unmarkedKeyEvents)
+        生成スクロールイベント数: \(analysis.generatedScrollEvents)
         precise/continuous スクロール数: \(analysis.preciseScrollEvents)
         precise/continuous 率: \(format(analysis.preciseScrollRatio * 100))%
+        momentum スクロール数: \(analysis.momentumScrollEvents)
+        水平スクロール方向数: positive=\(analysis.positiveHorizontalScrollEvents), negative=\(analysis.negativeHorizontalScrollEvents), zero=\(analysis.zeroHorizontalScrollEvents)
         scrollDelta 合計: x=\(analysis.scrollDeltaXTotal), y=\(analysis.scrollDeltaYTotal)
         pointDelta 合計: x=\(format(analysis.pointDeltaXTotal)), y=\(format(analysis.pointDeltaYTotal))
         最大移動量: \(format(analysis.maximumMoveMagnitude)) pt
@@ -297,6 +350,7 @@ public enum InputLogAnalyzer {
         推奨 deadZonePoints: \(format(analysis.suggestedDeadZonePoints)) pt
         ボタン出現数: \(formatCounts(analysis.buttonCounts))
         キー出現数: \(formatCounts(analysis.keyCounts))
+        キー署名出現数: \(formatCounts(analysis.keySignatureCounts))
         scrollPhase 出現数: \(formatCounts(analysis.scrollPhaseCounts))
         momentumPhase 出現数: \(formatCounts(analysis.momentumPhaseCounts))
         """
@@ -317,6 +371,18 @@ public enum InputLogAnalyzer {
             result[value, default: 0] += 1
         }
         return result
+    }
+
+    private static func horizontalScrollDelta(_ record: InputLogRecord) -> Double {
+        if record.pointDeltaX != 0 {
+            return record.pointDeltaX
+        }
+        return Double(record.scrollDeltaX)
+    }
+
+    private static func keySignature(_ record: InputLogRecord) -> String {
+        let marker = record.generatedByNapeGesture ? "generated" : "unmarked"
+        return "\(marker):\(record.typeName):\(record.keyCode):\(record.flags)"
     }
 
     private static func format(_ value: Double) -> String {
