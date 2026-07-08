@@ -1,7 +1,7 @@
 import Foundation
 
 enum BundleVerifier {
-    static func verify(appPath: String) throws -> [String] {
+    static func verify(appPath: String, requireSignature: Bool = false) throws -> [String] {
         let appURL = URL(fileURLWithPath: appPath)
         let contentsURL = appURL.appendingPathComponent("Contents", isDirectory: true)
         let macOSURL = contentsURL.appendingPathComponent("MacOS", isDirectory: true)
@@ -35,6 +35,10 @@ enum BundleVerifier {
         verifyInfoPlist(at: infoPlistURL, failures: &failures)
         verifyReadableNonEmptyFile(at: licenseURL, name: "LICENSE.txt", failures: &failures)
         verifyReadableNonEmptyFile(at: noticesURL, name: "THIRD_PARTY_NOTICES.md", failures: &failures)
+        let signatureStatus = verifyCodeSignature(appURL: appURL)
+        if requireSignature, !signatureStatus.isValid {
+            failures.append("コード署名検証に失敗しました: \(signatureStatus.message)")
+        }
 
         if !failures.isEmpty {
             throw ToolError.bundleVerificationFailed(failures.joined(separator: "\n"))
@@ -44,7 +48,8 @@ enum BundleVerifier {
             "Info.plist",
             "Contents/MacOS/nape-gesture",
             "Contents/Resources/LICENSE.txt",
-            "Contents/Resources/THIRD_PARTY_NOTICES.md"
+            "Contents/Resources/THIRD_PARTY_NOTICES.md",
+            signatureStatus.displayLine
         ]
     }
 
@@ -93,6 +98,63 @@ enum BundleVerifier {
             return
         }
     }
+
+    private static func verifyCodeSignature(appURL: URL) -> CodeSignatureStatus {
+        let codesignURL = URL(fileURLWithPath: "/usr/bin/codesign")
+        guard FileManager.default.isExecutableFile(atPath: codesignURL.path) else {
+            return CodeSignatureStatus(
+                isValid: false,
+                message: "codesign が見つかりません: \(codesignURL.path)"
+            )
+        }
+
+        let process = Process()
+        process.executableURL = codesignURL
+        process.arguments = [
+            "--verify",
+            "--deep",
+            "--strict",
+            "--verbose=2",
+            appURL.path
+        ]
+
+        let outputPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = outputPipe
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            return CodeSignatureStatus(
+                isValid: false,
+                message: "codesign を実行できません: \(error.localizedDescription)"
+            )
+        }
+
+        let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
+        let output = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let message = output?.isEmpty == false ? output! : "codesign が詳細を出力しませんでした。"
+
+        guard process.terminationStatus == 0 else {
+            return CodeSignatureStatus(isValid: false, message: message)
+        }
+
+        return CodeSignatureStatus(isValid: true, message: "codesign --verify --deep --strict に成功しました。")
+    }
+}
+
+private struct CodeSignatureStatus {
+    let isValid: Bool
+    let message: String
+
+    var displayLine: String {
+        if isValid {
+            return "コード署名: 有効 (\(message))"
+        }
+        return "コード署名: 未検証 (\(message))"
+    }
 }
 
 struct VerifyBundleCommand {
@@ -103,11 +165,13 @@ struct VerifyBundleCommand {
     }
 
     func run() throws {
-        guard let appPath = options.first, !appPath.hasPrefix("--") else {
+        let requireSignature = options.contains("--require-signature")
+        let paths = options.filter { !$0.hasPrefix("--") }
+        guard paths.count == 1, let appPath = paths.first else {
             throw ToolError.missingValue("アプリバンドル")
         }
 
-        let checkedItems = try BundleVerifier.verify(appPath: appPath)
+        let checkedItems = try BundleVerifier.verify(appPath: appPath, requireSignature: requireSignature)
         print("アプリバンドル検証に成功しました: \(appPath)")
         for item in checkedItems {
             print("- \(item)")

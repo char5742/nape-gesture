@@ -72,7 +72,9 @@
 
 - `.app` バンドルを作成し、`verify-bundle` が成功する
 - `LICENSE` と `THIRD_PARTY_NOTICES.md` が同梱される
-- 署名・公証が未完了なら、未完了理由と次の作業が明記されている
+- ローカル検証では ad-hoc 署名、公開配布では Developer ID Application 署名と公証を使う境界が明記されている
+- 公開配布前は `verify-bundle --require-signature` と `codesign --verify --deep --strict --verbose=2` が成功している
+- 公証が未完了なら、未完了理由と次の作業が明記されている
 - 権限付与対象の `.app` 名と bundle ID が README / doctor / Info.plist で矛盾していない
 
 ## 差し戻し基準
