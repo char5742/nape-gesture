@@ -40,10 +40,10 @@ ad-hoc 署名はローカルの署名整合性確認だけを目的にする。a
 
 ## 公開配布用の署名と公証
 
-公開配布では Developer ID Application 証明書で署名し、hardened runtime を有効にする。証明書名は環境ごとに異なるため、`security find-identity -v -p codesigning` で確認した正式名を使う。
+公開配布では Developer ID Application 証明書で署名し、hardened runtime と timestamp を有効にする。証明書名は環境ごとに異なるため、`security find-identity -v -p codesigning` で確認した正式名を使う。
 
 ```sh
-codesign --force --deep --options runtime --sign "Developer ID Application: <Team Name> (<Team ID>)" .build/NapeGesture.app
+codesign --force --deep --options runtime --timestamp --sign "Developer ID Application: <Team Name> (<Team ID>)" .build/NapeGesture.app
 codesign --verify --deep --strict --verbose=2 .build/NapeGesture.app
 .build/release/nape-gesture verify-bundle --require-signature .build/NapeGesture.app
 ```
