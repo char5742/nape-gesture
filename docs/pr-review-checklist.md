@@ -2,14 +2,16 @@
 
 メインスレッドはこのチェックリストを基準に、Issue 整理、PR レビュー、マージ判断へ集中する。
 実装量ではなく、ゴール要件に対する証跡と安全性で判断する。
+開発運用の継続方針は [ADR 一覧](adr/README.md) を正とする。
 
 ## 共通ゲート
 
 - 対応 Issue が明記されている
 - 変更ファイルの所有範囲が説明されている
-- `swift build --scratch-path .build` が成功している
-- `.build/debug/nape-gesture-core-tests` が成功している
-- `swift build -c release --scratch-path .build` が必要な変更では成功している
+- コード、Package、workflow に影響する変更では `swift build --scratch-path .build` が成功している
+- コード、Package、workflow に影響する変更では `.build/debug/nape-gesture-core-tests` が成功している
+- release build が必要な変更では `swift build -c release --scratch-path .build` が成功している
+- docs/config のみの変更では、変更対象に合った検証と Swift build を省略した理由が PR 本文に明記されている
 - 未検証事項を「完了」と表現していない
 - Mac Mouse Fix のコード、定数、状態遷移、係数をコピーしていない
 
