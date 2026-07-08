@@ -69,7 +69,7 @@ struct SystemBehaviorTestCommand {
                   既定の activation button 押下中にホイールを生成し、その最中にキルスイッチを未マークキーイベントとして生成します。
 
               normal-after-release
-                  既定の activation button 解放後に通常の移動とホイールを未マークイベントとして生成します。
+                  既定の activation button 解放後に通常の移動、左クリック、左ドラッグ、ホイールを未マークイベントとして生成します。
 
             例:
               nape-gesture system-test run --scenario space-left --target finder --amount 1800 --steps 36
@@ -499,10 +499,44 @@ struct SystemBehaviorTestCommand {
                 )
             )
         }
+        let clickDownTime = startTime + Double(plan.steps + 2) * plan.interval
+        events.append(
+            unmarkedMouseEvent(
+                type: .leftMouseDown,
+                time: clickDownTime
+            )
+        )
+        events.append(
+            unmarkedMouseEvent(
+                type: .leftMouseUp,
+                time: clickDownTime + plan.interval
+            )
+        )
+        let dragDownTime = clickDownTime + (2 * plan.interval)
+        let dragDelta = max(Int64(1), abs(quantizeInt64(plan.amount / Double(max(plan.steps, 1)))))
+        events.append(
+            unmarkedMouseEvent(
+                type: .leftMouseDown,
+                time: dragDownTime
+            )
+        )
+        events.append(
+            unmarkedMouseEvent(
+                type: .leftMouseDragged,
+                time: dragDownTime + plan.interval,
+                deltaX: dragDelta
+            )
+        )
+        events.append(
+            unmarkedMouseEvent(
+                type: .leftMouseUp,
+                time: dragDownTime + (2 * plan.interval)
+            )
+        )
         let wheelDelta = -max(Int64(1), abs(quantizeInt64(plan.amount / Double(max(plan.steps, 1)))))
         events.append(
             unmarkedScrollEvent(
-                time: startTime + Double(plan.steps + 2) * plan.interval,
+                time: dragDownTime + (3 * plan.interval),
                 deltaY: wheelDelta
             )
         )
@@ -899,6 +933,18 @@ private struct UnmarkedInputEvent {
         switch type {
         case .mouseMoved:
             return "mouseMoved"
+        case .leftMouseDown:
+            return "leftMouseDown"
+        case .leftMouseUp:
+            return "leftMouseUp"
+        case .leftMouseDragged:
+            return "leftMouseDragged"
+        case .rightMouseDown:
+            return "rightMouseDown"
+        case .rightMouseUp:
+            return "rightMouseUp"
+        case .rightMouseDragged:
+            return "rightMouseDragged"
         case .otherMouseDown:
             return "otherMouseDown"
         case .otherMouseUp:

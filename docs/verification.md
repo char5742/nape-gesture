@@ -163,10 +163,10 @@ target log を検証する場合、`system-test run` には `--target finder` / 
 保存した AppKit 受信ログは `analyze-target-log <path>` で集計し、`scrollWheel`、`swipe`、`magnify`、`rotate`、phase、momentumPhase、precise scroll の有無を確認する。
 Issue #6 / #12 の最終実測へ進む前に、まず `analyze-target-log <path> --assert-no-leaks` で target log を機械判定する。
 `gesture-drag` / `gesture-wheel` のように Nape Gesture 生成イベントが AppKit に届くこと自体が成功条件のシナリオでは、空ログや未成立ログを成功扱いしないため `--assert-has-generated-event` も併用する。
-通常入力通過を確認する `normal-after-release` では、まず dry-run で解放後の未生成 `mouseMoved` / `scrollWheel` が計画されていることを確認する。
-`system-test run --scenario normal-after-release --dry-run --log-json --out <path>` と `analyze-log <path> --json --assert-has-unmarked-passthrough-input` を使う。
-未生成キーだけでは通常入力通過証跡として扱わない。
-実イベント投稿後は、解放後の未マーク `mouseMoved` / `scrollWheel` が AppKit に届くことが期待値になる。この場合は `--assert-no-leaks` ではなく、`analyze-target-log <path> --json --assert-has-unmarked-input` で未マーク入力の存在を機械判定する。
+通常入力通過を確認する `normal-after-release` では、まず dry-run で解放後の未生成通常クリック、通常ドラッグ、通常ホイールが計画されていることを確認する。
+`system-test run --scenario normal-after-release --dry-run --log-json --out <path>` と `analyze-log <path> --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel` を使う。
+未生成キーや activation button の `otherMouseDown` / `otherMouseUp` だけでは通常入力通過証跡として扱わない。
+実イベント投稿後は、解放後の未マーク通常クリック、通常ドラッグ、通常ホイールが AppKit に届くことが期待値になる。この場合は `--assert-no-leaks` ではなく、`analyze-target-log <path> --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel` で3種類の存在を機械判定する。
 Reference Target App が gesture 系イベントを扱えるかの前段確認は、実トラックパッド操作へ進む前に `Fixtures/gesture-target-log.jsonl` と `analyze-target-log --json --assert-has-gesture` で固定する。
 この assertion は `swipe`、`magnify`、`rotate` のいずれかが target log に含まれることを確認し、Issue #10 のページ戻る / 進む / ズーム / 横スクロール検証で AppKit gesture 受信形式を先に機械判定するために使う。
 人間の物理操作や macOS UI 操作は最後の手段とし、先に保存済みログ、`generate-scroll` / `system-test` の dry-run、アクセシビリティ許可済み環境での CGEvent 投稿で代替できる確認を済ませる。
@@ -208,7 +208,7 @@ sh scripts/collect-runtime-event-evidence.sh
 - `gesture-wheel`: `analyze-target-log --json --assert-no-leaks --assert-has-generated-event` でジェスチャーホイール中の元入力漏れがなく、生成イベントが AppKit に届くことを確認する
 - `kill-switch`: daemon log にキルスイッチ停止ログが出ることと、`analyze-target-log --json --assert-no-leaks` で `keyDown` / `keyUp` が前面アプリへ漏れないことを確認する
 - `gesture-wheel-then-kill-switch`: dry-run は `analyze-log --json --assert-kill-switch-shortcut --assert-gesture-before-kill-switch`、実イベント投稿後は daemon log と `analyze-target-log --json --assert-no-leaks --assert-has-generated-event` でジェスチャー中のキルスイッチ停止を確認する
-- `normal-after-release`: dry-run は `analyze-log --json --assert-has-unmarked-passthrough-input`、実イベント投稿後は `analyze-target-log --json --assert-has-unmarked-input` で解放後の通常入力が過剰抑制されていないことを確認する
+- `normal-after-release`: dry-run は `analyze-log --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel`、実イベント投稿後は `analyze-target-log --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel` で解放後の通常クリック、通常ドラッグ、通常ホイールが過剰抑制されていないことを確認する
 
 未マーク元入力の抑制を `run` と組み合わせて確認する場合は、Reference Target App を前面に保ったまま `gesture-drag` / `gesture-wheel` を `--target` なしで実行する。`--target finder` / `--target safari` を付けると Finder または Safari が前面化し、Reference Target App の AppKit 受信ログではなくなる。
 CGEvent system-test は HID 対象デバイスの生入力を伴わないため、`requireMatchingTargetDevice=true` の設定では対象デバイス gate に引っかかる可能性がある。デーモンと組み合わせる検証では、必要に応じて `init-config --allow-unmatched` で作った検証用設定を使い、実利用設定とは分けて扱う。
@@ -234,15 +234,15 @@ for scenario in gesture-drag gesture-wheel gesture-wheel-then-kill-switch; do
 done
 ```
 
-`normal-after-release` は有効化ボタン解放後の通常入力通過を確認する材料を投稿する。実イベント前に、次の dry-run で未生成の移動またはスクロールが含まれることを確認する。
+`normal-after-release` は有効化ボタン解放後の通常入力通過を確認する材料を投稿する。実イベント前に、次の dry-run で未生成の通常クリック、通常ドラッグ、通常ホイールが含まれることを確認する。
 
 ```sh
 dry_run_log=/tmp/nape-normal-after-release-dry-run.jsonl
 .build/debug/nape-gesture system-test run --scenario normal-after-release --dry-run --log-json --out "$dry_run_log"
-.build/debug/nape-gesture analyze-log "$dry_run_log" --json --assert-has-unmarked-passthrough-input
+.build/debug/nape-gesture analyze-log "$dry_run_log" --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel
 ```
 
-Reference Target App を前面に保ち、同じく `--target` なしで実行する。解放後の `mouseMoved` / `scrollWheel` は未マーク通常入力として AppKit に届くことが期待値なので、`analyze-target-log --json --assert-has-unmarked-input` で未マーク入力が存在することを確認する。`--assert-no-leaks` はこのシナリオでは非ゼロ終了してよく、成功した場合は通常入力が過剰に抑制されていないかを疑う。
+Reference Target App を前面に保ち、同じく `--target` なしで実行する。解放後の通常クリック、通常ドラッグ、通常ホイールは未マーク通常入力として AppKit に届くことが期待値なので、`analyze-target-log --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel` で3種類が存在することを確認する。`--assert-no-leaks` はこのシナリオでは非ゼロ終了してよく、成功した場合は通常入力が過剰に抑制されていないかを疑う。
 
 ```sh
 config=/tmp/nape-system-test-allow-unmatched.json
@@ -259,7 +259,7 @@ until test -f "$ready_file"; do sleep 0.1; done
 wait "$target_pid"
 kill "$daemon_pid" 2>/dev/null || true
 wait "$daemon_pid" 2>/dev/null || true
-.build/debug/nape-gesture analyze-target-log "$target_log" --json --assert-has-unmarked-input
+.build/debug/nape-gesture analyze-target-log "$target_log" --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel
 ```
 
 Finder / Safari を対象にした画面挙動検証では、target log とは別に CGEvent レベルの `log` を保存する。

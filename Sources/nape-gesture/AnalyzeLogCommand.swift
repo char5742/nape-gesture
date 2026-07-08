@@ -17,6 +17,10 @@ struct AnalyzeLogCommand {
         let records = try InputLogFileReader.readRecords(path: path)
         let analysis = InputLogAnalyzer.analyze(records)
         let assertHasUnmarkedPassthroughInput = options.contains("--assert-has-unmarked-passthrough-input")
+        let assertHasUnmarkedClick = options.contains("--assert-has-unmarked-click")
+        let assertHasUnmarkedDrag = options.contains("--assert-has-unmarked-drag")
+        let assertHasUnmarkedWheel = options.contains("--assert-has-unmarked-wheel")
+        let assertHasUnmarkedClickDragWheel = options.contains("--assert-has-unmarked-click-drag-wheel")
         let assertKillSwitchShortcut = options.contains("--assert-kill-switch-shortcut")
         let assertGestureBeforeKillSwitch = options.contains("--assert-gesture-before-kill-switch")
 
@@ -32,6 +36,22 @@ struct AnalyzeLogCommand {
         if assertHasUnmarkedPassthroughInput && analysis.unmarkedPassthroughInputEvents == 0 {
             fflush(stdout)
             throw InputLogMissingUnmarkedPassthroughInputAssertionError(path: path)
+        }
+        if assertHasUnmarkedClick && !analysis.hasUnmarkedClick {
+            fflush(stdout)
+            throw InputLogMissingUnmarkedNormalInputKindAssertionError(path: path, kind: "通常クリック", analysis: analysis)
+        }
+        if assertHasUnmarkedDrag && analysis.unmarkedDragEvents == 0 {
+            fflush(stdout)
+            throw InputLogMissingUnmarkedNormalInputKindAssertionError(path: path, kind: "通常ドラッグ", analysis: analysis)
+        }
+        if assertHasUnmarkedWheel && analysis.unmarkedWheelEvents == 0 {
+            fflush(stdout)
+            throw InputLogMissingUnmarkedNormalInputKindAssertionError(path: path, kind: "通常ホイール", analysis: analysis)
+        }
+        if assertHasUnmarkedClickDragWheel && !analysis.hasUnmarkedClickDragWheel {
+            fflush(stdout)
+            throw InputLogMissingUnmarkedNormalInputKindAssertionError(path: path, kind: "通常クリック / 通常ドラッグ / 通常ホイール", analysis: analysis)
         }
         if assertKillSwitchShortcut && !Self.hasKillSwitchShortcut(records) {
             fflush(stdout)
@@ -90,6 +110,16 @@ struct InputLogMissingUnmarkedPassthroughInputAssertionError: LocalizedError {
 
     var errorDescription: String? {
         "input log に未生成の移動またはスクロールがありません。通常入力通過の前段確認には `analyze-log \(path) --json --assert-has-unmarked-passthrough-input` で unmarkedMoveEvents または unmarkedScrollEvents を確認してください。"
+    }
+}
+
+struct InputLogMissingUnmarkedNormalInputKindAssertionError: LocalizedError {
+    var path: String
+    var kind: String
+    var analysis: LogAnalysis
+
+    var errorDescription: String? {
+        "input log に未生成の\(kind)がありません。`analyze-log \(path) --json` で unmarkedClickDownEvents=\(analysis.unmarkedClickDownEvents)、unmarkedClickUpEvents=\(analysis.unmarkedClickUpEvents)、unmarkedDragEvents=\(analysis.unmarkedDragEvents)、unmarkedWheelEvents=\(analysis.unmarkedWheelEvents) を確認してください。"
     }
 }
 

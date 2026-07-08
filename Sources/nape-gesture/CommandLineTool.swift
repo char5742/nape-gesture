@@ -92,8 +92,8 @@ final class CommandLineTool {
               nape-gesture log [--duration <秒>] [--out <path>] [--exclude-generated|--only-generated]
                   グローバル入力イベントを JSON Lines で記録します。メタ情報は標準エラー、イベント本体は標準出力または --out に出します。
 
-              nape-gesture analyze-log <path> [--json] [--assert-has-unmarked-passthrough-input] [--assert-kill-switch-shortcut] [--assert-gesture-before-kill-switch]
-                  JSON Lines ログを解析し、しきい値候補を出します。--assert-has-unmarked-passthrough-input で未生成の移動またはスクロールがない場合、--assert-kill-switch-shortcut で未生成の Control + Option + Command + G keyDown / keyUp がない場合、--assert-gesture-before-kill-switch でキルスイッチ前の未生成ジェスチャー入力がない場合に失敗します。
+              nape-gesture analyze-log <path> [--json] [--assert-has-unmarked-passthrough-input] [--assert-has-unmarked-click] [--assert-has-unmarked-drag] [--assert-has-unmarked-wheel] [--assert-has-unmarked-click-drag-wheel] [--assert-kill-switch-shortcut] [--assert-gesture-before-kill-switch]
+                  JSON Lines ログを解析し、しきい値候補を出します。--assert-has-unmarked-passthrough-input で未生成の移動またはスクロールがない場合、--assert-has-unmarked-click / --assert-has-unmarked-drag / --assert-has-unmarked-wheel で未生成の通常クリック / 通常ドラッグ / 通常ホイールがない場合、--assert-kill-switch-shortcut で未生成の Control + Option + Command + G keyDown / keyUp がない場合、--assert-gesture-before-kill-switch でキルスイッチ前の未生成ジェスチャー入力がない場合に失敗します。
 
               nape-gesture compare-log <baseline> <candidate> [--json]
                   純正入力ログと生成イベントログなど、2つの JSON Lines ログ差分を比較します。
@@ -107,8 +107,8 @@ final class CommandLineTool {
               nape-gesture analyze-association <hid-log> <event-log> [--window <秒>] [--json] [--assert-valid-window]
                   HID 生入力ログとイベントタップログを相関し、対象入力の紐づけ秒を検証します。--assert-valid-window で解析対象がない場合、HID候補なし、または associationWindow 外の入力がある場合に失敗します。
 
-              nape-gesture analyze-target-log <path> [--json] [--assert-no-leaks] [--assert-has-unmarked-input] [--assert-has-gesture] [--assert-has-generated-event]
-                  Reference Target App が保存した AppKit 受信イベントを集計します。--assert-no-leaks で漏れ候補がある場合、--assert-has-unmarked-input で未マーク入力がない場合、--assert-has-gesture で swipe / magnify / rotate がない場合、--assert-has-generated-event で Nape Gesture 生成イベントがない場合に失敗します。
+              nape-gesture analyze-target-log <path> [--json] [--assert-no-leaks] [--assert-has-unmarked-input] [--assert-has-unmarked-click] [--assert-has-unmarked-drag] [--assert-has-unmarked-wheel] [--assert-has-unmarked-click-drag-wheel] [--assert-has-gesture] [--assert-has-generated-event]
+                  Reference Target App が保存した AppKit 受信イベントを集計します。--assert-no-leaks で漏れ候補がある場合、--assert-has-unmarked-input で未マーク入力がない場合、--assert-has-unmarked-click / --assert-has-unmarked-drag / --assert-has-unmarked-wheel で未マーク通常クリック / 通常ドラッグ / 通常ホイールがない場合、--assert-has-unmarked-click-drag-wheel で3種類が揃わない場合、--assert-has-gesture で swipe / magnify / rotate がない場合、--assert-has-generated-event で Nape Gesture 生成イベントがない場合に失敗します。
 
               nape-gesture check-config [--config <path>] [--probe-hid]
                   対象デバイス設定と HID 入力監視の開始可否を確認します。

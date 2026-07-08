@@ -884,6 +884,27 @@ func testInputLogAnalyzerDoesNotTreatUnmarkedKeysAsPassthroughInput() {
     expect(analysis.unmarkedPassthroughInputEvents == 0, "キルスイッチなどの未生成キーだけでは通常入力通過扱いにしない")
 }
 
+func testInputLogAnalyzerCountsNormalClickDragAndWheelSeparately() {
+    let records = [
+        makeInputLogRecord(timestamp: 1, typeName: "otherMouseDown", buttonNumber: 4),
+        makeInputLogRecord(timestamp: 2, typeName: "otherMouseUp", buttonNumber: 4),
+        makeInputLogRecord(timestamp: 3, typeName: "leftMouseDown"),
+        makeInputLogRecord(timestamp: 4, typeName: "leftMouseUp"),
+        makeInputLogRecord(timestamp: 5, typeName: "leftMouseDragged", deltaX: 8),
+        makeInputLogRecord(timestamp: 6, typeName: "scrollWheel", scrollDeltaY: -20)
+    ]
+
+    let analysis = InputLogAnalyzer.analyze(records)
+
+    expect(analysis.unmarkedClickEvents == 2, "通常クリックの down/up だけを数える")
+    expect(analysis.unmarkedClickDownEvents == 1, "通常クリック down を数える")
+    expect(analysis.unmarkedClickUpEvents == 1, "通常クリック up を数える")
+    expect(analysis.unmarkedDragEvents == 1, "通常ドラッグを数える")
+    expect(analysis.unmarkedWheelEvents == 1, "通常ホイールを数える")
+    expect(analysis.hasUnmarkedClick, "通常クリックは down/up の両方で成立する")
+    expect(analysis.hasUnmarkedClickDragWheel, "通常クリック / ドラッグ / ホイールが揃う")
+}
+
 func testLogDerivedTuningAnalyzerDerivesAccelerationAndMomentum() {
     let moveSamples: [(timestamp: UInt64, deltaX: Int64)] = [
         (1_000_000_000, 1),
@@ -1586,6 +1607,7 @@ testInputLogRecordDecodesLegacyGeneratedField()
 testInputLogAnalyzerComparesBaselineAndCandidate()
 testInputLogAnalyzerCountsKeyEvents()
 testInputLogAnalyzerDoesNotTreatUnmarkedKeysAsPassthroughInput()
+testInputLogAnalyzerCountsNormalClickDragAndWheelSeparately()
 testLogDerivedTuningAnalyzerDerivesAccelerationAndMomentum()
 testLogDerivedTuningAnalyzerReportsMissingSamples()
 testLogDerivedTuningAnalyzerRejectsSyntheticTimestampAsCompleteEvidence()
