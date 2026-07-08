@@ -30,8 +30,10 @@ else
 fi
 commands_file="$artifact_root/commands.txt"
 summary_file="$artifact_root/summary.md"
+status_file="$artifact_root/status.json"
 build_dir="$artifact_root/build"
 doctor_dir="$artifact_root/doctor"
+preflight_dir="$artifact_root/preflight"
 scenario_dir="$artifact_root/scenarios"
 config_path="$doctor_dir/system-test-allow-unmatched.json"
 failure_count=0
@@ -60,6 +62,45 @@ append_summary() {
   status=$3
   log_path=$4
   printf '| %s | %s | %s | `%s` |\n' "$result" "$title" "$status" "$log_path" >> "$summary_file"
+}
+
+json_escape() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+json_nullable_string() {
+  value=$1
+  if [ -z "$value" ]; then
+    printf 'null'
+  else
+    printf '"%s"' "$(json_escape "$value")"
+  fi
+}
+
+write_status_json() {
+  evidence_status=$1
+  blocker_code=$2
+  blocker_category=$3
+  message=$4
+
+  mkdir -p "$(dirname -- "$status_file")"
+  cat > "$status_file" <<EOF
+{
+  "schemaVersion" : 1,
+  "status" : "$(json_escape "$evidence_status")",
+  "blockerCode" : $(json_nullable_string "$blocker_code"),
+  "blockerCategory" : $(json_nullable_string "$blocker_category"),
+  "message" : "$(json_escape "$message")",
+  "artifactRoot" : "$(json_escape "$artifact_root")",
+  "summaryFile" : "$(json_escape "$summary_file")",
+  "commandsFile" : "$(json_escape "$commands_file")",
+  "doctorJsonPath" : "$(json_escape "$doctor_dir/doctor-debug.json")",
+  "preflightDir" : "$(json_escape "$preflight_dir")",
+  "scenarioDir" : "$(json_escape "$scenario_dir")",
+  "toolPath" : "$(json_escape "$tool_path")",
+  "failureCount" : $failure_count
+}
+EOF
 }
 
 remember_failure() {
@@ -157,6 +198,7 @@ finish_summary() {
 
 Runtime event 証跡の収集は成功しました。
 EOF
+    write_status_json "success" "" "" "Runtime event 証跡の収集は成功しました。"
     printf '%s\n' "Runtime event 証跡の収集は成功しました: $artifact_root"
     exit 0
   fi
@@ -174,6 +216,7 @@ $failed_logs
 \`\`\`
 EOF
 
+  write_status_json "failed" "" "" "Runtime event 証跡の収集に失敗しました。"
   printf '%s\n' "Runtime event 証跡の収集は未完了です。summary を確認してください: $summary_file" >&2
   printf '%s\n' "確認対象ログ:" >&2
   printf '%s\n' "$failed_logs" >&2
@@ -226,6 +269,33 @@ wait_for_daemon_started() {
     sleep 0.1
   done
   return 1
+}
+
+run_dry_run_preflight() {
+  scenario=$1
+  title=$2
+  shift 2
+
+  dir="$preflight_dir/$scenario"
+  dry_run_jsonl="$dir/system-test-dry-run.jsonl"
+  dry_run_log="$dir/system-test-dry-run.log"
+  analysis_json="$dir/analyze-log.json"
+  analysis_stderr="$dir/analyze-log.stderr.log"
+
+  mkdir -p "$dir"
+
+  run_combined_success \
+    "$title dry-run JSON Lines" \
+    "$dry_run_log" \
+    "$tool_path system-test run --scenario $scenario --dry-run --log-json --out $dry_run_jsonl" \
+    "$tool_path" system-test run --scenario "$scenario" --dry-run --log-json --out "$dry_run_jsonl" || return 1
+
+  run_split_success \
+    "$title analyze-log" \
+    "$analysis_json" \
+    "$analysis_stderr" \
+    "$tool_path analyze-log $dry_run_jsonl --json --assert-system-scenario $scenario $*" \
+    "$tool_path" analyze-log "$dry_run_jsonl" --json --assert-system-scenario "$scenario" "$@"
 }
 
 run_scenario_with_no_leaks() {
@@ -417,6 +487,19 @@ run_split_success \
   "$tool_path doctor --config $config_path --probe-hid --benchmark-events 1000 --json" \
   "$tool_path" doctor --config "$config_path" --probe-hid --benchmark-events 1000 --json || finish_summary
 
+run_dry_run_preflight \
+  gesture-wheel-then-kill-switch \
+  "gesture-wheel-then-kill-switch 前段" \
+  --assert-kill-switch-shortcut \
+  --assert-gesture-before-kill-switch || finish_summary
+
+run_dry_run_preflight \
+  normal-after-release \
+  "normal-after-release 前段" \
+  --assert-has-unmarked-click \
+  --assert-has-unmarked-drag \
+  --assert-has-unmarked-wheel || finish_summary
+
 if ! tcc_accessibility_granted; then
   append_summary "外部ブロッカー" "Accessibility 未許可のため runtime event シナリオを未実行" "-" "$doctor_dir/doctor-debug.json"
   cat >> "$summary_file" <<EOF
@@ -455,6 +538,7 @@ EOF
 Runtime event 証跡は未完了です。
 ただし、未実行理由は macOS の TCC / アクセシビリティ権限という外部ブロッカーとして記録しました。
 EOF
+  write_status_json "blocked" "accessibility.missing" "tcc" "Accessibility 未許可のため runtime event シナリオを未実行です。"
   printf '%s\n' "Runtime event 証跡は未完了です。Accessibility 未許可のため summary に外部ブロッカーを記録しました: $summary_file"
   exit 0
 fi
@@ -497,6 +581,7 @@ EOF
 Runtime event 証跡は未完了です。
 ただし、未実行理由は macOS の TCC / 入力監視権限という外部ブロッカーとして記録しました。
 EOF
+  write_status_json "blocked" "inputMonitoring.notGranted" "tcc" "入力監視プローブ未成功のため runtime event シナリオを未実行です。"
   printf '%s\n' "Runtime event 証跡は未完了です。入力監視プローブ未成功のため summary に外部ブロッカーを記録しました: $summary_file"
   exit 0
 fi

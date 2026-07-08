@@ -27,6 +27,7 @@ jobs:
 
       - name: Run dry-run smoke tests
         run: |
+          sh -n scripts/collect-runtime-event-evidence.sh
           target_stable_id="vendor=123;product=456;manufacturer=example;name=nape-pro-mouse;transport=bluetooth"
           .build/debug/nape-gesture generate-scroll --x 120 --y 0 --steps 3 --momentum-steps 2 --dry-run --log-json > /tmp/generated-scroll.jsonl
           .build/debug/nape-gesture analyze-log /tmp/generated-scroll.jsonl

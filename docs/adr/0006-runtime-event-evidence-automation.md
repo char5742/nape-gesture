@@ -11,6 +11,9 @@ Issue #6 の元入力抑制と Issue #12 のキルスイッチは、最終的に
 ## 決定
 
 - Issue #6 / #12 の runtime event 証跡は `scripts/collect-runtime-event-evidence.sh` を正とする。
+- スクリプトは `status.json` を出力し、総合状態を `success`、`blocked`、`failed` のいずれかで記録する。
+- TCC で実イベントへ進めない場合は、`status.json` に `status: "blocked"` と `blockerCode` を記録する。アクセシビリティ未許可は `accessibility.missing`、入力監視未成功は `inputMonitoring.notGranted` とする。
+- スクリプトは TCC 判定前に `gesture-wheel-then-kill-switch` と `normal-after-release` の dry-run preflight を保存し、実イベント未実行時も計画イベント列の前段証跡を同じ artifact root に残す。
 - スクリプトは `doctor --json` の `tccStatus.accessibility.status` と `tccStatus.inputMonitoring.status` が `granted` であることを確認してから、実 event tap 経路のシナリオを実行する。
 - アクセシビリティ未許可の場合、target log が空だった失敗として扱わない。`runtimeIdentity`、`hidProbe`、`runtimeReadiness` を `summary.md` に残し、TCC / アクセシビリティ権限という外部ブロッカーとして記録する。
 - HID 入力監視プローブに成功しない場合も、runtime event シナリオを実行しない。`runtimeIdentity`、`hidProbe`、`runtimeReadiness` を `summary.md` に残し、TCC / 入力監視権限という外部ブロッカーとして記録する。
@@ -32,6 +35,7 @@ Issue #6 の元入力抑制と Issue #12 のキルスイッチは、最終的に
 ## 影響
 
 - `need:human` は、キルスイッチや元入力抑制のレビュー待ちではなく、macOS UI での TCC 許可など自動化できない作業を表す。
+- `summary.md` の日本語文面に依存せず、`status.json.status` と `blockerCode` で外部ブロッカーを再判定できる。
 - 権限付与後は、物理キー操作や目視判断ではなく、同じスクリプトを再実行して証跡を更新できる。
 - 実行主体を `.app` に寄せられるため、debug CLI と日常利用 `.app` の両方へ権限を付ける運用を避けやすくなる。
 - `normal-after-release` の未マーク通常クリック、通常ドラッグ、通常ホイールは、漏れではなく通常入力通過の証跡として扱う。
@@ -40,5 +44,6 @@ Issue #6 の元入力抑制と Issue #12 のキルスイッチは、最終的に
 
 - [GitHub labels / milestones / Issue close 方針](0002-github-labels-milestones-and-issue-close.md)
 - [Issue による orchestration と証跡付き close 方針](0005-issue-orchestration-and-evidence-close.md)
+- [Runtime event 証跡の status JSON](0019-runtime-event-status-json.md)
 - [完成判定チェックリスト](../completion-checklist.md)
 - [検証方針](../verification.md)
