@@ -83,7 +83,7 @@ final class CommandLineTool {
 
             使い方:
               nape-gesture app [--config <path>]
-                  メニューバー常駐UIを起動します。
+                  通常 GUI アプリを起動し、設定ウィンドウとメニューバー常駐UIを表示します。
 
               nape-gesture run
                   特定ボタン押下中のドラッグ・ホイールを生成スクロールへ変換します。

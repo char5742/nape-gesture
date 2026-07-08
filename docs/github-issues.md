@@ -254,6 +254,10 @@ Labels: `area:runtime`, `area:ui`, `type:feature`, `priority:p0`
 完了条件:
 
 - `doctor --json` に実利用対象の bundle path、bundle ID、executable path が出る
+- `.app` が Dock に表示される通常 GUI アプリとして起動する
+- `.app` 起動時に設定ウィンドウが前面に出る
+- Dock から再度開いたとき、表示中ウィンドウがなければ設定ウィンドウが再表示される
+- メニューバーの `NG` 常駐 UI が維持される
 - 常駐 UI の権限確認に同じ情報が出る
 - アクセシビリティ未許可、入力監視未許可の復旧導線が別々に出る
 - 権限変更後の再起動または自動再試行が文書化されている
@@ -342,7 +346,8 @@ Labels: `area:release`, `type:feature`, `priority:p1`
 - release build が成功する
 - `.app` バンドルが生成される
 - `verify-bundle` が成功する
-- `CFBundleIdentifier`、`CFBundleExecutable`、`CFBundleName`、`CFBundleDisplayName` の exact check が成功する
+- `.app` が Dock に表示される通常 GUI アプリとして起動し、起動時に設定ウィンドウを開く
+- `CFBundleIdentifier`、`CFBundleExecutable`、`CFBundleName`、`CFBundleDisplayName`、`LSUIElement=false` の exact check が成功する
 - `LICENSE` と `THIRD_PARTY_NOTICES.md` が同梱され、バンドル内ファイルと原本が `cmp` で一致する
 - `sh scripts/check-provenance.sh` が成功する
 - 署名と公証の方針が決まっている
@@ -366,6 +371,7 @@ Labels: `area:verification`, `area:docs`, `type:qa`, `priority:p0`
 - `docs/verification.md` の完成判定チェックがすべて証跡リンク付き
 - 純正トラックパッド、Nape Pro、生成イベントの比較ログがある
 - Spaces / Mission Control の限界または成立条件が実測で明確
+- `.app` の通常 GUI 起動、Dock 表示、起動時設定ウィンドウ、メニューバー常駐 UI の証跡がある
 - 通常クリック、通常ドラッグ、通常ホイールが壊れていない確認がある
 - 既知の失敗条件と回避策が README または docs に反映されている
 

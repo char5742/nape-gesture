@@ -31,6 +31,7 @@ Mac Mouse Fix のコード、定数、状態遷移、係数は流用しません
 - イベントログ、イベント生成、基準ターゲット
 - 純正入力ログと生成イベントログの差分比較
 - HID 生入力ログの usage 別解析
+- Dock に表示され、起動時に設定ウィンドウを開く通常 GUI アプリ
 - メニューバー常駐UI
 - 設定UIからの主要ジェスチャー割り当て、方向ロック比、加速度、慣性、キャンセル条件の調整
 - `Control + Option + Command + G` によるキルスイッチ
@@ -93,7 +94,8 @@ swift run nape-gesture-core-tests
 `log` は `--duration <秒>` で自動停止、`--out <path>` で JSON Lines を保存します。開始・終了などのメタ情報は標準エラーに出し、イベント本体だけを標準出力または `--out` に出します。`--exclude-generated` は純正入力や実デバイス入力だけ、`--only-generated` は Nape Gesture が生成したイベントだけを記録します。
 `check-config --probe-hid` または対象デバイス設定つきの `run` は IOHID 入力を読むため、入力監視権限も必要です。
 誤爆や暴走を感じた場合は `Control + Option + Command + G` を押してください。ジェスチャー生成と慣性を即座に停止し、再開は常駐UIの停止/開始またはプロセス再起動で行います。発火後も通常クリック、ドラッグ、ホイールを勝手に抑制し続けませんが、このショートカット自体は前面アプリへ渡さないよう抑制します。
-`app` はメニューバー常駐UIを起動し、設定ファイルの作成、主要ジェスチャー割り当て、権限確認、常駐処理の開始・停止を行います。
+`app` は通常 GUI アプリとして起動し、起動時に設定ウィンドウを開きます。Dock から再度開くと設定ウィンドウを再表示します。
+メニューバー常駐UIから、設定ファイルの作成、主要ジェスチャー割り当て、権限確認、常駐処理の開始・停止を行えます。
 `app` の「権限とデバイスを確認」は、アクセシビリティ、入力監視、権限付与対象、実行ファイル、bundle ID、HID デバイス数、対象一致数を表示します。
 `app` は対象デバイス未検出、実行中の対象デバイス消失、アクセシビリティ未許可、入力監視未許可、スリープ復帰後の停止を検出した場合、手動で「停止」するまで 5 秒間隔で自動再試行します。実行中も同じ間隔で対象デバイスとアクセシビリティ権限を確認し、失われた場合は停止して自動再試行状態へ移行します。
 `run`、`check-config`、`app` は `--config` を省略した場合、`~/Library/Application Support/NapeGesture/config.json` を使います。存在しない場合は Nape Pro 向けテンプレートを作成します。対象デバイス一致が必須のまま対象条件が空の場合は、全デバイスへ誤適用しないよう起動前に停止します。
@@ -127,9 +129,9 @@ swift build -c release
 .build/release/nape-gesture verify-bundle .build/NapeGesture.app
 ```
 
-`bundle-app` は `Info.plist`、実行ファイル、`LICENSE.txt`、`THIRD_PARTY_NOTICES.md` を含む `.app` を作成し、作成直後に同じ検証を実行します。`verify-bundle` は既存の `.app` を再検証するためのコマンドで、コード署名状態も表示します。公開配布前は `verify-bundle --require-signature .build/NapeGesture.app` で署名検証を必須にしてください。
+`bundle-app` は `Info.plist`、実行ファイル、`LICENSE.txt`、`THIRD_PARTY_NOTICES.md` を含む `.app` を作成し、作成直後に同じ検証を実行します。`verify-bundle` は既存の `.app` を再検証するためのコマンドで、通常 GUI アプリとして使うための `LSUIElement=false` とコード署名状態も表示します。公開配布前は `verify-bundle --require-signature .build/NapeGesture.app` で署名検証を必須にしてください。
 
-作成した `.build/NapeGesture.app` は引数なしで起動するとメニューバー常駐UIとして動きます。アクセシビリティや入力監視の許可は、この `.app` に対して付与してください。bundle ID は `dev.char5742.nape-gesture` です。
+作成した `.build/NapeGesture.app` は引数なしで起動すると Dock に表示され、設定ウィンドウを開く通常 GUI アプリとして動きます。常駐状態の開始、停止、権限確認はメニューバーの `NG` からも操作できます。アクセシビリティや入力監視の許可は、この `.app` に対して付与してください。bundle ID は `dev.char5742.nape-gesture` です。
 
 ローカル検証では ad-hoc 署名を使えます。
 

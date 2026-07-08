@@ -1,4 +1,5 @@
 import Foundation
+import NapeGestureCore
 
 enum BundleVerifier {
     static func verify(appPath: String, requireSignature: Bool = false) throws -> [String] {
@@ -46,6 +47,7 @@ enum BundleVerifier {
 
         return [
             "Info.plist",
+            "Info.plist: LSUIElement=false",
             "Contents/MacOS/nape-gesture",
             "Contents/Resources/LICENSE.txt",
             "Contents/Resources/THIRD_PARTY_NOTICES.md",
@@ -78,8 +80,8 @@ enum BundleVerifier {
             if plist["CFBundlePackageType"] as? String != "APPL" {
                 failures.append("CFBundlePackageType が APPL ではありません。")
             }
-            if plist["LSUIElement"] as? Bool != true {
-                failures.append("LSUIElement が true ではありません。")
+            if plist["LSUIElement"] as? Bool != GUIAppLaunchPresenter.regularGUIApp.bundleLSUIElement {
+                failures.append("LSUIElement が false ではありません。")
             }
             if (plist["CFBundleIdentifier"] as? String)?.isEmpty ?? true {
                 failures.append("CFBundleIdentifier が空です。")

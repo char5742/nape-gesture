@@ -141,6 +141,8 @@ Issue 4 と Issue 9 は実機と権限状態に依存するため、実機なし
 - `Sources/nape-gesture/StatusApp.swift`
 - `Sources/nape-gesture/SettingsWindowController.swift`
 - `Sources/nape-gesture/ReferenceTargetApp.swift`
+- `Sources/nape-gesture/BundleAppCommand.swift`
+- `Sources/nape-gesture/BundleVerifier.swift`
 
 主な Issue:
 
@@ -148,11 +150,15 @@ Issue 4 と Issue 9 は実機と権限状態に依存するため、実機なし
 - 権限導線
 - Reference Target App
 - 常駐 UI の状態表示
+- 通常 GUI アプリ起動
 
 レビュー観点:
 
 - アプリ別設定を増やしていないか
 - 設定保存前に不正値を止めるか
+- `.app` が Dock に表示される通常 GUI アプリとして起動するか
+- 起動時と Dock 再オープン時に設定ウィンドウを表示できるか
+- メニューバーの `NG` 常駐 UI を維持しているか
 - 権限付与対象が分かるか
 - UI で実行状態と自動再試行状態が分かるか
 

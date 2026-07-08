@@ -86,7 +86,8 @@
 - `.app` バンドルを作成し、`verify-bundle` が成功する
 - `LICENSE` と `THIRD_PARTY_NOTICES.md` が同梱される
 - `LICENSE` と `THIRD_PARTY_NOTICES.md` はバンドル内の同梱ファイルと `cmp` で一致している
-- `CFBundleIdentifier`、`CFBundleExecutable`、`CFBundleName`、`CFBundleDisplayName` の exact check が成功している
+- `CFBundleIdentifier`、`CFBundleExecutable`、`CFBundleName`、`CFBundleDisplayName`、`LSUIElement=false` の exact check が成功している
+- `.app` を通常 GUI アプリとして起動し、設定ウィンドウを初期表示する方針と矛盾していない
 - ローカル検証では ad-hoc 署名、公開配布では Developer ID Application 署名と公証を使う境界が明記されている
 - 公開配布前は `verify-bundle --require-signature` と `codesign --verify --deep --strict --verbose=2` が成功している
 - 公証が未完了なら、未完了理由と次の作業が明記されている

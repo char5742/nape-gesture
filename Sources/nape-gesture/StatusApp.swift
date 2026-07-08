@@ -27,15 +27,24 @@ final class StatusApp: NSObject, NSApplicationDelegate {
         let delegate = try StatusApp(configPath: configPath)
         retainedDelegate = delegate
         app.delegate = delegate
-        app.setActivationPolicy(.accessory)
+        app.setActivationPolicy(GUIAppLaunchPresenter.regularGUIApp.activationPolicyValue)
         app.run()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        installApplicationMenu()
         installStatusItem()
         installLifecycleObservers()
         startRetryTimer()
         startRuntime()
+        openSettings()
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            openSettings()
+        }
+        return true
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -49,6 +58,43 @@ final class StatusApp: NSObject, NSApplicationDelegate {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.button?.title = "NG"
         statusItem = item
+    }
+
+    private func installApplicationMenu() {
+        let mainMenu = NSMenu()
+        let appMenuItem = NSMenuItem()
+        let appMenu = NSMenu()
+
+        let settingsItem = NSMenuItem(title: "設定...", action: #selector(openSettings), keyEquivalent: ",")
+        settingsItem.target = self
+        appMenu.addItem(settingsItem)
+
+        let permissionsItem = NSMenuItem(title: "権限とデバイスを確認", action: #selector(checkPermissions), keyEquivalent: "")
+        permissionsItem.target = self
+        appMenu.addItem(permissionsItem)
+
+        appMenu.addItem(.separator())
+
+        let quitItem = NSMenuItem(title: "Nape Gesture を終了", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        quitItem.target = NSApp
+        appMenu.addItem(quitItem)
+
+        appMenuItem.submenu = appMenu
+        mainMenu.addItem(appMenuItem)
+
+        let editMenuItem = NSMenuItem()
+        let editMenu = NSMenu(title: "編集")
+        editMenu.addItem(NSMenuItem(title: "取り消す", action: Selector(("undo:")), keyEquivalent: "z"))
+        editMenu.addItem(NSMenuItem(title: "やり直す", action: Selector(("redo:")), keyEquivalent: "Z"))
+        editMenu.addItem(.separator())
+        editMenu.addItem(NSMenuItem(title: "カット", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+        editMenu.addItem(NSMenuItem(title: "コピー", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        editMenu.addItem(NSMenuItem(title: "ペースト", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        editMenu.addItem(NSMenuItem(title: "すべてを選択", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+        editMenuItem.submenu = editMenu
+        mainMenu.addItem(editMenuItem)
+
+        NSApp.mainMenu = mainMenu
     }
 
     private func refreshMenu() {
@@ -98,6 +144,12 @@ final class StatusApp: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openSettings() {
+        if let existingWindow = settingsWindow?.window {
+            existingWindow.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
         let controller = SettingsWindowController(settings: settings, configPath: configPath)
         controller.onSave = { [weak self] updated in
             guard let self else {
@@ -287,5 +339,18 @@ final class StatusApp: NSObject, NSApplicationDelegate {
 
     private func currentTime() -> TimeInterval {
         Date().timeIntervalSince1970
+    }
+}
+
+private extension GUIAppLaunchPresentation {
+    var activationPolicyValue: NSApplication.ActivationPolicy {
+        switch activationPolicy {
+        case "regular":
+            return .regular
+        case "accessory":
+            return .accessory
+        default:
+            return .prohibited
+        }
     }
 }
