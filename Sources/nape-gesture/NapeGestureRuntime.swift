@@ -169,7 +169,8 @@ final class NapeGestureRuntime {
              .bundleOutputAlreadyExists(_),
              .bundleVerificationFailed(_),
              .executablePathUnavailable,
-             .targetApplicationNotFound(_):
+             .targetApplicationNotFound(_),
+             .benchmarkBaselineFailed(_):
             return .unrecoverable
         }
     }

@@ -143,8 +143,8 @@ final class CommandLineTool {
               nape-gesture system-test run --scenario <name> [--target finder|safari] [--dry-run] [--log-json] [--out <path>]
                   Spaces / Mission Control / Safari / Finder 向けの実挙動検証イベント、または未マーク元入力を生成します。--dry-run --log-json で計画したイベントを JSON Lines で出力します。
 
-              nape-gesture benchmark [--events <数>] [--json]
-                  認識器とスクロール計画の純粋ロジック処理時間を測定します。
+              nape-gesture benchmark [--events <数>] [--json] [--assert-baseline]
+                  認識器とスクロール計画の純粋ロジック処理時間を測定します。--assert-baseline で性能基準を満たさない場合に失敗します。
 
               nape-gesture doctor [--config <path>] [--probe-hid] [--benchmark-events <数>] [--json]
                   権限、対象デバイス、HID入力監視、ベンチマークを一括診断します。
@@ -377,6 +377,7 @@ enum ToolError: LocalizedError {
     case bundleVerificationFailed(String)
     case executablePathUnavailable
     case targetApplicationNotFound(String)
+    case benchmarkBaselineFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -411,6 +412,8 @@ enum ToolError: LocalizedError {
             return "現在の実行ファイルのパスを取得できませんでした。"
         case let .targetApplicationNotFound(name):
             return "\(name) を見つけられませんでした。"
+        case let .benchmarkBaselineFailed(message):
+            return "benchmark の純粋ロジック基準を満たしていません。\n\(message)"
         }
     }
 }

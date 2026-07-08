@@ -37,6 +37,7 @@ jobs:
           .build/debug/nape-gesture analyze-hid-log Fixtures/sample-hid-log.jsonl
           .build/debug/nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/sample-association-event-log.jsonl --window 0.12 --json
           .build/debug/nape-gesture analyze-target-log Fixtures/sample-target-log.jsonl
+          .build/debug/nape-gesture benchmark --events 50000 --json --assert-baseline > /tmp/nape-benchmark.json
 
       - name: Build release
         run: swift build -c release --scratch-path .build

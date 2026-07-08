@@ -15,6 +15,7 @@ struct BenchmarkCommand {
             throw ToolError.invalidValue("--events", String(events))
         }
         let report = BenchmarkRunner.run(events: events)
+        let shouldAssertBaseline = options.contains("--assert-baseline")
 
         if options.contains("--json") {
             let encoder = JSONEncoder()
@@ -23,6 +24,15 @@ struct BenchmarkCommand {
             print(String(decoding: data, as: UTF8.self))
         } else {
             print(format(report))
+        }
+
+        if shouldAssertBaseline {
+            let evaluation = BenchmarkBaseline.evaluate(report)
+            if evaluation.passed {
+                fputs("純粋ロジック benchmark 基準: 合格\n", stderr)
+            } else {
+                throw ToolError.benchmarkBaselineFailed(evaluation.failureDescription)
+            }
         }
     }
 
@@ -289,6 +299,108 @@ struct BenchmarkReviewMetrics: Codable {
         self.recognizerCpuNanosecondsPerEvent = recognizerCpuNanosecondsPerEvent
         self.scrollPlannerCpuNanosecondsPerCommand = scrollPlannerCpuNanosecondsPerCommand
     }
+}
+
+enum BenchmarkBaseline {
+    static let expectedMeasurementKind = "pureLogic"
+    static let expectedIncludesEventTapAndPosting = false
+    static let maximumRecognizerAverageNanosecondsPerEvent = 2_000.0
+    static let maximumRecognizerCpuNanosecondsPerEvent = 2_000.0
+    static let maximumScrollPlannerAverageNanosecondsPerCommand = 2_000.0
+    static let maximumScrollPlannerCpuNanosecondsPerCommand = 2_000.0
+
+    static func evaluate(_ report: BenchmarkReport) -> BenchmarkBaselineEvaluation {
+        var failures: [BenchmarkBaselineFailure] = []
+
+        if report.measurementKind != expectedMeasurementKind {
+            failures.append(
+                BenchmarkBaselineFailure(
+                    item: "measurementKind",
+                    expected: expectedMeasurementKind,
+                    actual: report.measurementKind
+                )
+            )
+        }
+
+        if report.includesEventTapAndPosting != expectedIncludesEventTapAndPosting {
+            failures.append(
+                BenchmarkBaselineFailure(
+                    item: "includesEventTapAndPosting",
+                    expected: String(expectedIncludesEventTapAndPosting),
+                    actual: String(report.includesEventTapAndPosting)
+                )
+            )
+        }
+
+        appendMaximumFailure(
+            item: "recognizer.averageNanosecondsPerEvent",
+            actual: report.recognizer.averageNanosecondsPerEvent,
+            maximum: maximumRecognizerAverageNanosecondsPerEvent,
+            failures: &failures
+        )
+        appendMaximumFailure(
+            item: "recognizer.cpuNanosecondsPerEvent",
+            actual: report.recognizer.cpuNanosecondsPerEvent,
+            maximum: maximumRecognizerCpuNanosecondsPerEvent,
+            failures: &failures
+        )
+        appendMaximumFailure(
+            item: "scrollPlanner.averageNanosecondsPerCommand",
+            actual: report.scrollPlanner.averageNanosecondsPerCommand,
+            maximum: maximumScrollPlannerAverageNanosecondsPerCommand,
+            failures: &failures
+        )
+        appendMaximumFailure(
+            item: "scrollPlanner.cpuNanosecondsPerCommand",
+            actual: report.scrollPlanner.cpuNanosecondsPerCommand,
+            maximum: maximumScrollPlannerCpuNanosecondsPerCommand,
+            failures: &failures
+        )
+
+        return BenchmarkBaselineEvaluation(failures: failures)
+    }
+
+    private static func appendMaximumFailure(
+        item: String,
+        actual: Double,
+        maximum: Double,
+        failures: inout [BenchmarkBaselineFailure]
+    ) {
+        guard actual > maximum else {
+            return
+        }
+        failures.append(
+            BenchmarkBaselineFailure(
+                item: item,
+                expected: "\(format(maximum)) 以下",
+                actual: format(actual)
+            )
+        )
+    }
+
+    private static func format(_ value: Double) -> String {
+        String(format: "%.0f", value)
+    }
+}
+
+struct BenchmarkBaselineEvaluation {
+    var failures: [BenchmarkBaselineFailure]
+
+    var passed: Bool {
+        failures.isEmpty
+    }
+
+    var failureDescription: String {
+        failures
+            .map { "- \($0.item): expected \($0.expected), actual \($0.actual)" }
+            .joined(separator: "\n")
+    }
+}
+
+struct BenchmarkBaselineFailure {
+    var item: String
+    var expected: String
+    var actual: String
 }
 
 private struct CPUTime {

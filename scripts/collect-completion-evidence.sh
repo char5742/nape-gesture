@@ -189,11 +189,11 @@ run_split_success \
   .build/debug/nape-gesture doctor --config "$config_path" --probe-hid --benchmark-events 1000 --json
 
 run_split_success \
-  "benchmark JSON" \
+  "benchmark baseline JSON" \
   "$doctor_dir/benchmark-debug.json" \
   "$doctor_dir/benchmark-debug.stderr.log" \
-  ".build/debug/nape-gesture benchmark --events 200000 --json" \
-  .build/debug/nape-gesture benchmark --events 200000 --json
+  ".build/debug/nape-gesture benchmark --events 200000 --json --assert-baseline" \
+  .build/debug/nape-gesture benchmark --events 200000 --json --assert-baseline
 
 run_combined_success \
   "system-test list" \

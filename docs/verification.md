@@ -57,12 +57,13 @@ SwiftPM や debug バイナリを直接実行している場合は、`runtimeIde
 PR レビューでは、まず純粋ロジックの benchmark と doctor 証跡を保存する。
 
 ```sh
-.build/debug/nape-gesture benchmark --events 200000 --json
+.build/debug/nape-gesture benchmark --events 200000 --json --assert-baseline
 .build/debug/nape-gesture doctor --benchmark-events 50000 --json
 ```
 
-`benchmark --json` と `doctor --benchmark-events ... --json` 内の benchmark は、`measurementKind: "pureLogic"`、`includesEventTapAndPosting: false` の測定である。
+`benchmark --json --assert-baseline` と `doctor --benchmark-events ... --json` 内の benchmark は、`measurementKind: "pureLogic"`、`includesEventTapAndPosting: false` の測定である。
 この値は `GestureRecognizer` と `ScrollGenerationPlanner` の処理コストを見るためのもので、IOHID、CGEvent tap、実イベント投稿、AppKit 受信、画面反映の遅延を含まない。
+`--assert-baseline` は純粋ロジック基準を満たさない場合に非ゼロ終了する。
 
 レビュー時に確認する主なキー:
 

@@ -158,7 +158,7 @@ NAPE_RUNTIME_EVENT_USE_APP_BUNDLE=1 sh scripts/collect-runtime-event-evidence.sh
 7. `generate-scroll --dry-run --json` で began / changed / ended / momentum の生成計画を固定し、`--dry-run --log-json` で `compare-log` 用 JSON Lines を作る
 8. `system-test list` でシナリオを確認し、`system-test run --scenario space-left --target finder --dry-run` で生成計画を確認する
 9. `system-test run --scenario space-left --target finder --dry-run --log-json --out <path>` や `system-test run --scenario horizontal-scroll --dry-run --log-json --out <path>` で System Behavior Test の生成予定イベントを JSON Lines として保存する
-10. `benchmark --events 200000 --json` で認識器とスクロール計画の純粋ロジック処理時間を記録する
+10. `benchmark --events 200000 --json --assert-baseline` で認識器とスクロール計画の純粋ロジック処理時間を記録し、基準内であることを終了コードで確認する
 11. `doctor --benchmark-events 50000 --json` で権限、対象デバイス、実行主体、ベンチマークを一括記録する
 12. `system-test run --scenario space-left --target finder` や `system-test run --scenario mission-control` で Spaces / Mission Control / Safari / Finder の挙動を実測する。Issue #10 の横スクロールは Safari / 対応アプリでの画面挙動確認が残るため、この dry-run 証跡だけでは完了扱いにしない
 13. 公開 API だけで連続 Spaces 操作が成立しない場合は、ログと画面挙動を根拠に限界を明文化する
