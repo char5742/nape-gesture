@@ -126,12 +126,24 @@ jobs:
           fi
           .build/debug/nape-gesture analyze-target-log Fixtures/gesture-target-log.jsonl --json --assert-has-gesture
           .build/debug/nape-gesture benchmark --events 200000 --json --assert-baseline > /tmp/nape-benchmark.json
+          grep -q '"schemaVersion" : 3' /tmp/nape-benchmark.json
+          grep -q '"sampledNanosecondsPerEvent"' /tmp/nape-benchmark.json
+          grep -q '"sampledNanosecondsPerCommand"' /tmp/nape-benchmark.json
+          grep -q '"p95Nanoseconds"' /tmp/nape-benchmark.json
+          grep -q '"p99Nanoseconds"' /tmp/nape-benchmark.json
+          grep -q '"recognizerP95NanosecondsPerEvent"' /tmp/nape-benchmark.json
+          grep -q '"scrollPlannerP99NanosecondsPerCommand"' /tmp/nape-benchmark.json
           .build/debug/nape-gesture doctor --benchmark-events 50000 --json > /tmp/nape-doctor.json
           grep -q '"runtimeReadiness"' /tmp/nape-doctor.json
           grep -q '"tccStatus"' /tmp/nape-doctor.json
           grep -q '"permissionTarget"' /tmp/nape-doctor.json
           grep -q '"grantRequired"' /tmp/nape-doctor.json
           grep -q '"targetDeviceDiagnostics"' /tmp/nape-doctor.json
+          grep -q '"schemaVersion" : 3' /tmp/nape-doctor.json
+          grep -q '"sampledNanosecondsPerEvent"' /tmp/nape-doctor.json
+          grep -q '"sampledNanosecondsPerCommand"' /tmp/nape-doctor.json
+          grep -q '"p95Nanoseconds"' /tmp/nape-doctor.json
+          grep -q '"p99Nanoseconds"' /tmp/nape-doctor.json
 
       - name: Build release
         run: swift build -c release --scratch-path .build

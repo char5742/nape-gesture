@@ -278,6 +278,18 @@ run_split_success \
   .build/debug/nape-gesture benchmark --events 200000 --json --assert-baseline
 
 run_combined_success \
+  "benchmark JSON schemaVersion / p95 / p99 field check" \
+  "$doctor_dir/benchmark-json-percentile-field-check.log" \
+  "grep -q schemaVersion 3 / sampledNanosecondsPerEvent / sampledNanosecondsPerCommand / p95Nanoseconds / p99Nanoseconds $doctor_dir/benchmark-debug.json" \
+  sh -c "grep -q '\"schemaVersion\"[[:space:]]*:[[:space:]]*3' '$doctor_dir/benchmark-debug.json' && grep -q '\"sampledNanosecondsPerEvent\"' '$doctor_dir/benchmark-debug.json' && grep -q '\"sampledNanosecondsPerCommand\"' '$doctor_dir/benchmark-debug.json' && grep -q '\"p95Nanoseconds\"' '$doctor_dir/benchmark-debug.json' && grep -q '\"p99Nanoseconds\"' '$doctor_dir/benchmark-debug.json' && grep -q '\"recognizerP95NanosecondsPerEvent\"' '$doctor_dir/benchmark-debug.json' && grep -q '\"scrollPlannerP99NanosecondsPerCommand\"' '$doctor_dir/benchmark-debug.json'"
+
+run_combined_success \
+  "doctor benchmark JSON schemaVersion / p95 / p99 field check" \
+  "$doctor_dir/doctor-benchmark-percentile-field-check.log" \
+  "grep -q schemaVersion 3 / sampledNanosecondsPerEvent / sampledNanosecondsPerCommand / p95Nanoseconds / p99Nanoseconds $doctor_dir/doctor-debug.json" \
+  sh -c "grep -q '\"schemaVersion\"[[:space:]]*:[[:space:]]*3' '$doctor_dir/doctor-debug.json' && grep -q '\"sampledNanosecondsPerEvent\"' '$doctor_dir/doctor-debug.json' && grep -q '\"sampledNanosecondsPerCommand\"' '$doctor_dir/doctor-debug.json' && grep -q '\"p95Nanoseconds\"' '$doctor_dir/doctor-debug.json' && grep -q '\"p99Nanoseconds\"' '$doctor_dir/doctor-debug.json' && grep -q '\"recognizerP95NanosecondsPerEvent\"' '$doctor_dir/doctor-debug.json' && grep -q '\"scrollPlannerP99NanosecondsPerCommand\"' '$doctor_dir/doctor-debug.json'"
+
+run_combined_success \
   "system-test list" \
   "$system_dir/system-test-list.txt" \
   ".build/debug/nape-gesture system-test list" \

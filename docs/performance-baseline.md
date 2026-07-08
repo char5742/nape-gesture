@@ -16,6 +16,7 @@ swift build --scratch-path .build
 
 `benchmark --json --assert-baseline` は `BenchmarkReport` 単体の証跡と基準照合の終了コード、`doctor --benchmark-events ... --json` は権限、対象デバイス、実行主体、同じ純粋ロジック benchmark をまとめた証跡として扱う。
 どちらも `benchmark.measurementKind` または `measurementKind` が `pureLogic` で、`includesEventTapAndPosting` が `false` であることを確認する。
+`BenchmarkReport.schemaVersion` は `3` とし、認識器とスクロール計画の batch p95 / p99 を含める。
 `--assert-baseline` は純粋ロジック benchmark の初期合格基準を満たさない場合に非ゼロ終了する。
 `doctor --json` の `runtimeReadiness` と `tccStatus` は測定主体の状態確認に使うが、純粋ロジック benchmark の合否そのものとは分けて扱う。
 CI では同じ基準として `benchmark --events 200000 --json --assert-baseline` と `doctor --benchmark-events 50000 --json` を実行し、短い smoke 用イベント数だけを性能証跡として扱わない。
@@ -26,10 +27,12 @@ CI では同じ基準として `benchmark --events 200000 --json --assert-baseli
 
 - 認識器の wall 時間、CPU 時間、events/sec、平均 ns/event、CPU ns/event
 - スクロール計画の wall 時間、CPU 時間、commands/sec、平均 ns/command、CPU ns/command
+- 認識器とスクロール計画の固定 batch wall-clock 由来の p50 / p95 / p99 / max
 - 1 core 換算の CPU 使用率目安
 - `doctor --json` の `runtimeIdentity`、`runtimeReadiness`、`tccStatus`、対象デバイス検出状態
 
 `cpuPercentOfOneCore` と `reviewMetrics.totalCpuPercentOfOneCore` は、短時間の一括処理で CPU をどれだけ使ったかの目安であり、常駐時 CPU 使用率ではない。
+`sampledNanosecondsPerEvent` と `sampledNanosecondsPerCommand` は純粋ロジックを固定 batch で測った wall-clock 分布であり、tap-to-post や AppKit 受信までの入力遅延ではない。
 常駐時 CPU 使用率は、実機で `run` を動かしたプロセスを外部サンプルで測る。
 
 ## 実機でしか測れないもの
@@ -56,8 +59,12 @@ tap-to-post の自動集計は現在の CLI 出力だけでは算出できない
 | `includesEventTapAndPosting` | `false` |
 | `recognizer.averageNanosecondsPerEvent` | 2,000 ns/event 以下 |
 | `recognizer.cpuNanosecondsPerEvent` | 2,000 ns/event 以下 |
+| `recognizer.sampledNanosecondsPerEvent.p95Nanoseconds` | 50,000 ns/event 以下 |
+| `recognizer.sampledNanosecondsPerEvent.p99Nanoseconds` | 250,000 ns/event 以下 |
 | `scrollPlanner.averageNanosecondsPerCommand` | 2,000 ns/command 以下 |
 | `scrollPlanner.cpuNanosecondsPerCommand` | 2,000 ns/command 以下 |
+| `scrollPlanner.sampledNanosecondsPerCommand.p95Nanoseconds` | 50,000 ns/command 以下 |
+| `scrollPlanner.sampledNanosecondsPerCommand.p99Nanoseconds` | 250,000 ns/command 以下 |
 | `doctor.settingsValidationIssues` | 空 |
 
 実機の常駐 CPU 使用率の合格基準:
