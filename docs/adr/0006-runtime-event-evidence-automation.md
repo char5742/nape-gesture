@@ -16,6 +16,7 @@ Issue #6 の元入力抑制と Issue #12 のキルスイッチは、最終的に
 - 実イベント経路の判定は、Reference Target App の target log と `analyze-target-log` の終了コードで行う。
 - `gesture-drag`、`gesture-wheel`、`kill-switch` は `--assert-no-leaks` を使い、未マーク入力が前面アプリへ届いた場合に失敗させる。
 - `kill-switch` は target log だけでなく daemon log の停止メッセージも確認し、前面アプリへ漏れなかっただけの空振りを成功扱いしない。
+- 物理キーボード操作へ進む前に、`system-test run --scenario kill-switch --dry-run --log-json` で `Control + Option + Command + G` 相当の未マーク keyDown / keyUp を completion evidence に保存する。
 - `normal-after-release` は通常入力通過が期待値なので、`--assert-no-leaks` を使わない。`--assert-has-unmarked-input` を使い、解放後の未マーク入力が届かない場合に失敗させる。
 - Reference Target App の gesture 受信形式は、人間によるトラックパッド操作へ進む前に `Fixtures/gesture-target-log.jsonl` と `analyze-target-log --assert-has-gesture` で `swipe`、`magnify`、`rotate` の解析経路を機械判定する。
 - `system-test` は Reference Target App を前面に保つため、target log 証跡では `--target finder` / `--target safari` を付けない。
