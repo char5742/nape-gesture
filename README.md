@@ -118,9 +118,19 @@ swift build -c release
 .build/release/nape-gesture verify-bundle .build/NapeGesture.app
 ```
 
-`bundle-app` は `Info.plist`、実行ファイル、`LICENSE.txt`、`THIRD_PARTY_NOTICES.md` を含む `.app` を作成し、作成直後に同じ検証を実行します。`verify-bundle` は既存の `.app` を再検証するためのコマンドです。
+`bundle-app` は `Info.plist`、実行ファイル、`LICENSE.txt`、`THIRD_PARTY_NOTICES.md` を含む `.app` を作成し、作成直後に同じ検証を実行します。`verify-bundle` は既存の `.app` を再検証するためのコマンドで、コード署名状態も表示します。公開配布前は `verify-bundle --require-signature .build/NapeGesture.app` で署名検証を必須にしてください。
 
-作成した `NapeGesture.app` は引数なしで起動するとメニューバー常駐UIとして動きます。アクセシビリティや入力監視の許可は、この `.app` に対して付与してください。
+作成した `.build/NapeGesture.app` は引数なしで起動するとメニューバー常駐UIとして動きます。アクセシビリティや入力監視の許可は、この `.app` に対して付与してください。bundle ID は `dev.char5742.nape-gesture` です。
+
+ローカル検証では ad-hoc 署名を使えます。
+
+```sh
+codesign --force --deep --sign - .build/NapeGesture.app
+codesign --verify --deep --strict --verbose=2 .build/NapeGesture.app
+.build/release/nape-gesture verify-bundle --require-signature .build/NapeGesture.app
+```
+
+ad-hoc 署名はローカル再現用です。公開配布では Developer ID Application 証明書で署名し、公証と stapler 検証まで完了してください。配布手順は `docs/release.md` にまとめています。
 
 ## 検証方針
 
