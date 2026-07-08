@@ -1421,6 +1421,66 @@ func testRuntimeRecoveryManualStartAndSettingsSaveReenableAutoRetry() {
     expect(settingsRetry.shouldStartRuntime, "設定保存後の自動復旧可能な失敗は再試行する")
 }
 
+func testRuntimeRecoveryManualStopCancelsPendingWakeRetry() {
+    var state = RuntimeRecoveryState()
+    state.recordRuntimeStarted()
+    _ = state.handleWillSleep(at: 10)
+    _ = state.handleDidWake(at: 20, retryDelay: 5)
+
+    let stop = state.requestManualStop(at: 21)
+    let retry = state.retryIfReady(at: 25)
+
+    expect(stop.shouldStopRuntime, "wake 後の待機中でも手動停止は runtime 停止を要求する")
+    expect(!state.autoRetryEnabled, "手動停止で自動再試行を無効化する")
+    expect(state.pendingRetry == nil, "手動停止で wake 後の再試行予約を破棄する")
+    expect(!retry.shouldStartRuntime, "手動停止後は予約時刻を過ぎても再試行しない")
+    expect(state.mode == .stopped(reason: .manualStop, stoppedAt: 21), "手動停止理由を保持する")
+}
+
+func testRuntimeRecoverySleepClearsExistingPendingRetry() {
+    var state = RuntimeRecoveryState()
+    _ = state.recordRuntimeFailure(.targetDeviceNotFound, at: 10)
+
+    let sleep = state.handleWillSleep(at: 11)
+    let retry = state.retryIfReady(at: 12)
+
+    expect(sleep.shouldStopRuntime, "再試行待機中の sleep は runtime 停止を要求する")
+    expect(state.pendingRetry == nil, "sleep で既存の再試行予約を破棄する")
+    expect(state.isSuspendedForSleep, "sleep 後はスリープ待機として保持する")
+    expect(!state.shouldShowAutoRetry, "sleep 中は自動再試行表示にしない")
+    expect(!retry.shouldStartRuntime, "sleep 中は既存予約があっても再試行しない")
+}
+
+func testRuntimeRecoveryConsumesPendingRetryWhenReady() {
+    var state = RuntimeRecoveryState()
+    _ = state.recordRuntimeFailure(.hidAccessUnavailable, at: 10)
+
+    let retry = state.retryIfReady(at: 10)
+
+    expect(retry.shouldStartRuntime, "自動復旧可能な失敗は ready 時刻で再試行を開始する")
+    expect(state.mode == .starting(reason: .automaticRetry(.runtimeFailure(.hidAccessUnavailable)), requestedAt: 10), "再試行開始理由を保持する")
+    expect(state.pendingRetry == nil, "再試行開始時に予約を消費する")
+    expect(!state.shouldShowAutoRetry, "予約消費後は自動再試行表示を消す")
+
+    state.recordRuntimeStarted()
+    expect(state.isRunning, "再試行開始後に runtime started を記録できる")
+}
+
+func testRuntimeRecoveryClampsNegativeWakeDelayToImmediateRetry() {
+    var state = RuntimeRecoveryState()
+    state.recordRuntimeStarted()
+    _ = state.handleWillSleep(at: 10)
+
+    _ = state.handleDidWake(at: 20, retryDelay: -1)
+    let notBefore = state.pendingRetry?.notBefore
+    let retry = state.retryIfReady(at: 20)
+
+    expectApproximatelyEqual(notBefore, 20, "負の wake retryDelay は 0 に丸める")
+    expect(retry.shouldStartRuntime, "負の wake retryDelay は即時再試行可能として扱う")
+    expect(state.pendingRetry == nil, "即時再試行後は予約を消費する")
+    expect(state.mode == .starting(reason: .automaticRetry(.wake), requestedAt: 20), "wake 由来の自動再試行として開始する")
+}
+
 testPassesThroughWhenActivationButtonIsNotPressed()
 testActivationButtonSuppressesOriginalInputBeforeThreshold()
 testDragBeginsAfterDeadZoneAndLocksDominantDirection()
@@ -1482,6 +1542,10 @@ testRuntimeRecoveryDoesNotScheduleWakeRetryAfterManualStop()
 testRuntimeRecoveryRetriesRecoverableFailures()
 testRuntimeRecoveryDoesNotRetryHumanFixRequiredFailures()
 testRuntimeRecoveryManualStartAndSettingsSaveReenableAutoRetry()
+testRuntimeRecoveryManualStopCancelsPendingWakeRetry()
+testRuntimeRecoverySleepClearsExistingPendingRetry()
+testRuntimeRecoveryConsumesPendingRetryWhenReady()
+testRuntimeRecoveryClampsNegativeWakeDelayToImmediateRetry()
 
 if failures == 0 {
     print("すべてのコアテストに成功しました。")
