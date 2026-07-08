@@ -60,6 +60,7 @@ swift run nape-gesture analyze-hid-log Fixtures/sample-hid-log.jsonl
 swift run nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/sample-association-event-log.jsonl --window 0.12
 swift run nape-gesture analyze-target-log Fixtures/sample-target-log.jsonl
 swift run nape-gesture analyze-target-log Fixtures/normal-input-target-log.jsonl --json --assert-has-unmarked-input
+swift run nape-gesture analyze-target-log Fixtures/gesture-target-log.jsonl --json --assert-has-gesture
 swift run nape-gesture derive-parameters Fixtures/sample-tuning-trackpad-log.jsonl --json
 swift run nape-gesture log
 swift run nape-gesture log --duration 8 --out trackpad-space-right.jsonl --exclude-generated
@@ -154,7 +155,7 @@ NAPE_RUNTIME_EVENT_USE_APP_BUNDLE=1 sh scripts/collect-runtime-event-evidence.sh
 3. `nape-gesture derive-parameters <純正ログ> --json` で deadZone、加速度、慣性の候補値と未導出理由を確認する
 4. `nape-gesture compare-log <純正ログ> <生成ログ>` でイベント数、precise 率、フェーズ分布、スクロール総量の差を確認する
 5. `nape-gesture hid-log` と `nape-gesture analyze-hid-log <path>` で Nape Pro の HID usage と値域を確認する
-6. `nape-gesture target --out <path>` で AppKit に届くイベント差分を画面と JSON Lines の両方で確認し、`analyze-target-log <path>` で集計する
+6. `nape-gesture target --out <path>` で AppKit に届く `scrollWheel` / `swipe` / `magnify` / `rotate` などのイベント差分を画面と JSON Lines の両方で確認し、`analyze-target-log <path>` で集計する
 7. `generate-scroll --dry-run --json` で began / changed / ended / momentum の生成計画を固定し、`--dry-run --log-json` で `compare-log` 用 JSON Lines を作る
 8. `system-test list` でシナリオを確認し、`system-test run --scenario space-left --target finder --dry-run` で生成計画を確認する
 9. `system-test run --scenario space-left --target finder --dry-run --log-json --out <path>` や `system-test run --scenario horizontal-scroll --dry-run --log-json --out <path>` で System Behavior Test の生成予定イベントを JSON Lines として保存する

@@ -325,6 +325,13 @@ run_split_success \
   .build/debug/nape-gesture analyze-target-log Fixtures/normal-input-target-log.jsonl --json --assert-has-unmarked-input
 
 run_split_success \
+  "gesture target log assert-has-gesture" \
+  "$fixtures_dir/gesture-target-log-analysis.json" \
+  "$fixtures_dir/gesture-target-log-analysis.stderr.log" \
+  ".build/debug/nape-gesture analyze-target-log Fixtures/gesture-target-log.jsonl --json --assert-has-gesture" \
+  .build/debug/nape-gesture analyze-target-log Fixtures/gesture-target-log.jsonl --json --assert-has-gesture
+
+run_split_success \
   "HID devices all JSON" \
   "$hid_dir/devices-all.json" \
   "$hid_dir/devices-all.stderr.log" \
