@@ -5,10 +5,10 @@
 
 ## 現在の確認状態
 
-2026-07-09 時点の GUI アプリ化後 main `74d5abe` では、次の runtime event 証跡を最新状態として扱う。
+2026-07-09 時点の GUI 権限復旧導線追加後 main `d9004a5` では、次の runtime event 証跡を最新状態として扱う。
 
 ```sh
-NAPE_RUNTIME_EVENT_USE_APP_BUNDLE=1 NAPE_RUNTIME_EVENT_ARTIFACT_ROOT=artifacts/completion/2026-07-09/runtime-event-gui-app-main-74d5abe sh scripts/collect-runtime-event-evidence.sh
+NAPE_RUNTIME_EVENT_USE_APP_BUNDLE=1 NAPE_RUNTIME_EVENT_ARTIFACT_ROOT=artifacts/completion/2026-07-09/runtime-event-gui-permission-main-d9004a5 sh scripts/collect-runtime-event-evidence.sh
 ```
 
 この証跡では `.build/NapeGesture.app` を通常 GUI アプリとして作成し、bundle 検証後に同じ `.app` の実行主体で `doctor --probe-hid --json` を実行している。
