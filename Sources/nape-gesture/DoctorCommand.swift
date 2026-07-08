@@ -93,6 +93,7 @@ struct DoctorCommand {
             pointingDeviceCount: inventory.pointingDeviceCount,
             matchedTargetDeviceCount: inventory.matchedDevices.count,
             matchedTargetDevices: inventory.matchedDevices,
+            targetDeviceDiagnostics: inventory.targetDeviceDiagnostics,
             inventoryError: inventory.error,
             hidProbe: probe,
             tccStatus: tccStatus,
@@ -125,6 +126,13 @@ struct DoctorCommand {
                 allDeviceCount: allDevices.count,
                 pointingDeviceCount: pointingDevices.count,
                 matchedDevices: matchedDevices,
+                targetDeviceDiagnostics: DoctorTargetDeviceDiagnostics(
+                    settings: settings,
+                    allDevices: allDevices,
+                    pointingDevices: pointingDevices,
+                    matchedDevices: matchedDevices,
+                    inventoryError: nil
+                ),
                 error: nil
             )
         } catch {
@@ -134,6 +142,13 @@ struct DoctorCommand {
                 allDeviceCount: nil,
                 pointingDeviceCount: nil,
                 matchedDevices: [],
+                targetDeviceDiagnostics: DoctorTargetDeviceDiagnostics(
+                    settings: settings,
+                    allDevices: nil,
+                    pointingDevices: nil,
+                    matchedDevices: [],
+                    inventoryError: message
+                ),
                 error: message
             )
         }
@@ -236,6 +251,17 @@ struct DoctorCommand {
             lines.append("- \(device.displayName) stableId=\(device.stableID)")
         }
 
+        if !report.targetDeviceDiagnostics.candidates.isEmpty {
+            lines.append("対象デバイス候補:")
+            for candidate in report.targetDeviceDiagnostics.candidates.prefix(5) {
+                let score = "\(candidate.bestEvaluation.matchedConditionCount)/\(candidate.bestEvaluation.conditionCount)"
+                let mismatchFields = candidate.bestEvaluation.mismatches.map(\.field).joined(separator: ",")
+                lines.append(
+                    "- \(candidate.device.displayName) stableId=\(candidate.device.stableID) matcher=\(candidate.bestMatcherIndex) score=\(score) pointing=\(candidate.isPointingDevice ? "yes" : "no") mismatches=\(mismatchFields.isEmpty ? "-" : mismatchFields)"
+                )
+            }
+        }
+
         if let error = report.inventoryError {
             lines.append("HID一覧エラー: \(error)")
         }
@@ -275,7 +301,136 @@ private struct DoctorInventory {
     var allDeviceCount: Int?
     var pointingDeviceCount: Int?
     var matchedDevices: [DeviceIdentity]
+    var targetDeviceDiagnostics: DoctorTargetDeviceDiagnostics
     var error: String?
+}
+
+private struct DoctorTargetDeviceDiagnostics: Codable {
+    var status: String
+    var requireMatchingTargetDevice: Bool
+    var configuredMatchers: [DeviceMatcher]
+    var matcherConditionCounts: [Int]
+    var matchedDeviceCount: Int
+    var evaluatedDeviceCount: Int?
+    var reportedCandidateCount: Int
+    var candidates: [DoctorTargetDeviceCandidate]
+
+    init(
+        settings: NapeGestureSettings,
+        allDevices: [DeviceIdentity]?,
+        pointingDevices: [DeviceIdentity]?,
+        matchedDevices: [DeviceIdentity],
+        inventoryError: String?
+    ) {
+        requireMatchingTargetDevice = settings.requireMatchingTargetDevice
+        configuredMatchers = settings.targetDevices
+        matcherConditionCounts = settings.targetDevices.map(\.conditionCount)
+        matchedDeviceCount = matchedDevices.count
+        evaluatedDeviceCount = allDevices?.count
+
+        if inventoryError != nil {
+            status = "inventoryFailed"
+            candidates = []
+            reportedCandidateCount = 0
+            return
+        }
+        if settings.targetDevices.isEmpty {
+            status = settings.requireMatchingTargetDevice ? "matcherMissing" : "notConfigured"
+            candidates = []
+            reportedCandidateCount = 0
+            return
+        }
+        if !matchedDevices.isEmpty {
+            status = "matched"
+        } else if settings.requireMatchingTargetDevice {
+            status = "notFound"
+        } else {
+            status = "noCurrentMatch"
+        }
+
+        let pointingDeviceKeys = Set((pointingDevices ?? []).map(Self.deviceDiagnosticKey))
+        let allCandidates = Self.uniqueDevices(allDevices ?? []).compactMap { device -> DoctorTargetDeviceCandidate? in
+            guard let best = Self.bestEvaluation(for: device, matchers: settings.targetDevices) else {
+                return nil
+            }
+            let isPointingDevice = pointingDeviceKeys.contains(Self.deviceDiagnosticKey(device))
+            guard best.evaluation.isMatch || best.evaluation.matchedConditionCount > 0 || isPointingDevice else {
+                return nil
+            }
+            return DoctorTargetDeviceCandidate(
+                device: device,
+                isPointingDevice: isPointingDevice,
+                bestMatcherIndex: best.index,
+                bestEvaluation: best.evaluation
+            )
+        }
+        candidates = Array(allCandidates.sorted(by: Self.sortCandidates).prefix(12))
+        reportedCandidateCount = candidates.count
+    }
+
+    private static func bestEvaluation(
+        for device: DeviceIdentity,
+        matchers: [DeviceMatcher]
+    ) -> (index: Int, evaluation: DeviceMatcherEvaluation)? {
+        matchers.enumerated()
+            .map { index, matcher in
+                (index: index, evaluation: matcher.evaluate(device))
+            }
+            .max { lhs, rhs in
+                if lhs.evaluation.isMatch != rhs.evaluation.isMatch {
+                    return !lhs.evaluation.isMatch && rhs.evaluation.isMatch
+                }
+                if lhs.evaluation.matchedConditionCount != rhs.evaluation.matchedConditionCount {
+                    return lhs.evaluation.matchedConditionCount < rhs.evaluation.matchedConditionCount
+                }
+                if lhs.evaluation.conditionCount != rhs.evaluation.conditionCount {
+                    return lhs.evaluation.conditionCount < rhs.evaluation.conditionCount
+                }
+                return lhs.evaluation.mismatches.count > rhs.evaluation.mismatches.count
+            }
+    }
+
+    private static func sortCandidates(
+        _ lhs: DoctorTargetDeviceCandidate,
+        _ rhs: DoctorTargetDeviceCandidate
+    ) -> Bool {
+        if lhs.bestEvaluation.isMatch != rhs.bestEvaluation.isMatch {
+            return lhs.bestEvaluation.isMatch && !rhs.bestEvaluation.isMatch
+        }
+        if lhs.bestEvaluation.matchedConditionCount != rhs.bestEvaluation.matchedConditionCount {
+            return lhs.bestEvaluation.matchedConditionCount > rhs.bestEvaluation.matchedConditionCount
+        }
+        if lhs.isPointingDevice != rhs.isPointingDevice {
+            return lhs.isPointingDevice && !rhs.isPointingDevice
+        }
+        if lhs.bestEvaluation.conditionCount != rhs.bestEvaluation.conditionCount {
+            return lhs.bestEvaluation.conditionCount > rhs.bestEvaluation.conditionCount
+        }
+        return deviceDiagnosticKey(lhs.device) < deviceDiagnosticKey(rhs.device)
+    }
+
+    private static func uniqueDevices(_ devices: [DeviceIdentity]) -> [DeviceIdentity] {
+        var seen = Set<String>()
+        var result: [DeviceIdentity] = []
+        for device in devices {
+            guard seen.insert(deviceDiagnosticKey(device)).inserted else {
+                continue
+            }
+            result.append(device)
+        }
+        return result
+    }
+
+    private static func deviceDiagnosticKey(_ device: DeviceIdentity) -> String {
+        "\(device.stableID);usagePage=\(device.primaryUsagePage);usage=\(device.primaryUsage)"
+    }
+}
+
+private struct DoctorTargetDeviceCandidate: Codable {
+    var device: DeviceIdentity
+    var isPointingDevice: Bool
+    var bestMatcherIndex: Int
+    var bestEvaluation: DeviceMatcherEvaluation
 }
 
 private struct DoctorReport: Codable {
@@ -290,6 +445,7 @@ private struct DoctorReport: Codable {
     var pointingDeviceCount: Int?
     var matchedTargetDeviceCount: Int
     var matchedTargetDevices: [DeviceIdentity]
+    var targetDeviceDiagnostics: DoctorTargetDeviceDiagnostics
     var inventoryError: String?
     var hidProbe: DoctorHIDProbe
     var tccStatus: DoctorTCCStatus

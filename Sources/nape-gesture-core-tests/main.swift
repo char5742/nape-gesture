@@ -480,8 +480,38 @@ func testDeviceMatcherMatchesUsageWhenConfigured() {
     expect(!nonMatcher.matches(device), "usage 条件が違うデバイスには一致しない")
 }
 
+func testDeviceMatcherEvaluationReportsMatchedAndMismatchedConditions() {
+    let device = DeviceIdentity(
+        manufacturer: "Example",
+        product: "Nape Pro Mouse",
+        vendorID: 123,
+        productID: 456,
+        transport: "Bluetooth",
+        primaryUsagePage: 1,
+        primaryUsage: 2
+    )
+    let matcher = DeviceMatcher(
+        vendorID: 123,
+        productID: 999,
+        productContains: "nape pro",
+        transportContains: "usb",
+        primaryUsagePage: 1
+    )
+
+    let evaluation = matcher.evaluate(device)
+
+    expect(evaluation.conditionCount == 5, "空でない matcher 条件数を数える")
+    expect(evaluation.matchedConditionCount == 3, "一致した matcher 条件数を数える")
+    expect(!evaluation.isMatch, "不一致条件が残る場合は対象一致にしない")
+    expect(evaluation.matchedConditions.contains("vendorID"), "一致した vendorID を記録する")
+    expect(evaluation.matchedConditions.contains("product"), "一致した product contains を記録する")
+    expect(evaluation.mismatches.contains { $0.field == "productID" && $0.expected == "999" && $0.actual == "456" }, "数値条件の不一致を記録する")
+    expect(evaluation.mismatches.contains { $0.field == "transport" && $0.relation == "contains" }, "contains 条件の不一致を記録する")
+}
+
 func testDeviceMatcherConditionPresenceIgnoresEmptyText() {
     expect(!DeviceMatcher(productContains: "").hasAnyCondition, "空文字の製品名条件は未指定として扱う")
+    expect(!DeviceMatcher(productContains: "   ").hasAnyCondition, "空白だけの製品名条件は未指定として扱う")
     expect(DeviceMatcher(vendorID: 123).hasAnyCondition, "vendorID があれば条件ありとして扱う")
     expect(DeviceMatcher(primaryUsagePage: 1, primaryUsage: 2).hasAnyCondition, "usage 条件があれば条件ありとして扱う")
 }
@@ -499,6 +529,7 @@ func testDeviceMatcherWithoutConditionsDoesNotMatchEverything() {
 
     expect(!DeviceMatcher().matches(device), "条件なし matcher は全デバイス一致として扱わない")
     expect(!DeviceMatcher(productContains: "").matches(device), "空文字条件だけの matcher は全デバイス一致として扱わない")
+    expect(!DeviceMatcher(productContains: "   ").matches(device), "空白条件だけの matcher は全デバイス一致として扱わない")
 }
 
 func testDeviceIdentityEncodesStableID() {
@@ -1854,6 +1885,7 @@ testMomentumDoesNotStartBelowMinimumVelocity()
 testMomentumDecaysAndEventuallyEnds()
 testDeviceMatcherMatchesConfiguredDevice()
 testDeviceMatcherMatchesUsageWhenConfigured()
+testDeviceMatcherEvaluationReportsMatchedAndMismatchedConditions()
 testDeviceMatcherConditionPresenceIgnoresEmptyText()
 testDeviceMatcherWithoutConditionsDoesNotMatchEverything()
 testDeviceIdentityEncodesStableID()

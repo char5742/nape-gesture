@@ -226,10 +226,10 @@ run_split_success \
   .build/debug/nape-gesture doctor --config "$config_path" --benchmark-events 50000 --json
 
 run_combined_success \
-  "doctor JSON runtimeReadiness / tccStatus field check" \
+  "doctor JSON runtimeReadiness / tccStatus / targetDeviceDiagnostics field check" \
   "$doctor_dir/doctor-json-field-check.log" \
-  "grep -q runtimeReadiness $doctor_dir/doctor-debug.json && grep -q tccStatus $doctor_dir/doctor-debug.json" \
-  sh -c "grep -q '\"runtimeReadiness\"' '$doctor_dir/doctor-debug.json' && grep -q '\"tccStatus\"' '$doctor_dir/doctor-debug.json'"
+  "grep -q runtimeReadiness $doctor_dir/doctor-debug.json && grep -q tccStatus $doctor_dir/doctor-debug.json && grep -q targetDeviceDiagnostics $doctor_dir/doctor-debug.json" \
+  sh -c "grep -q '\"runtimeReadiness\"' '$doctor_dir/doctor-debug.json' && grep -q '\"tccStatus\"' '$doctor_dir/doctor-debug.json' && grep -q '\"targetDeviceDiagnostics\"' '$doctor_dir/doctor-debug.json'"
 
 run_split_success \
   "doctor HID probe JSON" \
@@ -239,10 +239,10 @@ run_split_success \
   .build/debug/nape-gesture doctor --config "$config_path" --probe-hid --benchmark-events 1000 --json
 
 run_combined_success \
-  "doctor HID probe JSON runtimeReadiness / tccStatus field check" \
+  "doctor HID probe JSON runtimeReadiness / tccStatus / targetDeviceDiagnostics field check" \
   "$doctor_dir/doctor-hid-probe-json-field-check.log" \
-  "grep -q runtimeReadiness $doctor_dir/doctor-hid-probe-debug.json && grep -q tccStatus $doctor_dir/doctor-hid-probe-debug.json" \
-  sh -c "grep -q '\"runtimeReadiness\"' '$doctor_dir/doctor-hid-probe-debug.json' && grep -q '\"tccStatus\"' '$doctor_dir/doctor-hid-probe-debug.json'"
+  "grep -q runtimeReadiness $doctor_dir/doctor-hid-probe-debug.json && grep -q tccStatus $doctor_dir/doctor-hid-probe-debug.json && grep -q targetDeviceDiagnostics $doctor_dir/doctor-hid-probe-debug.json" \
+  sh -c "grep -q '\"runtimeReadiness\"' '$doctor_dir/doctor-hid-probe-debug.json' && grep -q '\"tccStatus\"' '$doctor_dir/doctor-hid-probe-debug.json' && grep -q '\"targetDeviceDiagnostics\"' '$doctor_dir/doctor-hid-probe-debug.json'"
 
 run_split_expected_failure \
   "doctor assert-runtime-ready requires HID probe" \
@@ -265,10 +265,10 @@ run_split_expected_failure \
   .build/debug/nape-gesture doctor --config "$blocked_config_path" --probe-hid --benchmark-events 1000 --json --assert-runtime-ready
 
 run_combined_success \
-  "doctor assert-runtime-ready target mismatch code check" \
+  "doctor assert-runtime-ready target mismatch code / diagnostics check" \
   "$doctor_dir/doctor-assert-runtime-ready-target-mismatch-code-check.log" \
-  "grep -q targetDevice.notFound $doctor_dir/doctor-assert-runtime-ready-target-mismatch.json" \
-  grep -q "targetDevice.notFound" "$doctor_dir/doctor-assert-runtime-ready-target-mismatch.json"
+  "grep -q targetDevice.notFound $doctor_dir/doctor-assert-runtime-ready-target-mismatch.json && grep -q targetDeviceDiagnostics $doctor_dir/doctor-assert-runtime-ready-target-mismatch.json && grep -q bestEvaluation $doctor_dir/doctor-assert-runtime-ready-target-mismatch.json" \
+  sh -c "grep -q 'targetDevice.notFound' '$doctor_dir/doctor-assert-runtime-ready-target-mismatch.json' && grep -q '\"targetDeviceDiagnostics\"' '$doctor_dir/doctor-assert-runtime-ready-target-mismatch.json' && grep -q '\"bestEvaluation\"' '$doctor_dir/doctor-assert-runtime-ready-target-mismatch.json'"
 
 run_split_success \
   "benchmark baseline JSON" \
