@@ -236,8 +236,7 @@ public enum InputAssociationAnalyzer {
             return hid.usagePage == 9 && expectedButtonUsages(for: event).contains(hid.usage)
         }
         if event.isScrollEvent {
-            return (hid.usagePage == 1 && hid.usage == 56)
-                || (hid.usagePage == 12 && hid.usage == 568)
+            return hid.usagePage == 1 && hid.usage == 56
         }
         if event.isMoveEvent {
             return hid.usagePage == 1 && (hid.usage == 48 || hid.usage == 49)
@@ -252,7 +251,7 @@ public enum InputAssociationAnalyzer {
                 .map { "Button:\($0)" }
         }
         if event.isScrollEvent {
-            return ["GenericDesktop:Wheel", "Consumer:AC Pan"]
+            return ["GenericDesktop:Wheel"]
         }
         if event.isMoveEvent {
             return ["GenericDesktop:X", "GenericDesktop:Y"]

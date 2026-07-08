@@ -404,6 +404,13 @@ run_split_expected_failure \
   .build/debug/nape-gesture analyze-association Fixtures/association-scroll-mismatch-hid-log.jsonl Fixtures/association-scroll-mismatch-event-log.jsonl --window 0.12 --target-stable-id "$sample_target_stable_id" --json --assert-valid-window
 
 run_split_expected_failure \
+  "AC Pan association assert-valid-window" \
+  "$fixtures_dir/ac-pan-association-assert-valid-window.json" \
+  "$fixtures_dir/ac-pan-association-assert-valid-window.stderr.log" \
+  ".build/debug/nape-gesture analyze-association Fixtures/association-ac-pan-hid-log.jsonl Fixtures/association-ac-pan-event-log.jsonl --window 0.12 --target-stable-id $sample_target_stable_id --json --assert-valid-window" \
+  .build/debug/nape-gesture analyze-association Fixtures/association-ac-pan-hid-log.jsonl Fixtures/association-ac-pan-event-log.jsonl --window 0.12 --target-stable-id "$sample_target_stable_id" --json --assert-valid-window
+
+run_split_expected_failure \
   "button mismatch association assert-valid-window" \
   "$fixtures_dir/button-mismatch-association-assert-valid-window.json" \
   "$fixtures_dir/button-mismatch-association-assert-valid-window.stderr.log" \

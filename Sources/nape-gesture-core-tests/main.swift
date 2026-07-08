@@ -1197,6 +1197,24 @@ func testInputAssociationAnalyzerRejectsIncompatibleHIDUsage() {
     expect(!analysis.hasValidAssociationWindowEvidence, "非互換 HID 近傍は有効な紐づけ証跡として扱わない")
 }
 
+func testInputAssociationAnalyzerRejectsRuntimeUnsupportedACPan() {
+    let analysis = InputAssociationAnalyzer.analyze(
+        hidRecords: [
+            makeHIDRecord(time: 2.0, usagePage: 12, usage: 568)
+        ],
+        eventTapRecords: [
+            makeInputLogRecord(timestamp: 2_010_000_000, typeName: "scrollWheel")
+        ],
+        associationWindowSeconds: 0.12,
+        targetStableID: sampleDeviceIdentity().stableID
+    )
+
+    expect(analysis.hidCandidateEventCount == 0, "runtime が記録しない AC Pan をスクロール候補として採用しない")
+    expect(analysis.incompatibleHIDCandidateEventCount == 1, "AC Pan は非互換 HID 近傍として数える")
+    expect(analysis.matches.first?.expectedHIDUsages == ["GenericDesktop:Wheel"], "scrollWheel の期待 usage は runtime と同じ GenericDesktop:Wheel に限定する")
+    expect(!analysis.hasValidAssociationWindowEvidence, "AC Pan だけのログは有効な紐づけ証跡として扱わない")
+}
+
 func testInputAssociationAnalyzerRejectsButtonUsageMismatch() {
     let analysis = InputAssociationAnalyzer.analyze(
         hidRecords: [
@@ -1834,6 +1852,7 @@ testInputAssociationAnalyzerCountsUnmatchedWhenHIDLogIsEmpty()
 testInputAssociationAnalyzerKeepsZeroValueHIDReleaseEvents()
 testInputAssociationAnalyzerUsesNearestHIDByAbsoluteTimeDifference()
 testInputAssociationAnalyzerRejectsIncompatibleHIDUsage()
+testInputAssociationAnalyzerRejectsRuntimeUnsupportedACPan()
 testInputAssociationAnalyzerRejectsButtonUsageMismatch()
 testInputAssociationAnalyzerAcceptsCanonicalButtonUsageMapping()
 testInputAssociationAnalyzerRejectsSingleNonTargetHIDDevice()

@@ -56,6 +56,10 @@ jobs:
             echo "association-scroll-mismatch が有効な紐づけ証跡として通ってしまいました" >&2
             exit 1
           fi
+          if .build/debug/nape-gesture analyze-association Fixtures/association-ac-pan-hid-log.jsonl Fixtures/association-ac-pan-event-log.jsonl --window 0.12 --target-stable-id "$target_stable_id" --json --assert-valid-window; then
+            echo "association-ac-pan が有効な紐づけ証跡として通ってしまいました" >&2
+            exit 1
+          fi
           if .build/debug/nape-gesture analyze-association Fixtures/association-button-mismatch-hid-log.jsonl Fixtures/association-button-mismatch-event-log.jsonl --window 0.12 --target-stable-id "$target_stable_id" --json --assert-valid-window; then
             echo "association-button-mismatch が有効な紐づけ証跡として通ってしまいました" >&2
             exit 1

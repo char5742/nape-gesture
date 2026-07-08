@@ -12,8 +12,8 @@ Issue #5 の対象デバイス紐づけでは、Nape Pro の HID 入力と event
 
 - `analyze-association` は `--assert-valid-window` を持つ。
 - `--assert-valid-window` は、`--target-stable-id <ID>` が指定され、解析対象 event tap 入力が 1 件以上あり、互換 HID 候補なしが 0 件、非互換 HID 近傍が 0 件、対象外互換 HID 近傍が 0 件、採用 HID デバイスが対象 stableID の 1 件、associationWindow 外が 0 件の場合だけ成功する。
-- event tap 入力の種別に応じて、移動/ドラッグは HID Generic Desktop X/Y、スクロールは Generic Desktop Wheel または Consumer AC Pan、ボタンは `buttonNumber + 1` の HID Button usage とだけ関連付ける。
-- 空ログ、互換 HID 候補なし、非互換 HID 近傍、対象外互換 HID 近傍、複数 HID デバイス採用、associationWindow 外の入力を、完了証跡として扱わない。
+- event tap 入力の種別に応じて、移動/ドラッグは HID Generic Desktop X/Y、スクロールは runtime が記録する Generic Desktop Wheel、ボタンは `buttonNumber + 1` の HID Button usage とだけ関連付ける。
+- 空ログ、互換 HID 候補なし、runtime が記録しない AC Pan、非互換 HID 近傍、対象外互換 HID 近傍、複数 HID デバイス採用、associationWindow 外の入力を、完了証跡として扱わない。
 - 実機ログ取得後の採否は、`analyze-association --json --assert-valid-window --target-stable-id <ID>` の終了コードと `matches` の時刻差で行う。
 - completion evidence では、成功 fixture と期待失敗 fixture の両方を残し、判定が甘くならないことを確認する。
 
