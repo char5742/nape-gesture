@@ -17,6 +17,7 @@ struct AnalyzeTargetLogCommand {
         let assertNoLeaks = options.contains("--assert-no-leaks")
         let assertHasUnmarkedInput = options.contains("--assert-has-unmarked-input")
         let assertHasGesture = options.contains("--assert-has-gesture")
+        let assertHasGeneratedEvent = options.contains("--assert-has-generated-event")
 
         if options.contains("--json") {
             let encoder = JSONEncoder()
@@ -38,6 +39,10 @@ struct AnalyzeTargetLogCommand {
         if assertHasGesture && analysis.gestureEventCount == 0 {
             fflush(stdout)
             throw TargetLogMissingGestureAssertionError(path: path)
+        }
+        if assertHasGeneratedEvent && analysis.generatedEvents == 0 {
+            fflush(stdout)
+            throw TargetLogMissingGeneratedEventAssertionError(path: path)
         }
     }
 
@@ -89,6 +94,14 @@ struct TargetLogMissingGestureAssertionError: LocalizedError {
 
     var errorDescription: String? {
         "target log に swipe / magnify / rotate がありません。Reference Target App のジェスチャー受信確認には `analyze-target-log \(path) --json` で swipeEvents、magnifyEvents、rotateEvents を確認してください。"
+    }
+}
+
+struct TargetLogMissingGeneratedEventAssertionError: LocalizedError {
+    var path: String
+
+    var errorDescription: String? {
+        "target log に Nape Gesture 生成イベントがありません。ジェスチャー生成の成立確認には `analyze-target-log \(path) --json` で generatedEvents を確認してください。"
     }
 }
 

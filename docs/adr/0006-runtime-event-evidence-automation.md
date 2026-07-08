@@ -14,7 +14,8 @@ Issue #6 の元入力抑制と Issue #12 のキルスイッチは、最終的に
 - スクリプトは `doctor --json` で `accessibilityTrusted: true` を確認してから、実 event tap 経路のシナリオを実行する。
 - アクセシビリティ未許可の場合、target log が空だった失敗として扱わない。`runtimeIdentity` を `summary.md` に残し、TCC / アクセシビリティ権限という外部ブロッカーとして記録する。
 - 実イベント経路の判定は、Reference Target App の target log と `analyze-target-log` の終了コードで行う。
-- `gesture-drag`、`gesture-wheel`、`kill-switch` は `--assert-no-leaks` を使い、未マーク入力が前面アプリへ届いた場合に失敗させる。
+- `gesture-drag`、`gesture-wheel` は `--assert-no-leaks --assert-has-generated-event` を使い、未マーク入力が前面アプリへ届いた場合、または Nape Gesture 生成イベントが AppKit に届かなかった場合に失敗させる。
+- `kill-switch` は生成イベントが届かないことも正常系になり得るため、`--assert-has-generated-event` を使わない。`--assert-no-leaks` を使い、未マークキー入力が前面アプリへ届いた場合に失敗させる。
 - `kill-switch` は target log だけでなく daemon log の停止メッセージも確認し、前面アプリへ漏れなかっただけの空振りを成功扱いしない。
 - 物理キーボード操作へ進む前に、`system-test run --scenario kill-switch --dry-run --log-json` で `Control + Option + Command + G` 相当の未マーク keyDown / keyUp を completion evidence に保存する。
 - `normal-after-release` は通常入力通過が期待値なので、`--assert-no-leaks` を使わない。`--assert-has-unmarked-input` を使い、解放後の未マーク入力が届かない場合に失敗させる。

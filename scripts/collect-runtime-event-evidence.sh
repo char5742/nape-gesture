@@ -264,8 +264,13 @@ run_scenario_with_no_leaks() {
     fi
   fi
 
-  printf '$ %s analyze-target-log %s --json --assert-no-leaks > %s 2> %s\n' "$tool_path" "$target_log" "$analysis_json" "$analysis_stderr" >> "$commands_file"
-  "$tool_path" analyze-target-log "$target_log" --json --assert-no-leaks > "$analysis_json" 2> "$analysis_stderr"
+  if [ "$scenario" = "gesture-drag" ] || [ "$scenario" = "gesture-wheel" ]; then
+    printf '$ %s analyze-target-log %s --json --assert-no-leaks --assert-has-generated-event > %s 2> %s\n' "$tool_path" "$target_log" "$analysis_json" "$analysis_stderr" >> "$commands_file"
+    "$tool_path" analyze-target-log "$target_log" --json --assert-no-leaks --assert-has-generated-event > "$analysis_json" 2> "$analysis_stderr"
+  else
+    printf '$ %s analyze-target-log %s --json --assert-no-leaks > %s 2> %s\n' "$tool_path" "$target_log" "$analysis_json" "$analysis_stderr" >> "$commands_file"
+    "$tool_path" analyze-target-log "$target_log" --json --assert-no-leaks > "$analysis_json" 2> "$analysis_stderr"
+  fi
   analysis_status=$?
 
   if [ "$analysis_status" -eq 0 ]; then
