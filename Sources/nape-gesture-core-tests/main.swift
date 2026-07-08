@@ -47,10 +47,28 @@ func sampleDeviceIdentity() -> DeviceIdentity {
     )
 }
 
-func makeHIDRecord(time: TimeInterval, usagePage: Int = 1, usage: Int = 48, integerValue: Int = 1) -> HIDInputLogRecord {
+func secondaryDeviceIdentity() -> DeviceIdentity {
+    DeviceIdentity(
+        manufacturer: "Example",
+        product: "通常マウス",
+        vendorID: 789,
+        productID: 101,
+        transport: "USB",
+        primaryUsagePage: 1,
+        primaryUsage: 2
+    )
+}
+
+func makeHIDRecord(
+    time: TimeInterval,
+    device: DeviceIdentity = sampleDeviceIdentity(),
+    usagePage: Int = 1,
+    usage: Int = 48,
+    integerValue: Int = 1
+) -> HIDInputLogRecord {
     HIDInputLogRecord(
         time: time,
-        device: sampleDeviceIdentity(),
+        device: device,
         usagePage: usagePage,
         usage: usage,
         integerValue: integerValue,
@@ -1061,7 +1079,7 @@ func testInputAssociationAnalyzerMeasuresWindowDistribution() {
     let hidRecords = [
         makeHIDRecord(time: 2.0),
         makeHIDRecord(time: 2.2),
-        makeHIDRecord(time: 3.0)
+        makeHIDRecord(time: 3.0, usagePage: 1, usage: 56)
     ]
     let eventRecords = [
         makeInputLogRecord(timestamp: 1_500_000_000, typeName: "mouseMoved"),
@@ -1073,7 +1091,8 @@ func testInputAssociationAnalyzerMeasuresWindowDistribution() {
     let analysis = InputAssociationAnalyzer.analyze(
         hidRecords: hidRecords,
         eventTapRecords: eventRecords,
-        associationWindowSeconds: 0.12
+        associationWindowSeconds: 0.12,
+        targetStableID: sampleDeviceIdentity().stableID
     )
 
     expect(analysis.totalHIDEvents == 3, "HID ログ総数を保持する")
@@ -1081,13 +1100,16 @@ func testInputAssociationAnalyzerMeasuresWindowDistribution() {
     expect(analysis.analyzedEventTapEvents == 3, "未生成の mouse/button/scroll 系だけを解析対象にする")
     expect(analysis.excludedGeneratedEventTapEvents == 1, "生成済み raw input は解析対象から除外する")
     expect(analysis.hidCandidateEventCount == 3, "近い HID があるイベントタップ入力を候補ありとして数える")
-    expect(analysis.missingHIDCandidateEventCount == 0, "HID ログがある場合は最も近い HID と比較する")
+    expect(analysis.missingHIDCandidateEventCount == 0, "互換 HID があれば候補なしにしない")
+    expect(analysis.incompatibleHIDCandidateEventCount == 0, "互換 HID があれば非互換 HID 近傍として数えない")
+    expect(analysis.targetHIDDeviceMismatchEventCount == 0, "対象外互換 HID が近くなければ mismatch として数えない")
+    expect(analysis.matchedHIDDeviceIDs.count == 1, "採用した HID デバイス ID を集計する")
     expect(analysis.withinWindowCount == 1, "associationWindow 内の件数を数える")
     expect(analysis.outsideWindowCount == 2, "associationWindow 外の件数を数える")
     expect(!analysis.hasValidAssociationWindowEvidence, "window 外があれば有効な紐づけ証跡として扱わない")
-    expectApproximatelyEqual(analysis.maximumTimeDifferenceSeconds, 0.5, "最大時刻差秒を出す")
-    expectApproximatelyEqual(analysis.p95TimeDifferenceSeconds, 0.5, "p95 時刻差秒を出す")
-    expectApproximatelyEqual(analysis.p99TimeDifferenceSeconds, 0.5, "p99 時刻差秒を出す")
+    expectApproximatelyEqual(analysis.maximumTimeDifferenceSeconds, 0.65, "最大時刻差秒を出す")
+    expectApproximatelyEqual(analysis.p95TimeDifferenceSeconds, 0.65, "p95 時刻差秒を出す")
+    expectApproximatelyEqual(analysis.p99TimeDifferenceSeconds, 0.65, "p99 時刻差秒を出す")
     expect(analysis.suggestedAssociationWindowSeconds >= analysis.p99TimeDifferenceSeconds, "推奨 associationWindow は p99 以上にする")
 }
 
@@ -1099,19 +1121,23 @@ func testInputAssociationAnalyzerCountsUnmatchedWhenHIDLogIsEmpty() {
     let analysis = InputAssociationAnalyzer.analyze(
         hidRecords: [],
         eventTapRecords: eventRecords,
-        associationWindowSeconds: 0.12
+        associationWindowSeconds: 0.12,
+        targetStableID: sampleDeviceIdentity().stableID
     )
 
     expect(analysis.hidCandidateEventCount == 0, "HID ログが空なら候補ありにしない")
     expect(analysis.missingHIDCandidateEventCount == 1, "HID ログが空なら解析対象イベントを候補なしとして数える")
+    expect(analysis.incompatibleHIDCandidateEventCount == 0, "HID ログが空なら非互換 HID 近傍として数えない")
+    expect(analysis.targetHIDDeviceMismatchEventCount == 0, "HID ログが空なら対象外互換 HID 近傍として数えない")
+    expect(analysis.matchedHIDDeviceIDs.isEmpty, "HID ログが空なら採用デバイス ID は空にする")
     expect(analysis.withinWindowCount == 0, "未一致イベントは associationWindow 内に数えない")
     expect(analysis.outsideWindowCount == 0, "未一致イベントは associationWindow 外にも数えない")
-    expect(!analysis.hasValidAssociationWindowEvidence, "HID 候補なしは有効な紐づけ証跡として扱わない")
+    expect(!analysis.hasValidAssociationWindowEvidence, "互換 HID 候補なしは有効な紐づけ証跡として扱わない")
 }
 
 func testInputAssociationAnalyzerKeepsZeroValueHIDReleaseEvents() {
     let hidRecords = [
-        makeHIDRecord(time: 10.0, usagePage: 9, usage: 4, integerValue: 0)
+        makeHIDRecord(time: 10.0, usagePage: 9, usage: 5, integerValue: 0)
     ]
     let eventRecords = [
         makeInputLogRecord(timestamp: 10_020_000_000, typeName: "otherMouseUp", buttonNumber: 4)
@@ -1120,10 +1146,12 @@ func testInputAssociationAnalyzerKeepsZeroValueHIDReleaseEvents() {
     let analysis = InputAssociationAnalyzer.analyze(
         hidRecords: hidRecords,
         eventTapRecords: eventRecords,
-        associationWindowSeconds: 0.12
+        associationWindowSeconds: 0.12,
+        targetStableID: sampleDeviceIdentity().stableID
     )
 
     expect(analysis.hidCandidateEventCount == 1, "HID のゼロ値 release も一致候補として扱う")
+    expect(analysis.incompatibleHIDCandidateEventCount == 0, "互換する release HID を非互換として扱わない")
     expect(analysis.withinWindowCount == 1, "release 由来のイベントタップ入力も associationWindow 内判定できる")
     expect(analysis.hasValidAssociationWindowEvidence, "候補なしも window 外もない解析対象は有効な紐づけ証跡として扱う")
     expectApproximatelyEqual(analysis.matches.first?.timeDifferenceSeconds, 0.02, "release の時刻差秒を算出する")
@@ -1140,12 +1168,128 @@ func testInputAssociationAnalyzerUsesNearestHIDByAbsoluteTimeDifference() {
     let analysis = InputAssociationAnalyzer.analyze(
         hidRecords: hidRecords,
         eventTapRecords: eventRecords,
-        associationWindowSeconds: 0.12
+        associationWindowSeconds: 0.12,
+        targetStableID: sampleDeviceIdentity().stableID
     )
 
     expect(analysis.hidCandidateEventCount == 1, "イベント時刻より後の近い HID も時刻差判定に使う")
     expect(analysis.withinWindowCount == 1, "前後どちらの HID でも associationWindow 内を判定する")
     expectApproximatelyEqual(analysis.matches.first?.timeDifferenceSeconds, 0.02, "HID とイベントタップの絶対時刻差を算出する")
+}
+
+func testInputAssociationAnalyzerRejectsIncompatibleHIDUsage() {
+    let analysis = InputAssociationAnalyzer.analyze(
+        hidRecords: [
+            makeHIDRecord(time: 2.0, usagePage: 1, usage: 48)
+        ],
+        eventTapRecords: [
+            makeInputLogRecord(timestamp: 2_010_000_000, typeName: "scrollWheel")
+        ],
+        associationWindowSeconds: 0.12,
+        targetStableID: sampleDeviceIdentity().stableID
+    )
+
+    expect(analysis.hidCandidateEventCount == 0, "スクロール入力に X/Y HID を候補として採用しない")
+    expect(analysis.missingHIDCandidateEventCount == 1, "互換 HID がなければ候補なしとして数える")
+    expect(analysis.incompatibleHIDCandidateEventCount == 1, "近傍 HID が非互換なら非互換数へ入れる")
+    expect(analysis.matches.first?.nearestIncompatibleHID?.usage == 48, "非互換の近傍 HID を記録する")
+    expect(analysis.matches.first?.expectedHIDUsages.contains("GenericDesktop:Wheel") == true, "期待 HID usage を matches に残す")
+    expect(!analysis.hasValidAssociationWindowEvidence, "非互換 HID 近傍は有効な紐づけ証跡として扱わない")
+}
+
+func testInputAssociationAnalyzerRejectsRuntimeUnsupportedACPan() {
+    let analysis = InputAssociationAnalyzer.analyze(
+        hidRecords: [
+            makeHIDRecord(time: 2.0, usagePage: 12, usage: 568)
+        ],
+        eventTapRecords: [
+            makeInputLogRecord(timestamp: 2_010_000_000, typeName: "scrollWheel")
+        ],
+        associationWindowSeconds: 0.12,
+        targetStableID: sampleDeviceIdentity().stableID
+    )
+
+    expect(analysis.hidCandidateEventCount == 0, "runtime が記録しない AC Pan をスクロール候補として採用しない")
+    expect(analysis.incompatibleHIDCandidateEventCount == 1, "AC Pan は非互換 HID 近傍として数える")
+    expect(analysis.matches.first?.expectedHIDUsages == ["GenericDesktop:Wheel"], "scrollWheel の期待 usage は runtime と同じ GenericDesktop:Wheel に限定する")
+    expect(!analysis.hasValidAssociationWindowEvidence, "AC Pan だけのログは有効な紐づけ証跡として扱わない")
+}
+
+func testInputAssociationAnalyzerRejectsButtonUsageMismatch() {
+    let analysis = InputAssociationAnalyzer.analyze(
+        hidRecords: [
+            makeHIDRecord(time: 2.0, usagePage: 9, usage: 4)
+        ],
+        eventTapRecords: [
+            makeInputLogRecord(timestamp: 2_010_000_000, typeName: "otherMouseDown", buttonNumber: 4)
+        ],
+        associationWindowSeconds: 0.12,
+        targetStableID: sampleDeviceIdentity().stableID
+    )
+
+    expect(analysis.hidCandidateEventCount == 0, "異なる HID button usage をボタン候補として採用しない")
+    expect(analysis.incompatibleHIDCandidateEventCount == 1, "ボタン usage 不一致を非互換 HID 近傍として数える")
+    expect(analysis.matches.first?.expectedHIDUsages == ["Button:5"], "buttonNumber に対応する HID usage だけを期待値に残す")
+    expect(!analysis.hasValidAssociationWindowEvidence, "ボタン usage 不一致は有効な紐づけ証跡として扱わない")
+}
+
+func testInputAssociationAnalyzerAcceptsCanonicalButtonUsageMapping() {
+    let analysis = InputAssociationAnalyzer.analyze(
+        hidRecords: [
+            makeHIDRecord(time: 2.0, usagePage: 9, usage: 1),
+            makeHIDRecord(time: 2.1, usagePage: 9, usage: 2)
+        ],
+        eventTapRecords: [
+            makeInputLogRecord(timestamp: 2_010_000_000, typeName: "leftMouseDown", buttonNumber: 0),
+            makeInputLogRecord(timestamp: 2_110_000_000, typeName: "rightMouseDown", buttonNumber: 1)
+        ],
+        associationWindowSeconds: 0.12,
+        targetStableID: sampleDeviceIdentity().stableID
+    )
+
+    expect(analysis.hidCandidateEventCount == 2, "CGEvent buttonNumber + 1 の HID Button usage を採用する")
+    expect(analysis.missingHIDCandidateEventCount == 0, "canonical な button usage を候補なしにしない")
+    expect(analysis.hasValidAssociationWindowEvidence, "対象デバイスの canonical な button usage は有効な証跡として扱う")
+}
+
+func testInputAssociationAnalyzerRejectsSingleNonTargetHIDDevice() {
+    let analysis = InputAssociationAnalyzer.analyze(
+        hidRecords: [
+            makeHIDRecord(time: 2.0, device: secondaryDeviceIdentity(), usagePage: 1, usage: 48)
+        ],
+        eventTapRecords: [
+            makeInputLogRecord(timestamp: 2_010_000_000, typeName: "mouseMoved")
+        ],
+        associationWindowSeconds: 0.12,
+        targetStableID: sampleDeviceIdentity().stableID
+    )
+
+    expect(analysis.hidCandidateEventCount == 0, "対象外デバイスだけなら候補として採用しない")
+    expect(analysis.missingHIDCandidateEventCount == 1, "対象デバイスの互換 HID がなければ候補なしとして数える")
+    expect(analysis.targetHIDDeviceMismatchEventCount == 1, "対象外の互換 HID 近傍を mismatch として数える")
+    expect(analysis.matches.first?.nearestTargetMismatchHID?.device.stableID == secondaryDeviceIdentity().stableID, "対象外の近傍 HID を matches に残す")
+    expect(!analysis.hasValidAssociationWindowEvidence, "対象外デバイス単体のログは有効な紐づけ証跡として扱わない")
+}
+
+func testInputAssociationAnalyzerRejectsCloserNonTargetHIDDevice() {
+    let analysis = InputAssociationAnalyzer.analyze(
+        hidRecords: [
+            makeHIDRecord(time: 2.0, device: sampleDeviceIdentity(), usagePage: 1, usage: 48),
+            makeHIDRecord(time: 2.1, device: secondaryDeviceIdentity(), usagePage: 1, usage: 48)
+        ],
+        eventTapRecords: [
+            makeInputLogRecord(timestamp: 2_010_000_000, typeName: "mouseMoved"),
+            makeInputLogRecord(timestamp: 2_110_000_000, typeName: "mouseMoved")
+        ],
+        associationWindowSeconds: 0.12,
+        targetStableID: sampleDeviceIdentity().stableID
+    )
+
+    expect(analysis.hidCandidateEventCount == 2, "互換 HID があれば候補として採用する")
+    expect(analysis.withinWindowCount == 2, "どちらの候補も window 内として数える")
+    expect(analysis.matchedHIDDeviceIDs == [sampleDeviceIdentity().stableID], "採用 HID は対象デバイスだけに絞る")
+    expect(analysis.targetHIDDeviceMismatchEventCount == 1, "より近い対象外互換 HID があれば mismatch として数える")
+    expect(!analysis.hasValidAssociationWindowEvidence, "対象外互換 HID がより近いログは有効な紐づけ証跡として扱わない")
 }
 
 func testInputAssociationAnalyzerAcceptsSecondAndNanosecondTimestamps() {
@@ -1707,6 +1851,12 @@ testInputAssociationAnalyzerMeasuresWindowDistribution()
 testInputAssociationAnalyzerCountsUnmatchedWhenHIDLogIsEmpty()
 testInputAssociationAnalyzerKeepsZeroValueHIDReleaseEvents()
 testInputAssociationAnalyzerUsesNearestHIDByAbsoluteTimeDifference()
+testInputAssociationAnalyzerRejectsIncompatibleHIDUsage()
+testInputAssociationAnalyzerRejectsRuntimeUnsupportedACPan()
+testInputAssociationAnalyzerRejectsButtonUsageMismatch()
+testInputAssociationAnalyzerAcceptsCanonicalButtonUsageMapping()
+testInputAssociationAnalyzerRejectsSingleNonTargetHIDDevice()
+testInputAssociationAnalyzerRejectsCloserNonTargetHIDDevice()
 testInputAssociationAnalyzerAcceptsSecondAndNanosecondTimestamps()
 testScrollGenerationPlannerAutoPhases()
 testScrollGenerationPlannerPhaseOverrideAndMomentum()

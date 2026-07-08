@@ -1,0 +1,1 @@
+{"device":{"manufacturer":"Example","primaryUsage":2,"primaryUsagePage":1,"product":"Normal Mouse","productID":101,"stableID":"vendor=789;product=101;manufacturer=example;name=normal-mouse;transport=usb","transport":"USB","vendorID":789},"integerValue":9,"logicalMax":127,"logicalMin":-127,"physicalMax":127,"physicalMin":-127,"scaledValue":9,"time":2,"usage":48,"usagePage":1}

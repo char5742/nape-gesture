@@ -1,0 +1,1 @@
+{"device":{"manufacturer":"Example","primaryUsage":2,"primaryUsagePage":1,"product":"Nape Pro Mouse","productID":456,"stableID":"vendor=123;product=456;manufacturer=example;name=nape-pro-mouse;transport=bluetooth","transport":"Bluetooth","vendorID":123},"integerValue":1,"logicalMax":1,"logicalMin":0,"physicalMax":1,"physicalMin":0,"scaledValue":1,"time":2,"usage":4,"usagePage":9}
