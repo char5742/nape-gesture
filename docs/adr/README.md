@@ -13,6 +13,7 @@
 | [ADR-0004](0004-main-thread-subagent-pr-and-merge-roles.md) | メインスレッドとサブエージェントの役割分担、PR レビュー、merge 判断 | 並列開発、PR レビュー、merge |
 | [ADR-0005](0005-issue-orchestration-and-evidence-close.md) | Issue による orchestration と証跡付き close 方針 | Issue 分割、証跡、完了判定 |
 | [ADR-0006](0006-runtime-event-evidence-automation.md) | Runtime event 証跡の自動収集と人間作業境界 | Issue #6/#12、TCC、target log、自動証跡 |
+| [ADR-0007](0007-log-derived-tuning-parameters.md) | ログ由来チューニング候補の再導出 | Issue #8、純正トラックパッドログ、加速度、慣性 |
 
 ## 追加時の確認
 

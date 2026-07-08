@@ -66,7 +66,18 @@ func makeInputLogRecord(
     timestamp: UInt64,
     typeName: String,
     generatedByNapeGesture: Bool = false,
-    buttonNumber: Int64 = 0
+    buttonNumber: Int64 = 0,
+    deltaX: Int64? = nil,
+    deltaY: Int64? = nil,
+    scrollDeltaX: Int64 = 0,
+    scrollDeltaY: Int64? = nil,
+    pointDeltaX: Double = 0,
+    pointDeltaY: Double? = nil,
+    scrollPhase: Int64 = 0,
+    momentumPhase: Int64 = 0,
+    isContinuous: Int64? = nil,
+    keyCode: Int64 = 0,
+    flags: UInt64 = 0
 ) -> InputLogRecord {
     let hasMoveDelta = typeName == "mouseMoved" || typeName.hasSuffix("MouseDragged")
 
@@ -76,17 +87,17 @@ func makeInputLogRecord(
         typeRaw: 0,
         generatedByNapeGesture: generatedByNapeGesture,
         buttonNumber: buttonNumber,
-        deltaX: hasMoveDelta ? 1 : 0,
-        deltaY: 0,
-        scrollDeltaX: 0,
-        scrollDeltaY: typeName == "scrollWheel" ? -1 : 0,
-        pointDeltaX: 0,
-        pointDeltaY: typeName == "scrollWheel" ? -1 : 0,
-        scrollPhase: 0,
-        momentumPhase: 0,
-        isContinuous: typeName == "scrollWheel" ? 1 : 0,
-        keyCode: 0,
-        flags: 0
+        deltaX: deltaX ?? (hasMoveDelta ? 1 : 0),
+        deltaY: deltaY ?? 0,
+        scrollDeltaX: scrollDeltaX,
+        scrollDeltaY: scrollDeltaY ?? (typeName == "scrollWheel" ? -1 : 0),
+        pointDeltaX: pointDeltaX,
+        pointDeltaY: pointDeltaY ?? (typeName == "scrollWheel" ? -1 : 0),
+        scrollPhase: scrollPhase,
+        momentumPhase: momentumPhase,
+        isContinuous: isContinuous ?? (typeName == "scrollWheel" ? 1 : 0),
+        keyCode: keyCode,
+        flags: flags
     )
 }
 
@@ -846,6 +857,73 @@ func testInputLogAnalyzerCountsKeyEvents() {
     expect(comparison.findings.contains { $0.contains("キーイベント") }, "キーイベント差を所見に出す")
 }
 
+func testLogDerivedTuningAnalyzerDerivesAccelerationAndMomentum() {
+    let moveSamples: [(timestamp: UInt64, deltaX: Int64)] = [
+        (1_000_000_000, 1),
+        (1_016_000_000, 2),
+        (1_032_000_000, 4),
+        (1_048_000_000, 6),
+        (1_064_000_000, 8)
+    ]
+    let moveRecords = moveSamples.map { timestamp, deltaX in
+        makeInputLogRecord(
+            timestamp: timestamp,
+            typeName: "mouseMoved",
+            deltaX: deltaX
+        )
+    }
+    let scrollSamples: [
+        (
+            timestamp: UInt64,
+            pointDeltaY: Double,
+            scrollDeltaY: Int64,
+            scrollPhase: Int64,
+            momentumPhase: Int64
+        )
+    ] = [
+        (2_000_000_000, -24.0, -240, 1, 0),
+        (2_016_000_000, -20.0, -200, 2, 0),
+        (2_032_000_000, -16.0, -160, 2, 0),
+        (2_048_000_000, -12.0, -120, 0, 1),
+        (2_064_000_000, -11.52, -115, 0, 2),
+        (2_080_000_000, -11.06, -111, 0, 2),
+        (2_096_000_000, -10.62, -106, 0, 4)
+    ]
+    let scrollRecords = scrollSamples.map { timestamp, pointDeltaY, scrollDeltaY, scrollPhase, momentumPhase in
+        makeInputLogRecord(
+            timestamp: timestamp,
+            typeName: "scrollWheel",
+            scrollDeltaY: scrollDeltaY,
+            pointDeltaY: pointDeltaY,
+            scrollPhase: scrollPhase,
+            momentumPhase: momentumPhase
+        )
+    }
+    let records = moveRecords + scrollRecords
+
+    let report = LogDerivedTuningAnalyzer.derive(from: records)
+
+    expect(report.sourceEventCount == 12, "元ログ件数を保持する")
+    expectApproximatelyEqual(report.suggestedDeadZonePoints, 12, "移動量分布から deadZone 候補を出す")
+    expect(report.moveVelocitySamples.count == 4, "移動速度サンプルを正の時刻差分から作る")
+    expectApproximatelyEqual(report.suggestedAcceleration?.thresholdVelocity, 375, "移動速度 p75 を加速度しきい値候補にする")
+    expect(report.momentumVelocitySamples.count == 3, "慣性速度サンプルを momentumPhase 区間から作る")
+    expectApproximatelyEqual(report.suggestedMomentum?.minimumStartVelocity, 1_250, "active scroll と momentum の速度分布から慣性開始速度を出す")
+    expectApproximatelyEqual(report.suggestedMomentum?.frameInterval, 0.016, "スクロール間隔 p50 を frameInterval 候補にする")
+    expect((report.suggestedMomentum?.decayPerSecond ?? 0) > 0.05, "減衰率候補は 0 より大きい")
+    expect((report.suggestedMomentum?.decayPerSecond ?? 1) < 0.10, "減衰率候補は合成ログの減衰に近い")
+    expect(report.warnings.isEmpty, "十分なサンプルがある場合は未導出警告を出さない")
+}
+
+func testLogDerivedTuningAnalyzerReportsMissingSamples() {
+    let report = LogDerivedTuningAnalyzer.derive(from: [])
+
+    expect(report.suggestedAcceleration == nil, "移動速度が足りない場合は加速度候補を出さない")
+    expect(report.suggestedMomentum == nil, "慣性速度が足りない場合は慣性候補を出さない")
+    expect(report.warnings.contains { $0.contains("acceleration.thresholdVelocity") }, "加速度未導出理由を残す")
+    expect(report.warnings.contains { $0.contains("momentum") }, "慣性未導出理由を残す")
+}
+
 func testHIDInputLogAnalyzerGroupsByDeviceAndUsage() {
     let device = DeviceIdentity(
         manufacturer: "Example",
@@ -1377,6 +1455,8 @@ testInputLogAnalyzerSuggestsDeadZone()
 testInputLogRecordDecodesLegacyGeneratedField()
 testInputLogAnalyzerComparesBaselineAndCandidate()
 testInputLogAnalyzerCountsKeyEvents()
+testLogDerivedTuningAnalyzerDerivesAccelerationAndMomentum()
+testLogDerivedTuningAnalyzerReportsMissingSamples()
 testHIDInputLogAnalyzerGroupsByDeviceAndUsage()
 testInputAssociationAnalyzerMeasuresWindowDistribution()
 testInputAssociationAnalyzerCountsUnmatchedWhenHIDLogIsEmpty()

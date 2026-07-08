@@ -239,6 +239,13 @@ run_split_success \
   .build/debug/nape-gesture compare-log Fixtures/sample-trackpad-scroll-log.jsonl Fixtures/sample-generated-scroll-log.jsonl
 
 run_split_success \
+  "sample tuning derive-parameters" \
+  "$fixtures_dir/derive-sample-tuning.json" \
+  "$fixtures_dir/derive-sample-tuning.stderr.log" \
+  ".build/debug/nape-gesture derive-parameters Fixtures/sample-tuning-trackpad-log.jsonl --json" \
+  .build/debug/nape-gesture derive-parameters Fixtures/sample-tuning-trackpad-log.jsonl --json
+
+run_split_success \
   "sample HID analyze-hid-log" \
   "$fixtures_dir/analyze-sample-hid.txt" \
   "$fixtures_dir/analyze-sample-hid.stderr.log" \
