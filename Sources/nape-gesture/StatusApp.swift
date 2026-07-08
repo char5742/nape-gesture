@@ -145,6 +145,7 @@ final class StatusApp: NSObject, NSApplicationDelegate {
             "キルスイッチ: \(KillSwitchShortcut.displayName)",
             "実行状態: \(runtime.isRunning ? "実行中" : "停止中")",
             "設定ファイル: \(configPath)",
+            "対象入力の紐づけ秒: \(settings.targetDeviceAssociation.associationWindow)",
             "HIDデバイス数: \(allDevices.count)",
             "ポインティングデバイス数: \(devices.count)",
             "対象一致数: \(matched.count)",
@@ -173,9 +174,7 @@ final class StatusApp: NSObject, NSApplicationDelegate {
         }
 
         let gate = SharedTargetDeviceGate(
-            configuration: TargetDeviceGateConfiguration(
-                activationButton: settings.gesture.activationButton
-            )
+            configuration: TargetDeviceGateConfiguration(settings: settings)
         )
         let monitor = HIDInputMonitor(settings: settings, gate: gate, matchedDevices: matchedDevices)
 

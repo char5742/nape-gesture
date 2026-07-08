@@ -6,11 +6,32 @@ public struct TargetDeviceGateConfiguration: Codable, Equatable, Sendable {
 
     public init(
         activationButton: MouseButton,
-        associationWindow: TimeInterval = 0.12
+        associationWindow: TimeInterval = TargetDeviceAssociationConfiguration.defaultAssociationWindow
     ) {
         self.activationButton = activationButton
         self.associationWindow = associationWindow
     }
+
+    public init(settings: NapeGestureSettings) {
+        self.init(
+            activationButton: settings.gesture.activationButton,
+            associationWindow: settings.targetDeviceAssociation.associationWindow
+        )
+    }
+}
+
+public struct TargetDeviceAssociationConfiguration: Codable, Equatable, Sendable {
+    public static let defaultAssociationWindow: TimeInterval = 0.12
+
+    public var associationWindow: TimeInterval
+
+    public init(
+        associationWindow: TimeInterval = Self.defaultAssociationWindow
+    ) {
+        self.associationWindow = associationWindow
+    }
+
+    public static let `default` = TargetDeviceAssociationConfiguration()
 }
 
 public enum TargetDeviceActivity: Equatable, Sendable {

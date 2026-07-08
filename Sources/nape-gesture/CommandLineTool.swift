@@ -115,7 +115,7 @@ final class CommandLineTool {
               nape-gesture generate-scroll --x <値> --y <値> [--steps <数>] [--phase auto|began|changed|ended|cancelled|momentum] [--momentum-steps <数>] [--dry-run] [--json|--log-json]
                   ピクセル単位のスクロールイベントを任意フェーズや慣性つきで生成します。--dry-run --log-json で compare-log 用 JSON Lines を出力します。
 
-              nape-gesture init-config [--out <path>] [--vendor-id <ID>] [--product-id <ID>] [--manufacturer-contains <文字>] [--product-contains <文字>] [--transport-contains <文字>] [--usage-page <ID>] [--usage <ID>] [--allow-unmatched]
+              nape-gesture init-config [--out <path>] [--vendor-id <ID>] [--product-id <ID>] [--manufacturer-contains <文字>] [--product-contains <文字>] [--transport-contains <文字>] [--usage-page <ID>] [--usage <ID>] [--association-window <秒>] [--allow-unmatched]
                   Nape Pro 向け、または指定した HID 条件向けの設定テンプレートを出力します。
 
               nape-gesture target [--out <path>]
@@ -172,8 +172,18 @@ final class CommandLineTool {
             "--usage"
         ].contains { options.contains($0) }
 
+        let targetDeviceAssociation = TargetDeviceAssociationConfiguration(
+            associationWindow: try optionalDoubleValue("--association-window", in: options)
+                ?? TargetDeviceAssociationConfiguration.defaultAssociationWindow
+        )
+
         if !hasMatcherOption && !options.contains("--allow-unmatched") {
-            return .template
+            return NapeGestureSettings(
+                gesture: .default,
+                targetDeviceAssociation: targetDeviceAssociation,
+                targetDevices: NapeGestureSettings.template.targetDevices,
+                requireMatchingTargetDevice: true
+            )
         }
 
         let matcher = DeviceMatcher(
@@ -194,6 +204,7 @@ final class CommandLineTool {
 
         return NapeGestureSettings(
             gesture: .default,
+            targetDeviceAssociation: targetDeviceAssociation,
             targetDevices: targetDevices,
             requireMatchingTargetDevice: requireMatchingTargetDevice
         )
@@ -205,6 +216,17 @@ final class CommandLineTool {
         }
         let raw = try SettingsStore.requiredValue(for: name, in: options)
         guard let value = Int(raw) else {
+            throw ToolError.invalidValue(name, raw)
+        }
+        return value
+    }
+
+    private func optionalDoubleValue(_ name: String, in options: [String]) throws -> Double? {
+        guard options.contains(name) else {
+            return nil
+        }
+        let raw = try SettingsStore.requiredValue(for: name, in: options)
+        guard let value = Double(raw) else {
             throw ToolError.invalidValue(name, raw)
         }
         return value
@@ -252,6 +274,7 @@ final class CommandLineTool {
         let devices = try DeviceInventory.pointingDevices()
         print("設定ファイル: \(loaded.path)")
         print("設定バリデーション: 成功")
+        print("対象入力の紐づけ秒: \(settings.targetDeviceAssociation.associationWindow)")
         print("検出したHIDデバイス数: \(allDevices.count)")
         print("検出したポインティングデバイス数: \(devices.count)")
 
@@ -296,9 +319,7 @@ final class CommandLineTool {
 
     private func probeHIDInputMonitor(settings: NapeGestureSettings, matchedDevices: [DeviceIdentity]) throws {
         let gate = SharedTargetDeviceGate(
-            configuration: TargetDeviceGateConfiguration(
-                activationButton: settings.gesture.activationButton
-            )
+            configuration: TargetDeviceGateConfiguration(settings: settings)
         )
         let monitor = HIDInputMonitor(settings: settings, gate: gate, matchedDevices: matchedDevices)
         try monitor.start()
@@ -311,9 +332,7 @@ final class CommandLineTool {
             return nil
         }
         return SharedTargetDeviceGate(
-            configuration: TargetDeviceGateConfiguration(
-                activationButton: settings.gesture.activationButton
-            )
+            configuration: TargetDeviceGateConfiguration(settings: settings)
         )
     }
 

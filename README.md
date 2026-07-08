@@ -37,6 +37,7 @@ Mac Mouse Fix のコード、定数、状態遷移、係数は流用しません
 - 権限とデバイスの確認導線
 - 対象デバイス未検出、実行中のデバイス消失、権限未許可、スリープ復帰後の自動再試行
 - マウス系に限らない全 HID デバイスからの対象照合
+- 対象 HID 入力とイベントタップ入力の紐づけ秒数設定
 - 主要ロジックの自動テスト
 
 未完了の大きな項目:
@@ -73,7 +74,7 @@ swift run nape-gesture system-test run --scenario space-left --target finder --d
 swift run nape-gesture benchmark --events 200000 --json
 swift run nape-gesture doctor --probe-hid --benchmark-events 50000 --json
 swift run nape-gesture init-config --out nape-gesture.config.json
-swift run nape-gesture init-config --vendor-id <ID> --product-id <ID> --usage-page <ID> --usage <ID> --out nape-gesture.config.json
+swift run nape-gesture init-config --vendor-id <ID> --product-id <ID> --usage-page <ID> --usage <ID> --association-window 0.12 --out nape-gesture.config.json
 swift run nape-gesture run
 swift run nape-gesture bundle-app --out .build/NapeGesture.app --replace
 swift run nape-gesture verify-bundle .build/NapeGesture.app
@@ -88,7 +89,8 @@ swift run nape-gesture-core-tests
 `app` の「権限とデバイスを確認」は、アクセシビリティ、入力監視、権限付与対象、実行ファイル、bundle ID、HID デバイス数、対象一致数を表示します。
 `app` は対象デバイス未検出、実行中の対象デバイス消失、アクセシビリティ未許可、入力監視未許可、スリープ復帰後の停止を検出した場合、手動で「停止」するまで 5 秒間隔で自動再試行します。実行中も同じ間隔で対象デバイスとアクセシビリティ権限を確認し、失われた場合は停止して自動再試行状態へ移行します。
 `run`、`check-config`、`app` は `--config` を省略した場合、`~/Library/Application Support/NapeGesture/config.json` を使います。存在しない場合は Nape Pro 向けテンプレートを作成します。対象デバイス一致が必須のまま対象条件が空の場合は、全デバイスへ誤適用しないよう起動前に停止します。
-設定ファイルは起動前に検証されます。感度、加速度、慣性、キャンセル条件、対象デバイス条件に不正値がある場合、`run` と `check-config` は開始せず、`doctor --json` は `settingsValidationIssues` に問題箇所を出します。
+設定ファイルは起動前に検証されます。感度、加速度、慣性、キャンセル条件、対象入力の紐づけ秒、対象デバイス条件に不正値がある場合、`run` と `check-config` は開始せず、`doctor --json` は `settingsValidationIssues` に問題箇所を出します。
+設定の `targetDeviceAssociation.associationWindow` は、対象 HID 入力の直近時刻とイベントタップ入力を同一入力として扱う秒数です。デフォルトは従来挙動と同じ `0.12` 秒です。短くすると対象外デバイスを巻き込みにくくなりますが、イベントタップ側の到達が遅い環境では Nape Pro 入力を取りこぼす可能性があります。長くすると取りこぼしに強くなる一方、別デバイス入力を誤って紐づけるリスクが上がります。
 設定の `gesture.acceleration.isEnabled` は速度に応じた加速度倍率を有効化します。`thresholdVelocity` を超えた速度から倍率が上がり、`exponent` でカーブ、`maximumMultiplier` で最大倍率を調整します。デフォルトでは無効です。
 設定の `gesture.momentum.isEnabled` はボタン解放後の慣性を有効化します。`minimumStartVelocity` で慣性開始速度、`stopVelocity` で終了速度、`decayPerSecond` で1秒あたりの減衰率、`frameInterval` で生成間隔を調整します。
 設定の `gesture.cancellation.maximumDuration` はジェスチャー全体の最大秒数、`maximumInactivityInterval` は入力が途切れたときにキャンセルする秒数、`offAxisCancelRatio` は方向ロック後に直交方向へ逸れたときのキャンセル比です。各値は `0` で無効化できます。
@@ -104,7 +106,7 @@ swift run nape-gesture check-config --probe-hid
 `doctor --probe-hid` はアクセシビリティ、入力監視、対象デバイス一致、HID デバイス数、ベンチマークを一括で出し、失敗時の復旧手順も表示します。`--json` を付けると検証ログとして保存しやすい形式になります。
 `doctor --json` には実行ファイル、bundle ID、bundle path などの `runtimeIdentity` も含めます。権限が未許可のときは、システム設定でどの `.app` または実行ファイルを許可すべきかをこの値で確認してください。
 Nape Pro が通常の `devices` に出ない場合は、`devices --all --json` で全 HID デバイスを確認します。JSON には `stableID`、`vendorID`、`productID`、`primaryUsagePage`、`primaryUsage` が含まれます。対象らしい値が見つかったら、`hid-log --vendor-id <ID> --product-id <ID> --usage-page <ID> --usage <ID> --duration 10` を実行しながら Nape Pro を操作して、どの `usagePage` / `usage` で入力が来ているか確認します。取得した JSON Lines は `analyze-hid-log <path>` で集計し、イベント数、非ゼロ値、値域、`stableID` を見ます。`hid-log --all` は排他デバイスを含む環境で失敗することがあるため、通常はデバイスIDと usage を指定してください。
-特定した値は `init-config --vendor-id <ID> --product-id <ID> --usage-page <ID> --usage <ID> --out <path>` で設定ファイルへ直接反映できます。必要なら `--manufacturer-contains`、`--product-contains`、`--transport-contains` も併用できます。設定UIでも vendor ID、product ID、usagePage、usage などを空欄任意の条件として編集できます。
+特定した値は `init-config --vendor-id <ID> --product-id <ID> --usage-page <ID> --usage <ID> --association-window <秒> --out <path>` で設定ファイルへ直接反映できます。必要なら `--manufacturer-contains`、`--product-contains`、`--transport-contains` も併用できます。設定UIでも vendor ID、product ID、usagePage、usage、対象入力の紐づけ秒などを編集できます。
 
 ## アプリバンドル
 
