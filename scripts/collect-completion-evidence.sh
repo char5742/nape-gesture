@@ -274,13 +274,35 @@ for scenario in space-left space-right mission-control horizontal-scroll page-ba
       .build/debug/nape-gesture system-test run --scenario "$scenario" --dry-run --log-json --out "$system_dir/system-$scenario.jsonl"
   fi
 
-  run_split_success \
-    "system-test $scenario analyze-log" \
-    "$system_dir/system-$scenario-analysis.txt" \
-    "$system_dir/system-$scenario-analysis.stderr.log" \
-    ".build/debug/nape-gesture analyze-log $system_dir/system-$scenario.jsonl --json" \
-    .build/debug/nape-gesture analyze-log "$system_dir/system-$scenario.jsonl" --json
+  if [ "$scenario" = "kill-switch" ]; then
+    run_split_success \
+      "system-test $scenario analyze-log assert-kill-switch-shortcut" \
+      "$system_dir/system-$scenario-analysis.txt" \
+      "$system_dir/system-$scenario-analysis.stderr.log" \
+      ".build/debug/nape-gesture analyze-log $system_dir/system-$scenario.jsonl --json --assert-kill-switch-shortcut" \
+      .build/debug/nape-gesture analyze-log "$system_dir/system-$scenario.jsonl" --json --assert-kill-switch-shortcut
+  else
+    run_split_success \
+      "system-test $scenario analyze-log" \
+      "$system_dir/system-$scenario-analysis.txt" \
+      "$system_dir/system-$scenario-analysis.stderr.log" \
+      ".build/debug/nape-gesture analyze-log $system_dir/system-$scenario.jsonl --json" \
+      .build/debug/nape-gesture analyze-log "$system_dir/system-$scenario.jsonl" --json
+  fi
 done
+
+run_combined_success \
+  "system-test normal-after-release dry-run JSON Lines" \
+  "$system_dir/system-normal-after-release.log" \
+  ".build/debug/nape-gesture system-test run --scenario normal-after-release --dry-run --log-json --out $system_dir/system-normal-after-release.jsonl" \
+  .build/debug/nape-gesture system-test run --scenario normal-after-release --dry-run --log-json --out "$system_dir/system-normal-after-release.jsonl"
+
+run_split_success \
+  "system-test normal-after-release analyze-log assert-has-unmarked-passthrough-input" \
+  "$system_dir/system-normal-after-release-analysis.json" \
+  "$system_dir/system-normal-after-release-analysis.stderr.log" \
+  ".build/debug/nape-gesture analyze-log $system_dir/system-normal-after-release.jsonl --json --assert-has-unmarked-passthrough-input" \
+  .build/debug/nape-gesture analyze-log "$system_dir/system-normal-after-release.jsonl" --json --assert-has-unmarked-passthrough-input
 
 run_split_success \
   "generate-scroll space-right dry-run JSON Lines" \

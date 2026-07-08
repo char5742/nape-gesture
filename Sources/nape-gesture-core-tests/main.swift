@@ -713,6 +713,9 @@ func testInputLogAnalyzerSuggestsDeadZone() {
 
     expect(analysis.totalEvents == 3, "総イベント数を数える")
     expect(analysis.generatedEvents == 1, "生成イベント数を数える")
+    expect(analysis.unmarkedMoveEvents == 2, "未生成の移動イベント数を数える")
+    expect(analysis.unmarkedScrollEvents == 0, "生成スクロールは未生成スクロールに含めない")
+    expect(analysis.unmarkedPassthroughInputEvents == 2, "通常入力通過候補の未生成移動・スクロールを数える")
     expect(analysis.moveEvents == 2, "移動イベント数を数える")
     expect(analysis.scrollEvents == 1, "スクロールイベント数を数える")
     expect(analysis.preciseScrollEvents == 1, "precise/continuous スクロールを数える")
@@ -855,6 +858,30 @@ func testInputLogAnalyzerCountsKeyEvents() {
     expect(comparison.keyEventDelta == 2, "キーイベント数差を出す")
     expect(comparison.keyDelta["keyDown:126"] == 1, "keyDown の差を出す")
     expect(comparison.findings.contains { $0.contains("キーイベント") }, "キーイベント差を所見に出す")
+}
+
+func testInputLogAnalyzerDoesNotTreatUnmarkedKeysAsPassthroughInput() {
+    let records = [
+        makeInputLogRecord(
+            timestamp: 1,
+            typeName: "keyDown",
+            generatedByNapeGesture: false,
+            keyCode: 5,
+            flags: 1
+        ),
+        makeInputLogRecord(
+            timestamp: 2,
+            typeName: "keyUp",
+            generatedByNapeGesture: false,
+            keyCode: 5,
+            flags: 1
+        )
+    ]
+
+    let analysis = InputLogAnalyzer.analyze(records)
+
+    expect(analysis.keyEvents == 2, "未生成キーイベント自体はキーとして数える")
+    expect(analysis.unmarkedPassthroughInputEvents == 0, "キルスイッチなどの未生成キーだけでは通常入力通過扱いにしない")
 }
 
 func testLogDerivedTuningAnalyzerDerivesAccelerationAndMomentum() {
@@ -1558,6 +1585,7 @@ testInputLogAnalyzerSuggestsDeadZone()
 testInputLogRecordDecodesLegacyGeneratedField()
 testInputLogAnalyzerComparesBaselineAndCandidate()
 testInputLogAnalyzerCountsKeyEvents()
+testInputLogAnalyzerDoesNotTreatUnmarkedKeysAsPassthroughInput()
 testLogDerivedTuningAnalyzerDerivesAccelerationAndMomentum()
 testLogDerivedTuningAnalyzerReportsMissingSamples()
 testLogDerivedTuningAnalyzerRejectsSyntheticTimestampAsCompleteEvidence()

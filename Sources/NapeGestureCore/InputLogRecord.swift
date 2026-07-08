@@ -120,6 +120,8 @@ public struct InputLogRecord: Codable, Equatable, Sendable {
 public struct LogAnalysis: Codable, Equatable, Sendable {
     public var totalEvents: Int
     public var generatedEvents: Int
+    public var unmarkedMoveEvents: Int
+    public var unmarkedScrollEvents: Int
     public var moveEvents: Int
     public var scrollEvents: Int
     public var buttonEvents: Int
@@ -142,6 +144,8 @@ public struct LogAnalysis: Codable, Equatable, Sendable {
     public init(
         totalEvents: Int,
         generatedEvents: Int,
+        unmarkedMoveEvents: Int,
+        unmarkedScrollEvents: Int,
         moveEvents: Int,
         scrollEvents: Int,
         buttonEvents: Int,
@@ -163,6 +167,8 @@ public struct LogAnalysis: Codable, Equatable, Sendable {
     ) {
         self.totalEvents = totalEvents
         self.generatedEvents = generatedEvents
+        self.unmarkedMoveEvents = unmarkedMoveEvents
+        self.unmarkedScrollEvents = unmarkedScrollEvents
         self.moveEvents = moveEvents
         self.scrollEvents = scrollEvents
         self.buttonEvents = buttonEvents
@@ -182,6 +188,10 @@ public struct LogAnalysis: Codable, Equatable, Sendable {
         self.scrollPhaseCounts = scrollPhaseCounts
         self.momentumPhaseCounts = momentumPhaseCounts
     }
+
+    public var unmarkedPassthroughInputEvents: Int {
+        unmarkedMoveEvents + unmarkedScrollEvents
+    }
 }
 
 public enum InputLogAnalyzer {
@@ -190,6 +200,8 @@ public enum InputLogAnalyzer {
         let scrollRecords = records.filter(\.isScrollEvent)
         let buttonRecords = records.filter(\.isButtonEvent)
         let keyRecords = records.filter(\.isKeyEvent)
+        let unmarkedMoveRecords = moveRecords.filter { !$0.generatedByNapeGesture }
+        let unmarkedScrollRecords = scrollRecords.filter { !$0.generatedByNapeGesture }
         let magnitudes = moveRecords
             .map { hypot(Double($0.deltaX), Double($0.deltaY)) }
             .sorted()
@@ -203,6 +215,8 @@ public enum InputLogAnalyzer {
         return LogAnalysis(
             totalEvents: records.count,
             generatedEvents: records.filter(\.generatedByNapeGesture).count,
+            unmarkedMoveEvents: unmarkedMoveRecords.count,
+            unmarkedScrollEvents: unmarkedScrollRecords.count,
             moveEvents: moveRecords.count,
             scrollEvents: scrollRecords.count,
             buttonEvents: buttonRecords.count,
@@ -229,6 +243,8 @@ public enum InputLogAnalyzer {
         ログ解析結果
         総イベント数: \(analysis.totalEvents)
         生成イベント数: \(analysis.generatedEvents)
+        未生成の移動イベント数: \(analysis.unmarkedMoveEvents)
+        未生成のスクロールイベント数: \(analysis.unmarkedScrollEvents)
         移動イベント数: \(analysis.moveEvents)
         スクロールイベント数: \(analysis.scrollEvents)
         ボタンイベント数: \(analysis.buttonEvents)
