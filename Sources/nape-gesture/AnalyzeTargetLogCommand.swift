@@ -16,6 +16,10 @@ struct AnalyzeTargetLogCommand {
         let analysis = TargetEventLogAnalyzer.analyze(records)
         let assertNoLeaks = options.contains("--assert-no-leaks")
         let assertHasUnmarkedInput = options.contains("--assert-has-unmarked-input")
+        let assertHasUnmarkedClick = options.contains("--assert-has-unmarked-click")
+        let assertHasUnmarkedDrag = options.contains("--assert-has-unmarked-drag")
+        let assertHasUnmarkedWheel = options.contains("--assert-has-unmarked-wheel")
+        let assertHasUnmarkedClickDragWheel = options.contains("--assert-has-unmarked-click-drag-wheel")
         let assertHasGesture = options.contains("--assert-has-gesture")
         let assertHasGeneratedEvent = options.contains("--assert-has-generated-event")
 
@@ -35,6 +39,22 @@ struct AnalyzeTargetLogCommand {
         if assertHasUnmarkedInput && analysis.unmarkedInputEventCount == 0 {
             fflush(stdout)
             throw TargetLogMissingUnmarkedInputAssertionError(path: path)
+        }
+        if assertHasUnmarkedClick && !analysis.hasUnmarkedClick {
+            fflush(stdout)
+            throw TargetLogMissingUnmarkedNormalInputKindAssertionError(path: path, kind: "通常クリック", analysis: analysis)
+        }
+        if assertHasUnmarkedDrag && analysis.unmarkedDragEvents == 0 {
+            fflush(stdout)
+            throw TargetLogMissingUnmarkedNormalInputKindAssertionError(path: path, kind: "通常ドラッグ", analysis: analysis)
+        }
+        if assertHasUnmarkedWheel && analysis.unmarkedWheelEvents == 0 {
+            fflush(stdout)
+            throw TargetLogMissingUnmarkedNormalInputKindAssertionError(path: path, kind: "通常ホイール", analysis: analysis)
+        }
+        if assertHasUnmarkedClickDragWheel && !analysis.hasUnmarkedClickDragWheel {
+            fflush(stdout)
+            throw TargetLogMissingUnmarkedNormalInputKindAssertionError(path: path, kind: "通常クリック / 通常ドラッグ / 通常ホイール", analysis: analysis)
         }
         if assertHasGesture && analysis.gestureEventCount == 0 {
             fflush(stdout)
@@ -89,6 +109,16 @@ struct TargetLogMissingUnmarkedInputAssertionError: LocalizedError {
     }
 }
 
+struct TargetLogMissingUnmarkedNormalInputKindAssertionError: LocalizedError {
+    var path: String
+    var kind: String
+    var analysis: TargetEventLogAnalysis
+
+    var errorDescription: String? {
+        "target log に未マーク\(kind)がありません。`analyze-target-log \(path) --json` で unmarkedClickDownEvents=\(analysis.unmarkedClickDownEvents)、unmarkedClickUpEvents=\(analysis.unmarkedClickUpEvents)、unmarkedDragEvents=\(analysis.unmarkedDragEvents)、unmarkedWheelEvents=\(analysis.unmarkedWheelEvents) を確認してください。"
+    }
+}
+
 struct TargetLogMissingGestureAssertionError: LocalizedError {
     var path: String
 
@@ -118,6 +148,11 @@ struct TargetEventLogAnalysis: Codable, Equatable {
     var unmarkedMouseEvents: Int
     var unmarkedScrollEvents: Int
     var unmarkedKeyEvents: Int
+    var unmarkedClickEvents: Int
+    var unmarkedClickDownEvents: Int
+    var unmarkedClickUpEvents: Int
+    var unmarkedDragEvents: Int
+    var unmarkedWheelEvents: Int
     var scrollingDeltaXTotal: Double
     var scrollingDeltaYTotal: Double
     var deltaXTotal: Double
@@ -132,6 +167,14 @@ struct TargetEventLogAnalysis: Codable, Equatable {
 
     var unmarkedInputEventCount: Int {
         unmarkedMouseEvents + unmarkedScrollEvents + unmarkedKeyEvents
+    }
+
+    var hasUnmarkedClick: Bool {
+        unmarkedClickDownEvents > 0 && unmarkedClickUpEvents > 0
+    }
+
+    var hasUnmarkedClickDragWheel: Bool {
+        hasUnmarkedClick && unmarkedDragEvents > 0 && unmarkedWheelEvents > 0
     }
 
     var gestureEventCount: Int {
@@ -151,6 +194,11 @@ enum TargetEventLogAnalyzer {
         let unmarkedMouseRecords = unmarkedRecords.filter(isMouseEvent)
         let unmarkedScrollRecords = unmarkedRecords.filter(isScrollEvent)
         let unmarkedKeyRecords = unmarkedRecords.filter(isKeyEvent)
+        let unmarkedClickRecords = unmarkedRecords.filter(isNormalClickEvent)
+        let unmarkedClickDownRecords = unmarkedRecords.filter(isNormalClickDownEvent)
+        let unmarkedClickUpRecords = unmarkedRecords.filter(isNormalClickUpEvent)
+        let unmarkedDragRecords = unmarkedRecords.filter(isNormalDragEvent)
+        let unmarkedWheelRecords = unmarkedRecords.filter(isWheelEvent)
         let leakCandidateRecords = unmarkedRecords.filter(isLeakCandidate)
 
         return TargetEventLogAnalysis(
@@ -166,6 +214,11 @@ enum TargetEventLogAnalyzer {
             unmarkedMouseEvents: unmarkedMouseRecords.count,
             unmarkedScrollEvents: unmarkedScrollRecords.count,
             unmarkedKeyEvents: unmarkedKeyRecords.count,
+            unmarkedClickEvents: unmarkedClickRecords.count,
+            unmarkedClickDownEvents: unmarkedClickDownRecords.count,
+            unmarkedClickUpEvents: unmarkedClickUpRecords.count,
+            unmarkedDragEvents: unmarkedDragRecords.count,
+            unmarkedWheelEvents: unmarkedWheelRecords.count,
             scrollingDeltaXTotal: scrollRecords.reduce(0) { $0 + $1.scrollingDeltaX },
             scrollingDeltaYTotal: scrollRecords.reduce(0) { $0 + $1.scrollingDeltaY },
             deltaXTotal: records.reduce(0) { $0 + $1.deltaX },
@@ -195,6 +248,11 @@ enum TargetEventLogAnalyzer {
         未マークmouse系: \(analysis.unmarkedMouseEvents)
         未マークscroll系: \(analysis.unmarkedScrollEvents)
         未マークkey系: \(analysis.unmarkedKeyEvents)
+        未マーク通常クリック: \(analysis.unmarkedClickEvents)
+        未マーク通常クリックdown: \(analysis.unmarkedClickDownEvents)
+        未マーク通常クリックup: \(analysis.unmarkedClickUpEvents)
+        未マーク通常ドラッグ: \(analysis.unmarkedDragEvents)
+        未マーク通常ホイール: \(analysis.unmarkedWheelEvents)
         漏れ候補: \(analysis.leakCandidateEvents.count)
         漏れ候補出現数: \(formatCounts(analysis.leakCandidateCounts))
         scrollingDelta 合計: x=\(format(analysis.scrollingDeltaXTotal)), y=\(format(analysis.scrollingDeltaYTotal))
@@ -239,6 +297,38 @@ enum TargetEventLogAnalyzer {
 
     private static func isScrollEvent(_ record: TargetEventRecord) -> Bool {
         record.name == "scrollWheel"
+    }
+
+    private static func isNormalClickEvent(_ record: TargetEventRecord) -> Bool {
+        isNormalClickDownEvent(record) || isNormalClickUpEvent(record)
+    }
+
+    private static func isNormalClickDownEvent(_ record: TargetEventRecord) -> Bool {
+        switch record.name {
+        case "mouseDown",
+             "rightMouseDown":
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static func isNormalClickUpEvent(_ record: TargetEventRecord) -> Bool {
+        switch record.name {
+        case "mouseUp",
+             "rightMouseUp":
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static func isNormalDragEvent(_ record: TargetEventRecord) -> Bool {
+        record.name == "mouseDragged" || record.name == "rightMouseDragged"
+    }
+
+    private static func isWheelEvent(_ record: TargetEventRecord) -> Bool {
+        isScrollEvent(record)
     }
 
     private static func isKeyEvent(_ record: TargetEventRecord) -> Bool {

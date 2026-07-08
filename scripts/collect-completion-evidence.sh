@@ -298,11 +298,11 @@ run_combined_success \
   .build/debug/nape-gesture system-test run --scenario normal-after-release --dry-run --log-json --out "$system_dir/system-normal-after-release.jsonl"
 
 run_split_success \
-  "system-test normal-after-release analyze-log assert-has-unmarked-passthrough-input" \
+  "system-test normal-after-release analyze-log assert-has-unmarked-click-drag-wheel" \
   "$system_dir/system-normal-after-release-analysis.json" \
   "$system_dir/system-normal-after-release-analysis.stderr.log" \
-  ".build/debug/nape-gesture analyze-log $system_dir/system-normal-after-release.jsonl --json --assert-has-unmarked-passthrough-input" \
-  .build/debug/nape-gesture analyze-log "$system_dir/system-normal-after-release.jsonl" --json --assert-has-unmarked-passthrough-input
+  ".build/debug/nape-gesture analyze-log $system_dir/system-normal-after-release.jsonl --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel" \
+  .build/debug/nape-gesture analyze-log "$system_dir/system-normal-after-release.jsonl" --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel
 
 run_combined_success \
   "system-test gesture-wheel-then-kill-switch dry-run JSON Lines" \
@@ -416,11 +416,32 @@ run_split_expected_failure \
   .build/debug/nape-gesture analyze-target-log Fixtures/no-generated-target-log.jsonl --json --assert-no-leaks --assert-has-generated-event
 
 run_split_success \
-  "normal input target log assert-has-unmarked-input" \
+  "normal input target log assert-has-unmarked-click-drag-wheel" \
   "$fixtures_dir/normal-input-target-log-analysis.json" \
   "$fixtures_dir/normal-input-target-log-analysis.stderr.log" \
-  ".build/debug/nape-gesture analyze-target-log Fixtures/normal-input-target-log.jsonl --json --assert-has-unmarked-input" \
-  .build/debug/nape-gesture analyze-target-log Fixtures/normal-input-target-log.jsonl --json --assert-has-unmarked-input
+  ".build/debug/nape-gesture analyze-target-log Fixtures/normal-input-target-log.jsonl --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel" \
+  .build/debug/nape-gesture analyze-target-log Fixtures/normal-input-target-log.jsonl --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel
+
+run_split_expected_failure \
+  "normal input missing click target log assert-has-unmarked-click-drag-wheel" \
+  "$fixtures_dir/normal-input-missing-click-target-log-analysis.json" \
+  "$fixtures_dir/normal-input-missing-click-target-log-analysis.stderr.log" \
+  ".build/debug/nape-gesture analyze-target-log Fixtures/normal-input-missing-click-target-log.jsonl --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel" \
+  .build/debug/nape-gesture analyze-target-log Fixtures/normal-input-missing-click-target-log.jsonl --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel
+
+run_split_expected_failure \
+  "normal input missing drag target log assert-has-unmarked-click-drag-wheel" \
+  "$fixtures_dir/normal-input-missing-drag-target-log-analysis.json" \
+  "$fixtures_dir/normal-input-missing-drag-target-log-analysis.stderr.log" \
+  ".build/debug/nape-gesture analyze-target-log Fixtures/normal-input-missing-drag-target-log.jsonl --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel" \
+  .build/debug/nape-gesture analyze-target-log Fixtures/normal-input-missing-drag-target-log.jsonl --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel
+
+run_split_expected_failure \
+  "normal input missing wheel target log assert-has-unmarked-click-drag-wheel" \
+  "$fixtures_dir/normal-input-missing-wheel-target-log-analysis.json" \
+  "$fixtures_dir/normal-input-missing-wheel-target-log-analysis.stderr.log" \
+  ".build/debug/nape-gesture analyze-target-log Fixtures/normal-input-missing-wheel-target-log.jsonl --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel" \
+  .build/debug/nape-gesture analyze-target-log Fixtures/normal-input-missing-wheel-target-log.jsonl --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel
 
 run_split_success \
   "gesture target log assert-has-gesture" \

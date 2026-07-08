@@ -36,7 +36,7 @@ jobs:
           .build/debug/nape-gesture system-test run --scenario kill-switch --dry-run --log-json --out /tmp/system-kill-switch.jsonl
           .build/debug/nape-gesture analyze-log /tmp/system-kill-switch.jsonl --json --assert-kill-switch-shortcut
           .build/debug/nape-gesture system-test run --scenario normal-after-release --dry-run --log-json --out /tmp/system-normal-after-release.jsonl
-          .build/debug/nape-gesture analyze-log /tmp/system-normal-after-release.jsonl --json --assert-has-unmarked-passthrough-input
+          .build/debug/nape-gesture analyze-log /tmp/system-normal-after-release.jsonl --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel
           .build/debug/nape-gesture system-test run --scenario gesture-wheel-then-kill-switch --dry-run --log-json --out /tmp/system-gesture-wheel-then-kill-switch.jsonl
           .build/debug/nape-gesture analyze-log /tmp/system-gesture-wheel-then-kill-switch.jsonl --json --assert-kill-switch-shortcut --assert-gesture-before-kill-switch
           .build/debug/nape-gesture compare-log Fixtures/sample-trackpad-scroll-log.jsonl Fixtures/sample-generated-scroll-log.jsonl
@@ -52,7 +52,19 @@ jobs:
             echo "no-generated-target-log が生成イベントありとして通ってしまいました" >&2
             exit 1
           fi
-          .build/debug/nape-gesture analyze-target-log Fixtures/normal-input-target-log.jsonl --json --assert-has-unmarked-input
+          .build/debug/nape-gesture analyze-target-log Fixtures/normal-input-target-log.jsonl --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel
+          if .build/debug/nape-gesture analyze-target-log Fixtures/normal-input-missing-click-target-log.jsonl --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel; then
+            echo "normal-input-missing-click-target-log が通常クリックありとして通ってしまいました" >&2
+            exit 1
+          fi
+          if .build/debug/nape-gesture analyze-target-log Fixtures/normal-input-missing-drag-target-log.jsonl --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel; then
+            echo "normal-input-missing-drag-target-log が通常ドラッグありとして通ってしまいました" >&2
+            exit 1
+          fi
+          if .build/debug/nape-gesture analyze-target-log Fixtures/normal-input-missing-wheel-target-log.jsonl --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel; then
+            echo "normal-input-missing-wheel-target-log が通常ホイールありとして通ってしまいました" >&2
+            exit 1
+          fi
           .build/debug/nape-gesture analyze-target-log Fixtures/gesture-target-log.jsonl --json --assert-has-gesture
           .build/debug/nape-gesture benchmark --events 200000 --json --assert-baseline > /tmp/nape-benchmark.json
           .build/debug/nape-gesture doctor --benchmark-events 50000 --json > /tmp/nape-doctor.json

@@ -122,6 +122,11 @@ public struct LogAnalysis: Codable, Equatable, Sendable {
     public var generatedEvents: Int
     public var unmarkedMoveEvents: Int
     public var unmarkedScrollEvents: Int
+    public var unmarkedClickEvents: Int
+    public var unmarkedClickDownEvents: Int
+    public var unmarkedClickUpEvents: Int
+    public var unmarkedDragEvents: Int
+    public var unmarkedWheelEvents: Int
     public var moveEvents: Int
     public var scrollEvents: Int
     public var buttonEvents: Int
@@ -146,6 +151,11 @@ public struct LogAnalysis: Codable, Equatable, Sendable {
         generatedEvents: Int,
         unmarkedMoveEvents: Int,
         unmarkedScrollEvents: Int,
+        unmarkedClickEvents: Int,
+        unmarkedClickDownEvents: Int,
+        unmarkedClickUpEvents: Int,
+        unmarkedDragEvents: Int,
+        unmarkedWheelEvents: Int,
         moveEvents: Int,
         scrollEvents: Int,
         buttonEvents: Int,
@@ -169,6 +179,11 @@ public struct LogAnalysis: Codable, Equatable, Sendable {
         self.generatedEvents = generatedEvents
         self.unmarkedMoveEvents = unmarkedMoveEvents
         self.unmarkedScrollEvents = unmarkedScrollEvents
+        self.unmarkedClickEvents = unmarkedClickEvents
+        self.unmarkedClickDownEvents = unmarkedClickDownEvents
+        self.unmarkedClickUpEvents = unmarkedClickUpEvents
+        self.unmarkedDragEvents = unmarkedDragEvents
+        self.unmarkedWheelEvents = unmarkedWheelEvents
         self.moveEvents = moveEvents
         self.scrollEvents = scrollEvents
         self.buttonEvents = buttonEvents
@@ -192,6 +207,14 @@ public struct LogAnalysis: Codable, Equatable, Sendable {
     public var unmarkedPassthroughInputEvents: Int {
         unmarkedMoveEvents + unmarkedScrollEvents
     }
+
+    public var hasUnmarkedClick: Bool {
+        unmarkedClickDownEvents > 0 && unmarkedClickUpEvents > 0
+    }
+
+    public var hasUnmarkedClickDragWheel: Bool {
+        hasUnmarkedClick && unmarkedDragEvents > 0 && unmarkedWheelEvents > 0
+    }
 }
 
 public enum InputLogAnalyzer {
@@ -202,6 +225,11 @@ public enum InputLogAnalyzer {
         let keyRecords = records.filter(\.isKeyEvent)
         let unmarkedMoveRecords = moveRecords.filter { !$0.generatedByNapeGesture }
         let unmarkedScrollRecords = scrollRecords.filter { !$0.generatedByNapeGesture }
+        let unmarkedClickRecords = records.filter { !$0.generatedByNapeGesture && $0.isNormalClickEvent }
+        let unmarkedClickDownRecords = records.filter { !$0.generatedByNapeGesture && $0.isNormalClickDownEvent }
+        let unmarkedClickUpRecords = records.filter { !$0.generatedByNapeGesture && $0.isNormalClickUpEvent }
+        let unmarkedDragRecords = records.filter { !$0.generatedByNapeGesture && $0.isNormalDragEvent }
+        let unmarkedWheelRecords = records.filter { !$0.generatedByNapeGesture && $0.isWheelEvent }
         let magnitudes = moveRecords
             .map { hypot(Double($0.deltaX), Double($0.deltaY)) }
             .sorted()
@@ -217,6 +245,11 @@ public enum InputLogAnalyzer {
             generatedEvents: records.filter(\.generatedByNapeGesture).count,
             unmarkedMoveEvents: unmarkedMoveRecords.count,
             unmarkedScrollEvents: unmarkedScrollRecords.count,
+            unmarkedClickEvents: unmarkedClickRecords.count,
+            unmarkedClickDownEvents: unmarkedClickDownRecords.count,
+            unmarkedClickUpEvents: unmarkedClickUpRecords.count,
+            unmarkedDragEvents: unmarkedDragRecords.count,
+            unmarkedWheelEvents: unmarkedWheelRecords.count,
             moveEvents: moveRecords.count,
             scrollEvents: scrollRecords.count,
             buttonEvents: buttonRecords.count,
@@ -245,6 +278,11 @@ public enum InputLogAnalyzer {
         生成イベント数: \(analysis.generatedEvents)
         未生成の移動イベント数: \(analysis.unmarkedMoveEvents)
         未生成のスクロールイベント数: \(analysis.unmarkedScrollEvents)
+        未生成の通常クリック数: \(analysis.unmarkedClickEvents)
+        未生成の通常クリックdown数: \(analysis.unmarkedClickDownEvents)
+        未生成の通常クリックup数: \(analysis.unmarkedClickUpEvents)
+        未生成の通常ドラッグ数: \(analysis.unmarkedDragEvents)
+        未生成の通常ホイール数: \(analysis.unmarkedWheelEvents)
         移動イベント数: \(analysis.moveEvents)
         スクロールイベント数: \(analysis.scrollEvents)
         ボタンイベント数: \(analysis.buttonEvents)
@@ -499,6 +537,26 @@ public extension InputLogRecord {
             || typeName == "rightMouseUp"
             || typeName == "otherMouseDown"
             || typeName == "otherMouseUp"
+    }
+
+    var isNormalClickEvent: Bool {
+        isNormalClickDownEvent || isNormalClickUpEvent
+    }
+
+    var isNormalClickDownEvent: Bool {
+        typeName == "leftMouseDown" || typeName == "rightMouseDown"
+    }
+
+    var isNormalClickUpEvent: Bool {
+        typeName == "leftMouseUp" || typeName == "rightMouseUp"
+    }
+
+    var isNormalDragEvent: Bool {
+        typeName == "leftMouseDragged" || typeName == "rightMouseDragged"
+    }
+
+    var isWheelEvent: Bool {
+        isScrollEvent
     }
 
     var isKeyEvent: Bool {

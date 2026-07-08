@@ -332,8 +332,8 @@ run_normal_after_release() {
     return
   fi
 
-  printf '$ %s analyze-target-log %s --json --assert-has-unmarked-input > %s 2> %s\n' "$tool_path" "$target_log" "$analysis_json" "$analysis_stderr" >> "$commands_file"
-  "$tool_path" analyze-target-log "$target_log" --json --assert-has-unmarked-input > "$analysis_json" 2> "$analysis_stderr"
+  printf '$ %s analyze-target-log %s --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel > %s 2> %s\n' "$tool_path" "$target_log" "$analysis_json" "$analysis_stderr" >> "$commands_file"
+  "$tool_path" analyze-target-log "$target_log" --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel > "$analysis_json" 2> "$analysis_stderr"
   analysis_status=$?
 
   if [ "$analysis_status" -eq 0 ]; then
@@ -409,7 +409,7 @@ EOF
 \`\`\`
 
 システム設定で上記の実行主体へアクセシビリティ権限を付与し、プロセスを再起動してからこのスクリプトを再実行してください。
-物理キー操作や目視判断は不要です。権限付与後は \`system-test\` の未マーク CGEvent 投稿と \`analyze-target-log\` の終了コードで判定します。
+物理キー操作や目視判断は不要です。権限付与後は \`system-test\` の未マーク CGEvent 投稿と \`analyze-target-log\` の終了コードで判定します。通常入力通過はクリック / ドラッグ / ホイールが揃うことを機械判定します。
 
 ## 総合結果
 
