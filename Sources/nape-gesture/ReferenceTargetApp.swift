@@ -168,6 +168,14 @@ final class EventCaptureView: NSView {
         emit("otherMouseDragged", event: event)
     }
 
+    override func keyDown(with event: NSEvent) {
+        emit("keyDown", event: event)
+    }
+
+    override func keyUp(with event: NSEvent) {
+        emit("keyUp", event: event)
+    }
+
     private func emit(_ name: String, event: NSEvent) {
         let position = convert(event.locationInWindow, from: nil)
         onEvent?(TargetEventRecord(name: name, event: event, position: position))
@@ -191,6 +199,7 @@ struct TargetEventRecord: Codable, Equatable {
     var buttonNumber: Int
     var clickCount: Int
     var modifierFlags: UInt
+    var keyCode: UInt16?
 
     init(name: String, event: NSEvent, position: NSPoint) {
         self.timestamp = event.timestamp
@@ -209,6 +218,7 @@ struct TargetEventRecord: Codable, Equatable {
         buttonNumber = event.buttonNumber
         clickCount = event.clickCount
         modifierFlags = event.modifierFlags.rawValue
+        keyCode = name == "keyDown" || name == "keyUp" ? event.keyCode : nil
     }
 
     var displayLine: String {
@@ -231,6 +241,10 @@ struct TargetEventRecord: Codable, Equatable {
             return base + " button=\(buttonNumber)"
         case "otherMouseDragged":
             return base + " button=\(buttonNumber) dx=\(format(deltaX)) dy=\(format(deltaY))"
+        case "keyDown", "keyUp":
+            return base
+                + " keyCode=\(keyCode.map { String($0) } ?? "-")"
+                + " flags=\(modifierFlags)"
         default:
             return base
         }

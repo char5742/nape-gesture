@@ -6,6 +6,8 @@ import NapeGestureCore
 
 struct SystemBehaviorTestCommand {
     private let options: [String]
+    private let killSwitchKeyCode = CGKeyCode(kVK_ANSI_G)
+    private let killSwitchFlags: CGEventFlags = [.maskControl, .maskAlternate, .maskCommand]
 
     init(options: [String]) {
         self.options = options
@@ -50,6 +52,9 @@ struct SystemBehaviorTestCommand {
 
               zoom-out
                   ズームアウト相当のアクションを生成します。
+
+              kill-switch
+                  キルスイッチ相当の Control + Option + Command + G を未マークのキーイベントとして生成します。
 
             例:
               nape-gesture system-test run --scenario space-left --target finder --amount 1800 --steps 36
@@ -119,6 +124,8 @@ struct SystemBehaviorTestCommand {
             poster.postZoomIn()
         case .zoomOut:
             poster.postZoomOut()
+        case .killSwitch:
+            postUnmarkedKeyShortcut(keyCode: killSwitchKeyCode, flags: killSwitchFlags)
         }
     }
 
@@ -207,6 +214,13 @@ struct SystemBehaviorTestCommand {
             return shortcutRecords(keyCode: CGKeyCode(kVK_ANSI_Equal), flags: .maskCommand, startTime: startTime)
         case .zoomOut:
             return shortcutRecords(keyCode: CGKeyCode(kVK_ANSI_Minus), flags: .maskCommand, startTime: startTime)
+        case .killSwitch:
+            return shortcutRecords(
+                keyCode: killSwitchKeyCode,
+                flags: killSwitchFlags,
+                startTime: startTime,
+                generatedByNapeGesture: false
+            )
         }
     }
 
@@ -236,11 +250,26 @@ struct SystemBehaviorTestCommand {
     private func shortcutRecords(
         keyCode: CGKeyCode,
         flags: CGEventFlags,
-        startTime: TimeInterval
+        startTime: TimeInterval,
+        generatedByNapeGesture: Bool = true
     ) -> [InputLogRecord] {
         [
-            keyRecord(typeName: "keyDown", type: .keyDown, keyCode: keyCode, flags: flags, time: startTime),
-            keyRecord(typeName: "keyUp", type: .keyUp, keyCode: keyCode, flags: flags, time: startTime + 0.01)
+            keyRecord(
+                typeName: "keyDown",
+                type: .keyDown,
+                keyCode: keyCode,
+                flags: flags,
+                time: startTime,
+                generatedByNapeGesture: generatedByNapeGesture
+            ),
+            keyRecord(
+                typeName: "keyUp",
+                type: .keyUp,
+                keyCode: keyCode,
+                flags: flags,
+                time: startTime + 0.01,
+                generatedByNapeGesture: generatedByNapeGesture
+            )
         ]
     }
 
@@ -249,13 +278,14 @@ struct SystemBehaviorTestCommand {
         type: CGEventType,
         keyCode: CGKeyCode,
         flags: CGEventFlags,
-        time: TimeInterval
+        time: TimeInterval,
+        generatedByNapeGesture: Bool
     ) -> InputLogRecord {
         InputLogRecord(
             timestamp: timestamp(time),
             typeName: typeName,
             typeRaw: Int(type.rawValue),
-            generatedByNapeGesture: true,
+            generatedByNapeGesture: generatedByNapeGesture,
             buttonNumber: 0,
             deltaX: 0,
             deltaY: 0,
@@ -269,6 +299,23 @@ struct SystemBehaviorTestCommand {
             keyCode: Int64(keyCode),
             flags: flags.rawValue
         )
+    }
+
+    private func postUnmarkedKeyShortcut(keyCode: CGKeyCode, flags: CGEventFlags) {
+        let source = CGEventSource(stateID: .hidSystemState)
+        source?.setLocalEventsFilterDuringSuppressionState([], state: .eventSuppressionStateSuppressionInterval)
+
+        guard
+            let down = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
+            let up = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
+        else {
+            return
+        }
+
+        for event in [down, up] {
+            event.flags = flags
+            event.post(tap: .cghidEventTap)
+        }
     }
 
     private func timestamp(_ time: TimeInterval) -> UInt64 {
@@ -392,6 +439,7 @@ private enum SystemTestScenario: String {
     case pageForward = "page-forward"
     case zoomIn = "zoom-in"
     case zoomOut = "zoom-out"
+    case killSwitch = "kill-switch"
 }
 
 private enum SystemTestTarget: String {
