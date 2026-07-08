@@ -300,18 +300,7 @@ final class SettingsWindowController: NSWindowController {
     }
 
     private func configurePopup(_ popup: NSPopUpButton) {
-        for action in [
-            GestureAction.none,
-            .smoothScroll,
-            .horizontalScroll,
-            .missionControl,
-            .spaceLeft,
-            .spaceRight,
-            .pageBack,
-            .pageForward,
-            .zoomIn,
-            .zoomOut
-        ] {
+        for action in GestureAction.settingsSelectableActions {
             popup.addItem(withTitle: action.rawValue)
         }
     }

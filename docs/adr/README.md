@@ -18,6 +18,7 @@
 | [ADR-0009](0009-target-device-association-window-assertion.md) | 対象デバイス紐づけ秒の機械判定 | Issue #5、HID / event tap 時刻差、associationWindow |
 | [ADR-0010](0010-system-test-discrete-assignment-dry-run-evidence.md) | 離散割り当ての System Behavior Test dry-run 証跡 | Issue #10、ページ戻る/進む、ズーム、横スクロール |
 | [ADR-0011](0011-doctor-runtime-ready-assertion.md) | doctor runtime ready の機械判定 | Issue #13、Issue #16、権限、HID probe、対象デバイス一致 |
+| [ADR-0012](0012-settings-ui-gesture-action-coverage.md) | 設定 UI の GestureAction 網羅性 | 設定 UI、GestureAction、アプリ別設定不要 |
 
 ## 追加時の確認
 

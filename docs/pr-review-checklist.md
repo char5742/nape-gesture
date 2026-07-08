@@ -63,6 +63,7 @@
 ## UI / Doctor / 権限導線変更
 
 - 設定 UI にアプリ別の有効・無効、感度、割り当てを追加していない
+- 設定 UI の割り当て候補は `GestureAction.settingsSelectableActions` から生成し、`GestureAction.allCases` との網羅性テストを維持している
 - 不正な設定値を保存前または起動前に止める
 - `runtimeIdentity` で権限付与対象が分かる
 - アクセシビリティと入力監視の失敗を区別している
