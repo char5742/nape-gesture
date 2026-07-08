@@ -118,8 +118,8 @@ final class CommandLineTool {
               nape-gesture init-config [--out <path>] [--vendor-id <ID>] [--product-id <ID>] [--manufacturer-contains <文字>] [--product-contains <文字>] [--transport-contains <文字>] [--usage-page <ID>] [--usage <ID>] [--association-window <秒>] [--allow-unmatched]
                   Nape Pro 向け、または指定した HID 条件向けの設定テンプレートを出力します。
 
-              nape-gesture target [--out <path>]
-                  AppKit が受け取るイベントを表示する基準ウィンドウを開きます。--out で受信イベントを JSON Lines に保存します。
+              nape-gesture target [--out <path>] [--duration <秒>] [--ready-file <path>]
+                  AppKit が受け取るイベントを表示する基準ウィンドウを開きます。--out で受信イベントを JSON Lines に保存します。--duration 指定時は指定秒数後に自動終了し、--ready-file でウィンドウ準備完了ファイルを書き出します。
 
               nape-gesture devices [--json] [--all]
                   IOHID で認識できるデバイスを表示します。通常はマウス系だけ、--all で全HIDを表示します。
