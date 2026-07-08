@@ -168,6 +168,43 @@ run_combined_success \
   ".build/release/nape-gesture verify-bundle .build/NapeGesture.app" \
   .build/release/nape-gesture verify-bundle .build/NapeGesture.app
 
+run_split_expected_failure \
+  "未署名 app bundle 署名必須検証" \
+  "$bundle_dir/verify-bundle-require-signature-unsigned.log" \
+  "$bundle_dir/verify-bundle-require-signature-unsigned.stderr.log" \
+  ".build/release/nape-gesture verify-bundle --require-signature .build/NapeGesture.app" \
+  .build/release/nape-gesture verify-bundle --require-signature .build/NapeGesture.app
+
+run_combined_success \
+  "LICENSE 原本一致確認" \
+  "$bundle_dir/license-cmp.log" \
+  "cmp LICENSE .build/NapeGesture.app/Contents/Resources/LICENSE.txt" \
+  cmp LICENSE .build/NapeGesture.app/Contents/Resources/LICENSE.txt
+
+run_combined_success \
+  "THIRD_PARTY_NOTICES 原本一致確認" \
+  "$bundle_dir/third-party-notices-cmp.log" \
+  "cmp THIRD_PARTY_NOTICES.md .build/NapeGesture.app/Contents/Resources/THIRD_PARTY_NOTICES.md" \
+  cmp THIRD_PARTY_NOTICES.md .build/NapeGesture.app/Contents/Resources/THIRD_PARTY_NOTICES.md
+
+run_combined_success \
+  "app bundle ad-hoc 署名" \
+  "$bundle_dir/codesign-ad-hoc.log" \
+  "codesign --force --deep --sign - .build/NapeGesture.app" \
+  codesign --force --deep --sign - .build/NapeGesture.app
+
+run_combined_success \
+  "app bundle codesign 検証" \
+  "$bundle_dir/codesign-verify.log" \
+  "codesign --verify --deep --strict --verbose=2 .build/NapeGesture.app" \
+  codesign --verify --deep --strict --verbose=2 .build/NapeGesture.app
+
+run_combined_success \
+  "署名済み app bundle 署名必須検証" \
+  "$bundle_dir/verify-bundle-require-signature-signed.log" \
+  ".build/release/nape-gesture verify-bundle --require-signature .build/NapeGesture.app" \
+  .build/release/nape-gesture verify-bundle --require-signature .build/NapeGesture.app
+
 run_combined_success \
   "検証用設定作成" \
   "$doctor_dir/init-config.log" \
