@@ -20,6 +20,7 @@
 - `priority:p1`
 - `parallel:ready`
 - `blocked:external`
+- `need:human`
 
 ## Milestone 1: リポジトリ移行と品質ゲート
 

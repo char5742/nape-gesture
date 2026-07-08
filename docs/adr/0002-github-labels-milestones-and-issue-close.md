@@ -16,6 +16,11 @@ Issue、label、milestone の運用が揺れると、サブエージェントへ
   - `priority:*`: メインスレッドが統合順序を決めるための優先度を示す。
   - `parallel:ready`: サブエージェントへ独立投入しやすい Issue に付ける。
   - `blocked:external`: 実機、権限、外部状態など、ローカル変更だけでは完了できない Issue に付ける。
+  - `need:human`: 人間の物理作業が最後の手段として必要な Issue に付ける。
+- `need:human` は「人に確認してほしい」ではなく、純正トラックパッド操作、Nape Pro 実機操作、スリープ、抜き差し、権限変更など、自動化や dry-run では代替しきれない物理作業を表す。
+- `need:human` は最後の手段として使う。CGEvent 投稿、dry-run、fixtures、ログ解析、Reference Target App、System Behavior Test で代替できる作業には先に自動化または半自動化を試す。
+- `need:human` が付いた Issue でも、人間作業に依存しない前処理、検証ツール整備、ログ形式整備、dry-run 生成、解析ロジック改善はサブエージェントで先に進める。
+- 人間作業が不要になった場合は、理由を Issue コメントへ残して `need:human` を外す。
 - GitHub の既定 label は、この taxonomy と重複するため未使用なら削除する。
 - 新しい label を追加する場合は、先に ADR または `docs/github-issues.md` に分類上の理由を残す。
 - milestone はリリースや完成判定に向かう段階を表す。単なる担当者や作業場所としては使わない。

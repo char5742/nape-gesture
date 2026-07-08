@@ -45,7 +45,8 @@ swift build -c release --scratch-path .build
 - Issue: 16件
 - 完了扱いで close 済み: 4件（Issue 1、Issue 2、Issue 3、Issue 7）
 - close 済み Milestone: Milestone 1
-- 運用 label: 15件
+- bootstrap 時点の運用 label: 15件
+- 後続追加 label: `need:human`
 
 Issue、label、milestone の作成・更新・コメント・close は、基本的に `gh api` で行う。
 重複を避けるため、再投入時は既存 title / label name / milestone title を先に取得してから差分だけ作成する。
