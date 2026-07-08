@@ -238,7 +238,7 @@ run_combined_success \
   ".build/debug/nape-gesture system-test list" \
   .build/debug/nape-gesture system-test list
 
-for scenario in space-left space-right mission-control horizontal-scroll kill-switch; do
+for scenario in space-left space-right mission-control horizontal-scroll page-back page-forward zoom-in zoom-out kill-switch; do
   if [ "$scenario" = "space-left" ] || [ "$scenario" = "space-right" ]; then
     run_combined_success \
       "system-test $scenario dry-run JSON Lines" \
