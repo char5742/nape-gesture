@@ -4,30 +4,38 @@ import Foundation
 final class ReferenceTargetApp: NSObject, NSApplicationDelegate {
     private static var retainedDelegate: ReferenceTargetApp?
 
-    private let outputPath: String?
+    private let configuration: ReferenceTargetConfiguration
     private let encoder = JSONEncoder()
     private var outputHandle: FileHandle?
+    private var terminationTimer: Timer?
+    private var launchFailure: Error?
     private var window: NSWindow?
     private var textView: NSTextView?
 
-    init(outputPath: String?) {
-        self.outputPath = outputPath
+    private init(configuration: ReferenceTargetConfiguration) {
+        self.configuration = configuration
         encoder.outputFormatting = [.sortedKeys]
         super.init()
     }
 
     static func run(options: [String]) throws {
+        let configuration = try ReferenceTargetConfiguration(options: options)
         let app = NSApplication.shared
-        let delegate = ReferenceTargetApp(outputPath: SettingsStore.value(for: "--out", in: options))
+        let delegate = ReferenceTargetApp(configuration: configuration)
         try delegate.openOutputIfNeeded()
         retainedDelegate = delegate
         app.delegate = delegate
         app.setActivationPolicy(.regular)
         app.activate(ignoringOtherApps: true)
         app.run()
+        if let launchFailure = delegate.launchFailure {
+            throw launchFailure
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        terminationTimer?.invalidate()
+        terminationTimer = nil
         closeOutputIfNeeded()
         Self.retainedDelegate = nil
     }
@@ -74,13 +82,21 @@ final class ReferenceTargetApp: NSObject, NSApplicationDelegate {
         self.window = window
         self.textView = textView
         textView.appendLine("ここにマウス、スクロール、ジェスチャーイベントが表示されます。")
-        if let outputPath {
+        if let outputPath = configuration.outputPath {
             textView.appendLine("JSON Lines 出力: \(outputPath)")
+        }
+
+        do {
+            try writeReadyFileIfNeeded()
+            scheduleAutomaticTerminationIfNeeded()
+        } catch {
+            launchFailure = error
+            NSApp.terminate(nil)
         }
     }
 
     private func openOutputIfNeeded() throws {
-        guard let outputPath else {
+        guard let outputPath = configuration.outputPath else {
             return
         }
 
@@ -91,6 +107,36 @@ final class ReferenceTargetApp: NSObject, NSApplicationDelegate {
         )
         try Data().write(to: url, options: .atomic)
         outputHandle = try FileHandle(forWritingTo: url)
+    }
+
+    private func writeReadyFileIfNeeded() throws {
+        guard let readyFilePath = configuration.readyFilePath else {
+            return
+        }
+
+        let url = URL(fileURLWithPath: readyFilePath)
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        var data = try encoder.encode(ReferenceTargetReadyRecord(
+            ready: true,
+            pid: ProcessInfo.processInfo.processIdentifier,
+            timestamp: Date().timeIntervalSince1970,
+            outputPath: configuration.outputPath
+        ))
+        data.append(Data("\n".utf8))
+        try data.write(to: url, options: .atomic)
+    }
+
+    private func scheduleAutomaticTerminationIfNeeded() {
+        guard let duration = configuration.duration else {
+            return
+        }
+
+        terminationTimer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { _ in
+            NSApp.terminate(nil)
+        }
     }
 
     private func write(_ record: TargetEventRecord) {
@@ -107,6 +153,44 @@ final class ReferenceTargetApp: NSObject, NSApplicationDelegate {
         try? outputHandle?.close()
         outputHandle = nil
     }
+}
+
+private struct ReferenceTargetConfiguration {
+    var outputPath: String?
+    var duration: TimeInterval?
+    var readyFilePath: String?
+
+    init(options: [String]) throws {
+        outputPath = try Self.optionalValue(for: "--out", in: options)
+        duration = try Self.optionalDuration(in: options)
+        readyFilePath = try Self.optionalValue(for: "--ready-file", in: options)
+    }
+
+    private static func optionalValue(for name: String, in options: [String]) throws -> String? {
+        guard options.contains(name) else {
+            return nil
+        }
+        return try SettingsStore.requiredValue(for: name, in: options)
+    }
+
+    private static func optionalDuration(in options: [String]) throws -> TimeInterval? {
+        guard options.contains("--duration") else {
+            return nil
+        }
+
+        let raw = try SettingsStore.requiredValue(for: "--duration", in: options)
+        guard let duration = TimeInterval(raw), duration.isFinite, duration > 0 else {
+            throw ToolError.invalidValue("--duration", raw)
+        }
+        return duration
+    }
+}
+
+private struct ReferenceTargetReadyRecord: Codable, Equatable {
+    var ready: Bool
+    var pid: Int32
+    var timestamp: TimeInterval
+    var outputPath: String?
 }
 
 final class EventCaptureView: NSView {
