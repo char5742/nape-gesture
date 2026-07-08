@@ -38,6 +38,7 @@
 - 自前生成イベントを再解釈しない
 - ジェスチャー成立後の元入力漏れを増やしていない
 - 対象外デバイスの通常クリック、ドラッグ、ホイールを改変しない
+- `doctor --json` の `targetDeviceDiagnostics` で、対象デバイス不一致時の matcher 条件差分を確認できる
 - キルスイッチで生成と慣性を即時停止できる
 - キルスイッチ自体を event tap で抑制し、前面アプリへ渡していない
 - `system-test run --scenario kill-switch --dry-run --log-json` を `analyze-log --assert-kill-switch-shortcut` で確認している

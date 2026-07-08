@@ -47,6 +47,7 @@ executablePath: /Users/fujino/Documents/mac-gesture/.build/NapeGesture.app/Conte
 - `tccStatus.inputMonitoring.status` が `granted`
 - `runtimeIdentity` が、実際に日常利用する `.app` または実行ファイルを指している
 - `requireMatchingTargetDevice` が `true` の場合、`matchedTargetDeviceCount` が `1` 以上
+- `targetDeviceDiagnostics.status` が `matched`、または未一致時に `targetDeviceDiagnostics.candidates[].bestEvaluation.mismatches` で外れた matcher 条件を説明できる
 - `--assert-runtime-ready` の終了コードが 0
 
 権限付与先を迷う場合は、`doctor --json` の `runtimeIdentity` を見る。
@@ -54,6 +55,8 @@ executablePath: /Users/fujino/Documents/mac-gesture/.build/NapeGesture.app/Conte
 SwiftPM や debug バイナリを直接実行している場合は、`runtimeIdentity.executablePath` に出た実行ファイルを許可対象として扱う。
 `--assert-runtime-ready` は JSON 出力後に runtime 開始前提を検査する。アクセシビリティ未許可、HID probe 未実行、HID probe 失敗、対象デバイス必須時の不一致、設定不正、HID inventory 失敗があれば非ゼロ終了する。
 失敗理由は `runtimeReadiness.failures[].code` で確認し、日本語の `findings` だけを採否条件にしない。
+対象デバイス必須時の不一致は、`runtimeReadiness.failures[].code == "targetDevice.notFound"` と `targetDeviceDiagnostics.status == "notFound"` を合わせて確認する。
+`targetDeviceDiagnostics.candidates[].bestEvaluation.mismatches` は、候補ごとの vendorID、productID、manufacturer、product、transport、usage 条件のどこが外れたかを示す。
 
 ## 性能測定
 

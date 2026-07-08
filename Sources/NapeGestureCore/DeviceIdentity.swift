@@ -111,41 +111,176 @@ public struct DeviceMatcher: Codable, Equatable, Sendable {
     }
 
     public func matches(_ device: DeviceIdentity) -> Bool {
-        guard hasAnyCondition else {
-            return false
-        }
+        evaluate(device).isMatch
+    }
 
-        if let vendorID, vendorID != device.vendorID {
-            return false
-        }
-        if let productID, productID != device.productID {
-            return false
-        }
-        if let manufacturerContains, !device.manufacturer.localizedCaseInsensitiveContains(manufacturerContains) {
-            return false
-        }
-        if let productContains, !device.product.localizedCaseInsensitiveContains(productContains) {
-            return false
-        }
-        if let transportContains, !device.transport.localizedCaseInsensitiveContains(transportContains) {
-            return false
-        }
-        if let primaryUsagePage, primaryUsagePage != device.primaryUsagePage {
-            return false
-        }
-        if let primaryUsage, primaryUsage != device.primaryUsage {
-            return false
-        }
-        return true
+    public func evaluate(_ device: DeviceIdentity) -> DeviceMatcherEvaluation {
+        var matchedConditions: [String] = []
+        var mismatches: [DeviceMatcherConditionMismatch] = []
+
+        evaluateEqual(
+            field: "vendorID",
+            expected: vendorID,
+            actual: device.vendorID,
+            matchedConditions: &matchedConditions,
+            mismatches: &mismatches
+        )
+        evaluateEqual(
+            field: "productID",
+            expected: productID,
+            actual: device.productID,
+            matchedConditions: &matchedConditions,
+            mismatches: &mismatches
+        )
+        evaluateContains(
+            field: "manufacturer",
+            expectedContains: manufacturerContains,
+            actual: device.manufacturer,
+            matchedConditions: &matchedConditions,
+            mismatches: &mismatches
+        )
+        evaluateContains(
+            field: "product",
+            expectedContains: productContains,
+            actual: device.product,
+            matchedConditions: &matchedConditions,
+            mismatches: &mismatches
+        )
+        evaluateContains(
+            field: "transport",
+            expectedContains: transportContains,
+            actual: device.transport,
+            matchedConditions: &matchedConditions,
+            mismatches: &mismatches
+        )
+        evaluateEqual(
+            field: "primaryUsagePage",
+            expected: primaryUsagePage,
+            actual: device.primaryUsagePage,
+            matchedConditions: &matchedConditions,
+            mismatches: &mismatches
+        )
+        evaluateEqual(
+            field: "primaryUsage",
+            expected: primaryUsage,
+            actual: device.primaryUsage,
+            matchedConditions: &matchedConditions,
+            mismatches: &mismatches
+        )
+
+        return DeviceMatcherEvaluation(
+            conditionCount: conditionCount,
+            matchedConditions: matchedConditions,
+            mismatches: mismatches
+        )
+    }
+
+    public var conditionCount: Int {
+        [
+            vendorID.map { _ in 1 },
+            productID.map { _ in 1 },
+            nonEmpty(manufacturerContains).map { _ in 1 },
+            nonEmpty(productContains).map { _ in 1 },
+            nonEmpty(transportContains).map { _ in 1 },
+            primaryUsagePage.map { _ in 1 },
+            primaryUsage.map { _ in 1 }
+        ]
+        .compactMap { $0 }
+        .reduce(0, +)
     }
 
     public var hasAnyCondition: Bool {
-        vendorID != nil
-            || productID != nil
-            || manufacturerContains?.isEmpty == false
-            || productContains?.isEmpty == false
-            || transportContains?.isEmpty == false
-            || primaryUsagePage != nil
-            || primaryUsage != nil
+        conditionCount > 0
+    }
+
+    private func evaluateEqual(
+        field: String,
+        expected: Int?,
+        actual: Int,
+        matchedConditions: inout [String],
+        mismatches: inout [DeviceMatcherConditionMismatch]
+    ) {
+        guard let expected else {
+            return
+        }
+        if expected == actual {
+            matchedConditions.append(field)
+        } else {
+            mismatches.append(
+                DeviceMatcherConditionMismatch(
+                    field: field,
+                    expected: String(expected),
+                    actual: String(actual),
+                    relation: "equals"
+                )
+            )
+        }
+    }
+
+    private func evaluateContains(
+        field: String,
+        expectedContains: String?,
+        actual: String,
+        matchedConditions: inout [String],
+        mismatches: inout [DeviceMatcherConditionMismatch]
+    ) {
+        guard let expectedContains = nonEmpty(expectedContains) else {
+            return
+        }
+        if actual.localizedCaseInsensitiveContains(expectedContains) {
+            matchedConditions.append(field)
+        } else {
+            mismatches.append(
+                DeviceMatcherConditionMismatch(
+                    field: field,
+                    expected: expectedContains,
+                    actual: actual,
+                    relation: "contains"
+                )
+            )
+        }
+    }
+
+    private func nonEmpty(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty
+        else {
+            return nil
+        }
+        return trimmed
+    }
+}
+
+public struct DeviceMatcherEvaluation: Codable, Equatable, Sendable {
+    public var conditionCount: Int
+    public var matchedConditionCount: Int
+    public var matchedConditions: [String]
+    public var mismatches: [DeviceMatcherConditionMismatch]
+    public var isMatch: Bool
+
+    public init(
+        conditionCount: Int,
+        matchedConditions: [String],
+        mismatches: [DeviceMatcherConditionMismatch]
+    ) {
+        self.conditionCount = conditionCount
+        self.matchedConditions = matchedConditions
+        matchedConditionCount = matchedConditions.count
+        self.mismatches = mismatches
+        isMatch = conditionCount > 0 && mismatches.isEmpty
+    }
+}
+
+public struct DeviceMatcherConditionMismatch: Codable, Equatable, Sendable {
+    public var field: String
+    public var expected: String
+    public var actual: String
+    public var relation: String
+
+    public init(field: String, expected: String, actual: String, relation: String) {
+        self.field = field
+        self.expected = expected
+        self.actual = actual
+        self.relation = relation
     }
 }

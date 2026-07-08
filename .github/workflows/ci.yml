@@ -128,6 +128,7 @@ jobs:
           .build/debug/nape-gesture doctor --benchmark-events 50000 --json > /tmp/nape-doctor.json
           grep -q '"runtimeReadiness"' /tmp/nape-doctor.json
           grep -q '"tccStatus"' /tmp/nape-doctor.json
+          grep -q '"targetDeviceDiagnostics"' /tmp/nape-doctor.json
 
       - name: Build release
         run: swift build -c release --scratch-path .build
