@@ -1,0 +1,8 @@
+prefix_rule(pattern=["chmod"], decision="deny")
+prefix_rule(pattern=["/bin/chmod"], decision="deny")
+prefix_rule(pattern=["/usr/bin/chmod"], decision="deny")
+prefix_rule(pattern=["git", "reset", "--hard"], decision="deny")
+prefix_rule(pattern=["git", "checkout", "--"], decision="deny")
+prefix_rule(pattern=["git", "clean"], decision="deny")
+prefix_rule(pattern=["rm", "-rf"], decision="deny")
+prefix_rule(pattern=["/bin/rm", "-rf"], decision="deny")
