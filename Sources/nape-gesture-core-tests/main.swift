@@ -35,6 +35,61 @@ func expectApproximatelyEqual(
 
 var failures = 0
 
+func sampleDeviceIdentity() -> DeviceIdentity {
+    DeviceIdentity(
+        manufacturer: "Example",
+        product: "Nape Pro Mouse",
+        vendorID: 123,
+        productID: 456,
+        transport: "Bluetooth",
+        primaryUsagePage: 1,
+        primaryUsage: 2
+    )
+}
+
+func makeHIDRecord(time: TimeInterval, usagePage: Int = 1, usage: Int = 48, integerValue: Int = 1) -> HIDInputLogRecord {
+    HIDInputLogRecord(
+        time: time,
+        device: sampleDeviceIdentity(),
+        usagePage: usagePage,
+        usage: usage,
+        integerValue: integerValue,
+        scaledValue: Double(integerValue),
+        logicalMin: -127,
+        logicalMax: 127,
+        physicalMin: -127,
+        physicalMax: 127
+    )
+}
+
+func makeInputLogRecord(
+    timestamp: UInt64,
+    typeName: String,
+    generatedByNapeGesture: Bool = false,
+    buttonNumber: Int64 = 0
+) -> InputLogRecord {
+    let hasMoveDelta = typeName == "mouseMoved" || typeName.hasSuffix("MouseDragged")
+
+    return InputLogRecord(
+        timestamp: timestamp,
+        typeName: typeName,
+        typeRaw: 0,
+        generatedByNapeGesture: generatedByNapeGesture,
+        buttonNumber: buttonNumber,
+        deltaX: hasMoveDelta ? 1 : 0,
+        deltaY: 0,
+        scrollDeltaX: 0,
+        scrollDeltaY: typeName == "scrollWheel" ? -1 : 0,
+        pointDeltaX: 0,
+        pointDeltaY: typeName == "scrollWheel" ? -1 : 0,
+        scrollPhase: 0,
+        momentumPhase: 0,
+        isContinuous: typeName == "scrollWheel" ? 1 : 0,
+        keyCode: 0,
+        flags: 0
+    )
+}
+
 func testPassesThroughWhenActivationButtonIsNotPressed() {
     var recognizer = GestureRecognizer(configuration: .default)
 
@@ -853,6 +908,107 @@ func testHIDInputLogAnalyzerGroupsByDeviceAndUsage() {
     expect(buttonSummary?.nonZeroEventCount == 0, "ゼロ値イベントを非ゼロとして数えない")
 }
 
+func testInputAssociationAnalyzerMeasuresWindowDistribution() {
+    let hidRecords = [
+        makeHIDRecord(time: 2.0),
+        makeHIDRecord(time: 2.2),
+        makeHIDRecord(time: 3.0)
+    ]
+    let eventRecords = [
+        makeInputLogRecord(timestamp: 1_500_000_000, typeName: "mouseMoved"),
+        makeInputLogRecord(timestamp: 2_050_000_000, typeName: "mouseMoved"),
+        makeInputLogRecord(timestamp: 2_350_000_000, typeName: "scrollWheel"),
+        makeInputLogRecord(timestamp: 2_060_000_000, typeName: "mouseMoved", generatedByNapeGesture: true)
+    ]
+
+    let analysis = InputAssociationAnalyzer.analyze(
+        hidRecords: hidRecords,
+        eventTapRecords: eventRecords,
+        associationWindowSeconds: 0.12
+    )
+
+    expect(analysis.totalHIDEvents == 3, "HID ログ総数を保持する")
+    expect(analysis.totalEventTapEvents == 4, "イベントタップログ総数を保持する")
+    expect(analysis.analyzedEventTapEvents == 3, "未生成の mouse/button/scroll 系だけを解析対象にする")
+    expect(analysis.excludedGeneratedEventTapEvents == 1, "生成済み raw input は解析対象から除外する")
+    expect(analysis.hidCandidateEventCount == 3, "近い HID があるイベントタップ入力を候補ありとして数える")
+    expect(analysis.missingHIDCandidateEventCount == 0, "HID ログがある場合は最も近い HID と比較する")
+    expect(analysis.withinWindowCount == 1, "associationWindow 内の件数を数える")
+    expect(analysis.outsideWindowCount == 2, "associationWindow 外の件数を数える")
+    expectApproximatelyEqual(analysis.maximumTimeDifferenceSeconds, 0.5, "最大時刻差秒を出す")
+    expectApproximatelyEqual(analysis.p95TimeDifferenceSeconds, 0.5, "p95 時刻差秒を出す")
+    expectApproximatelyEqual(analysis.p99TimeDifferenceSeconds, 0.5, "p99 時刻差秒を出す")
+    expect(analysis.suggestedAssociationWindowSeconds >= analysis.p99TimeDifferenceSeconds, "推奨 associationWindow は p99 以上にする")
+}
+
+func testInputAssociationAnalyzerCountsUnmatchedWhenHIDLogIsEmpty() {
+    let eventRecords = [
+        makeInputLogRecord(timestamp: 2_050_000_000, typeName: "mouseMoved")
+    ]
+
+    let analysis = InputAssociationAnalyzer.analyze(
+        hidRecords: [],
+        eventTapRecords: eventRecords,
+        associationWindowSeconds: 0.12
+    )
+
+    expect(analysis.hidCandidateEventCount == 0, "HID ログが空なら候補ありにしない")
+    expect(analysis.missingHIDCandidateEventCount == 1, "HID ログが空なら解析対象イベントを候補なしとして数える")
+    expect(analysis.withinWindowCount == 0, "未一致イベントは associationWindow 内に数えない")
+    expect(analysis.outsideWindowCount == 0, "未一致イベントは associationWindow 外にも数えない")
+}
+
+func testInputAssociationAnalyzerKeepsZeroValueHIDReleaseEvents() {
+    let hidRecords = [
+        makeHIDRecord(time: 10.0, usagePage: 9, usage: 4, integerValue: 0)
+    ]
+    let eventRecords = [
+        makeInputLogRecord(timestamp: 10_020_000_000, typeName: "otherMouseUp", buttonNumber: 4)
+    ]
+
+    let analysis = InputAssociationAnalyzer.analyze(
+        hidRecords: hidRecords,
+        eventTapRecords: eventRecords,
+        associationWindowSeconds: 0.12
+    )
+
+    expect(analysis.hidCandidateEventCount == 1, "HID のゼロ値 release も一致候補として扱う")
+    expect(analysis.withinWindowCount == 1, "release 由来のイベントタップ入力も associationWindow 内判定できる")
+    expectApproximatelyEqual(analysis.matches.first?.timeDifferenceSeconds, 0.02, "release の時刻差秒を算出する")
+}
+
+func testInputAssociationAnalyzerUsesNearestHIDByAbsoluteTimeDifference() {
+    let hidRecords = [
+        makeHIDRecord(time: 5.0)
+    ]
+    let eventRecords = [
+        makeInputLogRecord(timestamp: 4_980_000_000, typeName: "mouseMoved")
+    ]
+
+    let analysis = InputAssociationAnalyzer.analyze(
+        hidRecords: hidRecords,
+        eventTapRecords: eventRecords,
+        associationWindowSeconds: 0.12
+    )
+
+    expect(analysis.hidCandidateEventCount == 1, "イベント時刻より後の近い HID も時刻差判定に使う")
+    expect(analysis.withinWindowCount == 1, "前後どちらの HID でも associationWindow 内を判定する")
+    expectApproximatelyEqual(analysis.matches.first?.timeDifferenceSeconds, 0.02, "HID とイベントタップの絶対時刻差を算出する")
+}
+
+func testInputAssociationAnalyzerAcceptsSecondAndNanosecondTimestamps() {
+    expectApproximatelyEqual(
+        InputAssociationAnalyzer.timestampSeconds(fromEventTimestamp: 42),
+        42,
+        "小さい timestamp は秒値として扱う"
+    )
+    expectApproximatelyEqual(
+        InputAssociationAnalyzer.timestampSeconds(fromEventTimestamp: 42_500_000_000),
+        42.5,
+        "大きい timestamp は nanoseconds として秒へ変換する"
+    )
+}
+
 func testScrollGenerationPlannerAutoPhases() {
     let commands = ScrollGenerationPlanner.makeCommands(
         deltaX: 0,
@@ -1222,6 +1378,11 @@ testInputLogRecordDecodesLegacyGeneratedField()
 testInputLogAnalyzerComparesBaselineAndCandidate()
 testInputLogAnalyzerCountsKeyEvents()
 testHIDInputLogAnalyzerGroupsByDeviceAndUsage()
+testInputAssociationAnalyzerMeasuresWindowDistribution()
+testInputAssociationAnalyzerCountsUnmatchedWhenHIDLogIsEmpty()
+testInputAssociationAnalyzerKeepsZeroValueHIDReleaseEvents()
+testInputAssociationAnalyzerUsesNearestHIDByAbsoluteTimeDifference()
+testInputAssociationAnalyzerAcceptsSecondAndNanosecondTimestamps()
 testScrollGenerationPlannerAutoPhases()
 testScrollGenerationPlannerPhaseOverrideAndMomentum()
 testScrollEventPhaseEncoderSeparatesScrollAndMomentumPhases()

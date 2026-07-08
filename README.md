@@ -57,6 +57,7 @@ swift run nape-gesture check-config
 swift run nape-gesture hid-log --duration 10
 swift run nape-gesture hid-log --vendor-id <ID> --product-id <ID> --usage-page <ID> --usage <ID> --duration 10
 swift run nape-gesture analyze-hid-log Fixtures/sample-hid-log.jsonl
+swift run nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/sample-association-event-log.jsonl --window 0.12
 swift run nape-gesture analyze-target-log Fixtures/sample-target-log.jsonl
 swift run nape-gesture log
 swift run nape-gesture log --duration 8 --out trackpad-space-right.jsonl --exclude-generated
@@ -93,6 +94,7 @@ swift run nape-gesture-core-tests
 `run`、`check-config`、`app` は `--config` を省略した場合、`~/Library/Application Support/NapeGesture/config.json` を使います。存在しない場合は Nape Pro 向けテンプレートを作成します。対象デバイス一致が必須のまま対象条件が空の場合は、全デバイスへ誤適用しないよう起動前に停止します。
 設定ファイルは起動前に検証されます。感度、加速度、慣性、キャンセル条件、対象入力の紐づけ秒、対象デバイス条件に不正値がある場合、`run` と `check-config` は開始せず、`doctor --json` は `settingsValidationIssues` に問題箇所を出します。
 設定の `targetDeviceAssociation.associationWindow` は、対象 HID 入力の直近時刻とイベントタップ入力を同一入力として扱う秒数です。デフォルトは従来挙動と同じ `0.12` 秒です。短くすると対象外デバイスを巻き込みにくくなりますが、イベントタップ側の到達が遅い環境では Nape Pro 入力を取りこぼす可能性があります。長くすると取りこぼしに強くなる一方、別デバイス入力を誤って紐づけるリスクが上がります。
+Nape Pro の HID ログと同時取得したイベントタップログは、`analyze-association <hid-log> <event-log> --window <秒>` で相関し、時刻差の p95 / p99、associationWindow 内外件数、推奨 `associationWindow` を確認します。
 設定の `gesture.acceleration.isEnabled` は速度に応じた加速度倍率を有効化します。`thresholdVelocity` を超えた速度から倍率が上がり、`exponent` でカーブ、`maximumMultiplier` で最大倍率を調整します。デフォルトでは無効です。
 設定の `gesture.momentum.isEnabled` はボタン解放後の慣性を有効化します。`minimumStartVelocity` で慣性開始速度、`stopVelocity` で終了速度、`decayPerSecond` で1秒あたりの減衰率、`frameInterval` で生成間隔を調整します。
 設定の `gesture.cancellation.maximumDuration` はジェスチャー全体の最大秒数、`maximumInactivityInterval` は入力が途切れたときにキャンセルする秒数、`offAxisCancelRatio` は方向ロック後に直交方向へ逸れたときのキャンセル比です。各値は `0` で無効化できます。

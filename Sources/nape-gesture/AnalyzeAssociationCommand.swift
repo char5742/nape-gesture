@@ -1,0 +1,113 @@
+import Foundation
+import NapeGestureCore
+
+struct AnalyzeAssociationCommand {
+    private let options: [String]
+
+    init(options: [String]) {
+        self.options = options
+    }
+
+    func run() throws {
+        let positional = positionalArguments()
+        guard positional.count >= 2 else {
+            throw ToolError.missingValue("HIDログとイベントログ")
+        }
+
+        let window = try windowValue()
+        let hidRecords = try loadHIDRecords(from: positional[0])
+        let eventRecords = try InputLogFileReader.readRecords(path: positional[1])
+        let analysis = InputAssociationAnalyzer.analyze(
+            hidRecords: hidRecords,
+            eventTapRecords: eventRecords,
+            associationWindowSeconds: window
+        )
+
+        if options.contains("--json") {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(analysis)
+            print(String(decoding: data, as: UTF8.self))
+            return
+        }
+
+        print(format(analysis, window: window))
+    }
+
+    private func positionalArguments() -> [String] {
+        var result: [String] = []
+        var index = 0
+        while index < options.count {
+            let option = options[index]
+            if option == "--window" {
+                index += 2
+                continue
+            }
+            if option.hasPrefix("--") {
+                index += 1
+                continue
+            }
+            result.append(option)
+            index += 1
+        }
+        return result
+    }
+
+    private func windowValue() throws -> TimeInterval {
+        guard options.contains("--window") else {
+            return TargetDeviceAssociationConfiguration.defaultAssociationWindow
+        }
+        let raw = try SettingsStore.requiredValue(for: "--window", in: options)
+        guard let value = TimeInterval(raw), value > 0 else {
+            throw ToolError.invalidValue("--window", raw)
+        }
+        return value
+    }
+
+    private func loadHIDRecords(from path: String) throws -> [HIDInputLogRecord] {
+        let data = try Data(contentsOf: URL(fileURLWithPath: path))
+        let content = String(decoding: data, as: UTF8.self)
+        let decoder = JSONDecoder()
+
+        return try content
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .map { line in
+                try decoder.decode(HIDInputLogRecord.self, from: Data(line.utf8))
+            }
+    }
+
+    private func format(_ analysis: InputAssociationAnalysis, window: TimeInterval) -> String {
+        var lines = [
+            "HID / イベントタップ紐づけ解析",
+            "associationWindow: \(format(window)) 秒",
+            "HIDログ総数: \(analysis.totalHIDEvents)",
+            "イベントタップログ総数: \(analysis.totalEventTapEvents)",
+            "解析対象イベントタップ数: \(analysis.analyzedEventTapEvents)",
+            "生成イベント除外数: \(analysis.excludedGeneratedEventTapEvents)",
+            "HID候補あり数: \(analysis.hidCandidateEventCount)",
+            "HID候補なし数: \(analysis.missingHIDCandidateEventCount)",
+            "associationWindow内: \(analysis.withinWindowCount)",
+            "associationWindow外: \(analysis.outsideWindowCount)",
+            "最大時刻差: \(format(analysis.maximumTimeDifferenceSeconds)) 秒",
+            "p95時刻差: \(format(analysis.p95TimeDifferenceSeconds)) 秒",
+            "p99時刻差: \(format(analysis.p99TimeDifferenceSeconds)) 秒",
+            "推奨associationWindow: \(format(analysis.suggestedAssociationWindowSeconds)) 秒"
+        ]
+
+        if analysis.missingHIDCandidateEventCount > 0 {
+            lines.append("所見: 一致候補になる HID 入力がないイベントタップ入力があります。ログの同時取得範囲と対象デバイス条件を確認してください。")
+        }
+        if analysis.outsideWindowCount > 0 {
+            lines.append("所見: 現在の associationWindow 外に出るイベントタップ入力があります。実機ログを根拠に associationWindow を調整してください。")
+        }
+        if analysis.missingHIDCandidateEventCount == 0 && analysis.outsideWindowCount == 0 {
+            lines.append("所見: 解析対象のイベントタップ入力は現在の associationWindow 内に収まっています。")
+        }
+
+        return lines.joined(separator: "\n")
+    }
+
+    private func format(_ value: TimeInterval) -> String {
+        String(format: "%.4f", value)
+    }
+}

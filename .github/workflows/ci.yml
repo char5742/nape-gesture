@@ -35,6 +35,7 @@ jobs:
           .build/debug/nape-gesture analyze-log /tmp/system-horizontal-scroll.jsonl --json
           .build/debug/nape-gesture compare-log Fixtures/sample-trackpad-scroll-log.jsonl Fixtures/sample-generated-scroll-log.jsonl
           .build/debug/nape-gesture analyze-hid-log Fixtures/sample-hid-log.jsonl
+          .build/debug/nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/sample-association-event-log.jsonl --window 0.12 --json
           .build/debug/nape-gesture analyze-target-log Fixtures/sample-target-log.jsonl
 
       - name: Build release
