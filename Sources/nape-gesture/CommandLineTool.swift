@@ -39,6 +39,8 @@ final class CommandLineTool {
             try AnalyzeLogCommand(options: options).run()
         case "compare-log":
             try CompareLogCommand(options: options).run()
+        case "derive-parameters":
+            try DeriveParametersCommand(options: options).run()
         case "analyze-hid-log":
             try AnalyzeHIDLogCommand(options: options).run()
         case "analyze-association":
@@ -95,6 +97,9 @@ final class CommandLineTool {
 
               nape-gesture compare-log <baseline> <candidate> [--json]
                   純正入力ログと生成イベントログなど、2つの JSON Lines ログ差分を比較します。
+
+              nape-gesture derive-parameters <path> [--json]
+                  純正トラックパッドなどの JSON Lines ログから deadZone、加速度、慣性の候補値と未導出理由を出します。
 
               nape-gesture analyze-hid-log <path> [--json]
                   IOHID 生入力ログを device / usage ごとに集計します。
