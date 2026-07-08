@@ -1,0 +1,29 @@
+# ADR-0008: Runtime recovery 境界条件の機械証跡化
+
+- 状態: 採択
+- 日付: 2026-07-09
+
+## 背景
+
+Issue #13 のスリープ復帰、デバイス抜き差し、権限変更後の復旧は、最終的に macOS UI 操作や実デバイス操作を伴う。
+一方で、復旧状態の予約、破棄、消費、表示条件は外部 IO なしで検証できる。
+人間作業に進む前にこの純粋状態を固定しておかないと、実機検証で失敗したときに状態機械と外部状態の切り分けが難しくなる。
+
+## 決定
+
+- Issue #13 の機械前段は `RuntimeRecoveryState` の回帰テストと `doctor --probe-hid --json` の保存を正とする。
+- `RuntimeRecoveryState` では、スリープ前停止、スリープ中の自動再試行禁止、wake 後の遅延再開、自動復旧可能な失敗の再試行、人間修正が必要な失敗の再試行禁止を固定する。
+- 追加で、wake 後の再試行予約を手動停止で破棄すること、既存の失敗再試行予約を sleep で破棄すること、ready になった予約を `.automaticRetry` として消費すること、負の wake retry delay を即時再試行として丸めることを境界条件として固定する。
+- `scripts/collect-completion-evidence.sh` は `doctor --probe-hid --json` を保存し、`runtimeIdentity`、入力監視プローブ成否、復旧手順、設定検証結果を記録する。
+
+## 影響
+
+- スリープ、デバイス抜き差し、TCC 変更の実機作業前に、状態機械の前提を CI と completion evidence で確認できる。
+- `doctor --probe-hid --json` が失敗を返す場合も、TCC や入力監視の外部ブロッカーと実装バグを切り分けやすくなる。
+- この ADR と機械証跡だけでは Issue #13 を完了扱いにしない。実機操作ログ、常駐 UI の自動再試行表示、権限復旧導線の実測は引き続き必要である。
+
+## 関連
+
+- [Runtime event 証跡の自動収集と人間作業境界](0006-runtime-event-evidence-automation.md)
+- [完成判定チェックリスト](../completion-checklist.md)
+- [検証方針](../verification.md)

@@ -182,6 +182,13 @@ run_split_success \
   .build/debug/nape-gesture doctor --config "$config_path" --benchmark-events 50000 --json
 
 run_split_success \
+  "doctor HID probe JSON" \
+  "$doctor_dir/doctor-hid-probe-debug.json" \
+  "$doctor_dir/doctor-hid-probe-debug.stderr.log" \
+  ".build/debug/nape-gesture doctor --config $config_path --probe-hid --benchmark-events 1000 --json" \
+  .build/debug/nape-gesture doctor --config "$config_path" --probe-hid --benchmark-events 1000 --json
+
+run_split_success \
   "benchmark JSON" \
   "$doctor_dir/benchmark-debug.json" \
   "$doctor_dir/benchmark-debug.stderr.log" \
