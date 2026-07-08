@@ -72,6 +72,7 @@
 - 不正な設定値を保存前または起動前に止める
 - `runtimeIdentity` で権限付与対象が分かる
 - `runtimeReadiness.ready`、`runtimeReadiness.failures[].code`、`tccStatus.accessibility`、`tccStatus.inputMonitoring` で runtime ready と TCC 状態を構造化している
+- `tccStatus.permissionTarget` と `grantRequired` で、権限を付与すべき `.app` または実行ファイルを機械的に引用できる
 - アクセシビリティと入力監視の失敗を区別している
 - doctor JSON 契約を変えた場合は CI smoke、completion evidence、関連 ADR を更新している
 - 常駐 UI の実行中、停止中、自動再試行中、スリープ待機中表示が `RuntimeStatusPresenter` の core test で固定されている
