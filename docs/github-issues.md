@@ -22,6 +22,9 @@
 - `blocked:external`
 - `need:human`
 
+`need:human` は人に確認してほしいという意味ではなく、純正トラックパッド操作など人間の物理作業が最後の手段として必要な Issue にだけ使う。
+自動化、dry-run、fixtures、ログ解析、Reference Target App、System Behavior Test で代替できる作業は、先にそれらで潰し込む。
+
 ## Milestone 1: リポジトリ移行と品質ゲート
 
 ### Issue 1: リポジトリ名を nape-gesture として公開できる状態にする
