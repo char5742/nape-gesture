@@ -98,6 +98,8 @@ jobs:
           .build/debug/nape-gesture analyze-target-log Fixtures/gesture-target-log.jsonl --json --assert-has-gesture
           .build/debug/nape-gesture benchmark --events 200000 --json --assert-baseline > /tmp/nape-benchmark.json
           .build/debug/nape-gesture doctor --benchmark-events 50000 --json > /tmp/nape-doctor.json
+          grep -q '"runtimeReadiness"' /tmp/nape-doctor.json
+          grep -q '"tccStatus"' /tmp/nape-doctor.json
 
       - name: Build release
         run: swift build -c release --scratch-path .build

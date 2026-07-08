@@ -62,6 +62,20 @@ struct DoctorCommand {
             ? makeHIDProbe(settings: settings, matchedDevices: inventory.matchedDevices, findings: &findings)
             : DoctorHIDProbe(requested: false, succeeded: nil, error: nil, remediation: nil)
         let benchmark = BenchmarkRunner.run(events: benchmarkEvents)
+        let tccStatus = DoctorTCCStatus(
+            accessibilityTrusted: accessibilityTrusted,
+            hidProbe: probe,
+            inputMonitoringRemediation: remediation(forInputMonitoringProbe: probe)
+        )
+        let runtimeReadiness = DoctorRuntimeReadiness(
+            settingsValidationIssues: settingsValidationIssues,
+            accessibilityTrusted: accessibilityTrusted,
+            inventoryError: inventory.error,
+            requireMatchingTargetDevice: settings.requireMatchingTargetDevice,
+            configuredTargetMatchers: settings.targetDevices.count,
+            matchedTargetDeviceCount: inventory.matchedDevices.count,
+            hidProbe: probe
+        )
 
         if findings.isEmpty {
             findings.append("診断範囲では致命的な問題は見つかりませんでした。実機操作と Spaces / Mission Control の画面挙動は別途検証してください。")
@@ -81,6 +95,8 @@ struct DoctorCommand {
             matchedTargetDevices: inventory.matchedDevices,
             inventoryError: inventory.error,
             hidProbe: probe,
+            tccStatus: tccStatus,
+            runtimeReadiness: runtimeReadiness,
             benchmark: benchmark,
             settingsValidationIssues: settingsValidationIssues,
             findings: findings
@@ -183,6 +199,19 @@ struct DoctorCommand {
         }
     }
 
+    private func remediation(forInputMonitoringProbe probe: DoctorHIDProbe) -> String? {
+        if let remediation = probe.remediation {
+            return remediation
+        }
+        if probe.requested && probe.succeeded != true {
+            return "システム設定 > プライバシーとセキュリティ > 入力監視で、runtimeIdentity の実行主体を許可してから再起動してください。"
+        }
+        if !probe.requested {
+            return "`doctor --probe-hid` を実行して入力監視の状態を確認してください。"
+        }
+        return nil
+    }
+
     private func format(_ report: DoctorReport) -> String {
         var lines = [
             "診断結果",
@@ -199,7 +228,8 @@ struct DoctorCommand {
             "対象デバイス条件数: \(report.configuredTargetMatchers)",
             "HIDデバイス数: \(formatOptional(report.allHIDDeviceCount))",
             "ポインティングデバイス数: \(formatOptional(report.pointingDeviceCount))",
-            "一致対象デバイス数: \(report.matchedTargetDeviceCount)"
+            "一致対象デバイス数: \(report.matchedTargetDeviceCount)",
+            "runtime ready: \(report.runtimeReadiness.ready ? "はい" : "いいえ")"
         ]
 
         for device in report.matchedTargetDevices {
@@ -226,6 +256,10 @@ struct DoctorCommand {
         if !report.settingsValidationIssues.isEmpty {
             lines.append("設定バリデーション:")
             lines.append(contentsOf: report.settingsValidationIssues.map { "- \($0.path): \($0.message)" })
+        }
+        if !report.runtimeReadiness.failures.isEmpty {
+            lines.append("runtime ready 不足:")
+            lines.append(contentsOf: report.runtimeReadiness.failures.map { "- \($0.code): \($0.message)" })
         }
         lines.append("所見:")
         lines.append(contentsOf: report.findings.map { "- \($0)" })
@@ -258,34 +292,165 @@ private struct DoctorReport: Codable {
     var matchedTargetDevices: [DeviceIdentity]
     var inventoryError: String?
     var hidProbe: DoctorHIDProbe
+    var tccStatus: DoctorTCCStatus
+    var runtimeReadiness: DoctorRuntimeReadiness
     var benchmark: BenchmarkReport
     var settingsValidationIssues: [SettingsValidationIssue]
     var findings: [String]
 
     var runtimeReadinessFailures: [String] {
-        var failures: [String] = []
+        runtimeReadiness.failures.map(\.message)
+    }
+}
+
+private struct DoctorRuntimeReadiness: Codable {
+    var ready: Bool
+    var failures: [DoctorRuntimeReadinessFailure]
+
+    init(
+        settingsValidationIssues: [SettingsValidationIssue],
+        accessibilityTrusted: Bool,
+        inventoryError: String?,
+        requireMatchingTargetDevice: Bool,
+        configuredTargetMatchers: Int,
+        matchedTargetDeviceCount: Int,
+        hidProbe: DoctorHIDProbe
+    ) {
+        var failures: [DoctorRuntimeReadinessFailure] = []
         if !settingsValidationIssues.isEmpty {
-            failures.append("設定ファイルに不正な値があります。")
+            failures.append(
+                DoctorRuntimeReadinessFailure(
+                    code: "settings.invalid",
+                    category: "settings",
+                    message: "設定ファイルに不正な値があります。",
+                    remediation: "`check-config` で詳細を確認し、設定 UI または JSON を修正してください。"
+                )
+            )
         }
         if !accessibilityTrusted {
-            failures.append("アクセシビリティ権限が未許可です。")
+            failures.append(
+                DoctorRuntimeReadinessFailure(
+                    code: "accessibility.missing",
+                    category: "tcc",
+                    message: "アクセシビリティ権限が未許可です。",
+                    remediation: "runtimeIdentity の実行主体をシステム設定のアクセシビリティで許可し、プロセスを再起動してください。"
+                )
+            )
         }
         if inventoryError != nil {
-            failures.append("HID デバイス一覧を取得できません。")
+            failures.append(
+                DoctorRuntimeReadinessFailure(
+                    code: "hidInventory.failed",
+                    category: "hid",
+                    message: "HID デバイス一覧を取得できません。",
+                    remediation: "HID デバイス一覧の取得エラーを解消してから再実行してください。"
+                )
+            )
         }
         if requireMatchingTargetDevice && configuredTargetMatchers == 0 {
-            failures.append("対象デバイス一致が必須ですが、対象デバイス条件が空です。")
+            failures.append(
+                DoctorRuntimeReadinessFailure(
+                    code: "targetDevice.matcherMissing",
+                    category: "targetDevice",
+                    message: "対象デバイス一致が必須ですが、対象デバイス条件が空です。",
+                    remediation: "`init-config` または設定 UI で対象デバイス条件を設定してください。"
+                )
+            )
         }
         if requireMatchingTargetDevice && matchedTargetDeviceCount == 0 {
-            failures.append("対象デバイス一致が必須ですが、現在一致デバイスがありません。")
+            failures.append(
+                DoctorRuntimeReadinessFailure(
+                    code: "targetDevice.notFound",
+                    category: "targetDevice",
+                    message: "対象デバイス一致が必須ですが、現在一致デバイスがありません。",
+                    remediation: "`devices --all --json` と `hid-log` で対象デバイス条件を確認してください。"
+                )
+            )
         }
         if !hidProbe.requested {
-            failures.append("HID 入力監視プローブが未実行です。`--probe-hid` を付けてください。")
+            failures.append(
+                DoctorRuntimeReadinessFailure(
+                    code: "inputMonitoring.notProbed",
+                    category: "tcc",
+                    message: "HID 入力監視プローブが未実行です。`--probe-hid` を付けてください。",
+                    remediation: "`doctor --probe-hid` を実行して入力監視の状態を確認してください。"
+                )
+            )
         } else if hidProbe.succeeded != true {
-            failures.append("HID 入力監視プローブに失敗しました。")
+            failures.append(
+                DoctorRuntimeReadinessFailure(
+                    code: "inputMonitoring.probeFailed",
+                    category: "tcc",
+                    message: "HID 入力監視プローブに失敗しました。",
+                    remediation: hidProbe.remediation ?? "runtimeIdentity の実行主体をシステム設定の入力監視で許可し、プロセスを再起動してください。"
+                )
+            )
         }
-        return failures
+        self.failures = failures
+        ready = failures.isEmpty
     }
+}
+
+private struct DoctorRuntimeReadinessFailure: Codable {
+    var code: String
+    var category: String
+    var message: String
+    var remediation: String
+}
+
+private struct DoctorTCCStatus: Codable {
+    var accessibility: DoctorTCCPermissionStatus
+    var inputMonitoring: DoctorTCCPermissionStatus
+
+    init(
+        accessibilityTrusted: Bool,
+        hidProbe: DoctorHIDProbe,
+        inputMonitoringRemediation: String?
+    ) {
+        accessibility = DoctorTCCPermissionStatus(
+            service: "accessibility",
+            checked: true,
+            granted: accessibilityTrusted,
+            status: accessibilityTrusted ? "granted" : "missing",
+            remediation: accessibilityTrusted
+                ? nil
+                : "runtimeIdentity の実行主体をシステム設定のアクセシビリティで許可し、プロセスを再起動してください。"
+        )
+
+        if !hidProbe.requested {
+            inputMonitoring = DoctorTCCPermissionStatus(
+                service: "inputMonitoring",
+                checked: false,
+                granted: nil,
+                status: "notProbed",
+                remediation: inputMonitoringRemediation
+            )
+        } else if hidProbe.succeeded == true {
+            inputMonitoring = DoctorTCCPermissionStatus(
+                service: "inputMonitoring",
+                checked: true,
+                granted: true,
+                status: "granted",
+                remediation: nil
+            )
+        } else {
+            inputMonitoring = DoctorTCCPermissionStatus(
+                service: "inputMonitoring",
+                checked: true,
+                granted: false,
+                status: "probeFailed",
+                remediation: inputMonitoringRemediation
+            )
+        }
+    }
+}
+
+private struct DoctorTCCPermissionStatus: Codable {
+    var service: String
+    var checked: Bool
+    var granted: Bool?
+    var status: String
+    var remediation: String?
 }
 
 private struct DoctorHIDProbe: Codable {

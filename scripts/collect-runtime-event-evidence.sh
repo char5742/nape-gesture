@@ -134,6 +134,21 @@ hid_probe_succeeded() {
     | grep -q '"succeeded" : true'
 }
 
+tcc_accessibility_granted() {
+  sed -n '/"accessibility" : {/,/}/p' "$doctor_dir/doctor-debug.json" \
+    | grep -q '"status" : "granted"'
+}
+
+tcc_input_monitoring_granted() {
+  sed -n '/"inputMonitoring" : {/,/}/p' "$doctor_dir/doctor-debug.json" \
+    | grep -q '"status" : "granted"'
+}
+
+runtime_readiness() {
+  sed -n '/"runtimeReadiness" : {/,/^  }/p' "$doctor_dir/doctor-debug.json" \
+    | sed 's/^/    /' >> "$summary_file"
+}
+
 finish_summary() {
   if [ "$failure_count" -eq 0 ]; then
     cat >> "$summary_file" <<EOF
@@ -402,7 +417,7 @@ run_split_success \
   "$tool_path doctor --config $config_path --probe-hid --benchmark-events 1000 --json" \
   "$tool_path" doctor --config "$config_path" --probe-hid --benchmark-events 1000 --json || finish_summary
 
-if ! grep -q '"accessibilityTrusted" : true' "$doctor_dir/doctor-debug.json"; then
+if ! tcc_accessibility_granted; then
   append_summary "外部ブロッカー" "Accessibility 未許可のため runtime event シナリオを未実行" "-" "$doctor_dir/doctor-debug.json"
   cat >> "$summary_file" <<EOF
 
@@ -425,6 +440,13 @@ EOF
   cat >> "$summary_file" <<EOF
 \`\`\`
 
+Runtime readiness:
+\`\`\`text
+EOF
+  runtime_readiness
+  cat >> "$summary_file" <<EOF
+\`\`\`
+
 システム設定で上記の実行主体へアクセシビリティ権限を付与し、プロセスを再起動してからこのスクリプトを再実行してください。
 物理キー操作や目視判断は不要です。権限付与後は \`system-test\` の未マーク CGEvent 投稿と \`analyze-target-log\` の終了コードで判定します。通常入力通過はクリック / ドラッグ / ホイールが揃うことを機械判定します。
 
@@ -437,7 +459,7 @@ EOF
   exit 0
 fi
 
-if ! hid_probe_succeeded; then
+if ! tcc_input_monitoring_granted || ! hid_probe_succeeded; then
   append_summary "外部ブロッカー" "入力監視プローブ未成功のため runtime event シナリオを未実行" "-" "$doctor_dir/doctor-debug.json"
   cat >> "$summary_file" <<EOF
 
@@ -457,6 +479,13 @@ HID 入力監視プローブ:
 \`\`\`text
 EOF
   hid_probe
+  cat >> "$summary_file" <<EOF
+\`\`\`
+
+Runtime readiness:
+\`\`\`text
+EOF
+  runtime_readiness
   cat >> "$summary_file" <<EOF
 \`\`\`
 

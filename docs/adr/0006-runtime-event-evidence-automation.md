@@ -11,9 +11,9 @@ Issue #6 の元入力抑制と Issue #12 のキルスイッチは、最終的に
 ## 決定
 
 - Issue #6 / #12 の runtime event 証跡は `scripts/collect-runtime-event-evidence.sh` を正とする。
-- スクリプトは `doctor --json` で `accessibilityTrusted: true` と HID 入力監視プローブ成功を確認してから、実 event tap 経路のシナリオを実行する。
-- アクセシビリティ未許可の場合、target log が空だった失敗として扱わない。`runtimeIdentity` と `hidProbe` を `summary.md` に残し、TCC / アクセシビリティ権限という外部ブロッカーとして記録する。
-- HID 入力監視プローブに成功しない場合も、runtime event シナリオを実行しない。`runtimeIdentity` と `hidProbe` を `summary.md` に残し、TCC / 入力監視権限という外部ブロッカーとして記録する。
+- スクリプトは `doctor --json` の `tccStatus.accessibility.status` と `tccStatus.inputMonitoring.status` が `granted` であることを確認してから、実 event tap 経路のシナリオを実行する。
+- アクセシビリティ未許可の場合、target log が空だった失敗として扱わない。`runtimeIdentity`、`hidProbe`、`runtimeReadiness` を `summary.md` に残し、TCC / アクセシビリティ権限という外部ブロッカーとして記録する。
+- HID 入力監視プローブに成功しない場合も、runtime event シナリオを実行しない。`runtimeIdentity`、`hidProbe`、`runtimeReadiness` を `summary.md` に残し、TCC / 入力監視権限という外部ブロッカーとして記録する。
 - 実イベント経路の判定は、Reference Target App の target log と `analyze-target-log` の終了コードで行う。
 - `gesture-drag`、`gesture-wheel` は `--assert-no-leaks --assert-has-generated-event` を使い、未マーク入力が前面アプリへ届いた場合、または Nape Gesture 生成イベントが AppKit に届かなかった場合に失敗させる。
 - `kill-switch` は生成イベントが届かないことも正常系になり得るため、`--assert-has-generated-event` を使わない。`--assert-no-leaks` を使い、未マークキー入力が前面アプリへ届いた場合に失敗させる。
