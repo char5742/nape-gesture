@@ -8,6 +8,7 @@ final class SettingsWindowController: NSWindowController {
     private var settings: NapeGestureSettings
     private let configPath: String
     private let activationButtonField = NSTextField()
+    private let associationWindowField = NSTextField()
     private let deadZoneField = NSTextField()
     private let directionLockField = NSTextField()
     private let dragSensitivityField = NSTextField()
@@ -42,7 +43,7 @@ final class SettingsWindowController: NSWindowController {
         self.settings = settings
         self.configPath = configPath
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 640, height: 860),
+            contentRect: NSRect(x: 0, y: 0, width: 640, height: 900),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -71,6 +72,7 @@ final class SettingsWindowController: NSWindowController {
 
         stack.addArrangedSubview(label("設定ファイル: \(configPath)", fontSize: 11))
         stack.addArrangedSubview(row("ジェスチャーボタン番号", activationButtonField))
+        stack.addArrangedSubview(row("対象入力の紐づけ秒", associationWindowField))
         stack.addArrangedSubview(row("デッドゾーン pt", deadZoneField))
         stack.addArrangedSubview(row("方向ロック比", directionLockField))
         stack.addArrangedSubview(row("ドラッグ感度", dragSensitivityField))
@@ -147,6 +149,7 @@ final class SettingsWindowController: NSWindowController {
 
     private func populate(_ settings: NapeGestureSettings) {
         activationButtonField.stringValue = String(settings.gesture.activationButton.rawValue)
+        associationWindowField.stringValue = String(settings.targetDeviceAssociation.associationWindow)
         deadZoneField.stringValue = String(settings.gesture.deadZonePoints)
         directionLockField.stringValue = String(settings.gesture.directionLockRatio)
         dragSensitivityField.stringValue = String(settings.gesture.dragSensitivity)
@@ -182,6 +185,7 @@ final class SettingsWindowController: NSWindowController {
     @objc private func save() {
         guard
             let activationButton = Int(activationButtonField.stringValue),
+            let associationWindow = Double(associationWindowField.stringValue),
             let deadZone = Double(deadZoneField.stringValue),
             let directionLockRatio = Double(directionLockField.stringValue),
             let dragSensitivity = Double(dragSensitivityField.stringValue),
@@ -201,7 +205,8 @@ final class SettingsWindowController: NSWindowController {
             return
         }
 
-        guard deadZone >= 0,
+        guard associationWindow > 0,
+              deadZone >= 0,
               directionLockRatio >= 1,
               dragSensitivity > 0,
               wheelSensitivity > 0,
@@ -217,7 +222,7 @@ final class SettingsWindowController: NSWindowController {
               maximumInactivity >= 0,
               offAxisCancelRatio >= 0
         else {
-            showError("数値項目は、デッドゾーン、加速度しきい速度、加速度指数、慣性速度、キャンセル秒数は0以上、方向ロック比と加速度最大倍率は1以上、慣性減衰率は0より大きく1以下、感度と慣性フレーム間隔は0より大きい値にしてください。")
+            showError("数値項目は、デッドゾーン、加速度しきい速度、加速度指数、慣性速度、キャンセル秒数は0以上、方向ロック比と加速度最大倍率は1以上、対象入力の紐づけ秒、慣性減衰率、感度、慣性フレーム間隔は0より大きい値にしてください。慣性減衰率は1以下にしてください。")
             return
         }
 
@@ -278,6 +283,9 @@ final class SettingsWindowController: NSWindowController {
                     dragRight: selectedAction(dragRightPopup),
                     wheel: selectedAction(wheelPopup)
                 )
+            ),
+            targetDeviceAssociation: TargetDeviceAssociationConfiguration(
+                associationWindow: associationWindow
             ),
             targetDevices: targetDevices,
             requireMatchingTargetDevice: requireTargetCheck.state == .on

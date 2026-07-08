@@ -118,9 +118,7 @@ final class NapeGestureRuntime {
             return nil
         }
         return SharedTargetDeviceGate(
-            configuration: TargetDeviceGateConfiguration(
-                activationButton: settings.gesture.activationButton
-            )
+            configuration: TargetDeviceGateConfiguration(settings: settings)
         )
     }
 

@@ -14,6 +14,7 @@ public enum SettingsValidator {
     public static func issues(for settings: NapeGestureSettings) -> [SettingsValidationIssue] {
         var issues: [SettingsValidationIssue] = []
         validate(settings.gesture, issues: &issues)
+        validate(settings.targetDeviceAssociation, issues: &issues)
         validateTargetDevices(settings, issues: &issues)
         return issues
     }
@@ -43,6 +44,15 @@ public enum SettingsValidator {
         requireFinite(momentum.stopVelocity, path: "gesture.momentum.stopVelocity", message: "0以上の有限値にしてください。", issues: &issues) { $0 >= 0 }
         requireFinite(momentum.decayPerSecond, path: "gesture.momentum.decayPerSecond", message: "0より大きく1以下の有限値にしてください。", issues: &issues) { $0 > 0 && $0 <= 1 }
         requireFinite(momentum.frameInterval, path: "gesture.momentum.frameInterval", message: "0より大きい有限値にしてください。", issues: &issues) { $0 > 0 }
+    }
+
+    private static func validate(_ association: TargetDeviceAssociationConfiguration, issues: inout [SettingsValidationIssue]) {
+        requireFinite(
+            association.associationWindow,
+            path: "targetDeviceAssociation.associationWindow",
+            message: "0より大きい有限値にしてください。",
+            issues: &issues
+        ) { $0 > 0 }
     }
 
     private static func validateTargetDevices(_ settings: NapeGestureSettings, issues: inout [SettingsValidationIssue]) {

@@ -67,6 +67,7 @@ struct DoctorCommand {
             killSwitchShortcut: KillSwitchShortcut.displayName,
             accessibilityTrusted: accessibilityTrusted,
             requireMatchingTargetDevice: settings.requireMatchingTargetDevice,
+            targetDeviceAssociationWindow: settings.targetDeviceAssociation.associationWindow,
             configuredTargetMatchers: settings.targetDevices.count,
             allHIDDeviceCount: inventory.allDeviceCount,
             pointingDeviceCount: inventory.pointingDeviceCount,
@@ -122,9 +123,7 @@ struct DoctorCommand {
         findings: inout [String]
     ) -> DoctorHIDProbe {
         let gate = SharedTargetDeviceGate(
-            configuration: TargetDeviceGateConfiguration(
-                activationButton: settings.gesture.activationButton
-            )
+            configuration: TargetDeviceGateConfiguration(settings: settings)
         )
         let monitor = HIDInputMonitor(settings: settings, gate: gate, matchedDevices: matchedDevices)
 
@@ -190,6 +189,7 @@ struct DoctorCommand {
             "キルスイッチ: \(report.killSwitchShortcut)",
             "アクセシビリティ: \(report.accessibilityTrusted ? "許可済み" : "未許可")",
             "対象デバイス一致必須: \(report.requireMatchingTargetDevice ? "はい" : "いいえ")",
+            "対象入力の紐づけ秒: \(report.targetDeviceAssociationWindow)",
             "対象デバイス条件数: \(report.configuredTargetMatchers)",
             "HIDデバイス数: \(formatOptional(report.allHIDDeviceCount))",
             "ポインティングデバイス数: \(formatOptional(report.pointingDeviceCount))",
@@ -244,6 +244,7 @@ private struct DoctorReport: Codable {
     var killSwitchShortcut: String
     var accessibilityTrusted: Bool
     var requireMatchingTargetDevice: Bool
+    var targetDeviceAssociationWindow: TimeInterval
     var configuredTargetMatchers: Int
     var allHIDDeviceCount: Int?
     var pointingDeviceCount: Int?

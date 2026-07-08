@@ -367,6 +367,35 @@ func testGestureConfigurationDecodesOldJSONWithDefaults() {
     expect(configuration?.directionLockRatio == 1.35, "古い設定JSONの既存値を維持する")
 }
 
+func testNapeGestureSettingsDecodesOldJSONWithDefaultAssociationWindow() {
+    let json = """
+    {
+      "gesture" : {
+        "activationButton" : 4,
+        "deadZonePoints" : 8,
+        "directionLockRatio" : 1.35,
+        "dragSensitivity" : 1,
+        "wheelSensitivity" : 1
+      },
+      "requireMatchingTargetDevice" : true,
+      "targetDevices" : [
+        {
+          "productContains" : "Nape Pro"
+        }
+      ]
+    }
+    """
+
+    let settings = try? JSONDecoder().decode(NapeGestureSettings.self, from: Data(json.utf8))
+
+    expect(
+        settings?.targetDeviceAssociation.associationWindow
+            == TargetDeviceAssociationConfiguration.defaultAssociationWindow,
+        "古い設定JSONには既定の対象入力紐づけ秒を補う"
+    )
+    expect(settings?.targetDevices.first?.productContains == "Nape Pro", "古い設定JSONの対象条件を維持する")
+}
+
 func testSettingsValidatorAcceptsTemplateSettings() {
     expect(SettingsValidator.isValid(.template), "テンプレート設定は有効")
 }
@@ -417,6 +446,19 @@ func testSettingsValidatorRejectsUnsafeGestureValues() {
     expect(paths.contains("gesture.momentum.stopVelocity"), "負の慣性停止速度を拒否する")
     expect(paths.contains("gesture.momentum.decayPerSecond"), "範囲外の慣性減衰率を拒否する")
     expect(paths.contains("gesture.momentum.frameInterval"), "0以下の慣性フレーム間隔を拒否する")
+}
+
+func testSettingsValidatorRejectsInvalidTargetDeviceAssociationWindow() {
+    let settings = NapeGestureSettings(
+        gesture: .default,
+        targetDeviceAssociation: TargetDeviceAssociationConfiguration(associationWindow: 0),
+        targetDevices: [DeviceMatcher(productContains: "Nape Pro")],
+        requireMatchingTargetDevice: true
+    )
+
+    let paths = Set(SettingsValidator.issues(for: settings).map(\.path))
+
+    expect(paths.contains("targetDeviceAssociation.associationWindow"), "0以下の対象入力紐づけ秒を拒否する")
 }
 
 func testSettingsValidatorRejectsMissingRequiredTargetMatcher() {
@@ -836,6 +878,46 @@ func testTargetDeviceGateKeepsHandlingWhileActivationButtonIsDown() {
     expect(!gate.shouldHandle(.move(deltaX: 5, deltaY: 0, time: 11)), "ボタン解放後しばらく経った移動は処理しない")
 }
 
+func testTargetDeviceGateUsesAssociationWindowFromSettings() {
+    let settings = NapeGestureSettings(
+        gesture: GestureConfiguration(activationButton: .button5),
+        targetDeviceAssociation: TargetDeviceAssociationConfiguration(associationWindow: 0.04),
+        targetDevices: [DeviceMatcher(productContains: "Nape Pro")],
+        requireMatchingTargetDevice: true
+    )
+    let configuration = TargetDeviceGateConfiguration(settings: settings)
+    var gate = TargetDeviceGateState(configuration: configuration)
+
+    gate.record(.pointer(deltaX: 1, deltaY: 0, time: 2))
+
+    expect(configuration.activationButton == .button5, "設定のジェスチャーボタンを gate に反映する")
+    expect(configuration.associationWindow == 0.04, "設定の対象入力紐づけ秒を gate に反映する")
+    expect(gate.shouldHandle(.buttonDown(button: .button5, time: 2.03)), "設定した紐づけ秒以内の入力を処理する")
+    expect(!gate.shouldHandle(.buttonDown(button: .button5, time: 2.05)), "設定した紐づけ秒を超えた入力は処理しない")
+}
+
+func testTargetDeviceGatePassesThroughNonTargetClickDragAndWheel() {
+    var gate = TargetDeviceGateState(
+        configuration: TargetDeviceGateConfiguration(
+            activationButton: .button4,
+            associationWindow: 0.05
+        )
+    )
+
+    expect(!gate.shouldHandle(.buttonDown(button: .left, time: 1)), "対象入力がない通常クリック押下は処理しない")
+    expect(!gate.shouldHandle(.buttonUp(button: .left, time: 1.01)), "対象入力がない通常クリック解放は処理しない")
+    expect(!gate.shouldHandle(.move(deltaX: 12, deltaY: 0, time: 1.02)), "対象入力がない通常ドラッグは処理しない")
+    expect(!gate.shouldHandle(.wheel(deltaX: 0, deltaY: -4, time: 1.03)), "対象入力がない通常ホイールは処理しない")
+
+    gate.record(.pointer(deltaX: 1, deltaY: 0, time: 2))
+
+    expect(!gate.shouldHandle(.buttonDown(button: .left, time: 2.10)), "紐づけ秒を超えた対象外クリック押下は処理しない")
+    expect(!gate.shouldHandle(.buttonDown(button: .button4, time: 2.10)), "紐づけ秒を超えた対象外ジェスチャーボタン押下は処理しない")
+    expect(!gate.shouldHandle(.buttonUp(button: .button4, time: 2.10)), "紐づけ秒を超えた対象外ジェスチャーボタン解放は処理しない")
+    expect(!gate.shouldHandle(.move(deltaX: 8, deltaY: 1, time: 2.11)), "紐づけ秒を超えた対象外ドラッグは処理しない")
+    expect(!gate.shouldHandle(.wheel(deltaX: 0, deltaY: -6, time: 2.12)), "紐づけ秒を超えた対象外ホイールは処理しない")
+}
+
 func testDefaultGestureBindingsMapSystemActions() {
     let bindings = GestureBindings.default
 
@@ -923,8 +1005,10 @@ testDeviceMatcherConditionPresenceIgnoresEmptyText()
 testDeviceMatcherWithoutConditionsDoesNotMatchEverything()
 testDeviceIdentityEncodesStableID()
 testGestureConfigurationDecodesOldJSONWithDefaults()
+testNapeGestureSettingsDecodesOldJSONWithDefaultAssociationWindow()
 testSettingsValidatorAcceptsTemplateSettings()
 testSettingsValidatorRejectsUnsafeGestureValues()
+testSettingsValidatorRejectsInvalidTargetDeviceAssociationWindow()
 testSettingsValidatorRejectsMissingRequiredTargetMatcher()
 testSettingsValidatorRejectsInvalidTargetMatcherValues()
 testInputLogAnalyzerSuggestsDeadZone()
@@ -937,6 +1021,8 @@ testScrollGenerationPlannerPhaseOverrideAndMomentum()
 testScrollEventPhaseEncoderSeparatesScrollAndMomentumPhases()
 testTargetDeviceGateOnlyHandlesRecentTargetActivity()
 testTargetDeviceGateKeepsHandlingWhileActivationButtonIsDown()
+testTargetDeviceGateUsesAssociationWindowFromSettings()
+testTargetDeviceGatePassesThroughNonTargetClickDragAndWheel()
 testDefaultGestureBindingsMapSystemActions()
 testGestureActionMomentumSupport()
 testRuntimeSafetyStateStopsForKillSwitch()
