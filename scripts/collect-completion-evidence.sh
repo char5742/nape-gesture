@@ -194,7 +194,7 @@ run_combined_success \
   ".build/debug/nape-gesture system-test list" \
   .build/debug/nape-gesture system-test list
 
-for scenario in space-left space-right mission-control; do
+for scenario in space-left space-right mission-control horizontal-scroll; do
   if [ "$scenario" = "space-left" ] || [ "$scenario" = "space-right" ]; then
     run_combined_success \
       "system-test $scenario dry-run JSON Lines" \
@@ -213,8 +213,8 @@ for scenario in space-left space-right mission-control; do
     "system-test $scenario analyze-log" \
     "$system_dir/system-$scenario-analysis.txt" \
     "$system_dir/system-$scenario-analysis.stderr.log" \
-    ".build/debug/nape-gesture analyze-log $system_dir/system-$scenario.jsonl" \
-    .build/debug/nape-gesture analyze-log "$system_dir/system-$scenario.jsonl"
+    ".build/debug/nape-gesture analyze-log $system_dir/system-$scenario.jsonl --json" \
+    .build/debug/nape-gesture analyze-log "$system_dir/system-$scenario.jsonl" --json
 done
 
 run_split_success \
@@ -274,6 +274,7 @@ cat >> "$summary_file" <<EOF
 - 純正トラックパッドでの実操作ログ
 - TCC のアクセシビリティ / 入力監視許可操作
 - Spaces / Mission Control の画面挙動実測
+- Issue #10 の Safari / 対応アプリでのページ戻る、進む、ズーム、横スクロール画面挙動実測
 - \`run\`、実イベント投稿、target 実測、常駐 CPU、入力遅延
 - Developer ID 署名、公証、stapler、Gatekeeper 評価
 
