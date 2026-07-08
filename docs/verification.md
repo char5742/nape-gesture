@@ -159,6 +159,9 @@ Nape Gesture が投稿した生成イベントは `generatedByNapeGesture: true`
 - `leakCandidateEvents`: 漏れ候補として扱った実レコード
 - `leakCandidateCounts`: 漏れ候補のイベント名別件数
 
+既存の古い target log は `generatedByNapeGesture` フィールドを持たないため、互換性のため未マーク入力として扱われる。Issue #6 の最終証跡には、現在の Reference Target App で取り直した target log を使う。
+`Fixtures/clean-target-log.jsonl` は生成イベントだけが AppKit に届いた例、`Fixtures/leaky-target-log.jsonl` は未マークのボタン、ドラッグ、スクロール、キーが混ざった失敗例として扱う。
+
 Issue #6 の最終 close には、AX 許可済みの実行主体で event tap と Reference Target App を併用し、ジェスチャー成立後に `leakCandidateEvents` が空である証跡を残す必要がある。
 漏れ候補が出た場合は、Reference Target App 側で候補レコードの `timestamp` と `name` を確認し、同じ時間帯の `nape-gesture log --exclude-generated` と照合する。
 生成イベントが候補に混ざる場合は `CGEventUtilities.setGeneratedMarker` の付与漏れまたは `generatedByNapeGesture` 判定経路を直す。
