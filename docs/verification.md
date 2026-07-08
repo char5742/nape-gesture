@@ -306,15 +306,7 @@ JSON Lines では、通常スクロールの `began` / `changed` / `ended` は `
 
 ## 完成判定チェック
 
-完成扱いにするには、次の証跡をそろえる。
+完成判定の証跡台帳と現在状態は `docs/completion-checklist.md` を正本にする。
+この文書は、各証跡を取るための詳細手順、既知の失敗条件、回復手順を補足する。
 
-- debug と release のビルド成功
-- `nape-gesture-core-tests` 成功
-- `.app` 作成と `verify-bundle` 成功
-- 実利用する `.app` の `doctor --probe-hid --json` でアクセシビリティと入力監視が成功
-- `doctor --json` の `settingsValidationIssues` が空で、`check-config` が設定不正で停止しない
-- Nape Pro の HID 識別ログと、設定への反映結果
-- 純正トラックパッド、Nape Pro、生成イベントの比較ログ
-- Finder、Safari、Spaces、Mission Control の `system-test` 結果
-- 公開 API で不可能な挙動がある場合、その実測ログと代替操作のチューニング根拠
-- 日常利用時に通常クリック、通常ドラッグ、通常ホイールが壊れていないことの確認
+完成扱いにするには、`docs/completion-checklist.md` の全 matrix 行が証跡リンク付きで `完了` になり、実機未検証の項目が残っていない必要がある。

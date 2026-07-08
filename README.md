@@ -134,7 +134,8 @@ ad-hoc 署名はローカル再現用です。公開配布では Developer ID Ap
 
 ## 検証方針
 
-詳細な実機検証手順、完成判定に必要な証跡、既知の失敗条件と回復手順は `docs/verification.md` にまとめています。
+完成判定の証跡台帳と現在状態は `docs/completion-checklist.md` にまとめています。
+詳細な実機検証手順、既知の失敗条件と回復手順は `docs/verification.md` にまとめています。
 
 1. `nape-gesture log --duration <秒> --out <path>` で純正トラックパッド、Nape Pro、生成イベントを同じ形式で記録する
 2. `nape-gesture analyze-log <path>` で移動量分布と `deadZonePoints` 候補を確認する
