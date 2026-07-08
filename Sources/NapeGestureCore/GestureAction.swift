@@ -1,6 +1,6 @@
 import Foundation
 
-public enum GestureAction: String, Codable, Equatable, Sendable {
+public enum GestureAction: String, Codable, Equatable, Sendable, CaseIterable {
     case none
     case smoothScroll
     case horizontalScroll
@@ -11,6 +11,8 @@ public enum GestureAction: String, Codable, Equatable, Sendable {
     case pageForward
     case zoomIn
     case zoomOut
+
+    public static let settingsSelectableActions: [GestureAction] = allCases
 
     public var supportsMomentum: Bool {
         switch self {

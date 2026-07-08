@@ -1290,6 +1290,23 @@ func testGestureActionMomentumSupport() {
     expect(!GestureAction.pageBack.supportsMomentum, "ページ戻るは離散アクションなので慣性を持たない")
 }
 
+func testGestureActionSettingsSelectableActionsCoverAllCases() {
+    let selectable = GestureAction.settingsSelectableActions
+    let uniqueRawValues = Set(selectable.map(\.rawValue))
+
+    expect(selectable == GestureAction.allCases, "設定UIの割り当て候補は GestureAction 全ケースを網羅する")
+    expect(uniqueRawValues.count == selectable.count, "設定UIの割り当て候補に重複を含めない")
+    expect(selectable.contains(.none), "設定UIで割り当てなしを選べる")
+    expect(selectable.contains(.missionControl), "設定UIで Mission Control を選べる")
+    expect(selectable.contains(.spaceLeft), "設定UIで Spaces 左移動を選べる")
+    expect(selectable.contains(.spaceRight), "設定UIで Spaces 右移動を選べる")
+    expect(selectable.contains(.pageBack), "設定UIでページ戻るを選べる")
+    expect(selectable.contains(.pageForward), "設定UIでページ進むを選べる")
+    expect(selectable.contains(.zoomIn), "設定UIでズームインを選べる")
+    expect(selectable.contains(.zoomOut), "設定UIでズームアウトを選べる")
+    expect(selectable.contains(.horizontalScroll), "設定UIで横スクロールを選べる")
+}
+
 func testRuntimeSafetyStateStopsForKillSwitch() {
     var state = RuntimeSafetyState()
 
@@ -1559,6 +1576,7 @@ testTargetDeviceGateUsesAssociationWindowFromSettings()
 testTargetDeviceGatePassesThroughNonTargetClickDragAndWheel()
 testDefaultGestureBindingsMapSystemActions()
 testGestureActionMomentumSupport()
+testGestureActionSettingsSelectableActionsCoverAllCases()
 testRuntimeSafetyStateStopsForKillSwitch()
 testRuntimeSafetyStatePassesRegularInputAfterStop()
 testRuntimeSafetyStateDoesNotReenableWithoutReset()
