@@ -131,7 +131,7 @@ final class CommandLineTool {
                   System Behavior Test のシナリオ一覧を表示します。
 
               nape-gesture system-test run --scenario <name> [--target finder|safari] [--dry-run] [--log-json] [--out <path>]
-                  Spaces / Mission Control / Safari / Finder 向けの実挙動検証イベントを生成します。--dry-run --log-json で計画した生成イベントを JSON Lines で出力します。
+                  Spaces / Mission Control / Safari / Finder 向けの実挙動検証イベント、または未マーク元入力を生成します。--dry-run --log-json で計画したイベントを JSON Lines で出力します。
 
               nape-gesture benchmark [--events <数>] [--json]
                   認識器とスクロール計画の純粋ロジック処理時間を測定します。
