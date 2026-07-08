@@ -9,13 +9,7 @@ final class NapeGestureRuntime {
 
     private(set) var isRunning = false
     private(set) var lastError: Error?
-
-    var shouldRetryAutomatically: Bool {
-        guard !isRunning, let lastError else {
-            return false
-        }
-        return isRecoverableStartupError(lastError)
-    }
+    private(set) var lastRecoveryFailureKind: RuntimeRecoveryFailureKind?
 
     func start(settings: NapeGestureSettings) {
         stop()
@@ -45,10 +39,13 @@ final class NapeGestureRuntime {
             pendingMonitor = nil
             isRunning = true
             lastError = nil
+            lastRecoveryFailureKind = nil
         } catch {
+            let failureKind = runtimeRecoveryFailureKind(for: error)
             pendingMonitor?.stop()
             stop()
             lastError = error
+            lastRecoveryFailureKind = failureKind
         }
     }
 
@@ -77,8 +74,10 @@ final class NapeGestureRuntime {
             }
             return false
         } catch {
+            let failureKind = runtimeRecoveryFailureKind(for: error)
             stop()
             lastError = error
+            lastRecoveryFailureKind = failureKind
             return true
         }
     }
@@ -136,32 +135,42 @@ final class NapeGestureRuntime {
         return monitor
     }
 
-    private func isRecoverableStartupError(_ error: Error) -> Bool {
+    private func runtimeRecoveryFailureKind(for error: Error) -> RuntimeRecoveryFailureKind {
         guard let toolError = error as? ToolError else {
-            return false
+            return .unrecoverable
         }
 
         switch toolError {
-        case .accessibilityPermissionRequired,
-             .eventTapCreationFailed,
-             .hidRegistryQueryFailed(_),
-             .targetDeviceNotFound:
-            return true
+        case .accessibilityPermissionRequired:
+            return .accessibilityPermissionMissing
+        case .eventTapCreationFailed:
+            return .eventTapCreationFailed
+        case .hidRegistryQueryFailed(_):
+            return .hidAccessUnavailable
+        case .targetDeviceNotFound:
+            return .targetDeviceNotFound
         case let .hidManagerOpenFailed(code):
-            return code == kIOReturnNotPermitted
-                || code == kIOReturnNotPrivileged
-                || code == kIOReturnNoDevice
-                || code == kIOReturnExclusiveAccess
+            switch code {
+            case kIOReturnNotPermitted,
+                 kIOReturnNotPrivileged,
+                 kIOReturnNoDevice,
+                 kIOReturnExclusiveAccess:
+                return .hidAccessUnavailable
+            default:
+                return .unrecoverable
+            }
+        case .invalidSettings(_):
+            return .invalidSettings
+        case .targetDeviceMatcherRequired:
+            return .targetDeviceMatcherMissing
         case .unknownCommand(_),
              .missingValue(_),
              .invalidValue(_, _),
-             .invalidSettings(_),
-             .targetDeviceMatcherRequired,
              .bundleOutputAlreadyExists(_),
              .bundleVerificationFailed(_),
              .executablePathUnavailable,
              .targetApplicationNotFound(_):
-            return false
+            return .unrecoverable
         }
     }
 }

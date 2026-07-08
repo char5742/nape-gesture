@@ -307,6 +307,8 @@ JSON Lines では、通常スクロールの `began` / `changed` / `ended` は `
 
 キルスイッチの一方向停止は `NapeGestureCore` の `RuntimeSafetyState` で回帰テストする。`Control + Option + Command + G` 自体は event tap で抑制し、発火後はジェスチャー処理と慣性を停止する。停止後の通常入力は前面アプリへ通し、通常入力や再度のキルスイッチでは再有効化しない。再開は常駐UIの停止/開始による daemon 再作成、プロセス再起動、または明示 reset に限定する。
 
+Issue #13 の実機前に機械で固定できる復旧条件は `NapeGestureCore` の `RuntimeRecoveryState` で回帰テストする。スリープ前停止、スリープ中の自動再試行禁止、wake 後の遅延再開、自動復旧可能な失敗の再試行、設定修正が必要な失敗と手動停止後の再試行禁止、手動開始または設定保存による再有効化を純粋ロジックとして確認する。
+
 ## 完成判定チェック
 
 完成判定の証跡台帳と現在状態は `docs/completion-checklist.md` を正本にする。
