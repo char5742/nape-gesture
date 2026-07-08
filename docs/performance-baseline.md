@@ -10,16 +10,17 @@ PR には少なくとも次を添付または本文に要約する。
 ```sh
 swift build --scratch-path .build
 .build/debug/nape-gesture-core-tests
-.build/debug/nape-gesture benchmark --events 200000 --json
+.build/debug/nape-gesture benchmark --events 200000 --json --assert-baseline
 .build/debug/nape-gesture doctor --benchmark-events 50000 --json
 ```
 
-`benchmark --json` は `BenchmarkReport` 単体の証跡、`doctor --benchmark-events ... --json` は権限、対象デバイス、実行主体、同じ純粋ロジック benchmark をまとめた証跡として扱う。
+`benchmark --json --assert-baseline` は `BenchmarkReport` 単体の証跡と基準照合の終了コード、`doctor --benchmark-events ... --json` は権限、対象デバイス、実行主体、同じ純粋ロジック benchmark をまとめた証跡として扱う。
 どちらも `benchmark.measurementKind` または `measurementKind` が `pureLogic` で、`includesEventTapAndPosting` が `false` であることを確認する。
+`--assert-baseline` は純粋ロジック benchmark の初期合格基準を満たさない場合に非ゼロ終了する。
 
 ## 現時点で測れるもの
 
-`benchmark --json` と `doctor --benchmark-events ... --json` で自動確認できるもの:
+`benchmark --json --assert-baseline` と `doctor --benchmark-events ... --json` で自動確認できるもの:
 
 - 認識器の wall 時間、CPU 時間、events/sec、平均 ns/event、CPU ns/event
 - スクロール計画の wall 時間、CPU 時間、commands/sec、平均 ns/command、CPU ns/command

@@ -17,10 +17,10 @@
 
 ## 性能 / Benchmark 変更
 
-- `benchmark --events 200000 --json` の出力が保存または PR 本文へ要約されている
+- `benchmark --events 200000 --json --assert-baseline` の出力と終了コードが保存または PR 本文へ要約されている
 - `doctor --benchmark-events 50000 --json` の出力が保存または PR 本文へ要約されている
 - `measurementKind` が `pureLogic`、`includesEventTapAndPosting` が `false` であることを確認している
-- `recognizer.averageNanosecondsPerEvent`、`recognizer.cpuNanosecondsPerEvent`、`scrollPlanner.averageNanosecondsPerCommand`、`scrollPlanner.cpuNanosecondsPerCommand` が `docs/performance-baseline.md` の基準内である
+- `--assert-baseline` が成功し、`recognizer.averageNanosecondsPerEvent`、`recognizer.cpuNanosecondsPerEvent`、`scrollPlanner.averageNanosecondsPerCommand`、`scrollPlanner.cpuNanosecondsPerCommand` が `docs/performance-baseline.md` の基準内である
 - 純粋ロジック benchmark を、イベントタップから投稿までの入力遅延実測として扱っていない
 - 常駐 CPU 使用率や tap-to-post 遅延を完了扱いにする場合、実機・権限付きの測定手順と未検証事項が明記されている
 - 閾値超過時に調整した設定値や生成パラメータが、ログと benchmark の再測定で確認されている
