@@ -1013,6 +1013,7 @@ func testInputAssociationAnalyzerMeasuresWindowDistribution() {
     expect(analysis.missingHIDCandidateEventCount == 0, "HID ログがある場合は最も近い HID と比較する")
     expect(analysis.withinWindowCount == 1, "associationWindow 内の件数を数える")
     expect(analysis.outsideWindowCount == 2, "associationWindow 外の件数を数える")
+    expect(!analysis.hasValidAssociationWindowEvidence, "window 外があれば有効な紐づけ証跡として扱わない")
     expectApproximatelyEqual(analysis.maximumTimeDifferenceSeconds, 0.5, "最大時刻差秒を出す")
     expectApproximatelyEqual(analysis.p95TimeDifferenceSeconds, 0.5, "p95 時刻差秒を出す")
     expectApproximatelyEqual(analysis.p99TimeDifferenceSeconds, 0.5, "p99 時刻差秒を出す")
@@ -1034,6 +1035,7 @@ func testInputAssociationAnalyzerCountsUnmatchedWhenHIDLogIsEmpty() {
     expect(analysis.missingHIDCandidateEventCount == 1, "HID ログが空なら解析対象イベントを候補なしとして数える")
     expect(analysis.withinWindowCount == 0, "未一致イベントは associationWindow 内に数えない")
     expect(analysis.outsideWindowCount == 0, "未一致イベントは associationWindow 外にも数えない")
+    expect(!analysis.hasValidAssociationWindowEvidence, "HID 候補なしは有効な紐づけ証跡として扱わない")
 }
 
 func testInputAssociationAnalyzerKeepsZeroValueHIDReleaseEvents() {
@@ -1052,6 +1054,7 @@ func testInputAssociationAnalyzerKeepsZeroValueHIDReleaseEvents() {
 
     expect(analysis.hidCandidateEventCount == 1, "HID のゼロ値 release も一致候補として扱う")
     expect(analysis.withinWindowCount == 1, "release 由来のイベントタップ入力も associationWindow 内判定できる")
+    expect(analysis.hasValidAssociationWindowEvidence, "候補なしも window 外もない解析対象は有効な紐づけ証跡として扱う")
     expectApproximatelyEqual(analysis.matches.first?.timeDifferenceSeconds, 0.02, "release の時刻差秒を算出する")
 }
 
