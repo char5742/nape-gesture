@@ -1572,6 +1572,97 @@ func testRuntimeRecoveryClampsNegativeWakeDelayToImmediateRetry() {
     expect(state.mode == .starting(reason: .automaticRetry(.wake), requestedAt: 20), "wake 由来の自動再試行として開始する")
 }
 
+func testRuntimeRecoveryDoesNotRetryAfterWakeFromInitialStop() {
+    var state = RuntimeRecoveryState()
+
+    _ = state.handleWillSleep(at: 10)
+    _ = state.handleDidWake(at: 20, retryDelay: 1)
+    let retry = state.retryIfReady(at: 21)
+
+    expect(!state.shouldRetryAfterWake, "初期停止からの sleep は wake retry 対象にしない")
+    expect(state.pendingRetry == nil, "初期停止からの wake は再試行予約を作らない")
+    expect(!retry.shouldStartRuntime, "初期停止からの wake では自動再試行しない")
+}
+
+func testRuntimeRecoveryDoesNotRetryAfterWakeForHumanFixRequiredFailure() {
+    var state = RuntimeRecoveryState()
+    _ = state.recordRuntimeFailure(.invalidSettings, at: 5)
+
+    _ = state.handleWillSleep(at: 10)
+    _ = state.handleDidWake(at: 20, retryDelay: 1)
+    let retry = state.retryIfReady(at: 21)
+
+    expect(!state.shouldRetryAfterWake, "人間修正が必要な停止からの sleep は wake retry 対象にしない")
+    expect(state.pendingRetry == nil, "人間修正が必要な停止からの wake は再試行予約を作らない")
+    expect(!retry.shouldStartRuntime, "人間修正が必要な停止からの wake では自動再試行しない")
+}
+
+func testRuntimeRecoveryRetriesAfterWakeWhenRecoverableRetryWasPending() {
+    var state = RuntimeRecoveryState()
+    _ = state.recordRuntimeFailure(.targetDeviceNotFound, at: 5)
+
+    _ = state.handleWillSleep(at: 10)
+    _ = state.handleDidWake(at: 20, retryDelay: 1.5)
+
+    expect(state.pendingRetry?.reason == .wake, "自動復旧可能な予約中の sleep は wake 後再試行に置き換える")
+    expectApproximatelyEqual(state.pendingRetry?.notBefore, 21.5, "wake 後再試行の遅延を保持する")
+
+    let retry = state.retryIfReady(at: 21.5)
+
+    expect(retry.shouldStartRuntime, "自動復旧可能な予約中だった場合は wake 後に再試行する")
+    expect(state.mode == .starting(reason: .automaticRetry(.wake), requestedAt: 21.5), "wake 由来の自動再試行として開始する")
+}
+
+func testRuntimeRecoveryKeepsWakeRetryWhenSleepNotificationRepeats() {
+    var state = RuntimeRecoveryState()
+    state.recordRuntimeStarted()
+
+    _ = state.handleWillSleep(at: 10)
+    _ = state.handleWillSleep(at: 10.1)
+    _ = state.handleDidWake(at: 20, retryDelay: 1)
+    let retry = state.retryIfReady(at: 21)
+
+    expect(retry.shouldStartRuntime, "sleep 通知が重複しても wake 後再試行対象を維持する")
+    expect(state.mode == .starting(reason: .automaticRetry(.wake), requestedAt: 21), "重複 sleep 後も wake 由来の自動再試行として開始する")
+}
+
+func testRuntimeStatusPresenterShowsRunningAndStoppedStates() {
+    let running = RuntimeStatusPresenter.present(isRuntimeRunning: true, recoveryState: RuntimeRecoveryState())
+
+    var stoppedState = RuntimeRecoveryState()
+    _ = stoppedState.requestManualStop(at: 1)
+    let stopped = RuntimeStatusPresenter.present(isRuntimeRunning: false, recoveryState: stoppedState)
+
+    expect(running.stateTitle == "状態: 実行中", "実行中表示を出す")
+    expect(!running.startEnabled, "実行中は開始を無効化する")
+    expect(running.emergencyStopEnabled, "実行中は緊急停止を有効化する")
+    expect(running.stopEnabled, "実行中は停止を有効化する")
+    expect(stopped.stateTitle == "状態: 停止中", "手動停止後は停止中表示にする")
+    expect(stopped.startEnabled, "停止中は開始を有効化する")
+    expect(!stopped.emergencyStopEnabled, "手動停止後は緊急停止を無効化する")
+    expect(!stopped.stopEnabled, "手動停止後は停止を無効化する")
+}
+
+func testRuntimeStatusPresenterShowsAutoRetryAndSleepStates() {
+    var retryState = RuntimeRecoveryState()
+    _ = retryState.recordRuntimeFailure(.targetDeviceNotFound, at: 10)
+    let retryPresentation = RuntimeStatusPresenter.present(isRuntimeRunning: false, recoveryState: retryState)
+
+    var sleepState = RuntimeRecoveryState()
+    sleepState.recordRuntimeStarted()
+    _ = sleepState.handleWillSleep(at: 20)
+    let sleepPresentation = RuntimeStatusPresenter.present(isRuntimeRunning: false, recoveryState: sleepState)
+
+    expect(retryPresentation.stateTitle == "状態: 停止中（自動再試行中）", "自動再試行中表示を出す")
+    expect(retryPresentation.startEnabled, "自動再試行中でも手動開始できる")
+    expect(retryPresentation.emergencyStopEnabled, "自動再試行中は緊急停止を有効化する")
+    expect(retryPresentation.stopEnabled, "自動再試行中は停止を有効化する")
+    expect(sleepPresentation.stateTitle == "状態: スリープ待機中", "スリープ待機中表示を自動再試行より優先する")
+    expect(sleepPresentation.startEnabled, "スリープ待機中でも既存 UI と同じく開始を有効にする")
+    expect(sleepPresentation.emergencyStopEnabled, "スリープ待機中は自動再試行を止められる")
+    expect(sleepPresentation.stopEnabled, "スリープ待機中は停止を有効化する")
+}
+
 testPassesThroughWhenActivationButtonIsNotPressed()
 testActivationButtonSuppressesOriginalInputBeforeThreshold()
 testDragBeginsAfterDeadZoneAndLocksDominantDirection()
@@ -1641,6 +1732,12 @@ testRuntimeRecoveryManualStopCancelsPendingWakeRetry()
 testRuntimeRecoverySleepClearsExistingPendingRetry()
 testRuntimeRecoveryConsumesPendingRetryWhenReady()
 testRuntimeRecoveryClampsNegativeWakeDelayToImmediateRetry()
+testRuntimeRecoveryDoesNotRetryAfterWakeFromInitialStop()
+testRuntimeRecoveryDoesNotRetryAfterWakeForHumanFixRequiredFailure()
+testRuntimeRecoveryRetriesAfterWakeWhenRecoverableRetryWasPending()
+testRuntimeRecoveryKeepsWakeRetryWhenSleepNotificationRepeats()
+testRuntimeStatusPresenterShowsRunningAndStoppedStates()
+testRuntimeStatusPresenterShowsAutoRetryAndSleepStates()
 
 if failures == 0 {
     print("すべてのコアテストに成功しました。")
