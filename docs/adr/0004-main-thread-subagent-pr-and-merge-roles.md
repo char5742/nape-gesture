@@ -17,6 +17,7 @@
 - PR は原則 draft で作成または更新し、メインスレッドがレビュー後に ready 化する。
 - PR 本文には、対応 Issue、変更内容、変更ファイル、所有範囲外の変更理由、検証結果、未検証事項を記載する。
 - PR レビューでは `docs/pr-review-checklist.md` と関連 ADR を使い、仕様逸脱、入力安全性、テスト不足、証跡不足を優先して確認する。
+- GitHub が self-approval を拒否する場合は、approve ではなく review comment として確認内容、ローカル検証、CI 結果、未検証事項を残す。
 - merge 判断はメインスレッドが行う。サブエージェントは自分の判断だけで merge しない。
 - CI 失敗、必須検証の未実施、未説明の所有範囲外変更がある PR は merge しない。
 - docs/config のみの PR では、Swift build を必須にせず、`git diff --check`、YAML parse、リンク整合性など変更対象に合った検証で判断できる。

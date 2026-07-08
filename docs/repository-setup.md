@@ -39,6 +39,7 @@ swift build -c release --scratch-path .build
 ## Issue 作成
 
 初期 Issue は `docs/github-issues.md` を基準に作成済み。
+この件数は bootstrap 時点の記録であり、最新の Issue 数や close 数の正は GitHub 上の Issue 一覧と証跡コメントで確認する。
 
 - Milestone: 5件
 - Issue: 16件
@@ -53,12 +54,14 @@ label、milestone、Issue close の継続方針は [ADR-0002](adr/0002-github-la
 ## 完了済みとして close する Issue
 
 完了条件を満たした Issue は、証跡コメントを付けて close する。
-2026-07-08 時点で close 対象にしたものは次。
+bootstrap 時点で close 対象にしたものは次。
 
 - Issue 1: リポジトリ名を nape-gesture として公開できる状態にする
 - Issue 2: CI で debug / release build とコアテストを必須化する
 - Issue 3: PR レビュー用チェックリストを整備する
 - Issue 7: スクロールと慣性フェーズの生成ログを純正入力と比較可能にする
+
+以後の close 方針と証跡項目は [ADR-0002](adr/0002-github-labels-milestones-and-issue-close.md) と [ADR-0005](adr/0005-issue-orchestration-and-evidence-close.md) に従う。
 
 ## メインスレッドの役割
 

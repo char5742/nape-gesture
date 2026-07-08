@@ -16,6 +16,8 @@ Issue、label、milestone の運用が揺れると、サブエージェントへ
   - `priority:*`: メインスレッドが統合順序を決めるための優先度を示す。
   - `parallel:ready`: サブエージェントへ独立投入しやすい Issue に付ける。
   - `blocked:external`: 実機、権限、外部状態など、ローカル変更だけでは完了できない Issue に付ける。
+- GitHub の既定 label は、この taxonomy と重複するため未使用なら削除する。
+- 新しい label を追加する場合は、先に ADR または `docs/github-issues.md` に分類上の理由を残す。
 - milestone はリリースや完成判定に向かう段階を表す。単なる担当者や作業場所としては使わない。
 - label、milestone、Issue の作成、更新、コメント、close は、基本的に `gh api` を使う。
 - 再投入や再同期では、既存の title、label name、milestone title を先に取得し、差分だけを作成または更新する。
