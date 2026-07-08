@@ -1,5 +1,8 @@
 # nape-gesture リポジトリ運用記録
 
+継続運用の正は [ADR 一覧](adr/README.md) に保存する。
+この文書は、リポジトリ作成、初回 push、Issue 作成時点の実施記録として扱う。
+
 ## 現在の状態
 
 2026-07-08 時点で、GitHub リポジトリは作成済み。
@@ -45,6 +48,7 @@ swift build -c release --scratch-path .build
 
 Issue、label、milestone の作成・更新・コメント・close は、基本的に `gh api` で行う。
 重複を避けるため、再投入時は既存 title / label name / milestone title を先に取得してから差分だけ作成する。
+label、milestone、Issue close の継続方針は [ADR-0002](adr/0002-github-labels-milestones-and-issue-close.md) に従う。
 
 ## 完了済みとして close する Issue
 
@@ -60,3 +64,4 @@ Issue、label、milestone の作成・更新・コメント・close は、基本
 
 このスレッドは、Issue 整理、PR レビュー、マージ判断、完成判定の証跡確認に集中する。
 実装は `docs/parallel-development.md` の所有範囲に従ってサブエージェントへ分割する。
+Issue orchestration と証跡付き close の方針は [ADR-0005](adr/0005-issue-orchestration-and-evidence-close.md) に従う。

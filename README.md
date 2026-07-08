@@ -145,6 +145,7 @@ swift build -c release
 `nape-gesture` として新リポジトリ化するための作業は、次の文書で管理します。
 
 - `docs/repository-setup.md`: GitHub リポジトリ作成、初回 push、Issue 作成の手順
+- `docs/adr/README.md`: 開発運用 ADR の索引と採択済み方針
 - `docs/github-issues.md`: 初期 Issue の草案、依存関係、完了条件
 - `docs/parallel-development.md`: メインスレッドとサブエージェントの役割分担
 - `docs/pr-review-checklist.md`: PR レビューとマージ判断のチェックリスト

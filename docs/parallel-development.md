@@ -1,5 +1,9 @@
 # 並列開発運用
 
+この文書は並列投入と所有範囲の運用記録である。
+メインスレッド、サブエージェント、PR レビュー、merge 判断の継続方針は [ADR-0004](adr/0004-main-thread-subagent-pr-and-merge-roles.md) に従う。
+Issue orchestration と証跡付き close は [ADR-0005](adr/0005-issue-orchestration-and-evidence-close.md) に従う。
+
 ## 基本方針
 
 メインスレッドは、Issue 整理、PR レビュー、マージ判断、完成判定の証跡確認に集中する。
@@ -210,8 +214,9 @@ PR は最低限次を満たすまでマージしない。
 
 - 対応 Issue が明記されている
 - 変更ファイルの所有範囲が説明されている
-- `swift build` が成功している
-- `nape-gesture-core-tests` が成功している
+- コード、Package、workflow に影響する変更では `swift build` が成功している
+- コード、Package、workflow に影響する変更では `nape-gesture-core-tests` が成功している
+- docs/config のみの変更では、変更対象に合った検証と Swift build を省略した理由が明記されている
 - runtime / HID / Accessibility に触る場合は、実機未検証か実機検証済みかが明記されている
 - 既知の未完了事項を「完了」と言い換えていない
 
