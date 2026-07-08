@@ -913,6 +913,7 @@ func testLogDerivedTuningAnalyzerDerivesAccelerationAndMomentum() {
     expect((report.suggestedMomentum?.decayPerSecond ?? 0) > 0.05, "減衰率候補は 0 より大きい")
     expect((report.suggestedMomentum?.decayPerSecond ?? 1) < 0.10, "減衰率候補は合成ログの減衰に近い")
     expect(report.warnings.isEmpty, "十分なサンプルがある場合は未導出警告を出さない")
+    expect(report.hasCompleteTuningEvidence, "候補と警告なしのログは完了証跡として扱える")
 }
 
 func testLogDerivedTuningAnalyzerReportsMissingSamples() {
@@ -922,6 +923,28 @@ func testLogDerivedTuningAnalyzerReportsMissingSamples() {
     expect(report.suggestedMomentum == nil, "慣性速度が足りない場合は慣性候補を出さない")
     expect(report.warnings.contains { $0.contains("acceleration.thresholdVelocity") }, "加速度未導出理由を残す")
     expect(report.warnings.contains { $0.contains("momentum") }, "慣性未導出理由を残す")
+    expect(!report.hasCompleteTuningEvidence, "未導出があるログは完了証跡として扱わない")
+    expect(report.completeTuningEvidenceFailures.contains { $0.contains("入力イベント") }, "完了証跡に足りない理由を列挙する")
+}
+
+func testLogDerivedTuningAnalyzerRejectsSyntheticTimestampAsCompleteEvidence() {
+    let records: [InputLogRecord] = [
+        makeInputLogRecord(timestamp: 1, typeName: "mouseMoved", deltaX: 1),
+        makeInputLogRecord(timestamp: 2, typeName: "mouseMoved", deltaX: 2),
+        makeInputLogRecord(timestamp: 3, typeName: "mouseMoved", deltaX: 3),
+        makeInputLogRecord(timestamp: 10, typeName: "scrollWheel", scrollDeltaY: -30, pointDeltaY: -30, scrollPhase: 1),
+        makeInputLogRecord(timestamp: 11, typeName: "scrollWheel", scrollDeltaY: -24, pointDeltaY: -24, scrollPhase: 2),
+        makeInputLogRecord(timestamp: 12, typeName: "scrollWheel", scrollDeltaY: -18, pointDeltaY: -18, momentumPhase: 1),
+        makeInputLogRecord(timestamp: 13, typeName: "scrollWheel", scrollDeltaY: -12, pointDeltaY: -12, momentumPhase: 2),
+        makeInputLogRecord(timestamp: 14, typeName: "scrollWheel", scrollDeltaY: -8, pointDeltaY: -8, momentumPhase: 2)
+    ]
+
+    let report = LogDerivedTuningAnalyzer.derive(from: records)
+
+    expect(report.suggestedAcceleration != nil, "合成 timestamp でも候補自体は算出される")
+    expect(report.suggestedMomentum != nil, "合成 timestamp でも慣性候補自体は算出される")
+    expect(report.warnings.contains { $0.contains("timestamp") }, "合成 timestamp 警告を出す")
+    expect(!report.hasCompleteTuningEvidence, "警告があるログは完了証跡として扱わない")
 }
 
 func testHIDInputLogAnalyzerGroupsByDeviceAndUsage() {
@@ -1520,6 +1543,7 @@ testInputLogAnalyzerComparesBaselineAndCandidate()
 testInputLogAnalyzerCountsKeyEvents()
 testLogDerivedTuningAnalyzerDerivesAccelerationAndMomentum()
 testLogDerivedTuningAnalyzerReportsMissingSamples()
+testLogDerivedTuningAnalyzerRejectsSyntheticTimestampAsCompleteEvidence()
 testHIDInputLogAnalyzerGroupsByDeviceAndUsage()
 testInputAssociationAnalyzerMeasuresWindowDistribution()
 testInputAssociationAnalyzerCountsUnmatchedWhenHIDLogIsEmpty()

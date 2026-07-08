@@ -32,6 +32,25 @@ public struct LogDerivedTuningReport: Codable, Equatable, Sendable {
         self.suggestedMomentum = suggestedMomentum
         self.warnings = warnings
     }
+
+    public var hasCompleteTuningEvidence: Bool {
+        completeTuningEvidenceFailures.isEmpty
+    }
+
+    public var completeTuningEvidenceFailures: [String] {
+        var failures: [String] = []
+        if sourceEventCount == 0 {
+            failures.append("入力イベントがありません。")
+        }
+        if suggestedAcceleration == nil {
+            failures.append("acceleration 候補が未導出です。")
+        }
+        if suggestedMomentum == nil {
+            failures.append("momentum 候補が未導出です。")
+        }
+        failures.append(contentsOf: warnings.map { "警告: \($0)" })
+        return failures
+    }
 }
 
 public struct NumericDistribution: Codable, Equatable, Sendable {

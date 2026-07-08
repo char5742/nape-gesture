@@ -283,11 +283,25 @@ run_split_success \
   .build/debug/nape-gesture compare-log Fixtures/sample-trackpad-scroll-log.jsonl Fixtures/sample-generated-scroll-log.jsonl
 
 run_split_success \
-  "sample tuning derive-parameters" \
+  "sample tuning derive-parameters assert-complete" \
   "$fixtures_dir/derive-sample-tuning.json" \
   "$fixtures_dir/derive-sample-tuning.stderr.log" \
-  ".build/debug/nape-gesture derive-parameters Fixtures/sample-tuning-trackpad-log.jsonl --json" \
-  .build/debug/nape-gesture derive-parameters Fixtures/sample-tuning-trackpad-log.jsonl --json
+  ".build/debug/nape-gesture derive-parameters Fixtures/sample-tuning-trackpad-log.jsonl --json --assert-complete" \
+  .build/debug/nape-gesture derive-parameters Fixtures/sample-tuning-trackpad-log.jsonl --json --assert-complete
+
+run_split_expected_failure \
+  "incomplete tuning derive-parameters assert-complete" \
+  "$fixtures_dir/derive-incomplete-tuning.json" \
+  "$fixtures_dir/derive-incomplete-tuning.stderr.log" \
+  ".build/debug/nape-gesture derive-parameters Fixtures/sample-log.jsonl --json --assert-complete" \
+  .build/debug/nape-gesture derive-parameters Fixtures/sample-log.jsonl --json --assert-complete
+
+run_split_expected_failure \
+  "synthetic timestamp tuning derive-parameters assert-complete" \
+  "$fixtures_dir/derive-synthetic-timestamp-tuning.json" \
+  "$fixtures_dir/derive-synthetic-timestamp-tuning.stderr.log" \
+  ".build/debug/nape-gesture derive-parameters Fixtures/synthetic-timestamp-tuning-trackpad-log.jsonl --json --assert-complete" \
+  .build/debug/nape-gesture derive-parameters Fixtures/synthetic-timestamp-tuning-trackpad-log.jsonl --json --assert-complete
 
 run_split_success \
   "sample HID analyze-hid-log" \

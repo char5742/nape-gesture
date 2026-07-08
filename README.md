@@ -63,7 +63,7 @@ swift run nape-gesture analyze-target-log Fixtures/sample-target-log.jsonl
 swift run nape-gesture analyze-target-log Fixtures/clean-target-log.jsonl --json --assert-no-leaks --assert-has-generated-event
 swift run nape-gesture analyze-target-log Fixtures/normal-input-target-log.jsonl --json --assert-has-unmarked-input
 swift run nape-gesture analyze-target-log Fixtures/gesture-target-log.jsonl --json --assert-has-gesture
-swift run nape-gesture derive-parameters Fixtures/sample-tuning-trackpad-log.jsonl --json
+swift run nape-gesture derive-parameters Fixtures/sample-tuning-trackpad-log.jsonl --json --assert-complete
 swift run nape-gesture log
 swift run nape-gesture log --duration 8 --out trackpad-space-right.jsonl --exclude-generated
 swift run nape-gesture analyze-log Fixtures/sample-log.jsonl
@@ -154,7 +154,7 @@ NAPE_RUNTIME_EVENT_USE_APP_BUNDLE=1 sh scripts/collect-runtime-event-evidence.sh
 
 1. `nape-gesture log --duration <秒> --out <path>` で純正トラックパッド、Nape Pro、生成イベントを同じ形式で記録する
 2. `nape-gesture analyze-log <path>` で移動量分布と `deadZonePoints` 候補を確認する
-3. `nape-gesture derive-parameters <純正ログ> --json` で deadZone、加速度、慣性の候補値と未導出理由を確認する
+3. `nape-gesture derive-parameters <純正ログ> --json --assert-complete` で deadZone、加速度、慣性の候補値を確認し、未導出や警告が残るログを完了証跡として扱わない
 4. `nape-gesture compare-log <純正ログ> <生成ログ>` でイベント数、precise 率、フェーズ分布、スクロール総量の差を確認する
 5. `nape-gesture hid-log` と `nape-gesture analyze-hid-log <path>` で Nape Pro の HID usage と値域を確認する
 6. `nape-gesture target --out <path>` で AppKit に届く `scrollWheel` / `swipe` / `magnify` / `rotate` などのイベント差分を画面と JSON Lines の両方で確認し、`analyze-target-log <path>` で集計する
