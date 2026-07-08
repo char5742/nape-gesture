@@ -16,9 +16,9 @@ Issue、label、milestone の運用が揺れると、サブエージェントへ
   - `priority:*`: メインスレッドが統合順序を決めるための優先度を示す。
   - `parallel:ready`: サブエージェントへ独立投入しやすい Issue に付ける。
   - `blocked:external`: 実機、権限、外部状態など、ローカル変更だけでは完了できない Issue に付ける。
-- `need:human` は承認待ち、レビュー待ち、確認依頼を表す label としては使わない。
-- `need:human` は純正トラックパッド操作、Nape Pro 実機操作、スリープ、デバイス抜き差し、TCC 権限変更など、人間が実行する物理作業または macOS UI 操作が最後の手段として必要な Issue に付ける。
-- `need:human` は最後の手段として使う。CGEvent 投稿、dry-run、fixtures、ログ解析、Reference Target App、System Behavior Test で代替できる作業には先に自動化または半自動化を試す。
+- `need:human` は承認待ち、レビュー待ち、確認依頼、人間による判断待ちを表す label としては使わない。
+- `need:human` は純正トラックパッド操作、Nape Pro 実機操作、スリープ、デバイス抜き差し、TCC 権限変更など、人間が手を動かして実行する物理作業または macOS UI 操作が最後の手段として必要な Issue に付ける。
+- `need:human` は最後の手段として使う。CGEvent 投稿、dry-run、fixtures、ログ解析、Reference Target App、System Behavior Test、権限済み環境での実イベント投稿で代替できる作業には、依頼前に必ず自動化または半自動化を試す。
 - `need:human` が付いた Issue でも、人間作業に依存しない前処理、検証ツール整備、ログ形式整備、dry-run 生成、解析ロジック改善はサブエージェントで先に進める。
 - 人間作業が残る場合も、メインスレッドは依頼前に手順を最小化し、取得すべきログ、期待値、失敗時の切り分けを Issue に明記する。
 - 人間作業が不要になった場合は、理由を Issue コメントへ残して `need:human` を外す。
