@@ -25,6 +25,7 @@
 | [ADR-0016](0016-normal-input-kind-assertions.md) | 通常入力通過の種類別機械判定 | Issue #6、Issue #16、normal-after-release、analyze-log、analyze-target-log |
 | [ADR-0017](0017-system-test-scenario-assertion.md) | System Behavior Test dry-run のシナリオ別機械判定 | Issue #9、Issue #10、Issue #16、system-test、analyze-log |
 | [ADR-0018](0018-target-device-not-found-diagnostics.md) | targetDevice.notFound の matcher 詳細診断 | Issue #4、Issue #13、Issue #16、doctor、targetDeviceDiagnostics |
+| [ADR-0019](0019-runtime-event-status-json.md) | Runtime event 証跡の status JSON | Issue #6、Issue #12、Issue #16、runtime event、status.json |
 
 ## 追加時の確認
 

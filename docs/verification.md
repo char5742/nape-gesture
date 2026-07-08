@@ -192,6 +192,8 @@ wait "$target_pid"
 
 Issue #6 / #12 の runtime event 証跡は、手順の取り違えを避けるため次のスクリプトを正とする。
 このスクリプトは `doctor --json` で `accessibilityTrusted: true` と HID 入力監視プローブ成功を確認し、未許可または未成功の場合は target log を空ログとして扱わず外部ブロッカーとして記録する。
+総合状態は `status.json` にも出力し、`status` は `success`、`blocked`、`failed` のいずれかとする。
+TCC 外部ブロッカーの場合、アクセシビリティ未許可は `blockerCode: "accessibility.missing"`、入力監視未成功は `blockerCode: "inputMonitoring.notGranted"` で確認する。
 
 ```sh
 NAPE_RUNTIME_EVENT_ARTIFACT_ROOT=artifacts/completion/$(date +%F)/runtime-event-evidence sh scripts/collect-runtime-event-evidence.sh
@@ -206,6 +208,10 @@ sh scripts/collect-runtime-event-evidence.sh
 ```
 
 既に検証用の実行ファイルを固定している場合は、`NAPE_RUNTIME_EVENT_TOOL=<実行ファイル>` で `run`、`target`、`system-test`、`analyze-target-log`、`doctor` に使う実行主体を明示できる。
+
+スクリプトは TCC 判定前に `gesture-wheel-then-kill-switch` と `normal-after-release` の dry-run preflight も保存する。
+preflight は `preflight/<scenario>/system-test-dry-run.jsonl` と `preflight/<scenario>/analyze-log.json` を見て、実イベント未実行時も計画イベント列の前段証跡として扱う。
+ただし `status.json.status == "blocked"` の証跡は完成ではない。権限付与後に再実行し、`status: "success"` と `scenarios/` 配下の target log assertion 成功を保存する。
 
 アクセシビリティ許可済みかつ HID 入力監視プローブ成功の場合、スクリプトは次を実行する。
 

@@ -46,6 +46,7 @@
 - キルスイッチ後も通常入力を勝手に抑制し続けない
 - 一方向停止と明示 reset 以外で復帰しないことを Core の純粋テストで確認している
 - `normal-after-release` dry-run を `analyze-log --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel` で確認し、未生成キーや activation button だけを通常入力通過証跡として扱っていない
+- runtime event 証跡を更新した場合、`status.json.status`、`blockerCode`、`preflight/`、権限済み時の `scenarios/` の関係が崩れていない
 - アクセシビリティ未許可時に安全に停止し、復旧導線を出す
 
 ## HID / Device 変更
