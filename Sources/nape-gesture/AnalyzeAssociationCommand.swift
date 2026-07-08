@@ -22,16 +22,21 @@ struct AnalyzeAssociationCommand {
             eventTapRecords: eventRecords,
             associationWindowSeconds: window
         )
+        let assertValidWindow = options.contains("--assert-valid-window")
 
         if options.contains("--json") {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             let data = try encoder.encode(analysis)
             print(String(decoding: data, as: UTF8.self))
-            return
+        } else {
+            print(format(analysis, window: window))
         }
 
-        print(format(analysis, window: window))
+        if assertValidWindow && !analysis.hasValidAssociationWindowEvidence {
+            fflush(stdout)
+            throw AssociationWindowAssertionError(analysis: analysis, window: window)
+        }
     }
 
     private func positionalArguments() -> [String] {
@@ -109,5 +114,17 @@ struct AnalyzeAssociationCommand {
 
     private func format(_ value: TimeInterval) -> String {
         String(format: "%.4f", value)
+    }
+}
+
+struct AssociationWindowAssertionError: LocalizedError {
+    var analysis: InputAssociationAnalysis
+    var window: TimeInterval
+
+    var errorDescription: String? {
+        if analysis.analyzedEventTapEvents == 0 {
+            return "associationWindow を検証できるイベントタップ入力がありません。対象デバイス操作を含むログを指定してください。"
+        }
+        return "associationWindow \(String(format: "%.4f", window)) 秒の検証に失敗しました。HID候補なし \(analysis.missingHIDCandidateEventCount) 件、window外 \(analysis.outsideWindowCount) 件です。`analyze-association <hid-log> <event-log> --window <秒> --json` で matches を確認してください。"
     }
 }

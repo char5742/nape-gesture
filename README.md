@@ -58,6 +58,7 @@ swift run nape-gesture hid-log --duration 10
 swift run nape-gesture hid-log --vendor-id <ID> --product-id <ID> --usage-page <ID> --usage <ID> --duration 10
 swift run nape-gesture analyze-hid-log Fixtures/sample-hid-log.jsonl
 swift run nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/sample-association-event-log.jsonl --window 0.12
+swift run nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/clean-association-event-log.jsonl --window 0.12 --json --assert-valid-window
 swift run nape-gesture analyze-target-log Fixtures/sample-target-log.jsonl
 swift run nape-gesture analyze-target-log Fixtures/normal-input-target-log.jsonl --json --assert-has-unmarked-input
 swift run nape-gesture analyze-target-log Fixtures/gesture-target-log.jsonl --json --assert-has-gesture

@@ -304,6 +304,20 @@ run_split_success \
   .build/debug/nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/sample-association-event-log.jsonl --window 0.12 --json
 
 run_split_success \
+  "clean association assert-valid-window" \
+  "$fixtures_dir/clean-association-analysis.json" \
+  "$fixtures_dir/clean-association-analysis.stderr.log" \
+  ".build/debug/nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/clean-association-event-log.jsonl --window 0.12 --json --assert-valid-window" \
+  .build/debug/nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/clean-association-event-log.jsonl --window 0.12 --json --assert-valid-window
+
+run_split_expected_failure \
+  "sample association assert-valid-window" \
+  "$fixtures_dir/sample-association-assert-valid-window.json" \
+  "$fixtures_dir/sample-association-assert-valid-window.stderr.log" \
+  ".build/debug/nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/sample-association-event-log.jsonl --window 0.12 --json --assert-valid-window" \
+  .build/debug/nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/sample-association-event-log.jsonl --window 0.12 --json --assert-valid-window
+
+run_split_success \
   "clean target log assert-no-leaks" \
   "$fixtures_dir/clean-target-log-analysis.json" \
   "$fixtures_dir/clean-target-log-analysis.stderr.log" \

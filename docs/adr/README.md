@@ -15,6 +15,7 @@
 | [ADR-0006](0006-runtime-event-evidence-automation.md) | Runtime event 証跡の自動収集と人間作業境界 | Issue #6/#12、TCC、target log、自動証跡 |
 | [ADR-0007](0007-log-derived-tuning-parameters.md) | ログ由来チューニング候補の再導出 | Issue #8、純正トラックパッドログ、加速度、慣性 |
 | [ADR-0008](0008-runtime-recovery-boundary-evidence.md) | Runtime recovery 境界条件の機械証跡化 | Issue #13、スリープ復帰、入力監視、復旧 |
+| [ADR-0009](0009-target-device-association-window-assertion.md) | 対象デバイス紐づけ秒の機械判定 | Issue #5、HID / event tap 時刻差、associationWindow |
 
 ## 追加時の確認
 

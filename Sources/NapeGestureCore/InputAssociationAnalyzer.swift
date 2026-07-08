@@ -63,6 +63,12 @@ public struct InputAssociationAnalysis: Codable, Equatable, Sendable {
         self.suggestedAssociationWindowSeconds = suggestedAssociationWindowSeconds
         self.matches = matches
     }
+
+    public var hasValidAssociationWindowEvidence: Bool {
+        analyzedEventTapEvents > 0
+            && missingHIDCandidateEventCount == 0
+            && outsideWindowCount == 0
+    }
 }
 
 public enum InputAssociationAnalyzer {
