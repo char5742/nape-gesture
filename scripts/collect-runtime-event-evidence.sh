@@ -124,6 +124,16 @@ runtime_identity() {
     | sed 's/^/    /' >> "$summary_file"
 }
 
+hid_probe() {
+  sed -n '/"hidProbe" : {/,/}/p' "$doctor_dir/doctor-debug.json" \
+    | sed 's/^/    /' >> "$summary_file"
+}
+
+hid_probe_succeeded() {
+  sed -n '/"hidProbe" : {/,/}/p' "$doctor_dir/doctor-debug.json" \
+    | grep -q '"succeeded" : true'
+}
+
 finish_summary() {
   if [ "$failure_count" -eq 0 ]; then
     cat >> "$summary_file" <<EOF
@@ -408,6 +418,13 @@ EOF
   cat >> "$summary_file" <<EOF
 \`\`\`
 
+HID 入力監視プローブ:
+\`\`\`text
+EOF
+  hid_probe
+  cat >> "$summary_file" <<EOF
+\`\`\`
+
 システム設定で上記の実行主体へアクセシビリティ権限を付与し、プロセスを再起動してからこのスクリプトを再実行してください。
 物理キー操作や目視判断は不要です。権限付与後は \`system-test\` の未マーク CGEvent 投稿と \`analyze-target-log\` の終了コードで判定します。通常入力通過はクリック / ドラッグ / ホイールが揃うことを機械判定します。
 
@@ -417,6 +434,41 @@ Runtime event 証跡は未完了です。
 ただし、未実行理由は macOS の TCC / アクセシビリティ権限という外部ブロッカーとして記録しました。
 EOF
   printf '%s\n' "Runtime event 証跡は未完了です。Accessibility 未許可のため summary に外部ブロッカーを記録しました: $summary_file"
+  exit 0
+fi
+
+if ! hid_probe_succeeded; then
+  append_summary "外部ブロッカー" "入力監視プローブ未成功のため runtime event シナリオを未実行" "-" "$doctor_dir/doctor-debug.json"
+  cat >> "$summary_file" <<EOF
+
+## 外部ブロッカー
+
+現在の実行主体は HID 入力監視プローブに成功していません。
+この状態では \`run\` と \`system-test\` を組み合わせた #6 / #12 の最終証跡は取得しません。
+
+権限付与対象:
+\`\`\`text
+EOF
+  runtime_identity
+  cat >> "$summary_file" <<EOF
+\`\`\`
+
+HID 入力監視プローブ:
+\`\`\`text
+EOF
+  hid_probe
+  cat >> "$summary_file" <<EOF
+\`\`\`
+
+システム設定で上記の実行主体へ入力監視権限を付与し、プロセスを再起動してからこのスクリプトを再実行してください。
+物理操作や目視判断は不要です。入力監視プローブが成功すれば、runtime event シナリオは \`analyze-target-log\` の終了コードで判定します。
+
+## 総合結果
+
+Runtime event 証跡は未完了です。
+ただし、未実行理由は macOS の TCC / 入力監視権限という外部ブロッカーとして記録しました。
+EOF
+  printf '%s\n' "Runtime event 証跡は未完了です。入力監視プローブ未成功のため summary に外部ブロッカーを記録しました: $summary_file"
   exit 0
 fi
 
