@@ -5,15 +5,18 @@ public struct RuntimeRecoveryState: Equatable, Sendable {
     public private(set) var mode: RuntimeRecoveryMode
     public private(set) var autoRetryEnabled: Bool
     public private(set) var pendingRetry: RuntimeRetryRequest?
+    public private(set) var shouldRetryAfterWake: Bool
 
     public init(
         mode: RuntimeRecoveryMode = .stopped(reason: .initial, stoppedAt: nil),
         autoRetryEnabled: Bool = true,
-        pendingRetry: RuntimeRetryRequest? = nil
+        pendingRetry: RuntimeRetryRequest? = nil,
+        shouldRetryAfterWake: Bool = false
     ) {
         self.mode = mode
         self.autoRetryEnabled = autoRetryEnabled
         self.pendingRetry = pendingRetry
+        self.shouldRetryAfterWake = shouldRetryAfterWake
     }
 
     public var isRunning: Bool {
@@ -33,12 +36,14 @@ public struct RuntimeRecoveryState: Equatable, Sendable {
         autoRetryEnabled = true
         mode = .starting(reason: .manualStart, requestedAt: time)
         pendingRetry = nil
+        shouldRetryAfterWake = false
         return RuntimeRecoveryDecision(shouldStartRuntime: true, shouldStopRuntime: false)
     }
 
     public mutating func recordRuntimeStarted() {
         mode = .running
         pendingRetry = nil
+        shouldRetryAfterWake = false
     }
 
     @discardableResult
@@ -46,6 +51,7 @@ public struct RuntimeRecoveryState: Equatable, Sendable {
         autoRetryEnabled = false
         mode = .stopped(reason: .manualStop, stoppedAt: time)
         pendingRetry = nil
+        shouldRetryAfterWake = false
         return RuntimeRecoveryDecision(shouldStartRuntime: false, shouldStopRuntime: true)
     }
 
@@ -54,6 +60,7 @@ public struct RuntimeRecoveryState: Equatable, Sendable {
         autoRetryEnabled = true
         mode = .starting(reason: .settingsSaved, requestedAt: time)
         pendingRetry = nil
+        shouldRetryAfterWake = false
         return RuntimeRecoveryDecision(shouldStartRuntime: true, shouldStopRuntime: false)
     }
 
@@ -65,6 +72,7 @@ public struct RuntimeRecoveryState: Equatable, Sendable {
         let wasSuspendedForSleep = isSuspendedForSleep
         if !wasSuspendedForSleep {
             mode = .stopped(reason: .runtimeFailure(failure), stoppedAt: time)
+            shouldRetryAfterWake = false
         }
         pendingRetry = retryRequest(for: failure, at: time, wasSuspendedForSleep: wasSuspendedForSleep)
         return RuntimeRecoveryDecision(shouldStartRuntime: false, shouldStopRuntime: false)
@@ -72,6 +80,7 @@ public struct RuntimeRecoveryState: Equatable, Sendable {
 
     @discardableResult
     public mutating func handleWillSleep(at time: TimeInterval) -> RuntimeRecoveryDecision {
+        shouldRetryAfterWake = autoRetryEnabled && (shouldRetryAfterWake || canRetryAfterWake)
         mode = .suspendedForSleep
         pendingRetry = nil
         return RuntimeRecoveryDecision(shouldStartRuntime: false, shouldStopRuntime: true)
@@ -82,6 +91,14 @@ public struct RuntimeRecoveryState: Equatable, Sendable {
         guard autoRetryEnabled else {
             mode = .stopped(reason: .manualStop, stoppedAt: time)
             pendingRetry = nil
+            shouldRetryAfterWake = false
+            return RuntimeRecoveryDecision(shouldStartRuntime: false, shouldStopRuntime: false)
+        }
+
+        guard shouldRetryAfterWake else {
+            mode = .stopped(reason: .wake, stoppedAt: time)
+            pendingRetry = nil
+            shouldRetryAfterWake = false
             return RuntimeRecoveryDecision(shouldStartRuntime: false, shouldStopRuntime: false)
         }
 
@@ -91,6 +108,7 @@ public struct RuntimeRecoveryState: Equatable, Sendable {
             requestedAt: time,
             notBefore: time + max(retryDelay, 0)
         )
+        shouldRetryAfterWake = false
         return RuntimeRecoveryDecision(shouldStartRuntime: false, shouldStopRuntime: false)
     }
 
@@ -107,7 +125,19 @@ public struct RuntimeRecoveryState: Equatable, Sendable {
 
         mode = .starting(reason: .automaticRetry(retry.reason), requestedAt: time)
         pendingRetry = nil
+        shouldRetryAfterWake = false
         return RuntimeRecoveryDecision(shouldStartRuntime: true, shouldStopRuntime: false)
+    }
+
+    private var canRetryAfterWake: Bool {
+        switch mode {
+        case .running,
+             .starting:
+            return true
+        case .stopped,
+             .suspendedForSleep:
+            return pendingRetry != nil
+        }
     }
 
     private func retryRequest(

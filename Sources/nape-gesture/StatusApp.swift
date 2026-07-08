@@ -53,35 +53,25 @@ final class StatusApp: NSObject, NSApplicationDelegate {
 
     private func refreshMenu() {
         let menu = NSMenu()
-        let stateTitle = currentStateTitle()
-        menu.addItem(NSMenuItem(title: stateTitle, action: nil, keyEquivalent: ""))
+        let presentation = RuntimeStatusPresenter.present(
+            isRuntimeRunning: runtime.isRunning,
+            recoveryState: recoveryState
+        )
+        menu.addItem(NSMenuItem(title: presentation.stateTitle, action: nil, keyEquivalent: ""))
 
         if let error = runtime.lastError {
             menu.addItem(NSMenuItem(title: "エラー: \(error.localizedDescription)", action: nil, keyEquivalent: ""))
         }
 
         menu.addItem(.separator())
-        menu.addItem(menuItem("開始", action: #selector(startRuntime), enabled: !runtime.isRunning))
-        menu.addItem(menuItem("緊急停止", action: #selector(stopRuntime), enabled: runtime.isRunning || recoveryState.autoRetryEnabled))
-        menu.addItem(menuItem("停止", action: #selector(stopRuntime), enabled: runtime.isRunning || recoveryState.autoRetryEnabled))
+        menu.addItem(menuItem("開始", action: #selector(startRuntime), enabled: presentation.startEnabled))
+        menu.addItem(menuItem("緊急停止", action: #selector(stopRuntime), enabled: presentation.emergencyStopEnabled))
+        menu.addItem(menuItem("停止", action: #selector(stopRuntime), enabled: presentation.stopEnabled))
         menu.addItem(menuItem("設定...", action: #selector(openSettings), enabled: true))
         menu.addItem(menuItem("権限とデバイスを確認", action: #selector(checkPermissions), enabled: true))
         menu.addItem(.separator())
         menu.addItem(menuItem("終了", action: #selector(quit), enabled: true))
         statusItem?.menu = menu
-    }
-
-    private func currentStateTitle() -> String {
-        if runtime.isRunning {
-            return "状態: 実行中"
-        }
-        if recoveryState.isSuspendedForSleep {
-            return "状態: スリープ待機中"
-        }
-        if recoveryState.shouldShowAutoRetry {
-            return "状態: 停止中（自動再試行中）"
-        }
-        return "状態: 停止中"
     }
 
     private func menuItem(_ title: String, action: Selector, enabled: Bool) -> NSMenuItem {
