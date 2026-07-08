@@ -15,12 +15,14 @@ struct AnalyzeAssociationCommand {
         }
 
         let window = try windowValue()
+        let targetStableID = try targetStableIDValue()
         let hidRecords = try loadHIDRecords(from: positional[0])
         let eventRecords = try InputLogFileReader.readRecords(path: positional[1])
         let analysis = InputAssociationAnalyzer.analyze(
             hidRecords: hidRecords,
             eventTapRecords: eventRecords,
-            associationWindowSeconds: window
+            associationWindowSeconds: window,
+            targetStableID: targetStableID
         )
         let assertValidWindow = options.contains("--assert-valid-window")
 
@@ -44,7 +46,7 @@ struct AnalyzeAssociationCommand {
         var index = 0
         while index < options.count {
             let option = options[index]
-            if option == "--window" {
+            if option == "--window" || option == "--target-stable-id" {
                 index += 2
                 continue
             }
@@ -69,6 +71,18 @@ struct AnalyzeAssociationCommand {
         return value
     }
 
+    private func targetStableIDValue() throws -> String? {
+        guard options.contains("--target-stable-id") else {
+            return nil
+        }
+        let value = try SettingsStore.requiredValue(for: "--target-stable-id", in: options)
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw ToolError.invalidValue("--target-stable-id", value)
+        }
+        return trimmed
+    }
+
     private func loadHIDRecords(from path: String) throws -> [HIDInputLogRecord] {
         let data = try Data(contentsOf: URL(fileURLWithPath: path))
         let content = String(decoding: data, as: UTF8.self)
@@ -85,6 +99,7 @@ struct AnalyzeAssociationCommand {
         var lines = [
             "HID / イベントタップ紐づけ解析",
             "associationWindow: \(format(window)) 秒",
+            "対象HIDデバイスID: \(analysis.targetStableID ?? "-")",
             "HIDログ総数: \(analysis.totalHIDEvents)",
             "イベントタップログ総数: \(analysis.totalEventTapEvents)",
             "解析対象イベントタップ数: \(analysis.analyzedEventTapEvents)",
@@ -92,6 +107,7 @@ struct AnalyzeAssociationCommand {
             "互換HID候補あり数: \(analysis.hidCandidateEventCount)",
             "互換HID候補なし数: \(analysis.missingHIDCandidateEventCount)",
             "非互換HID近傍数: \(analysis.incompatibleHIDCandidateEventCount)",
+            "対象外互換HID近傍数: \(analysis.targetHIDDeviceMismatchEventCount)",
             "採用HIDデバイス数: \(analysis.matchedHIDDeviceIDs.count)",
             "associationWindow内: \(analysis.withinWindowCount)",
             "associationWindow外: \(analysis.outsideWindowCount)",
@@ -106,6 +122,12 @@ struct AnalyzeAssociationCommand {
         }
         if analysis.incompatibleHIDCandidateEventCount > 0 {
             lines.append("所見: 近い HID 入力はありますが、イベントタップ入力の種別と HID usage が一致しない入力があります。button / axis / wheel の記録を確認してください。")
+        }
+        if analysis.targetStableID == nil {
+            lines.append("所見: 対象 HID デバイス ID が指定されていません。完了証跡にする場合は --target-stable-id を指定してください。")
+        }
+        if analysis.targetHIDDeviceMismatchEventCount > 0 {
+            lines.append("所見: 近い互換 HID 入力が対象外デバイスから来ています。対象デバイスの stableID とログ取得範囲を確認してください。")
         }
         if analysis.matchedHIDDeviceIDs.count > 1 {
             lines.append("所見: 複数の HID デバイスが採用されています。対象デバイスだけに絞った HID ログで取り直してください。")
@@ -130,9 +152,12 @@ struct AssociationWindowAssertionError: LocalizedError {
     var window: TimeInterval
 
     var errorDescription: String? {
+        if analysis.targetStableID == nil {
+            return "associationWindow \(String(format: "%.4f", window)) 秒の検証に失敗しました。--assert-valid-window には --target-stable-id <ID> が必要です。`devices --all --json` または `analyze-hid-log --json` で対象 HID デバイスの stableID を確認してください。"
+        }
         if analysis.analyzedEventTapEvents == 0 {
             return "associationWindow を検証できるイベントタップ入力がありません。対象デバイス操作を含むログを指定してください。"
         }
-        return "associationWindow \(String(format: "%.4f", window)) 秒の検証に失敗しました。互換HID候補なし \(analysis.missingHIDCandidateEventCount) 件、非互換HID近傍 \(analysis.incompatibleHIDCandidateEventCount) 件、採用HIDデバイス \(analysis.matchedHIDDeviceIDs.count) 件、window外 \(analysis.outsideWindowCount) 件です。`analyze-association <hid-log> <event-log> --window <秒> --json` で matches を確認してください。"
+        return "associationWindow \(String(format: "%.4f", window)) 秒の検証に失敗しました。互換HID候補なし \(analysis.missingHIDCandidateEventCount) 件、非互換HID近傍 \(analysis.incompatibleHIDCandidateEventCount) 件、対象外互換HID近傍 \(analysis.targetHIDDeviceMismatchEventCount) 件、採用HIDデバイス \(analysis.matchedHIDDeviceIDs.count) 件、window外 \(analysis.outsideWindowCount) 件です。`analyze-association <hid-log> <event-log> --window <秒> --target-stable-id <ID> --json` で matches を確認してください。"
     }
 }

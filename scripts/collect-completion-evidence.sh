@@ -366,6 +366,8 @@ run_split_success \
   ".build/debug/nape-gesture analyze-hid-log Fixtures/sample-hid-log.jsonl" \
   .build/debug/nape-gesture analyze-hid-log Fixtures/sample-hid-log.jsonl
 
+sample_target_stable_id="vendor=123;product=456;manufacturer=example;name=nape-pro-mouse;transport=bluetooth"
+
 run_split_success \
   "sample association analyze-association" \
   "$fixtures_dir/analyze-sample-association.json" \
@@ -377,43 +379,50 @@ run_split_success \
   "clean association assert-valid-window" \
   "$fixtures_dir/clean-association-analysis.json" \
   "$fixtures_dir/clean-association-analysis.stderr.log" \
-  ".build/debug/nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/clean-association-event-log.jsonl --window 0.12 --json --assert-valid-window" \
-  .build/debug/nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/clean-association-event-log.jsonl --window 0.12 --json --assert-valid-window
+  ".build/debug/nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/clean-association-event-log.jsonl --window 0.12 --target-stable-id $sample_target_stable_id --json --assert-valid-window" \
+  .build/debug/nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/clean-association-event-log.jsonl --window 0.12 --target-stable-id "$sample_target_stable_id" --json --assert-valid-window
 
 run_split_expected_failure \
   "sample association assert-valid-window" \
   "$fixtures_dir/sample-association-assert-valid-window.json" \
   "$fixtures_dir/sample-association-assert-valid-window.stderr.log" \
-  ".build/debug/nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/sample-association-event-log.jsonl --window 0.12 --json --assert-valid-window" \
-  .build/debug/nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/sample-association-event-log.jsonl --window 0.12 --json --assert-valid-window
+  ".build/debug/nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/sample-association-event-log.jsonl --window 0.12 --target-stable-id $sample_target_stable_id --json --assert-valid-window" \
+  .build/debug/nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/sample-association-event-log.jsonl --window 0.12 --target-stable-id "$sample_target_stable_id" --json --assert-valid-window
 
 run_split_expected_failure \
   "empty association HID assert-valid-window" \
   "$fixtures_dir/empty-association-assert-valid-window.json" \
   "$fixtures_dir/empty-association-assert-valid-window.stderr.log" \
-  ".build/debug/nape-gesture analyze-association Fixtures/empty-association-hid-log.jsonl Fixtures/clean-association-event-log.jsonl --window 0.12 --json --assert-valid-window" \
-  .build/debug/nape-gesture analyze-association Fixtures/empty-association-hid-log.jsonl Fixtures/clean-association-event-log.jsonl --window 0.12 --json --assert-valid-window
+  ".build/debug/nape-gesture analyze-association Fixtures/empty-association-hid-log.jsonl Fixtures/clean-association-event-log.jsonl --window 0.12 --target-stable-id $sample_target_stable_id --json --assert-valid-window" \
+  .build/debug/nape-gesture analyze-association Fixtures/empty-association-hid-log.jsonl Fixtures/clean-association-event-log.jsonl --window 0.12 --target-stable-id "$sample_target_stable_id" --json --assert-valid-window
 
 run_split_expected_failure \
   "scroll mismatch association assert-valid-window" \
   "$fixtures_dir/scroll-mismatch-association-assert-valid-window.json" \
   "$fixtures_dir/scroll-mismatch-association-assert-valid-window.stderr.log" \
-  ".build/debug/nape-gesture analyze-association Fixtures/association-scroll-mismatch-hid-log.jsonl Fixtures/association-scroll-mismatch-event-log.jsonl --window 0.12 --json --assert-valid-window" \
-  .build/debug/nape-gesture analyze-association Fixtures/association-scroll-mismatch-hid-log.jsonl Fixtures/association-scroll-mismatch-event-log.jsonl --window 0.12 --json --assert-valid-window
+  ".build/debug/nape-gesture analyze-association Fixtures/association-scroll-mismatch-hid-log.jsonl Fixtures/association-scroll-mismatch-event-log.jsonl --window 0.12 --target-stable-id $sample_target_stable_id --json --assert-valid-window" \
+  .build/debug/nape-gesture analyze-association Fixtures/association-scroll-mismatch-hid-log.jsonl Fixtures/association-scroll-mismatch-event-log.jsonl --window 0.12 --target-stable-id "$sample_target_stable_id" --json --assert-valid-window
 
 run_split_expected_failure \
   "button mismatch association assert-valid-window" \
   "$fixtures_dir/button-mismatch-association-assert-valid-window.json" \
   "$fixtures_dir/button-mismatch-association-assert-valid-window.stderr.log" \
-  ".build/debug/nape-gesture analyze-association Fixtures/association-button-mismatch-hid-log.jsonl Fixtures/association-button-mismatch-event-log.jsonl --window 0.12 --json --assert-valid-window" \
-  .build/debug/nape-gesture analyze-association Fixtures/association-button-mismatch-hid-log.jsonl Fixtures/association-button-mismatch-event-log.jsonl --window 0.12 --json --assert-valid-window
+  ".build/debug/nape-gesture analyze-association Fixtures/association-button-mismatch-hid-log.jsonl Fixtures/association-button-mismatch-event-log.jsonl --window 0.12 --target-stable-id $sample_target_stable_id --json --assert-valid-window" \
+  .build/debug/nape-gesture analyze-association Fixtures/association-button-mismatch-hid-log.jsonl Fixtures/association-button-mismatch-event-log.jsonl --window 0.12 --target-stable-id "$sample_target_stable_id" --json --assert-valid-window
+
+run_split_expected_failure \
+  "non-target association assert-valid-window" \
+  "$fixtures_dir/non-target-association-assert-valid-window.json" \
+  "$fixtures_dir/non-target-association-assert-valid-window.stderr.log" \
+  ".build/debug/nape-gesture analyze-association Fixtures/association-non-target-hid-log.jsonl Fixtures/association-non-target-event-log.jsonl --window 0.12 --target-stable-id $sample_target_stable_id --json --assert-valid-window" \
+  .build/debug/nape-gesture analyze-association Fixtures/association-non-target-hid-log.jsonl Fixtures/association-non-target-event-log.jsonl --window 0.12 --target-stable-id "$sample_target_stable_id" --json --assert-valid-window
 
 run_split_expected_failure \
   "mixed device association assert-valid-window" \
   "$fixtures_dir/mixed-device-association-assert-valid-window.json" \
   "$fixtures_dir/mixed-device-association-assert-valid-window.stderr.log" \
-  ".build/debug/nape-gesture analyze-association Fixtures/association-mixed-device-hid-log.jsonl Fixtures/association-mixed-device-event-log.jsonl --window 0.12 --json --assert-valid-window" \
-  .build/debug/nape-gesture analyze-association Fixtures/association-mixed-device-hid-log.jsonl Fixtures/association-mixed-device-event-log.jsonl --window 0.12 --json --assert-valid-window
+  ".build/debug/nape-gesture analyze-association Fixtures/association-mixed-device-hid-log.jsonl Fixtures/association-mixed-device-event-log.jsonl --window 0.12 --target-stable-id $sample_target_stable_id --json --assert-valid-window" \
+  .build/debug/nape-gesture analyze-association Fixtures/association-mixed-device-hid-log.jsonl Fixtures/association-mixed-device-event-log.jsonl --window 0.12 --target-stable-id "$sample_target_stable_id" --json --assert-valid-window
 
 run_split_success \
   "clean target log assert-no-leaks" \

@@ -8,6 +8,8 @@ public struct InputAssociationEventMatch: Codable, Equatable, Sendable {
     public var expectedHIDUsages: [String]
     public var nearestIncompatibleHID: HIDInputLogRecord?
     public var nearestIncompatibleTimeDifferenceSeconds: TimeInterval?
+    public var nearestTargetMismatchHID: HIDInputLogRecord?
+    public var nearestTargetMismatchTimeDifferenceSeconds: TimeInterval?
 
     public init(
         event: InputLogRecord,
@@ -16,7 +18,9 @@ public struct InputAssociationEventMatch: Codable, Equatable, Sendable {
         isWithinWindow: Bool,
         expectedHIDUsages: [String] = [],
         nearestIncompatibleHID: HIDInputLogRecord? = nil,
-        nearestIncompatibleTimeDifferenceSeconds: TimeInterval? = nil
+        nearestIncompatibleTimeDifferenceSeconds: TimeInterval? = nil,
+        nearestTargetMismatchHID: HIDInputLogRecord? = nil,
+        nearestTargetMismatchTimeDifferenceSeconds: TimeInterval? = nil
     ) {
         self.event = event
         self.hid = hid
@@ -25,10 +29,13 @@ public struct InputAssociationEventMatch: Codable, Equatable, Sendable {
         self.expectedHIDUsages = expectedHIDUsages
         self.nearestIncompatibleHID = nearestIncompatibleHID
         self.nearestIncompatibleTimeDifferenceSeconds = nearestIncompatibleTimeDifferenceSeconds
+        self.nearestTargetMismatchHID = nearestTargetMismatchHID
+        self.nearestTargetMismatchTimeDifferenceSeconds = nearestTargetMismatchTimeDifferenceSeconds
     }
 }
 
 public struct InputAssociationAnalysis: Codable, Equatable, Sendable {
+    public var targetStableID: String?
     public var totalHIDEvents: Int
     public var totalEventTapEvents: Int
     public var analyzedEventTapEvents: Int
@@ -36,6 +43,7 @@ public struct InputAssociationAnalysis: Codable, Equatable, Sendable {
     public var hidCandidateEventCount: Int
     public var missingHIDCandidateEventCount: Int
     public var incompatibleHIDCandidateEventCount: Int
+    public var targetHIDDeviceMismatchEventCount: Int
     public var matchedHIDDeviceIDs: [String]
     public var maximumTimeDifferenceSeconds: TimeInterval
     public var p95TimeDifferenceSeconds: TimeInterval
@@ -46,6 +54,7 @@ public struct InputAssociationAnalysis: Codable, Equatable, Sendable {
     public var matches: [InputAssociationEventMatch]
 
     public init(
+        targetStableID: String? = nil,
         totalHIDEvents: Int,
         totalEventTapEvents: Int,
         analyzedEventTapEvents: Int,
@@ -53,6 +62,7 @@ public struct InputAssociationAnalysis: Codable, Equatable, Sendable {
         hidCandidateEventCount: Int,
         missingHIDCandidateEventCount: Int,
         incompatibleHIDCandidateEventCount: Int = 0,
+        targetHIDDeviceMismatchEventCount: Int = 0,
         matchedHIDDeviceIDs: [String] = [],
         maximumTimeDifferenceSeconds: TimeInterval,
         p95TimeDifferenceSeconds: TimeInterval,
@@ -62,6 +72,7 @@ public struct InputAssociationAnalysis: Codable, Equatable, Sendable {
         suggestedAssociationWindowSeconds: TimeInterval,
         matches: [InputAssociationEventMatch]
     ) {
+        self.targetStableID = targetStableID
         self.totalHIDEvents = totalHIDEvents
         self.totalEventTapEvents = totalEventTapEvents
         self.analyzedEventTapEvents = analyzedEventTapEvents
@@ -69,6 +80,7 @@ public struct InputAssociationAnalysis: Codable, Equatable, Sendable {
         self.hidCandidateEventCount = hidCandidateEventCount
         self.missingHIDCandidateEventCount = missingHIDCandidateEventCount
         self.incompatibleHIDCandidateEventCount = incompatibleHIDCandidateEventCount
+        self.targetHIDDeviceMismatchEventCount = targetHIDDeviceMismatchEventCount
         self.matchedHIDDeviceIDs = matchedHIDDeviceIDs
         self.maximumTimeDifferenceSeconds = maximumTimeDifferenceSeconds
         self.p95TimeDifferenceSeconds = p95TimeDifferenceSeconds
@@ -80,11 +92,15 @@ public struct InputAssociationAnalysis: Codable, Equatable, Sendable {
     }
 
     public var hasValidAssociationWindowEvidence: Bool {
-        analyzedEventTapEvents > 0
+        guard let targetStableID else {
+            return false
+        }
+        return analyzedEventTapEvents > 0
             && missingHIDCandidateEventCount == 0
             && incompatibleHIDCandidateEventCount == 0
+            && targetHIDDeviceMismatchEventCount == 0
             && outsideWindowCount == 0
-            && matchedHIDDeviceIDs.count == 1
+            && matchedHIDDeviceIDs == [targetStableID]
     }
 }
 
@@ -92,7 +108,8 @@ public enum InputAssociationAnalyzer {
     public static func analyze(
         hidRecords: [HIDInputLogRecord],
         eventTapRecords: [InputLogRecord],
-        associationWindowSeconds: TimeInterval
+        associationWindowSeconds: TimeInterval,
+        targetStableID: String? = nil
     ) -> InputAssociationAnalysis {
         let sortedHIDRecords = hidRecords.sorted { $0.time < $1.time }
         let targetEvents = eventTapRecords.filter(\.isAssociationTargetEvent)
@@ -100,10 +117,22 @@ public enum InputAssociationAnalyzer {
         let matches = targetEvents.map { event -> InputAssociationEventMatch in
             let eventTime = event.associationTimestampSeconds
             let expectedHIDUsages = expectedHIDUsageDescriptions(for: event)
-            let compatibleRecords = sortedHIDRecords.filter { isCompatible($0, with: event) }
+            let usageCompatibleRecords = sortedHIDRecords.filter { isUsageCompatible($0, with: event) }
+            let targetCompatibleRecords = usageCompatibleRecords.filter { record in
+                targetStableID.map { record.device.stableID == $0 } ?? true
+            }
+            let nearestUsageCompatibleHID = nearestHIDRecord(to: eventTime, in: usageCompatibleRecords)
+            let nearestTargetMismatchHID = nearestUsageCompatibleHID.flatMap { record -> HIDInputLogRecord? in
+                guard let targetStableID, record.device.stableID != targetStableID else {
+                    return nil
+                }
+                return record
+            }
 
-            guard let hid = nearestHIDRecord(to: eventTime, in: compatibleRecords) else {
-                let nearestIncompatibleHID = nearestHIDRecord(to: eventTime, in: sortedHIDRecords)
+            guard let hid = nearestHIDRecord(to: eventTime, in: targetCompatibleRecords) else {
+                let nearestIncompatibleHID = usageCompatibleRecords.isEmpty
+                    ? nearestHIDRecord(to: eventTime, in: sortedHIDRecords)
+                    : nil
                 return InputAssociationEventMatch(
                     event: event,
                     hid: nil,
@@ -111,7 +140,9 @@ public enum InputAssociationAnalyzer {
                     isWithinWindow: false,
                     expectedHIDUsages: expectedHIDUsages,
                     nearestIncompatibleHID: nearestIncompatibleHID,
-                    nearestIncompatibleTimeDifferenceSeconds: nearestIncompatibleHID.map { abs(eventTime - $0.time) }
+                    nearestIncompatibleTimeDifferenceSeconds: nearestIncompatibleHID.map { abs(eventTime - $0.time) },
+                    nearestTargetMismatchHID: nearestTargetMismatchHID,
+                    nearestTargetMismatchTimeDifferenceSeconds: nearestTargetMismatchHID.map { abs(eventTime - $0.time) }
                 )
             }
 
@@ -121,7 +152,9 @@ public enum InputAssociationAnalyzer {
                 hid: hid,
                 timeDifferenceSeconds: timeDifference,
                 isWithinWindow: timeDifference <= associationWindowSeconds,
-                expectedHIDUsages: expectedHIDUsages
+                expectedHIDUsages: expectedHIDUsages,
+                nearestTargetMismatchHID: nearestTargetMismatchHID,
+                nearestTargetMismatchTimeDifferenceSeconds: nearestTargetMismatchHID.map { abs(eventTime - $0.time) }
             )
         }
 
@@ -129,6 +162,9 @@ public enum InputAssociationAnalyzer {
         let hidCandidateEventCount = timeDifferences.count
         let incompatibleHIDCandidateEventCount = matches.filter { match in
             match.hid == nil && match.nearestIncompatibleHID != nil
+        }.count
+        let targetHIDDeviceMismatchEventCount = matches.filter { match in
+            match.nearestTargetMismatchHID != nil
         }.count
         let matchedHIDDeviceIDs = Array(Set(matches.compactMap { $0.hid?.device.stableID })).sorted()
         let withinWindowCount = matches.filter(\.isWithinWindow).count
@@ -138,6 +174,7 @@ public enum InputAssociationAnalyzer {
         let p99TimeDifferenceSeconds = percentile(timeDifferences, fraction: 0.99)
 
         return InputAssociationAnalysis(
+            targetStableID: targetStableID,
             totalHIDEvents: hidRecords.count,
             totalEventTapEvents: eventTapRecords.count,
             analyzedEventTapEvents: targetEvents.count,
@@ -145,6 +182,7 @@ public enum InputAssociationAnalyzer {
             hidCandidateEventCount: hidCandidateEventCount,
             missingHIDCandidateEventCount: matches.count - hidCandidateEventCount,
             incompatibleHIDCandidateEventCount: incompatibleHIDCandidateEventCount,
+            targetHIDDeviceMismatchEventCount: targetHIDDeviceMismatchEventCount,
             matchedHIDDeviceIDs: matchedHIDDeviceIDs,
             maximumTimeDifferenceSeconds: timeDifferences.last ?? 0,
             p95TimeDifferenceSeconds: percentile(timeDifferences, fraction: 0.95),
@@ -193,7 +231,7 @@ public enum InputAssociationAnalyzer {
         }
     }
 
-    private static func isCompatible(_ hid: HIDInputLogRecord, with event: InputLogRecord) -> Bool {
+    private static func isUsageCompatible(_ hid: HIDInputLogRecord, with event: InputLogRecord) -> Bool {
         if event.isButtonEvent {
             return hid.usagePage == 9 && expectedButtonUsages(for: event).contains(hid.usage)
         }
@@ -224,11 +262,7 @@ public enum InputAssociationAnalyzer {
 
     private static func expectedButtonUsages(for event: InputLogRecord) -> Set<Int> {
         let buttonNumber = max(Int(event.buttonNumber), 0)
-        if buttonNumber == 0 {
-            return [1]
-        }
-        // CGEvent は 0 始まり、HID Button usage は 1 始まりだが、既存ログには同番号表現もあるため両方を許容する。
-        return [buttonNumber, buttonNumber + 1]
+        return [buttonNumber + 1]
     }
 
     private static func percentile(_ sortedValues: [TimeInterval], fraction: Double) -> TimeInterval {
