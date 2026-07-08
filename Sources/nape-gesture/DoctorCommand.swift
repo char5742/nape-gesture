@@ -22,6 +22,7 @@ struct DoctorCommand {
             shouldProbeHID: options.contains("--probe-hid"),
             benchmarkEvents: benchmarkEvents
         )
+        let shouldAssertRuntimeReady = options.contains("--assert-runtime-ready")
 
         if options.contains("--json") {
             let encoder = JSONEncoder()
@@ -30,6 +31,11 @@ struct DoctorCommand {
             print(String(decoding: data, as: UTF8.self))
         } else {
             print(format(report))
+        }
+
+        if shouldAssertRuntimeReady && !report.runtimeReadinessFailures.isEmpty {
+            fflush(stdout)
+            throw DoctorRuntimeReadyAssertionError(failures: report.runtimeReadinessFailures)
         }
     }
 
@@ -255,6 +261,31 @@ private struct DoctorReport: Codable {
     var benchmark: BenchmarkReport
     var settingsValidationIssues: [SettingsValidationIssue]
     var findings: [String]
+
+    var runtimeReadinessFailures: [String] {
+        var failures: [String] = []
+        if !settingsValidationIssues.isEmpty {
+            failures.append("設定ファイルに不正な値があります。")
+        }
+        if !accessibilityTrusted {
+            failures.append("アクセシビリティ権限が未許可です。")
+        }
+        if inventoryError != nil {
+            failures.append("HID デバイス一覧を取得できません。")
+        }
+        if requireMatchingTargetDevice && configuredTargetMatchers == 0 {
+            failures.append("対象デバイス一致が必須ですが、対象デバイス条件が空です。")
+        }
+        if requireMatchingTargetDevice && matchedTargetDeviceCount == 0 {
+            failures.append("対象デバイス一致が必須ですが、現在一致デバイスがありません。")
+        }
+        if !hidProbe.requested {
+            failures.append("HID 入力監視プローブが未実行です。`--probe-hid` を付けてください。")
+        } else if hidProbe.succeeded != true {
+            failures.append("HID 入力監視プローブに失敗しました。")
+        }
+        return failures
+    }
 }
 
 private struct DoctorHIDProbe: Codable {
@@ -262,4 +293,16 @@ private struct DoctorHIDProbe: Codable {
     var succeeded: Bool?
     var error: String?
     var remediation: String?
+}
+
+private struct DoctorRuntimeReadyAssertionError: LocalizedError {
+    var failures: [String]
+
+    var errorDescription: String? {
+        let details = failures.map { "- \($0)" }.joined(separator: "\n")
+        return """
+        runtime ready 診断を満たしていません。
+        \(details)
+        """
+    }
 }

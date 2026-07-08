@@ -80,7 +80,7 @@ swift run nape-gesture system-test run --scenario space-left --target finder --d
 swift run nape-gesture system-test run --scenario horizontal-scroll --dry-run --log-json --out system-horizontal-scroll.jsonl
 swift run nape-gesture analyze-log system-horizontal-scroll.jsonl --json
 swift run nape-gesture benchmark --events 200000 --json
-swift run nape-gesture doctor --probe-hid --benchmark-events 50000 --json
+swift run nape-gesture doctor --probe-hid --benchmark-events 50000 --json --assert-runtime-ready
 swift run nape-gesture init-config --out nape-gesture.config.json
 swift run nape-gesture init-config --vendor-id <ID> --product-id <ID> --usage-page <ID> --usage <ID> --association-window 0.12 --out nape-gesture.config.json
 swift run nape-gesture run
@@ -112,7 +112,7 @@ swift run nape-gesture check-config --probe-hid
 
 `kIOReturnNotPermitted` が出る場合は、システム設定の「プライバシーとセキュリティ」で、実行元の Codex、ターミナル、または `NapeGesture.app` に「入力監視」を許可してください。
 権限を付与した直後に macOS が反映しない場合は、実行元アプリまたは `NapeGesture.app` を再起動してください。常駐UIは再起動後の初回起動で再度開始し、失敗時は自動再試行状態へ入ります。
-`doctor --probe-hid` はアクセシビリティ、入力監視、対象デバイス一致、HID デバイス数、ベンチマークを一括で出し、失敗時の復旧手順も表示します。`--json` を付けると検証ログとして保存しやすい形式になります。
+`doctor --probe-hid` はアクセシビリティ、入力監視、対象デバイス一致、HID デバイス数、ベンチマークを一括で出し、失敗時の復旧手順も表示します。`--json` を付けると検証ログとして保存しやすい形式になります。`--assert-runtime-ready` は runtime 開始前提を満たさない場合に非ゼロ終了します。
 `doctor --json` には実行ファイル、bundle ID、bundle path などの `runtimeIdentity` も含めます。権限が未許可のときは、システム設定でどの `.app` または実行ファイルを許可すべきかをこの値で確認してください。
 Nape Pro が通常の `devices` に出ない場合は、`devices --all --json` で全 HID デバイスを確認します。JSON には `stableID`、`vendorID`、`productID`、`primaryUsagePage`、`primaryUsage` が含まれます。対象らしい値が見つかったら、`hid-log --vendor-id <ID> --product-id <ID> --usage-page <ID> --usage <ID> --duration 10` を実行しながら Nape Pro を操作して、どの `usagePage` / `usage` で入力が来ているか確認します。取得した JSON Lines は `analyze-hid-log <path>` で集計し、イベント数、非ゼロ値、値域、`stableID` を見ます。`hid-log --all` は排他デバイスを含む環境で失敗することがあるため、通常はデバイスIDと usage を指定してください。
 特定した値は `init-config --vendor-id <ID> --product-id <ID> --usage-page <ID> --usage <ID> --association-window <秒> --out <path>` で設定ファイルへ直接反映できます。必要なら `--manufacturer-contains`、`--product-contains`、`--transport-contains` も併用できます。設定UIでも vendor ID、product ID、usagePage、usage、対象入力の紐づけ秒などを編集できます。
