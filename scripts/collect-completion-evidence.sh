@@ -267,6 +267,13 @@ run_split_expected_failure \
   .build/debug/nape-gesture analyze-target-log Fixtures/leaky-target-log.jsonl --json --assert-no-leaks
 
 run_split_success \
+  "normal input target log assert-has-unmarked-input" \
+  "$fixtures_dir/normal-input-target-log-analysis.json" \
+  "$fixtures_dir/normal-input-target-log-analysis.stderr.log" \
+  ".build/debug/nape-gesture analyze-target-log Fixtures/normal-input-target-log.jsonl --json --assert-has-unmarked-input" \
+  .build/debug/nape-gesture analyze-target-log Fixtures/normal-input-target-log.jsonl --json --assert-has-unmarked-input
+
+run_split_success \
   "HID devices all JSON" \
   "$hid_dir/devices-all.json" \
   "$hid_dir/devices-all.stderr.log" \
