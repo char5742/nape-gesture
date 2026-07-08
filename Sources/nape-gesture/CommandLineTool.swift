@@ -98,8 +98,8 @@ final class CommandLineTool {
               nape-gesture compare-log <baseline> <candidate> [--json]
                   純正入力ログと生成イベントログなど、2つの JSON Lines ログ差分を比較します。
 
-              nape-gesture derive-parameters <path> [--json]
-                  純正トラックパッドなどの JSON Lines ログから deadZone、加速度、慣性の候補値と未導出理由を出します。
+              nape-gesture derive-parameters <path> [--json] [--assert-complete]
+                  純正トラックパッドなどの JSON Lines ログから deadZone、加速度、慣性の候補値と未導出理由を出します。--assert-complete で acceleration / momentum 候補が未導出、または警告がある場合に失敗します。
 
               nape-gesture analyze-hid-log <path> [--json]
                   IOHID 生入力ログを device / usage ごとに集計します。
