@@ -137,6 +137,7 @@ fixtures_dir="$artifact_root/fixtures-analysis"
 hid_dir="$artifact_root/hid-inventory"
 
 config_path="$doctor_dir/nape-gesture.config.json"
+blocked_config_path="$doctor_dir/nape-gesture-impossible-target.config.json"
 
 run_combined_success \
   "debug build" \
@@ -211,6 +212,12 @@ run_combined_success \
   ".build/debug/nape-gesture init-config --allow-unmatched --out $config_path" \
   .build/debug/nape-gesture init-config --allow-unmatched --out "$config_path"
 
+run_combined_success \
+  "不一致対象デバイス設定作成" \
+  "$doctor_dir/init-config-impossible-target.log" \
+  ".build/debug/nape-gesture init-config --vendor-id 65535 --product-id 65535 --manufacturer-contains ImpossibleNapeDevice --product-contains ImpossibleNapeDevice --out $blocked_config_path" \
+  .build/debug/nape-gesture init-config --vendor-id 65535 --product-id 65535 --manufacturer-contains ImpossibleNapeDevice --product-contains ImpossibleNapeDevice --out "$blocked_config_path"
+
 run_split_success \
   "doctor JSON" \
   "$doctor_dir/doctor-debug.json" \
@@ -224,6 +231,20 @@ run_split_success \
   "$doctor_dir/doctor-hid-probe-debug.stderr.log" \
   ".build/debug/nape-gesture doctor --config $config_path --probe-hid --benchmark-events 1000 --json" \
   .build/debug/nape-gesture doctor --config "$config_path" --probe-hid --benchmark-events 1000 --json
+
+run_split_expected_failure \
+  "doctor assert-runtime-ready requires HID probe" \
+  "$doctor_dir/doctor-assert-runtime-ready-requires-probe.json" \
+  "$doctor_dir/doctor-assert-runtime-ready-requires-probe.stderr.log" \
+  ".build/debug/nape-gesture doctor --config $config_path --benchmark-events 1000 --json --assert-runtime-ready" \
+  .build/debug/nape-gesture doctor --config "$config_path" --benchmark-events 1000 --json --assert-runtime-ready
+
+run_split_expected_failure \
+  "doctor assert-runtime-ready target mismatch" \
+  "$doctor_dir/doctor-assert-runtime-ready-target-mismatch.json" \
+  "$doctor_dir/doctor-assert-runtime-ready-target-mismatch.stderr.log" \
+  ".build/debug/nape-gesture doctor --config $blocked_config_path --probe-hid --benchmark-events 1000 --json --assert-runtime-ready" \
+  .build/debug/nape-gesture doctor --config "$blocked_config_path" --probe-hid --benchmark-events 1000 --json --assert-runtime-ready
 
 run_split_success \
   "benchmark baseline JSON" \

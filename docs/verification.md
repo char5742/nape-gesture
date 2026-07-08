@@ -36,7 +36,7 @@ executablePath: /Users/fujino/Documents/mac-gesture/.build/NapeGesture.app/Conte
 標準確認:
 
 ```sh
-.build/debug/nape-gesture doctor --config <設定ファイル> --probe-hid --benchmark-events 50000 --json
+.build/debug/nape-gesture doctor --config <設定ファイル> --probe-hid --benchmark-events 50000 --json --assert-runtime-ready
 ```
 
 完成判定では、少なくとも次が必要。
@@ -46,10 +46,12 @@ executablePath: /Users/fujino/Documents/mac-gesture/.build/NapeGesture.app/Conte
 - `hidProbe.succeeded` が `true`
 - `runtimeIdentity` が、実際に日常利用する `.app` または実行ファイルを指している
 - `requireMatchingTargetDevice` が `true` の場合、`matchedTargetDeviceCount` が `1` 以上
+- `--assert-runtime-ready` の終了コードが 0
 
 権限付与先を迷う場合は、`doctor --json` の `runtimeIdentity` を見る。
 `.app` として使うなら `runtimeIdentity.isAppBundle` が `true` になる経路で確認し、システム設定でもその `.app` を許可する。
 SwiftPM や debug バイナリを直接実行している場合は、`runtimeIdentity.executablePath` に出た実行ファイルを許可対象として扱う。
+`--assert-runtime-ready` は JSON 出力後に runtime 開始前提を検査する。アクセシビリティ未許可、HID probe 未実行、HID probe 失敗、対象デバイス必須時の不一致、設定不正、HID inventory 失敗があれば非ゼロ終了する。
 
 ## 性能測定
 

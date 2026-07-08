@@ -146,8 +146,8 @@ final class CommandLineTool {
               nape-gesture benchmark [--events <数>] [--json] [--assert-baseline]
                   認識器とスクロール計画の純粋ロジック処理時間を測定します。--assert-baseline で性能基準を満たさない場合に失敗します。
 
-              nape-gesture doctor [--config <path>] [--probe-hid] [--benchmark-events <数>] [--json]
-                  権限、対象デバイス、HID入力監視、ベンチマークを一括診断します。
+              nape-gesture doctor [--config <path>] [--probe-hid] [--benchmark-events <数>] [--json] [--assert-runtime-ready]
+                  権限、対象デバイス、HID入力監視、ベンチマークを一括診断します。--assert-runtime-ready で runtime 開始前提を満たさない場合に失敗します。
             """
         )
     }

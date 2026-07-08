@@ -17,6 +17,7 @@
 | [ADR-0008](0008-runtime-recovery-boundary-evidence.md) | Runtime recovery 境界条件の機械証跡化 | Issue #13、スリープ復帰、入力監視、復旧 |
 | [ADR-0009](0009-target-device-association-window-assertion.md) | 対象デバイス紐づけ秒の機械判定 | Issue #5、HID / event tap 時刻差、associationWindow |
 | [ADR-0010](0010-system-test-discrete-assignment-dry-run-evidence.md) | 離散割り当ての System Behavior Test dry-run 証跡 | Issue #10、ページ戻る/進む、ズーム、横スクロール |
+| [ADR-0011](0011-doctor-runtime-ready-assertion.md) | doctor runtime ready の機械判定 | Issue #13、Issue #16、権限、HID probe、対象デバイス一致 |
 
 ## 追加時の確認
 
