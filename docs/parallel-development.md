@@ -4,7 +4,8 @@
 
 メインスレッドは、Issue 整理、PR レビュー、マージ判断、完成判定の証跡確認に集中する。
 実装はサブエージェントに分割し、各サブエージェントは明確な所有範囲を持つ。
-現在のローカル repository は初回コミット前なので、サブエージェントによる本格的な実装分岐を始める前に、まず baseline commit を作る。
+現在の baseline は `main` に push 済みなので、サブエージェントは Issue ごとの `codex/issue-XXX-*` ブランチで作業する。
+メインスレッドは直接実装を抱え込みすぎず、Issue 作成、PR レビュー、CI と証跡確認、マージ判断を主担当にする。
 
 ## メインスレッドの責務
 
@@ -34,6 +35,21 @@
 - `codex/issue-011-permission-runtime-identity`
 - `codex/issue-014-performance-baseline`
 - `codex/issue-015-release-bundle`
+
+## 次の並列投入候補
+
+2026-07-08 時点で、Issue 1、Issue 2、Issue 3、Issue 7 は完了済み。
+次は次の順でサブエージェントへ分ける。
+
+| Issue | 目的 | 所有範囲 | 衝突リスク | 完了確認 |
+| --- | --- | --- | --- | --- |
+| Issue 14 | 入力遅延と CPU 使用率の測定基準を固定する | `Sources/nape-gesture/BenchmarkCommand.swift`, `docs/verification.md`, `docs/pr-review-checklist.md` | 低 | `swift build --scratch-path .build`, `.build/debug/nape-gesture-core-tests`, `.build/debug/nape-gesture benchmark --events 200000 --json`, `.build/debug/nape-gesture doctor --benchmark-events 50000 --json` |
+| Issue 5 | HID 対象デバイスとイベントタップ入力の紐づけを厳密化する | `Sources/NapeGestureCore/`, `Sources/nape-gesture/NapeGestureRuntime.swift`, `Sources/nape-gesture/HIDInputMonitor.swift`, `Sources/nape-gesture/SettingsWindowController.swift` | 中 | `swift build --scratch-path .build`, `.build/debug/nape-gesture-core-tests`, `.build/debug/nape-gesture check-config --config <検証設定> --probe-hid` |
+| Issue 6 | 元入力抑制を Reference Target App とログ解析で検証可能にする | `Sources/nape-gesture/ReferenceTargetApp.swift`, `Sources/nape-gesture/AnalyzeTargetLogCommand.swift`, `docs/verification.md` | 中 | `swift build --scratch-path .build`, `.build/debug/nape-gesture target --out <target-log>`, `.build/debug/nape-gesture analyze-target-log <target-log>` |
+| Issue 9 | Spaces / Mission Control の実機挙動マトリクスを作る | `Sources/nape-gesture/SystemBehaviorTestCommand.swift`, `docs/verification.md`, `docs/system-behavior-matrix.md` | 中 | `.build/debug/nape-gesture system-test list`, `.build/debug/nape-gesture system-test run --scenario space-left --target finder --dry-run --log-json --out /tmp/system-space-left.jsonl`, `.build/debug/nape-gesture analyze-log /tmp/system-space-left.jsonl` |
+| Issue 4 | Nape Pro HID profile を実機ログから確定する | `docs/verification.md`, `Fixtures/`, `logs/` | 低 | `.build/debug/nape-gesture devices --all --json`, `.build/debug/nape-gesture hid-log --vendor-id <ID> --product-id <ID> --usage-page <ID> --usage <ID> --duration 10`, `.build/debug/nape-gesture analyze-hid-log <log>`, `.build/debug/nape-gesture doctor --config <設定> --probe-hid --json` |
+
+Issue 4 と Issue 9 は実機と権限状態に依存するため、実機なしの dry-run だけで完了扱いにしない。
 
 ## 衝突しにくい所有範囲
 

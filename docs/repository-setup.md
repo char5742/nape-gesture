@@ -1,16 +1,19 @@
-# nape-gesture リポジトリ作成手順
+# nape-gesture リポジトリ運用記録
 
-## 現在のブロッカー
+## 現在の状態
 
-2026-07-08 時点では、ローカルの `gh` は `char5742` として認証情報を持っているが、トークンが無効で GitHub API に接続できない。
-Codex の GitHub コネクタでは `char5742` の既存リポジトリ閲覧と Issue 作成はできるが、新規リポジトリ作成 API は提供されていない。
+2026-07-08 時点で、GitHub リポジトリは作成済み。
 
-そのため、`char5742/nape-gesture` の作成には次のどちらかが必要。
+- Repository: <https://github.com/char5742/nape-gesture>
+- Visibility: private
+- Default branch: `main`
+- Remote: `origin`
+- Baseline commit: `0dacfc5 Initial nape-gesture baseline`
+- Rename commit: `6fb14ae Rename project to nape-gesture`
 
-- GitHub Web UI で空リポジトリ `nape-gesture` を作成する
-- `gh auth login -h github.com` で再認証し、`gh repo create char5742/nape-gesture` を実行できる状態にする
+## 初回 push 済みのローカル確認
 
-## 初回 push 前のローカル確認
+初回 push 前に次を確認済み。
 
 ```sh
 git status --short
@@ -23,44 +26,35 @@ swift build -c release --scratch-path .build
 .build/release/nape-gesture verify-bundle .build/NapeGesture.app
 ```
 
-## リポジトリ作成後の操作
+追加で、`.app` 経由の `doctor --probe-hid --benchmark-events 10000 --json` も実行済み。
+現時点の外部ブロッカーは次。
 
-```sh
-git remote add origin git@github.com:char5742/nape-gesture.git
-git add .
-git commit -m "Initial nape-gesture baseline"
-git push -u origin main
-```
-
-HTTPS remote を使う場合:
-
-```sh
-git remote add origin https://github.com/char5742/nape-gesture.git
-git push -u origin main
-```
+- アクセシビリティ権限は `accessibilityTrusted: false`
+- 実機 Nape Pro は未識別で `matchedTargetDeviceCount: 0`
+- Spaces / Mission Control の実機挙動は未検証
 
 ## Issue 作成
 
-初期 Issue は `docs/github-issues.md` を基準に作成する。
-GitHub コネクタで `char5742/nape-gesture` が見えるようになったら、Issue 作成はコネクタを優先する。
+初期 Issue は `docs/github-issues.md` を基準に作成済み。
 
-ラベルは先に次を作成する。
+- Milestone: 5件
+- Issue: 16件
+- 完了扱いで close 済み: 4件（Issue 1、Issue 2、Issue 3、Issue 7）
+- close 済み Milestone: Milestone 1
+- 運用 label: 15件
 
-- `area:core`
-- `area:runtime`
-- `area:hid`
-- `area:verification`
-- `area:ui`
-- `area:release`
-- `area:docs`
-- `type:feature`
-- `type:bug`
-- `type:research`
-- `type:qa`
-- `priority:p0`
-- `priority:p1`
-- `parallel:ready`
-- `blocked:external`
+Issue、label、milestone の作成・更新・コメント・close は、基本的に `gh api` で行う。
+重複を避けるため、再投入時は既存 title / label name / milestone title を先に取得してから差分だけ作成する。
+
+## 完了済みとして close する Issue
+
+完了条件を満たした Issue は、証跡コメントを付けて close する。
+2026-07-08 時点で close 対象にしたものは次。
+
+- Issue 1: リポジトリ名を nape-gesture として公開できる状態にする
+- Issue 2: CI で debug / release build とコアテストを必須化する
+- Issue 3: PR レビュー用チェックリストを整備する
+- Issue 7: スクロールと慣性フェーズの生成ログを純正入力と比較可能にする
 
 ## メインスレッドの役割
 
