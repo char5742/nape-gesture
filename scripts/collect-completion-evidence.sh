@@ -324,12 +324,26 @@ run_split_success \
   ".build/debug/nape-gesture analyze-target-log Fixtures/clean-target-log.jsonl --json --assert-no-leaks" \
   .build/debug/nape-gesture analyze-target-log Fixtures/clean-target-log.jsonl --json --assert-no-leaks
 
+run_split_success \
+  "clean target log assert-has-generated-event" \
+  "$fixtures_dir/clean-target-log-generated-analysis.json" \
+  "$fixtures_dir/clean-target-log-generated-analysis.stderr.log" \
+  ".build/debug/nape-gesture analyze-target-log Fixtures/clean-target-log.jsonl --json --assert-has-generated-event" \
+  .build/debug/nape-gesture analyze-target-log Fixtures/clean-target-log.jsonl --json --assert-has-generated-event
+
 run_split_expected_failure \
   "leaky target log assert-no-leaks" \
   "$fixtures_dir/leaky-target-log-analysis.json" \
   "$fixtures_dir/leaky-target-log-analysis.stderr.log" \
   ".build/debug/nape-gesture analyze-target-log Fixtures/leaky-target-log.jsonl --json --assert-no-leaks" \
   .build/debug/nape-gesture analyze-target-log Fixtures/leaky-target-log.jsonl --json --assert-no-leaks
+
+run_split_expected_failure \
+  "no generated target log assert-has-generated-event" \
+  "$fixtures_dir/no-generated-target-log-analysis.json" \
+  "$fixtures_dir/no-generated-target-log.stderr.log" \
+  ".build/debug/nape-gesture analyze-target-log Fixtures/no-generated-target-log.jsonl --json --assert-no-leaks --assert-has-generated-event" \
+  .build/debug/nape-gesture analyze-target-log Fixtures/no-generated-target-log.jsonl --json --assert-no-leaks --assert-has-generated-event
 
 run_split_success \
   "normal input target log assert-has-unmarked-input" \

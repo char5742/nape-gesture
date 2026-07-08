@@ -107,8 +107,8 @@ final class CommandLineTool {
               nape-gesture analyze-association <hid-log> <event-log> [--window <秒>] [--json] [--assert-valid-window]
                   HID 生入力ログとイベントタップログを相関し、対象入力の紐づけ秒を検証します。--assert-valid-window で解析対象がない場合、HID候補なし、または associationWindow 外の入力がある場合に失敗します。
 
-              nape-gesture analyze-target-log <path> [--json] [--assert-no-leaks] [--assert-has-unmarked-input] [--assert-has-gesture]
-                  Reference Target App が保存した AppKit 受信イベントを集計します。--assert-no-leaks で漏れ候補がある場合、--assert-has-unmarked-input で未マーク入力がない場合、--assert-has-gesture で swipe / magnify / rotate がない場合に失敗します。
+              nape-gesture analyze-target-log <path> [--json] [--assert-no-leaks] [--assert-has-unmarked-input] [--assert-has-gesture] [--assert-has-generated-event]
+                  Reference Target App が保存した AppKit 受信イベントを集計します。--assert-no-leaks で漏れ候補がある場合、--assert-has-unmarked-input で未マーク入力がない場合、--assert-has-gesture で swipe / magnify / rotate がない場合、--assert-has-generated-event で Nape Gesture 生成イベントがない場合に失敗します。
 
               nape-gesture check-config [--config <path>] [--probe-hid]
                   対象デバイス設定と HID 入力監視の開始可否を確認します。

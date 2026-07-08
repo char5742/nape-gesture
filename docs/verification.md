@@ -158,6 +158,7 @@ Issue #10 の横スクロールは Safari / 対応アプリでの画面挙動確
 target log を検証する場合、`system-test run` には `--target finder` / `--target safari` を付けない。`--target` を指定すると Finder または Safari が前面化するため、Reference Target App の AppKit 受信ログではなく、`log` や画面挙動の検証として扱う。
 保存した AppKit 受信ログは `analyze-target-log <path>` で集計し、`scrollWheel`、`swipe`、`magnify`、`rotate`、phase、momentumPhase、precise scroll の有無を確認する。
 Issue #6 / #12 の最終実測へ進む前に、まず `analyze-target-log <path> --assert-no-leaks` で target log を機械判定する。
+`gesture-drag` / `gesture-wheel` のように Nape Gesture 生成イベントが AppKit に届くこと自体が成功条件のシナリオでは、空ログや未成立ログを成功扱いしないため `--assert-has-generated-event` も併用する。
 通常入力通過を確認する `normal-after-release` では、解放後の未マーク `mouseMoved` / `scrollWheel` が AppKit に届くことが期待値になる。この場合は `--assert-no-leaks` ではなく、`analyze-target-log <path> --json --assert-has-unmarked-input` で未マーク入力の存在を機械判定する。
 Reference Target App が gesture 系イベントを扱えるかの前段確認は、実トラックパッド操作へ進む前に `Fixtures/gesture-target-log.jsonl` と `analyze-target-log --json --assert-has-gesture` で固定する。
 この assertion は `swipe`、`magnify`、`rotate` のいずれかが target log に含まれることを確認し、Issue #10 のページ戻る / 進む / ズーム / 横スクロール検証で AppKit gesture 受信形式を先に機械判定するために使う。
@@ -196,8 +197,8 @@ sh scripts/collect-runtime-event-evidence.sh
 
 アクセシビリティ許可済みの場合、スクリプトは次を実行する。
 
-- `gesture-drag`: `analyze-target-log --json --assert-no-leaks` でジェスチャードラッグ中の元入力漏れがないことを確認する
-- `gesture-wheel`: `analyze-target-log --json --assert-no-leaks` でジェスチャーホイール中の元入力漏れがないことを確認する
+- `gesture-drag`: `analyze-target-log --json --assert-no-leaks --assert-has-generated-event` でジェスチャードラッグ中の元入力漏れがなく、生成イベントが AppKit に届くことを確認する
+- `gesture-wheel`: `analyze-target-log --json --assert-no-leaks --assert-has-generated-event` でジェスチャーホイール中の元入力漏れがなく、生成イベントが AppKit に届くことを確認する
 - `kill-switch`: daemon log にキルスイッチ停止ログが出ることと、`analyze-target-log --json --assert-no-leaks` で `keyDown` / `keyUp` が前面アプリへ漏れないことを確認する
 - `normal-after-release`: `analyze-target-log --json --assert-has-unmarked-input` で解放後の通常入力が過剰抑制されていないことを確認する
 
@@ -221,7 +222,7 @@ for scenario in gesture-drag gesture-wheel; do
   wait "$target_pid"
   kill "$daemon_pid" 2>/dev/null || true
   wait "$daemon_pid" 2>/dev/null || true
-  .build/debug/nape-gesture analyze-target-log "$target_log" --json --assert-no-leaks
+  .build/debug/nape-gesture analyze-target-log "$target_log" --json --assert-no-leaks --assert-has-generated-event
 done
 ```
 
@@ -259,6 +260,7 @@ wait "$log_pid"
 
 ジェスチャー成立後の元入力抑制は、Reference Target App の target log に出る `generatedByNapeGesture` と `analyze-target-log --json` の漏れ候補数で初期判定する。
 Nape Gesture が投稿した生成イベントは `generatedByNapeGesture: true` として記録されるため、Reference Target App に届いても元入力漏れ候補には数えない。
+ジェスチャー生成を期待するシナリオでは `--assert-has-generated-event` を併用し、target log が空、または通常入力だけだった実行を成功扱いしない。
 一方で、`generatedByNapeGesture: false` の `mouseDown`、`mouseUp`、`mouseMoved`、`mouseDragged`、`otherMouseDown`、`otherMouseUp`、`otherMouseDragged`、`rightMouseDown`、`rightMouseUp`、`rightMouseDragged`、`scrollWheel`、`keyDown`、`keyUp` は、前面アプリへ届いた未マーク入力として漏れ候補に数える。
 
 確認例:
@@ -272,7 +274,7 @@ target_pid=$!
 until test -f "$ready_file"; do sleep 0.1; done
 # ここで対象デバイス操作、または --target を付けない system-test / CGEvent 投稿を別プロセスで実行する。
 wait "$target_pid"
-.build/debug/nape-gesture analyze-target-log "$target_log" --json --assert-no-leaks
+.build/debug/nape-gesture analyze-target-log "$target_log" --json --assert-no-leaks --assert-has-generated-event
 ```
 
 `--assert-no-leaks` は通常の集計出力を維持したまま、`leakCandidateEvents` が1件以上ある場合に非ゼロ終了する。
