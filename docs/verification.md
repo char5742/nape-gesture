@@ -186,7 +186,7 @@ wait "$target_pid"
 ```
 
 Issue #6 / #12 の runtime event 証跡は、手順の取り違えを避けるため次のスクリプトを正とする。
-このスクリプトは `doctor --json` で `accessibilityTrusted: true` を確認し、未許可の場合は target log を空ログとして扱わず外部ブロッカーとして記録する。
+このスクリプトは `doctor --json` で `accessibilityTrusted: true` と HID 入力監視プローブ成功を確認し、未許可または未成功の場合は target log を空ログとして扱わず外部ブロッカーとして記録する。
 
 ```sh
 NAPE_RUNTIME_EVENT_ARTIFACT_ROOT=artifacts/completion/$(date +%F)/runtime-event-evidence sh scripts/collect-runtime-event-evidence.sh
@@ -202,7 +202,7 @@ sh scripts/collect-runtime-event-evidence.sh
 
 既に検証用の実行ファイルを固定している場合は、`NAPE_RUNTIME_EVENT_TOOL=<実行ファイル>` で `run`、`target`、`system-test`、`analyze-target-log`、`doctor` に使う実行主体を明示できる。
 
-アクセシビリティ許可済みの場合、スクリプトは次を実行する。
+アクセシビリティ許可済みかつ HID 入力監視プローブ成功の場合、スクリプトは次を実行する。
 
 - `gesture-drag`: `analyze-target-log --json --assert-no-leaks --assert-has-generated-event` でジェスチャードラッグ中の元入力漏れがなく、生成イベントが AppKit に届くことを確認する
 - `gesture-wheel`: `analyze-target-log --json --assert-no-leaks --assert-has-generated-event` でジェスチャーホイール中の元入力漏れがなく、生成イベントが AppKit に届くことを確認する

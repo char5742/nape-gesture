@@ -139,8 +139,8 @@ sh scripts/collect-runtime-event-evidence.sh
 NAPE_RUNTIME_EVENT_USE_APP_BUNDLE=1 sh scripts/collect-runtime-event-evidence.sh
 ```
 
-このスクリプトは `doctor --json` で `accessibilityTrusted: true` を確認してから、`run`、Reference Target App、未マーク `system-test`、`analyze-target-log` を組み合わせます。
-未許可の場合は実イベントを投稿せず、外部ブロッカーとして `summary.md` に runtimeIdentity を残します。
+このスクリプトは `doctor --json` で `accessibilityTrusted: true` と HID 入力監視プローブ成功を確認してから、`run`、Reference Target App、未マーク `system-test`、`analyze-target-log` を組み合わせます。
+アクセシビリティ未許可または HID 入力監視プローブ未成功の場合は実イベントを投稿せず、外部ブロッカーとして `summary.md` に runtimeIdentity と該当診断を残します。
 
 ## 最後に人間が必要な作業リスト
 

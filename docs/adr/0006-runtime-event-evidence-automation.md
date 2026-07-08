@@ -11,8 +11,9 @@ Issue #6 の元入力抑制と Issue #12 のキルスイッチは、最終的に
 ## 決定
 
 - Issue #6 / #12 の runtime event 証跡は `scripts/collect-runtime-event-evidence.sh` を正とする。
-- スクリプトは `doctor --json` で `accessibilityTrusted: true` を確認してから、実 event tap 経路のシナリオを実行する。
-- アクセシビリティ未許可の場合、target log が空だった失敗として扱わない。`runtimeIdentity` を `summary.md` に残し、TCC / アクセシビリティ権限という外部ブロッカーとして記録する。
+- スクリプトは `doctor --json` で `accessibilityTrusted: true` と HID 入力監視プローブ成功を確認してから、実 event tap 経路のシナリオを実行する。
+- アクセシビリティ未許可の場合、target log が空だった失敗として扱わない。`runtimeIdentity` と `hidProbe` を `summary.md` に残し、TCC / アクセシビリティ権限という外部ブロッカーとして記録する。
+- HID 入力監視プローブに成功しない場合も、runtime event シナリオを実行しない。`runtimeIdentity` と `hidProbe` を `summary.md` に残し、TCC / 入力監視権限という外部ブロッカーとして記録する。
 - 実イベント経路の判定は、Reference Target App の target log と `analyze-target-log` の終了コードで行う。
 - `gesture-drag`、`gesture-wheel` は `--assert-no-leaks --assert-has-generated-event` を使い、未マーク入力が前面アプリへ届いた場合、または Nape Gesture 生成イベントが AppKit に届かなかった場合に失敗させる。
 - `kill-switch` は生成イベントが届かないことも正常系になり得るため、`--assert-has-generated-event` を使わない。`--assert-no-leaks` を使い、未マークキー入力が前面アプリへ届いた場合に失敗させる。
@@ -26,7 +27,7 @@ Issue #6 の元入力抑制と Issue #12 のキルスイッチは、最終的に
 - `system-test` は HID 生入力を伴わないため、runtime event 証跡では `init-config --allow-unmatched` の検証用設定を使い、実利用設定と分ける。
 - `.build/NapeGesture.app` に TCC 権限を集約する場合は、`NAPE_RUNTIME_EVENT_USE_APP_BUNDLE=1` で release build、`.app` 作成、bundle 検証、runtime event 証跡を一続きに実行する。
 - 既に検証用の実行主体が決まっている場合は、`NAPE_RUNTIME_EVENT_TOOL=<実行ファイル>` で `run`、`target`、`system-test`、`analyze-target-log`、`doctor` に使う実行ファイルを明示する。
-- 人間作業として残すのは、実行主体へのアクセシビリティ権限付与、Nape Pro 実機由来の最終ログを採用する場合の物理操作、JSON / 終了コードで代替できない画面挙動観察に限定する。
+- 人間作業として残すのは、実行主体へのアクセシビリティ権限付与、入力監視権限付与、Nape Pro 実機由来の最終ログを採用する場合の物理操作、JSON / 終了コードで代替できない画面挙動観察に限定する。
 
 ## 影響
 
