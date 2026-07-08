@@ -13,11 +13,19 @@ final class SettingsWindowController: NSWindowController {
     private let directionLockField = NSTextField()
     private let dragSensitivityField = NSTextField()
     private let wheelSensitivityField = NSTextField()
-    private let accelerationEnabledCheck = NSButton(checkboxWithTitle: "速度に応じて加速度を適用する", target: nil, action: nil)
+    private let accelerationEnabledCheck = NSButton(
+        checkboxWithTitle: SettingsUIField.accelerationEnabled.descriptor.label,
+        target: nil,
+        action: nil
+    )
     private let accelerationThresholdField = NSTextField()
     private let accelerationExponentField = NSTextField()
     private let accelerationMaximumField = NSTextField()
-    private let momentumEnabledCheck = NSButton(checkboxWithTitle: "慣性スクロールを適用する", target: nil, action: nil)
+    private let momentumEnabledCheck = NSButton(
+        checkboxWithTitle: SettingsUIField.momentumEnabled.descriptor.label,
+        target: nil,
+        action: nil
+    )
     private let momentumMinimumStartVelocityField = NSTextField()
     private let momentumStopVelocityField = NSTextField()
     private let momentumDecayField = NSTextField()
@@ -32,7 +40,11 @@ final class SettingsWindowController: NSWindowController {
     private let targetTransportField = NSTextField()
     private let targetUsagePageField = NSTextField()
     private let targetUsageField = NSTextField()
-    private let requireTargetCheck = NSButton(checkboxWithTitle: "対象デバイス一致を必須にする", target: nil, action: nil)
+    private let requireTargetCheck = NSButton(
+        checkboxWithTitle: SettingsUIField.requireMatchingTargetDevice.descriptor.label,
+        target: nil,
+        action: nil
+    )
     private let dragUpPopup = NSPopUpButton()
     private let dragDownPopup = NSPopUpButton()
     private let dragLeftPopup = NSPopUpButton()
@@ -71,45 +83,23 @@ final class SettingsWindowController: NSWindowController {
         stack.translatesAutoresizingMaskIntoConstraints = false
 
         stack.addArrangedSubview(label("設定ファイル: \(configPath)", fontSize: 11))
-        stack.addArrangedSubview(row("ジェスチャーボタン番号", activationButtonField))
-        stack.addArrangedSubview(row("対象入力の紐づけ秒", associationWindowField))
-        stack.addArrangedSubview(row("デッドゾーン pt", deadZoneField))
-        stack.addArrangedSubview(row("方向ロック比", directionLockField))
-        stack.addArrangedSubview(row("ドラッグ感度", dragSensitivityField))
-        stack.addArrangedSubview(row("ホイール感度", wheelSensitivityField))
-        stack.addArrangedSubview(accelerationEnabledCheck)
-        stack.addArrangedSubview(row("加速度しきい速度", accelerationThresholdField))
-        stack.addArrangedSubview(row("加速度指数", accelerationExponentField))
-        stack.addArrangedSubview(row("加速度最大倍率", accelerationMaximumField))
-        stack.addArrangedSubview(momentumEnabledCheck)
-        stack.addArrangedSubview(row("慣性開始しきい速度", momentumMinimumStartVelocityField))
-        stack.addArrangedSubview(row("慣性停止速度", momentumStopVelocityField))
-        stack.addArrangedSubview(row("慣性減衰率/秒", momentumDecayField))
-        stack.addArrangedSubview(row("慣性フレーム間隔秒", momentumFrameIntervalField))
-        stack.addArrangedSubview(row("最大ジェスチャー秒", maximumDurationField))
-        stack.addArrangedSubview(row("無入力キャンセル秒", maximumInactivityField))
-        stack.addArrangedSubview(row("軸ずれキャンセル比", offAxisCancelRatioField))
-        stack.addArrangedSubview(row("対象 vendor ID", targetVendorIDField))
-        stack.addArrangedSubview(row("対象 product ID", targetProductIDField))
-        stack.addArrangedSubview(row("対象メーカーに含む文字", targetManufacturerField))
-        stack.addArrangedSubview(row("対象製品名に含む文字", targetProductField))
-        stack.addArrangedSubview(row("対象 transport に含む文字", targetTransportField))
-        stack.addArrangedSubview(row("対象 usagePage", targetUsagePageField))
-        stack.addArrangedSubview(row("対象 usage", targetUsageField))
-        stack.addArrangedSubview(requireTargetCheck)
-        stack.addArrangedSubview(separator())
-
         configurePopup(dragUpPopup)
         configurePopup(dragDownPopup)
         configurePopup(dragLeftPopup)
         configurePopup(dragRightPopup)
         configurePopup(wheelPopup)
 
-        stack.addArrangedSubview(row("上ドラッグ", dragUpPopup))
-        stack.addArrangedSubview(row("下ドラッグ", dragDownPopup))
-        stack.addArrangedSubview(row("左ドラッグ", dragLeftPopup))
-        stack.addArrangedSubview(row("右ドラッグ", dragRightPopup))
-        stack.addArrangedSubview(row("ホイール", wheelPopup))
+        for field in SettingsUIField.allCases {
+            if field == .bindingDragUp {
+                stack.addArrangedSubview(separator())
+            }
+            let control = control(for: field)
+            if field.descriptor.controlKind == .checkbox {
+                stack.addArrangedSubview(control)
+            } else {
+                stack.addArrangedSubview(settingsRow(field, control))
+            }
+        }
         stack.addArrangedSubview(separator())
 
         let buttons = NSStackView()
@@ -229,13 +219,13 @@ final class SettingsWindowController: NSWindowController {
         let matcher: DeviceMatcher
         do {
             matcher = DeviceMatcher(
-                vendorID: try optionalInt(targetVendorIDField, name: "対象 vendor ID"),
-                productID: try optionalInt(targetProductIDField, name: "対象 product ID"),
+                vendorID: try optionalInt(targetVendorIDField, field: .targetVendorID),
+                productID: try optionalInt(targetProductIDField, field: .targetProductID),
                 manufacturerContains: optionalText(targetManufacturerField),
                 productContains: optionalText(targetProductField),
                 transportContains: optionalText(targetTransportField),
-                primaryUsagePage: try optionalInt(targetUsagePageField, name: "対象 usagePage"),
-                primaryUsage: try optionalInt(targetUsageField, name: "対象 usage")
+                primaryUsagePage: try optionalInt(targetUsagePageField, field: .targetUsagePage),
+                primaryUsage: try optionalInt(targetUsageField, field: .targetUsage)
             )
         } catch let error as SettingsInputError {
             showError(error.message)
@@ -318,19 +308,90 @@ final class SettingsWindowController: NSWindowController {
         return value.isEmpty ? nil : value
     }
 
-    private func optionalInt(_ field: NSTextField, name: String) throws -> Int? {
+    private func optionalInt(_ field: NSTextField, field uiField: SettingsUIField) throws -> Int? {
         let value = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else {
             return nil
         }
         guard let integer = Int(value) else {
-            throw SettingsInputError(message: "\(name) は整数で入力してください。")
+            throw SettingsInputError(message: "\(uiField.descriptor.label) は整数で入力してください。")
         }
         return integer
     }
 
     private func string(for value: Int?) -> String {
         value.map(String.init) ?? ""
+    }
+
+    private func settingsRow(_ field: SettingsUIField, _ control: NSView) -> NSStackView {
+        row(field.descriptor.label, control)
+    }
+
+    private func control(for field: SettingsUIField) -> NSView {
+        switch field {
+        case .activationButton:
+            return activationButtonField
+        case .targetDeviceAssociationWindow:
+            return associationWindowField
+        case .deadZonePoints:
+            return deadZoneField
+        case .directionLockRatio:
+            return directionLockField
+        case .dragSensitivity:
+            return dragSensitivityField
+        case .wheelSensitivity:
+            return wheelSensitivityField
+        case .accelerationEnabled:
+            return accelerationEnabledCheck
+        case .accelerationThresholdVelocity:
+            return accelerationThresholdField
+        case .accelerationExponent:
+            return accelerationExponentField
+        case .accelerationMaximumMultiplier:
+            return accelerationMaximumField
+        case .momentumEnabled:
+            return momentumEnabledCheck
+        case .momentumMinimumStartVelocity:
+            return momentumMinimumStartVelocityField
+        case .momentumStopVelocity:
+            return momentumStopVelocityField
+        case .momentumDecayPerSecond:
+            return momentumDecayField
+        case .momentumFrameInterval:
+            return momentumFrameIntervalField
+        case .cancellationMaximumDuration:
+            return maximumDurationField
+        case .cancellationMaximumInactivityInterval:
+            return maximumInactivityField
+        case .cancellationOffAxisCancelRatio:
+            return offAxisCancelRatioField
+        case .targetVendorID:
+            return targetVendorIDField
+        case .targetProductID:
+            return targetProductIDField
+        case .targetManufacturerContains:
+            return targetManufacturerField
+        case .targetProductContains:
+            return targetProductField
+        case .targetTransportContains:
+            return targetTransportField
+        case .targetUsagePage:
+            return targetUsagePageField
+        case .targetUsage:
+            return targetUsageField
+        case .requireMatchingTargetDevice:
+            return requireTargetCheck
+        case .bindingDragUp:
+            return dragUpPopup
+        case .bindingDragDown:
+            return dragDownPopup
+        case .bindingDragLeft:
+            return dragLeftPopup
+        case .bindingDragRight:
+            return dragRightPopup
+        case .bindingWheel:
+            return wheelPopup
+        }
     }
 
     private func row(_ title: String, _ control: NSView) -> NSStackView {

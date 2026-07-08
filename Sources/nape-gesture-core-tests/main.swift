@@ -1557,6 +1557,137 @@ func testGestureActionSettingsSelectableActionsCoverAllCases() {
     expect(selectable.contains(.horizontalScroll), "設定UIで横スクロールを選べる")
 }
 
+func testSettingsUIFieldCatalogCoversEditableSettings() {
+    let descriptors = SettingsUIField.descriptors
+    let descriptorFields = descriptors.map(\.field)
+    let labels = descriptors.map(\.label)
+    let paths = descriptors.map(\.settingsPath)
+    let requiredPaths: Set<String> = [
+        "gesture.activationButton",
+        "targetDeviceAssociation.associationWindow",
+        "gesture.deadZonePoints",
+        "gesture.directionLockRatio",
+        "gesture.dragSensitivity",
+        "gesture.wheelSensitivity",
+        "gesture.acceleration.isEnabled",
+        "gesture.acceleration.thresholdVelocity",
+        "gesture.acceleration.exponent",
+        "gesture.acceleration.maximumMultiplier",
+        "gesture.momentum.isEnabled",
+        "gesture.momentum.minimumStartVelocity",
+        "gesture.momentum.stopVelocity",
+        "gesture.momentum.decayPerSecond",
+        "gesture.momentum.frameInterval",
+        "gesture.cancellation.maximumDuration",
+        "gesture.cancellation.maximumInactivityInterval",
+        "gesture.cancellation.offAxisCancelRatio",
+        "targetDevices[0].vendorID",
+        "targetDevices[0].productID",
+        "targetDevices[0].manufacturerContains",
+        "targetDevices[0].productContains",
+        "targetDevices[0].transportContains",
+        "targetDevices[0].primaryUsagePage",
+        "targetDevices[0].primaryUsage",
+        "requireMatchingTargetDevice",
+        "gesture.bindings.dragUp",
+        "gesture.bindings.dragDown",
+        "gesture.bindings.dragLeft",
+        "gesture.bindings.dragRight",
+        "gesture.bindings.wheel"
+    ]
+
+    expect(descriptorFields == SettingsUIField.allCases, "設定UIフィールド catalog は全ケースを順序通り公開する")
+    expect(Set(labels).count == labels.count, "設定UIフィールドの表示名は重複しない")
+    expect(Set(paths).count == paths.count, "設定UIフィールドの設定パスは重複しない")
+    expect(Set(paths) == requiredPaths, "設定UIは完成要件の編集対象設定パスを網羅する")
+    expect(
+        descriptors.allSatisfy { !$0.settingsPath.localizedCaseInsensitiveContains("application") },
+        "設定UI catalog にアプリ別設定パスを含めない"
+    )
+    expect(
+        descriptors.allSatisfy { !$0.label.contains("アプリ") },
+        "設定UI catalog にアプリ別設定ラベルを含めない"
+    )
+}
+
+func testSettingsUIFieldCatalogKindsAndSections() {
+    let descriptorsByField = Dictionary(uniqueKeysWithValues: SettingsUIField.descriptors.map { ($0.field, $0) })
+    let numberFields: Set<SettingsUIField> = [
+        .activationButton,
+        .targetDeviceAssociationWindow,
+        .deadZonePoints,
+        .directionLockRatio,
+        .dragSensitivity,
+        .wheelSensitivity,
+        .accelerationThresholdVelocity,
+        .accelerationExponent,
+        .accelerationMaximumMultiplier,
+        .momentumMinimumStartVelocity,
+        .momentumStopVelocity,
+        .momentumDecayPerSecond,
+        .momentumFrameInterval,
+        .cancellationMaximumDuration,
+        .cancellationMaximumInactivityInterval,
+        .cancellationOffAxisCancelRatio,
+        .targetVendorID,
+        .targetProductID,
+        .targetUsagePage,
+        .targetUsage
+    ]
+    let textFields: Set<SettingsUIField> = [
+        .targetManufacturerContains,
+        .targetProductContains,
+        .targetTransportContains
+    ]
+    let checkboxFields: Set<SettingsUIField> = [
+        .accelerationEnabled,
+        .momentumEnabled,
+        .requireMatchingTargetDevice
+    ]
+    let actionFields: Set<SettingsUIField> = [
+        .bindingDragUp,
+        .bindingDragDown,
+        .bindingDragLeft,
+        .bindingDragRight,
+        .bindingWheel
+    ]
+
+    for field in numberFields {
+        expect(descriptorsByField[field]?.controlKind == .numberTextField, "\(field.rawValue) は数値入力として扱う")
+    }
+    for field in textFields {
+        expect(descriptorsByField[field]?.controlKind == .textField, "\(field.rawValue) は文字入力として扱う")
+    }
+    for field in checkboxFields {
+        expect(descriptorsByField[field]?.controlKind == .checkbox, "\(field.rawValue) はチェックボックスとして扱う")
+    }
+    for field in actionFields {
+        expect(descriptorsByField[field]?.controlKind == .actionPopup, "\(field.rawValue) は割り当て popup として扱う")
+        expect(
+            descriptorsByField[field]?.selectableActions == GestureAction.settingsSelectableActions,
+            "\(field.rawValue) は設定UIの GestureAction 候補を使う"
+        )
+    }
+
+    expect(descriptorsByField[.activationButton]?.section == .gesture, "activation button は gesture section に置く")
+    expect(descriptorsByField[.accelerationEnabled]?.section == .acceleration, "加速度 enable は acceleration section に置く")
+    expect(descriptorsByField[.momentumEnabled]?.section == .momentum, "慣性 enable は momentum section に置く")
+    expect(descriptorsByField[.cancellationMaximumDuration]?.section == .cancellation, "キャンセル条件は cancellation section に置く")
+    expect(descriptorsByField[.targetVendorID]?.section == .targetDevice, "対象デバイス条件は targetDevice section に置く")
+    expect(descriptorsByField[.bindingWheel]?.section == .bindings, "割り当ては bindings section に置く")
+}
+
+func testSettingsUIFieldCatalogJSONRoundTrip() {
+    do {
+        let data = try JSONEncoder().encode(SettingsUIField.descriptors)
+        let decoded = try JSONDecoder().decode([SettingsUIFieldDescriptor].self, from: data)
+
+        expect(decoded == SettingsUIField.descriptors, "設定UIフィールド catalog は JSON round-trip できる")
+    } catch {
+        expect(false, "設定UIフィールド catalog を JSON として読み書きできる: \(error)")
+    }
+}
+
 func testRuntimeSafetyStateStopsForKillSwitch() {
     var state = RuntimeSafetyState()
 
@@ -1928,6 +2059,9 @@ testTargetDeviceGatePassesThroughNonTargetClickDragAndWheel()
 testDefaultGestureBindingsMapSystemActions()
 testGestureActionMomentumSupport()
 testGestureActionSettingsSelectableActionsCoverAllCases()
+testSettingsUIFieldCatalogCoversEditableSettings()
+testSettingsUIFieldCatalogKindsAndSections()
+testSettingsUIFieldCatalogJSONRoundTrip()
 testRuntimeSafetyStateStopsForKillSwitch()
 testRuntimeSafetyStatePassesRegularInputAfterStop()
 testRuntimeSafetyStateDoesNotReenableWithoutReset()

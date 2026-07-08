@@ -26,5 +26,6 @@
 ## 関連
 
 - [GitHub labels / milestones / Issue close 方針](0002-github-labels-milestones-and-issue-close.md)
+- [設定 UI 編集項目 catalog の機械証跡化](0021-settings-ui-field-catalog.md)
 - [完成判定チェックリスト](../completion-checklist.md)
 - [PR レビューチェックリスト](../pr-review-checklist.md)
