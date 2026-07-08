@@ -89,8 +89,10 @@ struct AnalyzeAssociationCommand {
             "イベントタップログ総数: \(analysis.totalEventTapEvents)",
             "解析対象イベントタップ数: \(analysis.analyzedEventTapEvents)",
             "生成イベント除外数: \(analysis.excludedGeneratedEventTapEvents)",
-            "HID候補あり数: \(analysis.hidCandidateEventCount)",
-            "HID候補なし数: \(analysis.missingHIDCandidateEventCount)",
+            "互換HID候補あり数: \(analysis.hidCandidateEventCount)",
+            "互換HID候補なし数: \(analysis.missingHIDCandidateEventCount)",
+            "非互換HID近傍数: \(analysis.incompatibleHIDCandidateEventCount)",
+            "採用HIDデバイス数: \(analysis.matchedHIDDeviceIDs.count)",
             "associationWindow内: \(analysis.withinWindowCount)",
             "associationWindow外: \(analysis.outsideWindowCount)",
             "最大時刻差: \(format(analysis.maximumTimeDifferenceSeconds)) 秒",
@@ -100,12 +102,18 @@ struct AnalyzeAssociationCommand {
         ]
 
         if analysis.missingHIDCandidateEventCount > 0 {
-            lines.append("所見: 一致候補になる HID 入力がないイベントタップ入力があります。ログの同時取得範囲と対象デバイス条件を確認してください。")
+            lines.append("所見: 一致候補になる互換 HID 入力がないイベントタップ入力があります。ログの同時取得範囲、対象デバイス条件、HID usage を確認してください。")
+        }
+        if analysis.incompatibleHIDCandidateEventCount > 0 {
+            lines.append("所見: 近い HID 入力はありますが、イベントタップ入力の種別と HID usage が一致しない入力があります。button / axis / wheel の記録を確認してください。")
+        }
+        if analysis.matchedHIDDeviceIDs.count > 1 {
+            lines.append("所見: 複数の HID デバイスが採用されています。対象デバイスだけに絞った HID ログで取り直してください。")
         }
         if analysis.outsideWindowCount > 0 {
             lines.append("所見: 現在の associationWindow 外に出るイベントタップ入力があります。実機ログを根拠に associationWindow を調整してください。")
         }
-        if analysis.missingHIDCandidateEventCount == 0 && analysis.outsideWindowCount == 0 {
+        if analysis.hasValidAssociationWindowEvidence {
             lines.append("所見: 解析対象のイベントタップ入力は現在の associationWindow 内に収まっています。")
         }
 
@@ -125,6 +133,6 @@ struct AssociationWindowAssertionError: LocalizedError {
         if analysis.analyzedEventTapEvents == 0 {
             return "associationWindow を検証できるイベントタップ入力がありません。対象デバイス操作を含むログを指定してください。"
         }
-        return "associationWindow \(String(format: "%.4f", window)) 秒の検証に失敗しました。HID候補なし \(analysis.missingHIDCandidateEventCount) 件、window外 \(analysis.outsideWindowCount) 件です。`analyze-association <hid-log> <event-log> --window <秒> --json` で matches を確認してください。"
+        return "associationWindow \(String(format: "%.4f", window)) 秒の検証に失敗しました。互換HID候補なし \(analysis.missingHIDCandidateEventCount) 件、非互換HID近傍 \(analysis.incompatibleHIDCandidateEventCount) 件、採用HIDデバイス \(analysis.matchedHIDDeviceIDs.count) 件、window外 \(analysis.outsideWindowCount) 件です。`analyze-association <hid-log> <event-log> --window <秒> --json` で matches を確認してください。"
     }
 }

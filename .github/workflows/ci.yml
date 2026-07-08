@@ -42,6 +42,27 @@ jobs:
           .build/debug/nape-gesture compare-log Fixtures/sample-trackpad-scroll-log.jsonl Fixtures/sample-generated-scroll-log.jsonl
           .build/debug/nape-gesture analyze-hid-log Fixtures/sample-hid-log.jsonl
           .build/debug/nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/sample-association-event-log.jsonl --window 0.12 --json
+          .build/debug/nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/clean-association-event-log.jsonl --window 0.12 --json --assert-valid-window
+          if .build/debug/nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/sample-association-event-log.jsonl --window 0.12 --json --assert-valid-window; then
+            echo "sample-association-event-log が有効な紐づけ証跡として通ってしまいました" >&2
+            exit 1
+          fi
+          if .build/debug/nape-gesture analyze-association Fixtures/empty-association-hid-log.jsonl Fixtures/clean-association-event-log.jsonl --window 0.12 --json --assert-valid-window; then
+            echo "empty-association-hid-log が有効な紐づけ証跡として通ってしまいました" >&2
+            exit 1
+          fi
+          if .build/debug/nape-gesture analyze-association Fixtures/association-scroll-mismatch-hid-log.jsonl Fixtures/association-scroll-mismatch-event-log.jsonl --window 0.12 --json --assert-valid-window; then
+            echo "association-scroll-mismatch が有効な紐づけ証跡として通ってしまいました" >&2
+            exit 1
+          fi
+          if .build/debug/nape-gesture analyze-association Fixtures/association-button-mismatch-hid-log.jsonl Fixtures/association-button-mismatch-event-log.jsonl --window 0.12 --json --assert-valid-window; then
+            echo "association-button-mismatch が有効な紐づけ証跡として通ってしまいました" >&2
+            exit 1
+          fi
+          if .build/debug/nape-gesture analyze-association Fixtures/association-mixed-device-hid-log.jsonl Fixtures/association-mixed-device-event-log.jsonl --window 0.12 --json --assert-valid-window; then
+            echo "association-mixed-device が有効な紐づけ証跡として通ってしまいました" >&2
+            exit 1
+          fi
           .build/debug/nape-gesture analyze-target-log Fixtures/clean-target-log.jsonl --json --assert-no-leaks
           .build/debug/nape-gesture analyze-target-log Fixtures/clean-target-log.jsonl --json --assert-has-generated-event
           if .build/debug/nape-gesture analyze-target-log Fixtures/leaky-target-log.jsonl --json --assert-no-leaks; then

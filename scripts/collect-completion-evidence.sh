@@ -387,6 +387,34 @@ run_split_expected_failure \
   ".build/debug/nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/sample-association-event-log.jsonl --window 0.12 --json --assert-valid-window" \
   .build/debug/nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/sample-association-event-log.jsonl --window 0.12 --json --assert-valid-window
 
+run_split_expected_failure \
+  "empty association HID assert-valid-window" \
+  "$fixtures_dir/empty-association-assert-valid-window.json" \
+  "$fixtures_dir/empty-association-assert-valid-window.stderr.log" \
+  ".build/debug/nape-gesture analyze-association Fixtures/empty-association-hid-log.jsonl Fixtures/clean-association-event-log.jsonl --window 0.12 --json --assert-valid-window" \
+  .build/debug/nape-gesture analyze-association Fixtures/empty-association-hid-log.jsonl Fixtures/clean-association-event-log.jsonl --window 0.12 --json --assert-valid-window
+
+run_split_expected_failure \
+  "scroll mismatch association assert-valid-window" \
+  "$fixtures_dir/scroll-mismatch-association-assert-valid-window.json" \
+  "$fixtures_dir/scroll-mismatch-association-assert-valid-window.stderr.log" \
+  ".build/debug/nape-gesture analyze-association Fixtures/association-scroll-mismatch-hid-log.jsonl Fixtures/association-scroll-mismatch-event-log.jsonl --window 0.12 --json --assert-valid-window" \
+  .build/debug/nape-gesture analyze-association Fixtures/association-scroll-mismatch-hid-log.jsonl Fixtures/association-scroll-mismatch-event-log.jsonl --window 0.12 --json --assert-valid-window
+
+run_split_expected_failure \
+  "button mismatch association assert-valid-window" \
+  "$fixtures_dir/button-mismatch-association-assert-valid-window.json" \
+  "$fixtures_dir/button-mismatch-association-assert-valid-window.stderr.log" \
+  ".build/debug/nape-gesture analyze-association Fixtures/association-button-mismatch-hid-log.jsonl Fixtures/association-button-mismatch-event-log.jsonl --window 0.12 --json --assert-valid-window" \
+  .build/debug/nape-gesture analyze-association Fixtures/association-button-mismatch-hid-log.jsonl Fixtures/association-button-mismatch-event-log.jsonl --window 0.12 --json --assert-valid-window
+
+run_split_expected_failure \
+  "mixed device association assert-valid-window" \
+  "$fixtures_dir/mixed-device-association-assert-valid-window.json" \
+  "$fixtures_dir/mixed-device-association-assert-valid-window.stderr.log" \
+  ".build/debug/nape-gesture analyze-association Fixtures/association-mixed-device-hid-log.jsonl Fixtures/association-mixed-device-event-log.jsonl --window 0.12 --json --assert-valid-window" \
+  .build/debug/nape-gesture analyze-association Fixtures/association-mixed-device-hid-log.jsonl Fixtures/association-mixed-device-event-log.jsonl --window 0.12 --json --assert-valid-window
+
 run_split_success \
   "clean target log assert-no-leaks" \
   "$fixtures_dir/clean-target-log-analysis.json" \

@@ -105,7 +105,7 @@ final class CommandLineTool {
                   IOHID 生入力ログを device / usage ごとに集計します。
 
               nape-gesture analyze-association <hid-log> <event-log> [--window <秒>] [--json] [--assert-valid-window]
-                  HID 生入力ログとイベントタップログを相関し、対象入力の紐づけ秒を検証します。--assert-valid-window で解析対象がない場合、HID候補なし、または associationWindow 外の入力がある場合に失敗します。
+                  HID 生入力ログとイベントタップログを相関し、対象入力の紐づけ秒を検証します。--assert-valid-window で解析対象がない場合、互換 HID 候補なし、非互換 HID 近傍、複数 HID デバイス採用、または associationWindow 外の入力がある場合に失敗します。
 
               nape-gesture analyze-target-log <path> [--json] [--assert-no-leaks] [--assert-has-unmarked-input] [--assert-has-unmarked-click] [--assert-has-unmarked-drag] [--assert-has-unmarked-wheel] [--assert-has-unmarked-click-drag-wheel] [--assert-has-gesture] [--assert-has-generated-event]
                   Reference Target App が保存した AppKit 受信イベントを集計します。--assert-no-leaks で漏れ候補がある場合、--assert-has-unmarked-input で未マーク入力がない場合、--assert-has-unmarked-click / --assert-has-unmarked-drag / --assert-has-unmarked-wheel で未マーク通常クリック / 通常ドラッグ / 通常ホイールがない場合、--assert-has-unmarked-click-drag-wheel で3種類が揃わない場合、--assert-has-gesture で swipe / magnify / rotate がない場合、--assert-has-generated-event で Nape Gesture 生成イベントがない場合に失敗します。
