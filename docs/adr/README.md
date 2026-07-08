@@ -23,6 +23,7 @@
 | [ADR-0014](0014-kill-switch-dry-run-shortcut-assertion.md) | キルスイッチ dry-run のショートカット機械判定 | Issue #12、Issue #16、kill-switch、analyze-log |
 | [ADR-0015](0015-gesture-wheel-then-kill-switch-evidence.md) | ジェスチャー中キルスイッチの前段証跡 | Issue #12、Issue #16、gesture-wheel-then-kill-switch |
 | [ADR-0016](0016-normal-input-kind-assertions.md) | 通常入力通過の種類別機械判定 | Issue #6、Issue #16、normal-after-release、analyze-log、analyze-target-log |
+| [ADR-0017](0017-system-test-scenario-assertion.md) | System Behavior Test dry-run のシナリオ別機械判定 | Issue #9、Issue #10、Issue #16、system-test、analyze-log |
 
 ## 追加時の確認
 

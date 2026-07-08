@@ -59,7 +59,7 @@
 
 - 通常スクロールのフェーズは `scrollPhase`、慣性は `momentumPhase` に分離されている
 - `generate-scroll --dry-run --log-json` で比較可能な JSON Lines を出せる
-- `system-test run --dry-run --log-json` で生成予定イベントを保存できる
+- `system-test run --dry-run --log-json` で生成予定イベントを保存し、`systemTestScenario` / `sequenceIndex` つきで `analyze-log --json --assert-system-scenario <name>` によるシナリオ別機械判定を通している
 - `Ctrl + ←/→` などのショートカット送信を最終解として前提化していない
 - Finder、Safari、Mission Control、Spaces で必要な実機検証が明記されている
 

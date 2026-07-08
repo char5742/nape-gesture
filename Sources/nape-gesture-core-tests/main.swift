@@ -95,7 +95,9 @@ func makeInputLogRecord(
     momentumPhase: Int64 = 0,
     isContinuous: Int64? = nil,
     keyCode: Int64 = 0,
-    flags: UInt64 = 0
+    flags: UInt64 = 0,
+    systemTestScenario: String? = nil,
+    sequenceIndex: Int? = nil
 ) -> InputLogRecord {
     let hasMoveDelta = typeName == "mouseMoved" || typeName.hasSuffix("MouseDragged")
 
@@ -115,7 +117,9 @@ func makeInputLogRecord(
         momentumPhase: momentumPhase,
         isContinuous: isContinuous ?? (typeName == "scrollWheel" ? 1 : 0),
         keyCode: keyCode,
-        flags: flags
+        flags: flags,
+        systemTestScenario: systemTestScenario,
+        sequenceIndex: sequenceIndex
     )
 }
 
@@ -774,6 +778,23 @@ func testInputLogRecordDecodesLegacyGeneratedField() {
     expect(!encodedText.contains("generatedByMacGesture"), "エンコード時は旧フィールド名を出さない")
 }
 
+func testInputLogRecordEncodesSystemTestMetadataWhenPresent() {
+    let record = makeInputLogRecord(
+        timestamp: 1,
+        typeName: "scrollWheel",
+        generatedByNapeGesture: true,
+        systemTestScenario: "space-left",
+        sequenceIndex: 7
+    )
+    let encoded = try? JSONEncoder().encode(record)
+    let encodedText = encoded.map { String(decoding: $0, as: UTF8.self) } ?? ""
+    let decoded = encoded.flatMap { try? JSONDecoder().decode(InputLogRecord.self, from: $0) }
+
+    expect(encodedText.contains("systemTestScenario"), "system-test メタ情報がある場合だけ JSON に出す")
+    expect(decoded?.systemTestScenario == "space-left", "systemTestScenario を round-trip する")
+    expect(decoded?.sequenceIndex == 7, "sequenceIndex を round-trip する")
+}
+
 func testInputLogAnalyzerComparesBaselineAndCandidate() {
     let baseline = [
         InputLogRecord(
@@ -871,8 +892,11 @@ func testInputLogAnalyzerCountsKeyEvents() {
     let comparison = InputLogAnalyzer.compare(baseline: baseline, candidate: candidate)
 
     expect(analysis.keyEvents == 2, "キーイベント数を数える")
+    expect(analysis.generatedKeyEvents == 2, "生成キーイベント数を数える")
+    expect(analysis.unmarkedKeyEvents == 0, "未生成キーイベント数を数える")
     expect(analysis.keyCounts["keyDown:126"] == 1, "keyDown と keyCode を集計する")
     expect(analysis.keyCounts["keyUp:126"] == 1, "keyUp と keyCode を集計する")
+    expect(analysis.keySignatureCounts["generated:keyDown:126:262144"] == 1, "生成 marker と flags を含むキー署名を集計する")
     expect(comparison.keyEventDelta == 2, "キーイベント数差を出す")
     expect(comparison.keyDelta["keyDown:126"] == 1, "keyDown の差を出す")
     expect(comparison.findings.contains { $0.contains("キーイベント") }, "キーイベント差を所見に出す")
@@ -899,6 +923,7 @@ func testInputLogAnalyzerDoesNotTreatUnmarkedKeysAsPassthroughInput() {
     let analysis = InputLogAnalyzer.analyze(records)
 
     expect(analysis.keyEvents == 2, "未生成キーイベント自体はキーとして数える")
+    expect(analysis.unmarkedKeyEvents == 2, "未生成キーイベント数を数える")
     expect(analysis.unmarkedPassthroughInputEvents == 0, "キルスイッチなどの未生成キーだけでは通常入力通過扱いにしない")
 }
 
@@ -919,6 +944,8 @@ func testInputLogAnalyzerCountsNormalClickDragAndWheelSeparately() {
     expect(analysis.unmarkedClickUpEvents == 1, "通常クリック up を数える")
     expect(analysis.unmarkedDragEvents == 1, "通常ドラッグを数える")
     expect(analysis.unmarkedWheelEvents == 1, "通常ホイールを数える")
+    expect(analysis.generatedScrollEvents == 0, "通常ホイールは生成スクロールとして扱わない")
+    expect(analysis.momentumScrollEvents == 0, "momentumPhase のない通常ホイールを momentum として扱わない")
     expect(analysis.hasUnmarkedClick, "通常クリックは down/up の両方で成立する")
     expect(analysis.hasUnmarkedClickDragWheel, "通常クリック / ドラッグ / ホイールが揃う")
 }
@@ -1839,6 +1866,7 @@ testSettingsValidatorRejectsMissingRequiredTargetMatcher()
 testSettingsValidatorRejectsInvalidTargetMatcherValues()
 testInputLogAnalyzerSuggestsDeadZone()
 testInputLogRecordDecodesLegacyGeneratedField()
+testInputLogRecordEncodesSystemTestMetadataWhenPresent()
 testInputLogAnalyzerComparesBaselineAndCandidate()
 testInputLogAnalyzerCountsKeyEvents()
 testInputLogAnalyzerDoesNotTreatUnmarkedKeysAsPassthroughInput()

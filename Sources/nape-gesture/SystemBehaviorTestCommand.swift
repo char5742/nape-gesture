@@ -240,35 +240,48 @@ struct SystemBehaviorTestCommand {
     }
 
     private func logRecords(for plan: SystemTestPlan, startTime: TimeInterval) -> [InputLogRecord] {
-        switch plan.scenario {
+        let records: [InputLogRecord] = switch plan.scenario {
         case .spaceLeft:
-            return makeHorizontalCommands(sign: -1, plan: plan, now: startTime)
+            makeHorizontalCommands(sign: -1, plan: plan, now: startTime)
                 .map { scrollRecord(command: $0, mode: .forcedHorizontal(sign: -1)) }
         case .spaceRight:
-            return makeHorizontalCommands(sign: 1, plan: plan, now: startTime)
+            makeHorizontalCommands(sign: 1, plan: plan, now: startTime)
                 .map { scrollRecord(command: $0, mode: .forcedHorizontal(sign: 1)) }
         case .horizontalScroll:
-            return makeHorizontalCommands(sign: 1, plan: plan, now: startTime)
+            makeHorizontalCommands(sign: 1, plan: plan, now: startTime)
                 .map { scrollRecord(command: $0, mode: .horizontal) }
         case .missionControl:
-            return shortcutRecords(keyCode: CGKeyCode(kVK_UpArrow), flags: .maskControl, startTime: startTime)
+            shortcutRecords(keyCode: CGKeyCode(kVK_UpArrow), flags: .maskControl, startTime: startTime)
         case .pageBack:
-            return shortcutRecords(keyCode: CGKeyCode(kVK_LeftArrow), flags: .maskCommand, startTime: startTime)
+            shortcutRecords(keyCode: CGKeyCode(kVK_LeftArrow), flags: .maskCommand, startTime: startTime)
         case .pageForward:
-            return shortcutRecords(keyCode: CGKeyCode(kVK_RightArrow), flags: .maskCommand, startTime: startTime)
+            shortcutRecords(keyCode: CGKeyCode(kVK_RightArrow), flags: .maskCommand, startTime: startTime)
         case .zoomIn:
-            return shortcutRecords(keyCode: CGKeyCode(kVK_ANSI_Equal), flags: .maskCommand, startTime: startTime)
+            shortcutRecords(keyCode: CGKeyCode(kVK_ANSI_Equal), flags: .maskCommand, startTime: startTime)
         case .zoomOut:
-            return shortcutRecords(keyCode: CGKeyCode(kVK_ANSI_Minus), flags: .maskCommand, startTime: startTime)
+            shortcutRecords(keyCode: CGKeyCode(kVK_ANSI_Minus), flags: .maskCommand, startTime: startTime)
         case .killSwitch:
-            return shortcutRecords(
+            shortcutRecords(
                 keyCode: killSwitchKeyCode,
                 flags: killSwitchFlags,
                 startTime: startTime,
                 generatedByNapeGesture: false
             )
         case .gestureDrag, .gestureWheel, .gestureWheelThenKillSwitch, .normalAfterRelease:
-            return unmarkedInputEvents(for: plan, startTime: startTime).map { $0.logRecord() }
+            unmarkedInputEvents(for: plan, startTime: startTime).map { $0.logRecord() }
+        }
+        return annotateSystemTestRecords(records, scenario: plan.scenario)
+    }
+
+    private func annotateSystemTestRecords(
+        _ records: [InputLogRecord],
+        scenario: SystemTestScenario
+    ) -> [InputLogRecord] {
+        records.enumerated().map { index, record in
+            var record = record
+            record.systemTestScenario = scenario.rawValue
+            record.sequenceIndex = index
+            return record
         }
     }
 

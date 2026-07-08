@@ -30,16 +30,44 @@ jobs:
           target_stable_id="vendor=123;product=456;manufacturer=example;name=nape-pro-mouse;transport=bluetooth"
           .build/debug/nape-gesture generate-scroll --x 120 --y 0 --steps 3 --momentum-steps 2 --dry-run --log-json > /tmp/generated-scroll.jsonl
           .build/debug/nape-gesture analyze-log /tmp/generated-scroll.jsonl
-          .build/debug/nape-gesture system-test run --scenario space-left --target finder --dry-run --log-json --out /tmp/system-space-left.jsonl
-          .build/debug/nape-gesture analyze-log /tmp/system-space-left.jsonl
-          .build/debug/nape-gesture system-test run --scenario horizontal-scroll --dry-run --log-json --out /tmp/system-horizontal-scroll.jsonl
-          .build/debug/nape-gesture analyze-log /tmp/system-horizontal-scroll.jsonl --json
+          for scenario in space-left space-right mission-control horizontal-scroll page-back page-forward zoom-in zoom-out; do
+            if [ "$scenario" = "space-left" ] || [ "$scenario" = "space-right" ]; then
+              .build/debug/nape-gesture system-test run --scenario "$scenario" --target finder --dry-run --log-json --out "/tmp/system-$scenario.jsonl"
+            else
+              .build/debug/nape-gesture system-test run --scenario "$scenario" --dry-run --log-json --out "/tmp/system-$scenario.jsonl"
+            fi
+            .build/debug/nape-gesture analyze-log "/tmp/system-$scenario.jsonl" --json --assert-system-scenario "$scenario"
+          done
+          if .build/debug/nape-gesture analyze-log /tmp/system-page-back.jsonl --json --assert-system-scenario page-forward; then
+            echo "page-back dry-run が page-forward のシナリオ証跡として通ってしまいました" >&2
+            exit 1
+          fi
+          sed 's/"systemTestScenario":"space-right"/"systemTestScenario":"horizontal-scroll"/g' /tmp/system-space-right.jsonl > /tmp/system-space-right-wrong-metadata.jsonl
+          if .build/debug/nape-gesture analyze-log /tmp/system-space-right-wrong-metadata.jsonl --json --assert-system-scenario space-right; then
+            echo "space-right の systemTestScenario 不一致が通ってしまいました" >&2
+            exit 1
+          fi
+          sed 's/"flags":1048576/"flags":1179648/g' /tmp/system-page-back.jsonl > /tmp/system-page-back-extra-shift.jsonl
+          if .build/debug/nape-gesture analyze-log /tmp/system-page-back-extra-shift.jsonl --json --assert-system-scenario page-back; then
+            echo "page-back の余計な modifier が通ってしまいました" >&2
+            exit 1
+          fi
+          sed 's/"pointDeltaX":[0-9][0-9]*/"pointDeltaX":-50/g; s/"scrollDeltaX":[0-9][0-9]*/"scrollDeltaX":-50/g' /tmp/system-space-right.jsonl > /tmp/system-space-right-reversed.jsonl
+          if .build/debug/nape-gesture analyze-log /tmp/system-space-right-reversed.jsonl --json --assert-system-scenario space-right; then
+            echo "space-right の逆方向 scroll が通ってしまいました" >&2
+            exit 1
+          fi
+          sed 's/"momentumPhase":0/"momentumPhase":1/' /tmp/system-space-right.jsonl > /tmp/system-space-right-momentum.jsonl
+          if .build/debug/nape-gesture analyze-log /tmp/system-space-right-momentum.jsonl --json --assert-system-scenario space-right; then
+            echo "space-right の momentumPhase 混入が通ってしまいました" >&2
+            exit 1
+          fi
           .build/debug/nape-gesture system-test run --scenario kill-switch --dry-run --log-json --out /tmp/system-kill-switch.jsonl
-          .build/debug/nape-gesture analyze-log /tmp/system-kill-switch.jsonl --json --assert-kill-switch-shortcut
+          .build/debug/nape-gesture analyze-log /tmp/system-kill-switch.jsonl --json --assert-system-scenario kill-switch --assert-kill-switch-shortcut
           .build/debug/nape-gesture system-test run --scenario normal-after-release --dry-run --log-json --out /tmp/system-normal-after-release.jsonl
-          .build/debug/nape-gesture analyze-log /tmp/system-normal-after-release.jsonl --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel
+          .build/debug/nape-gesture analyze-log /tmp/system-normal-after-release.jsonl --json --assert-system-scenario normal-after-release --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel
           .build/debug/nape-gesture system-test run --scenario gesture-wheel-then-kill-switch --dry-run --log-json --out /tmp/system-gesture-wheel-then-kill-switch.jsonl
-          .build/debug/nape-gesture analyze-log /tmp/system-gesture-wheel-then-kill-switch.jsonl --json --assert-kill-switch-shortcut --assert-gesture-before-kill-switch
+          .build/debug/nape-gesture analyze-log /tmp/system-gesture-wheel-then-kill-switch.jsonl --json --assert-system-scenario gesture-wheel-then-kill-switch --assert-kill-switch-shortcut --assert-gesture-before-kill-switch
           .build/debug/nape-gesture compare-log Fixtures/sample-trackpad-scroll-log.jsonl Fixtures/sample-generated-scroll-log.jsonl
           .build/debug/nape-gesture analyze-hid-log Fixtures/sample-hid-log.jsonl
           .build/debug/nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/sample-association-event-log.jsonl --window 0.12 --json

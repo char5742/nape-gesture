@@ -298,21 +298,12 @@ for scenario in space-left space-right mission-control horizontal-scroll page-ba
       .build/debug/nape-gesture system-test run --scenario "$scenario" --dry-run --log-json --out "$system_dir/system-$scenario.jsonl"
   fi
 
-  if [ "$scenario" = "kill-switch" ]; then
-    run_split_success \
-      "system-test $scenario analyze-log assert-kill-switch-shortcut" \
-      "$system_dir/system-$scenario-analysis.txt" \
-      "$system_dir/system-$scenario-analysis.stderr.log" \
-      ".build/debug/nape-gesture analyze-log $system_dir/system-$scenario.jsonl --json --assert-kill-switch-shortcut" \
-      .build/debug/nape-gesture analyze-log "$system_dir/system-$scenario.jsonl" --json --assert-kill-switch-shortcut
-  else
-    run_split_success \
-      "system-test $scenario analyze-log" \
-      "$system_dir/system-$scenario-analysis.txt" \
-      "$system_dir/system-$scenario-analysis.stderr.log" \
-      ".build/debug/nape-gesture analyze-log $system_dir/system-$scenario.jsonl --json" \
-      .build/debug/nape-gesture analyze-log "$system_dir/system-$scenario.jsonl" --json
-  fi
+  run_split_success \
+    "system-test $scenario analyze-log assert-system-scenario" \
+    "$system_dir/system-$scenario-analysis.txt" \
+    "$system_dir/system-$scenario-analysis.stderr.log" \
+    ".build/debug/nape-gesture analyze-log $system_dir/system-$scenario.jsonl --json --assert-system-scenario $scenario" \
+    .build/debug/nape-gesture analyze-log "$system_dir/system-$scenario.jsonl" --json --assert-system-scenario "$scenario"
 done
 
 run_combined_success \
@@ -325,8 +316,8 @@ run_split_success \
   "system-test normal-after-release analyze-log assert-has-unmarked-click-drag-wheel" \
   "$system_dir/system-normal-after-release-analysis.json" \
   "$system_dir/system-normal-after-release-analysis.stderr.log" \
-  ".build/debug/nape-gesture analyze-log $system_dir/system-normal-after-release.jsonl --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel" \
-  .build/debug/nape-gesture analyze-log "$system_dir/system-normal-after-release.jsonl" --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel
+  ".build/debug/nape-gesture analyze-log $system_dir/system-normal-after-release.jsonl --json --assert-system-scenario normal-after-release --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel" \
+  .build/debug/nape-gesture analyze-log "$system_dir/system-normal-after-release.jsonl" --json --assert-system-scenario normal-after-release --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel
 
 run_combined_success \
   "system-test gesture-wheel-then-kill-switch dry-run JSON Lines" \
@@ -338,8 +329,8 @@ run_split_success \
   "system-test gesture-wheel-then-kill-switch analyze-log assert-gesture-before-kill-switch" \
   "$system_dir/system-gesture-wheel-then-kill-switch-analysis.json" \
   "$system_dir/system-gesture-wheel-then-kill-switch-analysis.stderr.log" \
-  ".build/debug/nape-gesture analyze-log $system_dir/system-gesture-wheel-then-kill-switch.jsonl --json --assert-kill-switch-shortcut --assert-gesture-before-kill-switch" \
-  .build/debug/nape-gesture analyze-log "$system_dir/system-gesture-wheel-then-kill-switch.jsonl" --json --assert-kill-switch-shortcut --assert-gesture-before-kill-switch
+  ".build/debug/nape-gesture analyze-log $system_dir/system-gesture-wheel-then-kill-switch.jsonl --json --assert-system-scenario gesture-wheel-then-kill-switch --assert-kill-switch-shortcut --assert-gesture-before-kill-switch" \
+  .build/debug/nape-gesture analyze-log "$system_dir/system-gesture-wheel-then-kill-switch.jsonl" --json --assert-system-scenario gesture-wheel-then-kill-switch --assert-kill-switch-shortcut --assert-gesture-before-kill-switch
 
 run_split_success \
   "generate-scroll space-right dry-run JSON Lines" \
