@@ -7,9 +7,16 @@
 release build から `.app` を作成し、バンドル構造と同梱文書を検証する。
 
 ```sh
+sh scripts/check-provenance.sh
 swift build -c release --scratch-path .build
 .build/release/nape-gesture bundle-app --out .build/NapeGesture.app --replace
 .build/release/nape-gesture verify-bundle .build/NapeGesture.app
+/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' .build/NapeGesture.app/Contents/Info.plist | grep -Fx 'dev.char5742.nape-gesture'
+/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' .build/NapeGesture.app/Contents/Info.plist | grep -Fx 'nape-gesture'
+/usr/libexec/PlistBuddy -c 'Print :CFBundleName' .build/NapeGesture.app/Contents/Info.plist | grep -Fx 'Nape Gesture'
+/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' .build/NapeGesture.app/Contents/Info.plist | grep -Fx 'Nape Gesture'
+cmp LICENSE .build/NapeGesture.app/Contents/Resources/LICENSE.txt
+cmp THIRD_PARTY_NOTICES.md .build/NapeGesture.app/Contents/Resources/THIRD_PARTY_NOTICES.md
 ```
 
 `verify-bundle` は次を確認する。
@@ -21,6 +28,8 @@ swift build -c release --scratch-path .build
 - `codesign --verify --deep --strict --verbose=2` による署名状態
 
 通常の `verify-bundle` は署名が未完了でも構造検証を続行し、署名状態を表示する。公開配布前のゲートでは `--require-signature` を付け、署名検証失敗をエラーにする。
+`sh scripts/check-provenance.sh` は、外部ソースを読まずに tracked files だけを対象として、由来方針の削除や許可外の識別子混入を検出する。これは法的な完全証明ではなく、配布前に実施する repo-local の退行検知である。
+`PlistBuddy` と `cmp` は、権限付与対象の identity と同梱文書の原本一致を機械的に固定する。
 
 ```sh
 .build/release/nape-gesture verify-bundle --require-signature .build/NapeGesture.app

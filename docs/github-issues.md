@@ -342,7 +342,9 @@ Labels: `area:release`, `type:feature`, `priority:p1`
 - release build が成功する
 - `.app` バンドルが生成される
 - `verify-bundle` が成功する
-- `LICENSE` と `THIRD_PARTY_NOTICES.md` が同梱される
+- `CFBundleIdentifier`、`CFBundleExecutable`、`CFBundleName`、`CFBundleDisplayName` の exact check が成功する
+- `LICENSE` と `THIRD_PARTY_NOTICES.md` が同梱され、バンドル内ファイルと原本が `cmp` で一致する
+- `sh scripts/check-provenance.sh` が成功する
 - 署名と公証の方針が決まっている
 - 配布前の権限付与手順が README にある
 

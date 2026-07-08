@@ -14,6 +14,7 @@
 - docs/config のみの変更では、変更対象に合った検証と Swift build を省略した理由が PR 本文に明記されている
 - 未検証事項を「完了」と表現していない
 - Mac Mouse Fix のコード、定数、状態遷移、係数をコピーしていない
+- 由来や配布物に影響する変更では `sh scripts/check-provenance.sh` が成功している
 
 ## 性能 / Benchmark 変更
 
@@ -84,6 +85,8 @@
 
 - `.app` バンドルを作成し、`verify-bundle` が成功する
 - `LICENSE` と `THIRD_PARTY_NOTICES.md` が同梱される
+- `LICENSE` と `THIRD_PARTY_NOTICES.md` はバンドル内の同梱ファイルと `cmp` で一致している
+- `CFBundleIdentifier`、`CFBundleExecutable`、`CFBundleName`、`CFBundleDisplayName` の exact check が成功している
 - ローカル検証では ad-hoc 署名、公開配布では Developer ID Application 署名と公証を使う境界が明記されている
 - 公開配布前は `verify-bundle --require-signature` と `codesign --verify --deep --strict --verbose=2` が成功している
 - 公証が未完了なら、未完了理由と次の作業が明記されている

@@ -131,6 +131,7 @@ run_split_expected_failure() {
 
 build_dir="$artifact_root/build-and-tests"
 bundle_dir="$artifact_root/bundle"
+provenance_dir="$artifact_root/provenance"
 doctor_dir="$artifact_root/doctor-and-performance"
 system_dir="$artifact_root/system-test-dry-run"
 fixtures_dir="$artifact_root/fixtures-analysis"
@@ -138,6 +139,12 @@ hid_dir="$artifact_root/hid-inventory"
 
 config_path="$doctor_dir/nape-gesture.config.json"
 blocked_config_path="$doctor_dir/nape-gesture-impossible-target.config.json"
+
+run_combined_success \
+  "由来ガード" \
+  "$provenance_dir/check-provenance.log" \
+  "sh scripts/check-provenance.sh" \
+  sh scripts/check-provenance.sh
 
 run_combined_success \
   "debug build" \
@@ -168,6 +175,12 @@ run_combined_success \
   "$bundle_dir/verify-bundle.log" \
   ".build/release/nape-gesture verify-bundle .build/NapeGesture.app" \
   .build/release/nape-gesture verify-bundle .build/NapeGesture.app
+
+run_combined_success \
+  "app bundle identity 確認" \
+  "$bundle_dir/info-plist-identity-check.log" \
+  "PlistBuddy CFBundleIdentifier / CFBundleExecutable / CFBundleName / CFBundleDisplayName exact check" \
+  sh -c "/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' .build/NapeGesture.app/Contents/Info.plist | grep -Fx 'dev.char5742.nape-gesture' && /usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' .build/NapeGesture.app/Contents/Info.plist | grep -Fx 'nape-gesture' && /usr/libexec/PlistBuddy -c 'Print :CFBundleName' .build/NapeGesture.app/Contents/Info.plist | grep -Fx 'Nape Gesture' && /usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' .build/NapeGesture.app/Contents/Info.plist | grep -Fx 'Nape Gesture'"
 
 run_split_expected_failure \
   "未署名 app bundle 署名必須検証" \
