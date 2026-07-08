@@ -1,4 +1,5 @@
 import Foundation
+import NapeGestureCore
 
 struct BundleAppCommand {
     private let options: [String]
@@ -85,7 +86,7 @@ struct BundleAppCommand {
             <key>LSMinimumSystemVersion</key>
             <string>13.0</string>
             <key>LSUIElement</key>
-            <true/>
+            \(lsUIElementPlistValue)
             <key>NSHighResolutionCapable</key>
             <true/>
             <key>NSHumanReadableCopyright</key>
@@ -94,6 +95,10 @@ struct BundleAppCommand {
         </plist>
         """
         return Data(plist.utf8)
+    }
+
+    private var lsUIElementPlistValue: String {
+        GUIAppLaunchPresenter.regularGUIApp.bundleLSUIElement ? "<true/>" : "<false/>"
     }
 
     private func writeDistributionResources(to resourcesURL: URL) throws {

@@ -15,6 +15,7 @@ swift build -c release --scratch-path .build
 /usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' .build/NapeGesture.app/Contents/Info.plist | grep -Fx 'nape-gesture'
 /usr/libexec/PlistBuddy -c 'Print :CFBundleName' .build/NapeGesture.app/Contents/Info.plist | grep -Fx 'Nape Gesture'
 /usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' .build/NapeGesture.app/Contents/Info.plist | grep -Fx 'Nape Gesture'
+/usr/libexec/PlistBuddy -c 'Print :LSUIElement' .build/NapeGesture.app/Contents/Info.plist | grep -Fx 'false'
 cmp LICENSE .build/NapeGesture.app/Contents/Resources/LICENSE.txt
 cmp THIRD_PARTY_NOTICES.md .build/NapeGesture.app/Contents/Resources/THIRD_PARTY_NOTICES.md
 ```
@@ -22,6 +23,7 @@ cmp THIRD_PARTY_NOTICES.md .build/NapeGesture.app/Contents/Resources/THIRD_PARTY
 `verify-bundle` は次を確認する。
 
 - `Contents/Info.plist`
+- `LSUIElement=false`
 - `Contents/MacOS/nape-gesture`
 - `Contents/Resources/LICENSE.txt`
 - `Contents/Resources/THIRD_PARTY_NOTICES.md`
@@ -30,6 +32,7 @@ cmp THIRD_PARTY_NOTICES.md .build/NapeGesture.app/Contents/Resources/THIRD_PARTY
 通常の `verify-bundle` は署名が未完了でも構造検証を続行し、署名状態を表示する。公開配布前のゲートでは `--require-signature` を付け、署名検証失敗をエラーにする。
 `sh scripts/check-provenance.sh` は、外部ソースを読まずに tracked files だけを対象として、由来方針の削除や許可外の識別子混入を検出する。これは法的な完全証明ではなく、配布前に実施する repo-local の退行検知である。
 `PlistBuddy` と `cmp` は、権限付与対象の identity と同梱文書の原本一致を機械的に固定する。
+`LSUIElement=false` は、`.app` が Dock に表示される通常 GUI アプリとして起動することを固定する。
 
 ```sh
 .build/release/nape-gesture verify-bundle --require-signature .build/NapeGesture.app

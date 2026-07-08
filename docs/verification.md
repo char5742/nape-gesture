@@ -380,6 +380,9 @@ JSON Lines では、通常スクロールの `began` / `changed` / `ended` は `
 | 一致対象デバイスが0 | Nape Pro 操作を拾えない | matcher が実デバイスの HID 情報とずれている、または未接続 | `devices --all --json`、`hid-log`、`analyze-hid-log` で usage と値域を再特定する |
 | `hid-log --all` が失敗 | 排他アクセスや一部デバイスで IOHID が開けない | 全 HID を一括で開こうとしている | `devices --all --json` で候補を絞り、vendor/product/usage を指定して記録する |
 | `.app` が古い | CLI では存在するコマンドが `.app` にない、設定UIや診断が古い | `.app` 作成後に本体を更新した | `swift build -c release` 後に `bundle-app --replace` と `verify-bundle` を再実行する |
+| `.app` が Dock に出ない | 起動しても通常 GUI アプリとして見えず、設定画面を見つけにくい | `LSUIElement` が `true` に戻っている、または activation policy が `.accessory` に戻っている | `verify-bundle` と `PlistBuddy` で `LSUIElement=false` を確認し、`app` 起動経路が `.regular` であることを確認する |
+| 起動時に設定ウィンドウが出ない | 初回設定や対象デバイス設定に到達しにくい | `applicationDidFinishLaunching` で設定ウィンドウを開いていない、または既存ウィンドウ再利用が壊れている | `.app` 起動時と Dock 再オープン時に設定ウィンドウが前面化することを確認する |
+| 通常 GUI 化でステータスメニューが消える | 開始、停止、緊急停止、権限確認をメニューバーから操作できない | Dock 表示対応時に `NSStatusItem` の作成や menu refresh が失われている | `.app` 起動後、Dock 表示と同時にメニューバーの `NG` から状態、開始、緊急停止、停止、設定、権限確認が見えることを確認する |
 | 生成イベントが Spaces を動かさない | `compare-log` 上は近いが画面が動かない | CGEvent の公開 API 生成イベントを Mission Control が純正ジェスチャーと同等に扱わない可能性 | 純正ログ、生成ログ、`system-test` 結果を保存し、連続スクロール量、フェーズ、間隔、慣性を調整する。限界が残る場合は実測根拠つきで代替操作の品質目標を決める |
 | 生成イベントを再入力して暴走する | 自分で投げたイベントを再解釈する | 生成元判定または抑制が欠けている | `generatedByNapeGesture` のログを確認し、イベントタップ側で自前生成イベントを無視できていることを確認する |
 | スリープ復帰や抜き差し後に止まる | 常駐中に対象デバイスや権限を失う | HID 接続状態または TCC 状態が変わった | メニューバー常駐UIの自動再試行状態を確認し、`doctor` で対象デバイスと権限を再確認する |

@@ -81,6 +81,7 @@
 移行後:
 
 - メニューバー表示は `NG`
+- Dock 表示名は `Nape Gesture`
 - 設定ウィンドウや Reference Target App に `Nape Gesture` が残る
 
 注意点:
