@@ -22,9 +22,9 @@
 - `blocked:external`
 - `need:human`
 
-`need:human` は承認待ち、レビュー待ち、確認依頼を表す label ではない。
-純正トラックパッド操作、Nape Pro 実機操作、スリープ、デバイス抜き差し、TCC 権限変更など、人間が実行する物理作業または macOS UI 操作が最後の手段として必要な Issue にだけ使う。
-自動化、CGEvent 投稿、dry-run、fixtures、ログ解析、Reference Target App、System Behavior Test で代替できる作業は、先にそれらで潰し込む。
+`need:human` は承認待ち、レビュー待ち、確認依頼、人間による判断待ちを表す label ではない。
+純正トラックパッド操作、Nape Pro 実機操作、スリープ、デバイス抜き差し、TCC 権限変更など、人間が手を動かして実行する物理作業または macOS UI 操作が最後の手段として必要な Issue にだけ使う。
+自動化、CGEvent 投稿、dry-run、fixtures、ログ解析、Reference Target App、System Behavior Test、権限済み環境での実イベント投稿で代替できる作業は、人間へ依頼する前にそれらで潰し込む。
 人間作業が残る場合も、依頼前に手順を最小化し、取得すべきログ、期待値、失敗時の切り分けを Issue に明記する。
 
 ## Milestone 1: リポジトリ移行と品質ゲート
