@@ -5,22 +5,25 @@
 
 ## 現在の確認状態
 
-2026-07-08 時点の `nape-gesture` rename 後確認:
+2026-07-09 時点の GUI アプリ化後 main `74d5abe` では、次の runtime event 証跡を最新状態として扱う。
 
 ```sh
-.build/debug/nape-gesture doctor --config /private/tmp/nape-gesture-doctor-config.json --probe-hid --benchmark-events 10000 --json
+NAPE_RUNTIME_EVENT_USE_APP_BUNDLE=1 NAPE_RUNTIME_EVENT_ARTIFACT_ROOT=artifacts/completion/2026-07-09/runtime-event-gui-app-main-74d5abe sh scripts/collect-runtime-event-evidence.sh
 ```
 
-通常権限の実行では HID 入力監視プローブは成功した。入力監視権限は現在の実行経路から見えている。
+この証跡では `.build/NapeGesture.app` を通常 GUI アプリとして作成し、bundle 検証後に同じ `.app` の実行主体で `doctor --probe-hid --json` を実行している。
+HID 入力監視プローブは成功し、入力監視権限は `.app` 経路から見えている。
 一方で、アクセシビリティは未許可のまま。`matchedTargetDeviceCount` は 0 で、Nape Pro 実機識別は未完了。
-サンドボックス内の実行では既定設定パス `~/Library/Application Support/NapeGesture/config.json` へ書き込めないため、検証時は `--config /private/tmp/...` を明示している。
-`doctor` の `runtimeIdentity.executablePath` は次を示している。
+`status.json` は次の外部ブロッカーを記録している。
 
-```text
-/Users/fujino/Documents/mac-gesture/.build/debug/nape-gesture
+```json
+{
+  "status": "blocked",
+  "blockerCode": "accessibility.missing",
+  "toolPath": ".build/NapeGesture.app/Contents/MacOS/nape-gesture"
+}
 ```
 
-同じ時点で、再生成した `.app` からの確認も HID 入力監視プローブは成功、アクセシビリティは未許可だった。
 `doctor` の `runtimeIdentity` は次を示している。
 
 ```text
@@ -29,6 +32,8 @@ bundleIdentifier: dev.char5742.nape-gesture
 executablePath: /Users/fujino/Documents/mac-gesture/.build/NapeGesture.app/Contents/MacOS/nape-gesture
 ```
 
+`doctor` の TCC 状態は、`tccStatus.inputMonitoring.status: "granted"`、`tccStatus.accessibility.status: "missing"`、`hidProbe.succeeded: true` を示している。
+`gesture-wheel-then-kill-switch` と `normal-after-release` の dry-run / `analyze-log` preflight は成功済みだが、アクセシビリティ未許可のため `run`、Reference Target App、実イベント投稿、`analyze-target-log` は未実行である。
 現時点で `run`、`log`、実イベント投稿、Spaces / Mission Control の実機検証は、アクセシビリティ許可が実利用する `.app` または実行ファイルに付与されるまで完了扱いにしない。
 
 ## 権限確認
