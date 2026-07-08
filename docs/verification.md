@@ -158,6 +158,8 @@ target log を検証する場合、`system-test run` には `--target finder` / 
 保存した AppKit 受信ログは `analyze-target-log <path>` で集計し、`scrollWheel`、`swipe`、`magnify`、`rotate`、phase、momentumPhase、precise scroll の有無を確認する。
 Issue #6 / #12 の最終実測へ進む前に、まず `analyze-target-log <path> --assert-no-leaks` で target log を機械判定する。
 通常入力通過を確認する `normal-after-release` では、解放後の未マーク `mouseMoved` / `scrollWheel` が AppKit に届くことが期待値になる。この場合は `--assert-no-leaks` ではなく、`analyze-target-log <path> --json --assert-has-unmarked-input` で未マーク入力の存在を機械判定する。
+Reference Target App が gesture 系イベントを扱えるかの前段確認は、実トラックパッド操作へ進む前に `Fixtures/gesture-target-log.jsonl` と `analyze-target-log --json --assert-has-gesture` で固定する。
+この assertion は `swipe`、`magnify`、`rotate` のいずれかが target log に含まれることを確認し、Issue #10 のページ戻る / 進む / ズーム / 横スクロール検証で AppKit gesture 受信形式を先に機械判定するために使う。
 人間の物理操作や macOS UI 操作は最後の手段とし、先に保存済みログ、`generate-scroll` / `system-test` の dry-run、アクセシビリティ許可済み環境での CGEvent 投稿で代替できる確認を済ませる。
 
 自動実行の基本形:

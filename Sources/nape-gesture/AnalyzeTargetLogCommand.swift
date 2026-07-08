@@ -16,6 +16,7 @@ struct AnalyzeTargetLogCommand {
         let analysis = TargetEventLogAnalyzer.analyze(records)
         let assertNoLeaks = options.contains("--assert-no-leaks")
         let assertHasUnmarkedInput = options.contains("--assert-has-unmarked-input")
+        let assertHasGesture = options.contains("--assert-has-gesture")
 
         if options.contains("--json") {
             let encoder = JSONEncoder()
@@ -33,6 +34,10 @@ struct AnalyzeTargetLogCommand {
         if assertHasUnmarkedInput && analysis.unmarkedInputEventCount == 0 {
             fflush(stdout)
             throw TargetLogMissingUnmarkedInputAssertionError(path: path)
+        }
+        if assertHasGesture && analysis.gestureEventCount == 0 {
+            fflush(stdout)
+            throw TargetLogMissingGestureAssertionError(path: path)
         }
     }
 
@@ -79,6 +84,14 @@ struct TargetLogMissingUnmarkedInputAssertionError: LocalizedError {
     }
 }
 
+struct TargetLogMissingGestureAssertionError: LocalizedError {
+    var path: String
+
+    var errorDescription: String? {
+        "target log に swipe / magnify / rotate がありません。Reference Target App のジェスチャー受信確認には `analyze-target-log \(path) --json` で swipeEvents、magnifyEvents、rotateEvents を確認してください。"
+    }
+}
+
 struct TargetEventLogAnalysis: Codable, Equatable {
     var totalEvents: Int
     var generatedEvents: Int
@@ -106,6 +119,10 @@ struct TargetEventLogAnalysis: Codable, Equatable {
 
     var unmarkedInputEventCount: Int {
         unmarkedMouseEvents + unmarkedScrollEvents + unmarkedKeyEvents
+    }
+
+    var gestureEventCount: Int {
+        swipeEvents + magnifyEvents + rotateEvents
     }
 }
 
