@@ -84,6 +84,102 @@ func testActiveDragEmitsChangedThenEnded() {
     expect(recognizer.isIdle, "終了後は通常状態へ戻る")
 }
 
+func testArmedButtonUpBelowDeadZoneSuppressesWithoutCommand() {
+    var recognizer = GestureRecognizer(configuration: GestureConfiguration(deadZonePoints: 5))
+
+    _ = recognizer.handle(.buttonDown(button: .button4, time: 1))
+    _ = recognizer.handle(.move(deltaX: 2, deltaY: 1, time: 1.01))
+    let ended = recognizer.handle(.buttonUp(button: .button4, time: 1.02))
+
+    expect(ended.shouldSuppressOriginal, "デッドゾーン未満でのボタン解放も抑制する")
+    expect(ended.commands.isEmpty, "デッドゾーン未満でのボタン解放ではコマンドを出さない")
+    expect(recognizer.isIdle, "デッドゾーン未満でのボタン解放後は idle に戻る")
+}
+
+func testActiveDragSuppressesChangedAndEndedOriginals() {
+    var recognizer = GestureRecognizer(configuration: GestureConfiguration(deadZonePoints: 3))
+
+    _ = recognizer.handle(.buttonDown(button: .button4, time: 1))
+    _ = recognizer.handle(.move(deltaX: 4, deltaY: 0, time: 1.01))
+    let changed = recognizer.handle(.move(deltaX: 2, deltaY: 0, time: 1.02))
+    let ended = recognizer.handle(.buttonUp(button: .button4, time: 1.03))
+
+    expect(changed.shouldSuppressOriginal, "ドラッグ継続中の元移動は抑制する")
+    expect(changed.commands.first?.phase == .changed, "ドラッグ継続フェーズを出す")
+    expect(ended.shouldSuppressOriginal, "ドラッグ終了時の元ボタン解放は抑制する")
+    expect(ended.commands.first?.phase == .ended, "ドラッグ終了フェーズを出す")
+    expect(recognizer.isIdle, "ドラッグ終了後は idle に戻る")
+}
+
+func testActiveWheelSuppressesChangedAndEndedOriginals() {
+    var recognizer = GestureRecognizer(configuration: .default)
+
+    _ = recognizer.handle(.buttonDown(button: .button4, time: 1))
+    _ = recognizer.handle(.wheel(deltaX: 0, deltaY: -120, time: 1.01))
+    let changed = recognizer.handle(.wheel(deltaX: 0, deltaY: -80, time: 1.02))
+    let ended = recognizer.handle(.buttonUp(button: .button4, time: 1.03))
+
+    expect(changed.shouldSuppressOriginal, "ホイール継続中の元ホイールは抑制する")
+    expect(changed.commands.first?.phase == .changed, "ホイール継続フェーズを出す")
+    expect(ended.shouldSuppressOriginal, "ホイール終了時の元ボタン解放は抑制する")
+    expect(ended.commands.first?.phase == .ended, "ホイール終了フェーズを出す")
+    expect(recognizer.isIdle, "ホイール終了後は idle に戻る")
+}
+
+func testDragSuppressesWheelWithoutLeavingDrag() {
+    var recognizer = GestureRecognizer(configuration: GestureConfiguration(deadZonePoints: 3))
+
+    _ = recognizer.handle(.buttonDown(button: .button4, time: 1))
+    _ = recognizer.handle(.move(deltaX: 4, deltaY: 0, time: 1.01))
+    let wheel = recognizer.handle(.wheel(deltaX: 0, deltaY: -120, time: 1.02))
+    let changed = recognizer.handle(.move(deltaX: 1, deltaY: 0, time: 1.03))
+    let ended = recognizer.handle(.buttonUp(button: .button4, time: 1.04))
+
+    expect(wheel.shouldSuppressOriginal, "ドラッグ中に来た元ホイールは抑制する")
+    expect(wheel.commands.isEmpty, "ドラッグ中のホイールでは別ジェスチャーを出さない")
+    expect(changed.commands.first?.kind == .drag, "ホイール混入後もドラッグとして継続する")
+    expect(changed.commands.first?.phase == .changed, "ホイール混入後もドラッグ継続フェーズを出す")
+    expect(ended.commands.first?.phase == .ended, "ホイール混入後もドラッグ終了フェーズを出す")
+    expect(recognizer.isIdle, "ホイール混入後の終了でも idle に戻る")
+}
+
+func testWheelSuppressesMoveWithoutLeavingWheel() {
+    var recognizer = GestureRecognizer(configuration: .default)
+
+    _ = recognizer.handle(.buttonDown(button: .button4, time: 1))
+    _ = recognizer.handle(.wheel(deltaX: 0, deltaY: -120, time: 1.01))
+    let move = recognizer.handle(.move(deltaX: 8, deltaY: 0, time: 1.02))
+    let changed = recognizer.handle(.wheel(deltaX: 0, deltaY: -80, time: 1.03))
+    let ended = recognizer.handle(.buttonUp(button: .button4, time: 1.04))
+
+    expect(move.shouldSuppressOriginal, "ホイール中に来た元移動は抑制する")
+    expect(move.commands.isEmpty, "ホイール中の移動では別ジェスチャーを出さない")
+    expect(changed.commands.first?.kind == .wheel, "移動混入後もホイールとして継続する")
+    expect(changed.commands.first?.phase == .changed, "移動混入後もホイール継続フェーズを出す")
+    expect(ended.commands.first?.phase == .ended, "移動混入後もホイール終了フェーズを出す")
+    expect(recognizer.isIdle, "移動混入後の終了でも idle に戻る")
+}
+
+func testInputsPassThroughAfterActivationButtonRelease() {
+    var recognizer = GestureRecognizer(configuration: GestureConfiguration(deadZonePoints: 5))
+
+    _ = recognizer.handle(.buttonDown(button: .button4, time: 1))
+    let activationUp = recognizer.handle(.buttonUp(button: .button4, time: 1.01))
+    let move = recognizer.handle(.move(deltaX: 12, deltaY: 0, time: 1.02))
+    let wheel = recognizer.handle(.wheel(deltaX: 0, deltaY: -120, time: 1.03))
+    let nonActivationDown = recognizer.handle(.buttonDown(button: .left, time: 1.04))
+    let nonActivationUp = recognizer.handle(.buttonUp(button: .left, time: 1.05))
+
+    expect(activationUp.shouldSuppressOriginal, "ジェスチャーボタン解放自体は抑制する")
+    expect(!move.shouldSuppressOriginal, "ジェスチャーボタン解放後の通常移動は通過する")
+    expect(move.commands.isEmpty, "ジェスチャーボタン解放後の通常移動ではコマンドを出さない")
+    expect(!wheel.shouldSuppressOriginal, "ジェスチャーボタン解放後の通常ホイールは通過する")
+    expect(wheel.commands.isEmpty, "ジェスチャーボタン解放後の通常ホイールではコマンドを出さない")
+    expect(!nonActivationDown.shouldSuppressOriginal, "ジェスチャーボタン解放後の非ジェスチャーボタン押下は通過する")
+    expect(!nonActivationUp.shouldSuppressOriginal, "ジェスチャーボタン解放後の非ジェスチャーボタン解放は通過する")
+    expect(recognizer.isIdle, "通過入力後も idle のまま")
+}
+
 func testAccelerationScalesFastDragDeltas() {
     var recognizer = GestureRecognizer(
         configuration: GestureConfiguration(
@@ -991,6 +1087,12 @@ testPassesThroughWhenActivationButtonIsNotPressed()
 testActivationButtonSuppressesOriginalInputBeforeThreshold()
 testDragBeginsAfterDeadZoneAndLocksDominantDirection()
 testActiveDragEmitsChangedThenEnded()
+testArmedButtonUpBelowDeadZoneSuppressesWithoutCommand()
+testActiveDragSuppressesChangedAndEndedOriginals()
+testActiveWheelSuppressesChangedAndEndedOriginals()
+testDragSuppressesWheelWithoutLeavingDrag()
+testWheelSuppressesMoveWithoutLeavingWheel()
+testInputsPassThroughAfterActivationButtonRelease()
 testAccelerationScalesFastDragDeltas()
 testAccelerationDoesNotScaleBelowThreshold()
 testDragCancelsWhenMaximumDurationIsExceeded()
