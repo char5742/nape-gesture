@@ -14,6 +14,7 @@ struct AnalyzeTargetLogCommand {
 
         let records = try loadRecords(from: path)
         let analysis = TargetEventLogAnalyzer.analyze(records)
+        let assertNoLeaks = options.contains("--assert-no-leaks")
 
         if options.contains("--json") {
             let encoder = JSONEncoder()
@@ -22,6 +23,11 @@ struct AnalyzeTargetLogCommand {
             print(String(decoding: data, as: UTF8.self))
         } else {
             print(TargetEventLogAnalyzer.japaneseReport(for: analysis))
+        }
+
+        if assertNoLeaks && !analysis.leakCandidateEvents.isEmpty {
+            fflush(stdout)
+            throw TargetLogLeakAssertionError(path: path, leakCandidateCount: analysis.leakCandidateEvents.count)
         }
     }
 
@@ -48,6 +54,15 @@ struct AnalyzeTargetLogCommand {
         }
 
         return records
+    }
+}
+
+struct TargetLogLeakAssertionError: LocalizedError {
+    var path: String
+    var leakCandidateCount: Int
+
+    var errorDescription: String? {
+        "target log に漏れ候補が \(leakCandidateCount) 件あります。詳細は `analyze-target-log \(path) --json` で確認してください。"
     }
 }
 

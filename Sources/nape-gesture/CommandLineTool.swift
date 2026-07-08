@@ -97,8 +97,8 @@ final class CommandLineTool {
               nape-gesture analyze-hid-log <path> [--json]
                   IOHID 生入力ログを device / usage ごとに集計します。
 
-              nape-gesture analyze-target-log <path> [--json]
-                  Reference Target App が保存した AppKit 受信イベントを集計します。
+              nape-gesture analyze-target-log <path> [--json] [--assert-no-leaks]
+                  Reference Target App が保存した AppKit 受信イベントを集計します。--assert-no-leaks で漏れ候補がある場合は失敗します。
 
               nape-gesture check-config [--config <path>] [--probe-hid]
                   対象デバイス設定と HID 入力監視の開始可否を確認します。
