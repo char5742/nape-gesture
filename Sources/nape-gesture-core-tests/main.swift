@@ -1083,6 +1083,110 @@ func testRuntimeSafetyStateResetReenablesGestureInput() {
     expect(!decision.shouldSuppressOriginalEvent, "明示 reset 後の通常入力は安全状態だけでは抑制しない")
 }
 
+func testRuntimeRecoveryStopsBeforeSleepAndDoesNotRetryDuringSleep() {
+    var state = RuntimeRecoveryState()
+    state.recordRuntimeStarted()
+
+    let sleep = state.handleWillSleep(at: 10)
+    _ = state.recordRuntimeFailure(.targetDeviceNotFound, at: 10.5)
+    let retry = state.retryIfReady(at: 11)
+
+    expect(sleep.shouldStopRuntime, "スリープ前は runtime 停止を要求する")
+    expect(!sleep.shouldStartRuntime, "スリープ前に runtime 開始は要求しない")
+    expect(state.isSuspendedForSleep, "スリープ中として保持する")
+    expect(!state.shouldShowAutoRetry, "スリープ中の自動復旧可能な失敗でも自動再試行表示にしない")
+    expect(state.pendingRetry == nil, "スリープ中の自動復旧可能な失敗では自動再試行予定を作らない")
+    expect(!retry.shouldStartRuntime, "スリープ中は自動再試行しない")
+}
+
+func testRuntimeRecoverySchedulesDelayedWakeRetryOnlyWhenEnabled() {
+    var state = RuntimeRecoveryState()
+    state.recordRuntimeStarted()
+    _ = state.handleWillSleep(at: 10)
+
+    let wake = state.handleDidWake(at: 20, retryDelay: 1.5)
+
+    expect(!wake.shouldStartRuntime, "wake 直後は遅延再開に留める")
+    expect(state.pendingRetry?.reason == .wake, "wake 後の遅延再開理由を保持する")
+    expectApproximatelyEqual(state.pendingRetry?.requestedAt, 20, "wake 後の遅延再開要求時刻を保持する")
+    expectApproximatelyEqual(state.pendingRetry?.notBefore, 21.5, "wake 後の遅延再開可能時刻を保持する")
+
+    let tooEarly = state.retryIfReady(at: 21.49)
+    let ready = state.retryIfReady(at: 21.5)
+
+    expect(!tooEarly.shouldStartRuntime, "wake 遅延前は再開しない")
+    expect(ready.shouldStartRuntime, "wake 遅延後は再開対象になる")
+}
+
+func testRuntimeRecoveryDoesNotScheduleWakeRetryAfterManualStop() {
+    var state = RuntimeRecoveryState()
+    _ = state.requestManualStop(at: 5)
+
+    _ = state.handleWillSleep(at: 10)
+    let wake = state.handleDidWake(at: 20, retryDelay: 1.5)
+    let retry = state.retryIfReady(at: 30)
+
+    expect(!wake.shouldStartRuntime, "手動停止後の wake では即時開始しない")
+    expect(state.pendingRetry == nil, "手動停止後の wake は自動再試行予定を作らない")
+    expect(!retry.shouldStartRuntime, "手動停止後は自動再試行しない")
+}
+
+func testRuntimeRecoveryRetriesRecoverableFailures() {
+    let recoverableFailures: [RuntimeRecoveryFailureKind] = [
+        .accessibilityPermissionMissing,
+        .eventTapCreationFailed,
+        .hidAccessUnavailable,
+        .targetDeviceNotFound
+    ]
+
+    for failure in recoverableFailures {
+        var state = RuntimeRecoveryState()
+        _ = state.recordRuntimeFailure(failure, at: 10)
+        let retry = state.retryIfReady(at: 10)
+
+        expect(state.autoRetryEnabled, "自動復旧可能な失敗後も自動再試行は有効なままにする: \(failure)")
+        expect(retry.shouldStartRuntime, "自動復旧可能な失敗は自動再試行対象にする: \(failure)")
+    }
+}
+
+func testRuntimeRecoveryDoesNotRetryHumanFixRequiredFailures() {
+    let humanFixRequiredFailures: [RuntimeRecoveryFailureKind] = [
+        .invalidSettings,
+        .targetDeviceMatcherMissing,
+        .unrecoverable
+    ]
+
+    for failure in humanFixRequiredFailures {
+        var state = RuntimeRecoveryState()
+        _ = state.recordRuntimeFailure(failure, at: 10)
+        let retry = state.retryIfReady(at: 10)
+
+        expect(state.pendingRetry == nil, "人間の修正が必要な失敗は自動再試行予定を作らない: \(failure)")
+        expect(!retry.shouldStartRuntime, "人間の修正が必要な失敗は自動再試行しない: \(failure)")
+    }
+}
+
+func testRuntimeRecoveryManualStartAndSettingsSaveReenableAutoRetry() {
+    var manualStartState = RuntimeRecoveryState()
+    _ = manualStartState.requestManualStop(at: 1)
+    let manualStart = manualStartState.requestManualStart(at: 2)
+    _ = manualStartState.recordRuntimeFailure(.targetDeviceNotFound, at: 3)
+    let manualRetry = manualStartState.retryIfReady(at: 3)
+
+    var settingsSavedState = RuntimeRecoveryState()
+    _ = settingsSavedState.requestManualStop(at: 1)
+    let settingsSaved = settingsSavedState.recordSettingsSaved(at: 2)
+    _ = settingsSavedState.recordRuntimeFailure(.hidAccessUnavailable, at: 3)
+    let settingsRetry = settingsSavedState.retryIfReady(at: 3)
+
+    expect(manualStart.shouldStartRuntime, "手動開始は runtime 開始を要求する")
+    expect(manualStartState.autoRetryEnabled, "手動開始で自動再試行を再有効化する")
+    expect(manualRetry.shouldStartRuntime, "手動開始後の自動復旧可能な失敗は再試行する")
+    expect(settingsSaved.shouldStartRuntime, "設定保存は runtime 開始を要求する")
+    expect(settingsSavedState.autoRetryEnabled, "設定保存で自動再試行を再有効化する")
+    expect(settingsRetry.shouldStartRuntime, "設定保存後の自動復旧可能な失敗は再試行する")
+}
+
 testPassesThroughWhenActivationButtonIsNotPressed()
 testActivationButtonSuppressesOriginalInputBeforeThreshold()
 testDragBeginsAfterDeadZoneAndLocksDominantDirection()
@@ -1131,6 +1235,12 @@ testRuntimeSafetyStateStopsForKillSwitch()
 testRuntimeSafetyStatePassesRegularInputAfterStop()
 testRuntimeSafetyStateDoesNotReenableWithoutReset()
 testRuntimeSafetyStateResetReenablesGestureInput()
+testRuntimeRecoveryStopsBeforeSleepAndDoesNotRetryDuringSleep()
+testRuntimeRecoverySchedulesDelayedWakeRetryOnlyWhenEnabled()
+testRuntimeRecoveryDoesNotScheduleWakeRetryAfterManualStop()
+testRuntimeRecoveryRetriesRecoverableFailures()
+testRuntimeRecoveryDoesNotRetryHumanFixRequiredFailures()
+testRuntimeRecoveryManualStartAndSettingsSaveReenableAutoRetry()
 
 if failures == 0 {
     print("すべてのコアテストに成功しました。")

@@ -7,12 +7,11 @@ final class StatusApp: NSObject, NSApplicationDelegate {
 
     private let configPath: String
     private let runtime = NapeGestureRuntime()
+    private var recoveryState = RuntimeRecoveryState()
     private var settings: NapeGestureSettings
     private var statusItem: NSStatusItem?
     private var settingsWindow: SettingsWindowController?
     private var retryTimer: Timer?
-    private var autoRetryEnabled = true
-    private var isSuspendedForSleep = false
 
     private let retryInterval: TimeInterval = 5.0
     private let wakeRetryDelay: TimeInterval = 1.5
@@ -63,8 +62,8 @@ final class StatusApp: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
         menu.addItem(menuItem("開始", action: #selector(startRuntime), enabled: !runtime.isRunning))
-        menu.addItem(menuItem("緊急停止", action: #selector(stopRuntime), enabled: runtime.isRunning || autoRetryEnabled))
-        menu.addItem(menuItem("停止", action: #selector(stopRuntime), enabled: runtime.isRunning || autoRetryEnabled))
+        menu.addItem(menuItem("緊急停止", action: #selector(stopRuntime), enabled: runtime.isRunning || recoveryState.autoRetryEnabled))
+        menu.addItem(menuItem("停止", action: #selector(stopRuntime), enabled: runtime.isRunning || recoveryState.autoRetryEnabled))
         menu.addItem(menuItem("設定...", action: #selector(openSettings), enabled: true))
         menu.addItem(menuItem("権限とデバイスを確認", action: #selector(checkPermissions), enabled: true))
         menu.addItem(.separator())
@@ -76,10 +75,10 @@ final class StatusApp: NSObject, NSApplicationDelegate {
         if runtime.isRunning {
             return "状態: 実行中"
         }
-        if isSuspendedForSleep {
+        if recoveryState.isSuspendedForSleep {
             return "状態: スリープ待機中"
         }
-        if autoRetryEnabled && runtime.shouldRetryAutomatically {
+        if recoveryState.shouldShowAutoRetry {
             return "状態: 停止中（自動再試行中）"
         }
         return "状態: 停止中"
@@ -93,16 +92,18 @@ final class StatusApp: NSObject, NSApplicationDelegate {
     }
 
     @objc private func startRuntime() {
-        autoRetryEnabled = true
-        isSuspendedForSleep = false
-        runtime.start(settings: settings)
+        let decision = recoveryState.requestManualStart(at: currentTime())
+        if decision.shouldStartRuntime {
+            startRuntimeAndRecordResult()
+        }
         refreshMenu()
     }
 
     @objc private func stopRuntime() {
-        autoRetryEnabled = false
-        isSuspendedForSleep = false
-        runtime.stop()
+        let decision = recoveryState.requestManualStop(at: currentTime())
+        if decision.shouldStopRuntime {
+            runtime.stop()
+        }
         refreshMenu()
     }
 
@@ -115,9 +116,10 @@ final class StatusApp: NSObject, NSApplicationDelegate {
             do {
                 try SettingsStore.write(updated, to: configPath)
                 settings = updated
-                autoRetryEnabled = true
-                isSuspendedForSleep = false
-                runtime.start(settings: updated)
+                let decision = recoveryState.recordSettingsSaved(at: currentTime())
+                if decision.shouldStartRuntime {
+                    startRuntimeAndRecordResult()
+                }
                 refreshMenu()
             } catch {
                 showAlert(title: "設定を保存できません", message: error.localizedDescription)
@@ -149,7 +151,7 @@ final class StatusApp: NSObject, NSApplicationDelegate {
             "HIDデバイス数: \(allDevices.count)",
             "ポインティングデバイス数: \(devices.count)",
             "対象一致数: \(matched.count)",
-            "自動再試行: \(autoRetryEnabled ? "有効" : "無効")"
+            "自動再試行: \(recoveryState.autoRetryEnabled ? "有効" : "無効")"
         ]
 
         if let error = runtime.lastError {
@@ -233,46 +235,67 @@ final class StatusApp: NSObject, NSApplicationDelegate {
     }
 
     private func retryRuntimeIfNeeded() {
-        guard autoRetryEnabled,
-              !isSuspendedForSleep
+        guard recoveryState.autoRetryEnabled,
+              !recoveryState.isSuspendedForSleep
         else {
             return
         }
 
         if runtime.isRunning {
             if runtime.refreshHealth(settings: settings) {
+                recordRuntimeFailure()
                 refreshMenu()
             }
             return
         }
 
-        guard runtime.shouldRetryAutomatically else {
-            return
+        let decision = recoveryState.retryIfReady(at: currentTime())
+        if decision.shouldStartRuntime {
+            startRuntimeAndRecordResult()
+            refreshMenu()
         }
-
-        runtime.start(settings: settings)
-        refreshMenu()
     }
 
     @objc private func handleWillSleep() {
-        isSuspendedForSleep = true
-        runtime.stop()
+        let decision = recoveryState.handleWillSleep(at: currentTime())
+        if decision.shouldStopRuntime {
+            runtime.stop()
+        }
         refreshMenu()
     }
 
     @objc private func handleDidWake() {
-        isSuspendedForSleep = false
-        guard autoRetryEnabled else {
-            refreshMenu()
-            return
-        }
+        _ = recoveryState.handleDidWake(at: currentTime(), retryDelay: wakeRetryDelay)
+        refreshMenu()
 
         DispatchQueue.main.asyncAfter(deadline: .now() + wakeRetryDelay) { [weak self] in
-            guard let self, autoRetryEnabled, !isSuspendedForSleep else {
+            guard let self else {
                 return
             }
-            runtime.start(settings: settings)
+            let decision = recoveryState.retryIfReady(at: currentTime())
+            guard decision.shouldStartRuntime else {
+                return
+            }
+            startRuntimeAndRecordResult()
             refreshMenu()
         }
+    }
+
+    private func startRuntimeAndRecordResult() {
+        runtime.start(settings: settings)
+        if runtime.isRunning {
+            recoveryState.recordRuntimeStarted()
+        } else {
+            recordRuntimeFailure()
+        }
+    }
+
+    private func recordRuntimeFailure() {
+        let failureKind = runtime.lastRecoveryFailureKind ?? .unrecoverable
+        _ = recoveryState.recordRuntimeFailure(failureKind, at: currentTime())
+    }
+
+    private func currentTime() -> TimeInterval {
+        Date().timeIntervalSince1970
     }
 }
