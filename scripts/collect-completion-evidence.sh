@@ -304,6 +304,19 @@ run_split_success \
   ".build/debug/nape-gesture analyze-log $system_dir/system-normal-after-release.jsonl --json --assert-has-unmarked-passthrough-input" \
   .build/debug/nape-gesture analyze-log "$system_dir/system-normal-after-release.jsonl" --json --assert-has-unmarked-passthrough-input
 
+run_combined_success \
+  "system-test gesture-wheel-then-kill-switch dry-run JSON Lines" \
+  "$system_dir/system-gesture-wheel-then-kill-switch.log" \
+  ".build/debug/nape-gesture system-test run --scenario gesture-wheel-then-kill-switch --dry-run --log-json --out $system_dir/system-gesture-wheel-then-kill-switch.jsonl" \
+  .build/debug/nape-gesture system-test run --scenario gesture-wheel-then-kill-switch --dry-run --log-json --out "$system_dir/system-gesture-wheel-then-kill-switch.jsonl"
+
+run_split_success \
+  "system-test gesture-wheel-then-kill-switch analyze-log assert-gesture-before-kill-switch" \
+  "$system_dir/system-gesture-wheel-then-kill-switch-analysis.json" \
+  "$system_dir/system-gesture-wheel-then-kill-switch-analysis.stderr.log" \
+  ".build/debug/nape-gesture analyze-log $system_dir/system-gesture-wheel-then-kill-switch.jsonl --json --assert-kill-switch-shortcut --assert-gesture-before-kill-switch" \
+  .build/debug/nape-gesture analyze-log "$system_dir/system-gesture-wheel-then-kill-switch.jsonl" --json --assert-kill-switch-shortcut --assert-gesture-before-kill-switch
+
 run_split_success \
   "generate-scroll space-right dry-run JSON Lines" \
   "$system_dir/generated-space-right.jsonl" \

@@ -37,6 +37,8 @@ jobs:
           .build/debug/nape-gesture analyze-log /tmp/system-kill-switch.jsonl --json --assert-kill-switch-shortcut
           .build/debug/nape-gesture system-test run --scenario normal-after-release --dry-run --log-json --out /tmp/system-normal-after-release.jsonl
           .build/debug/nape-gesture analyze-log /tmp/system-normal-after-release.jsonl --json --assert-has-unmarked-passthrough-input
+          .build/debug/nape-gesture system-test run --scenario gesture-wheel-then-kill-switch --dry-run --log-json --out /tmp/system-gesture-wheel-then-kill-switch.jsonl
+          .build/debug/nape-gesture analyze-log /tmp/system-gesture-wheel-then-kill-switch.jsonl --json --assert-kill-switch-shortcut --assert-gesture-before-kill-switch
           .build/debug/nape-gesture compare-log Fixtures/sample-trackpad-scroll-log.jsonl Fixtures/sample-generated-scroll-log.jsonl
           .build/debug/nape-gesture analyze-hid-log Fixtures/sample-hid-log.jsonl
           .build/debug/nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/sample-association-event-log.jsonl --window 0.12 --json

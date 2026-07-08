@@ -65,6 +65,9 @@ struct SystemBehaviorTestCommand {
               gesture-wheel
                   既定の activation button 押下中のホイールを未マークのスクロールイベントとして生成します。
 
+              gesture-wheel-then-kill-switch
+                  既定の activation button 押下中にホイールを生成し、その最中にキルスイッチを未マークキーイベントとして生成します。
+
               normal-after-release
                   既定の activation button 解放後に通常の移動とホイールを未マークイベントとして生成します。
 
@@ -159,7 +162,7 @@ struct SystemBehaviorTestCommand {
             poster.postZoomOut()
         case .killSwitch:
             postUnmarkedKeyShortcut(keyCode: killSwitchKeyCode, flags: killSwitchFlags)
-        case .gestureDrag, .gestureWheel, .normalAfterRelease:
+        case .gestureDrag, .gestureWheel, .gestureWheelThenKillSwitch, .normalAfterRelease:
             postUnmarkedInputEvents(unmarkedInputEvents(for: plan, startTime: now))
         }
     }
@@ -264,7 +267,7 @@ struct SystemBehaviorTestCommand {
                 startTime: startTime,
                 generatedByNapeGesture: false
             )
-        case .gestureDrag, .gestureWheel, .normalAfterRelease:
+        case .gestureDrag, .gestureWheel, .gestureWheelThenKillSwitch, .normalAfterRelease:
             return unmarkedInputEvents(for: plan, startTime: startTime).map { $0.logRecord() }
         }
     }
@@ -352,6 +355,8 @@ struct SystemBehaviorTestCommand {
             return unmarkedGestureDragEvents(plan: plan, startTime: startTime)
         case .gestureWheel:
             return unmarkedGestureWheelEvents(plan: plan, startTime: startTime)
+        case .gestureWheelThenKillSwitch:
+            return unmarkedGestureWheelThenKillSwitchEvents(plan: plan, startTime: startTime)
         case .normalAfterRelease:
             return unmarkedNormalAfterReleaseEvents(plan: plan, startTime: startTime)
         case .spaceLeft,
@@ -417,6 +422,54 @@ struct SystemBehaviorTestCommand {
             unmarkedMouseEvent(
                 type: .otherMouseUp,
                 time: startTime + Double(plan.steps + 1) * plan.interval,
+                buttonNumber: plan.activationButtonNumber
+            )
+        )
+        return events
+    }
+
+    private func unmarkedGestureWheelThenKillSwitchEvents(
+        plan: SystemTestPlan,
+        startTime: TimeInterval
+    ) -> [UnmarkedInputEvent] {
+        var events = [
+            unmarkedMouseEvent(
+                type: .otherMouseDown,
+                time: startTime,
+                buttonNumber: plan.activationButtonNumber
+            )
+        ]
+        let deltas = quantizedDeltas(total: -plan.amount, steps: plan.steps)
+        for (index, deltaY) in deltas.enumerated() {
+            events.append(
+                unmarkedScrollEvent(
+                    time: startTime + Double(index + 1) * plan.interval,
+                    deltaY: deltaY
+                )
+            )
+        }
+
+        let keyDownTime = startTime + Double(plan.steps + 1) * plan.interval
+        events.append(
+            unmarkedKeyEvent(
+                type: .keyDown,
+                time: keyDownTime,
+                keyCode: Int64(killSwitchKeyCode),
+                flags: killSwitchFlags.rawValue
+            )
+        )
+        events.append(
+            unmarkedKeyEvent(
+                type: .keyUp,
+                time: keyDownTime + plan.interval,
+                keyCode: Int64(killSwitchKeyCode),
+                flags: killSwitchFlags.rawValue
+            )
+        )
+        events.append(
+            unmarkedMouseEvent(
+                type: .otherMouseUp,
+                time: keyDownTime + (2 * plan.interval),
                 buttonNumber: plan.activationButtonNumber
             )
         )
@@ -493,6 +546,30 @@ struct SystemBehaviorTestCommand {
             scrollPhase: 0,
             momentumPhase: 0,
             isContinuous: 1
+        )
+    }
+
+    private func unmarkedKeyEvent(
+        type: CGEventType,
+        time: TimeInterval,
+        keyCode: Int64,
+        flags: UInt64
+    ) -> UnmarkedInputEvent {
+        UnmarkedInputEvent(
+            type: type,
+            time: time,
+            buttonNumber: 0,
+            deltaX: 0,
+            deltaY: 0,
+            scrollDeltaX: 0,
+            scrollDeltaY: 0,
+            pointDeltaX: 0,
+            pointDeltaY: 0,
+            scrollPhase: 0,
+            momentumPhase: 0,
+            isContinuous: 0,
+            keyCode: keyCode,
+            flags: flags
         )
     }
 
@@ -689,13 +766,14 @@ private enum SystemTestScenario: String {
     case killSwitch = "kill-switch"
     case gestureDrag = "gesture-drag"
     case gestureWheel = "gesture-wheel"
+    case gestureWheelThenKillSwitch = "gesture-wheel-then-kill-switch"
     case normalAfterRelease = "normal-after-release"
 
     var defaultAmount: Double {
         switch self {
         case .normalAfterRelease:
             return 24
-        case .gestureWheel:
+        case .gestureWheel, .gestureWheelThenKillSwitch:
             return 240
         case .spaceLeft,
              .spaceRight,
@@ -725,7 +803,8 @@ private enum SystemTestScenario: String {
              .zoomOut,
              .killSwitch,
              .gestureDrag,
-             .gestureWheel:
+             .gestureWheel,
+             .gestureWheelThenKillSwitch:
             return 32
         }
     }
@@ -749,6 +828,8 @@ private struct UnmarkedInputEvent {
     var scrollPhase: Int64
     var momentumPhase: Int64
     var isContinuous: Int64
+    var keyCode: Int64 = 0
+    var flags: UInt64 = 0
 
     func logRecord() -> InputLogRecord {
         InputLogRecord(
@@ -766,14 +847,24 @@ private struct UnmarkedInputEvent {
             scrollPhase: scrollPhase,
             momentumPhase: momentumPhase,
             isContinuous: isContinuous,
-            keyCode: 0,
-            flags: 0
+            keyCode: keyCode,
+            flags: flags
         )
     }
 
     func makeCGEvent(source: CGEventSource?, cursorPosition: inout CGPoint) -> CGEvent? {
         let event: CGEvent?
-        if type == .scrollWheel {
+        if type == .keyDown || type == .keyUp {
+            guard keyCode >= 0, keyCode <= Int64(UInt16.max) else {
+                return nil
+            }
+            event = CGEvent(
+                keyboardEventSource: source,
+                virtualKey: CGKeyCode(keyCode),
+                keyDown: type == .keyDown
+            )
+            event?.flags = CGEventFlags(rawValue: flags)
+        } else if type == .scrollWheel {
             event = CGEvent(
                 scrollWheelEvent2Source: source,
                 units: .pixel,
@@ -816,6 +907,10 @@ private struct UnmarkedInputEvent {
             return "otherMouseDragged"
         case .scrollWheel:
             return "scrollWheel"
+        case .keyDown:
+            return "keyDown"
+        case .keyUp:
+            return "keyUp"
         default:
             return "raw-\(type.rawValue)"
         }

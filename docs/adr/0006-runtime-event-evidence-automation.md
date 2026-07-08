@@ -18,6 +18,7 @@ Issue #6 の元入力抑制と Issue #12 のキルスイッチは、最終的に
 - `kill-switch` は生成イベントが届かないことも正常系になり得るため、`--assert-has-generated-event` を使わない。`--assert-no-leaks` を使い、未マークキー入力が前面アプリへ届いた場合に失敗させる。
 - `kill-switch` は target log だけでなく daemon log の停止メッセージも確認し、前面アプリへ漏れなかっただけの空振りを成功扱いしない。
 - 物理キーボード操作へ進む前に、`system-test run --scenario kill-switch --dry-run --log-json` で `Control + Option + Command + G` 相当の未マーク keyDown / keyUp を completion evidence に保存する。
+- 暴走中停止の前段証跡は `gesture-wheel-then-kill-switch` を使う。dry-run は `analyze-log --assert-kill-switch-shortcut --assert-gesture-before-kill-switch`、runtime event は daemon 停止ログと `analyze-target-log --assert-no-leaks --assert-has-generated-event` で判定する。
 - `normal-after-release` は通常入力通過が期待値なので、`--assert-no-leaks` を使わない。`--assert-has-unmarked-input` を使い、解放後の未マーク入力が届かない場合に失敗させる。
 - Reference Target App の gesture 受信形式は、人間によるトラックパッド操作へ進む前に `Fixtures/gesture-target-log.jsonl` と `analyze-target-log --assert-has-gesture` で `swipe`、`magnify`、`rotate` の解析経路を機械判定する。
 - CI は completion evidence と同じ target log fixture assertion を smoke test に含める。`clean-target-log`、`leaky-target-log`、`no-generated-target-log`、`normal-input-target-log`、`gesture-target-log` を assertion 付きで検証し、単なる集計表示だけに戻さない。

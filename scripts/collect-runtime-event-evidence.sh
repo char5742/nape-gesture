@@ -255,7 +255,7 @@ run_scenario_with_no_leaks() {
     return
   fi
 
-  if [ "$scenario" = "kill-switch" ]; then
+  if [ "$scenario" = "kill-switch" ] || [ "$scenario" = "gesture-wheel-then-kill-switch" ]; then
     if grep -q "キルスイッチによりジェスチャーを無効化しました" "$daemon_log"; then
       append_summary "成功" "$title daemon 停止ログ" "0" "$daemon_log"
     else
@@ -264,7 +264,7 @@ run_scenario_with_no_leaks() {
     fi
   fi
 
-  if [ "$scenario" = "gesture-drag" ] || [ "$scenario" = "gesture-wheel" ]; then
+  if [ "$scenario" = "gesture-drag" ] || [ "$scenario" = "gesture-wheel" ] || [ "$scenario" = "gesture-wheel-then-kill-switch" ]; then
     printf '$ %s analyze-target-log %s --json --assert-no-leaks --assert-has-generated-event > %s 2> %s\n' "$tool_path" "$target_log" "$analysis_json" "$analysis_stderr" >> "$commands_file"
     "$tool_path" analyze-target-log "$target_log" --json --assert-no-leaks --assert-has-generated-event > "$analysis_json" 2> "$analysis_stderr"
   else
@@ -423,6 +423,7 @@ fi
 run_scenario_with_no_leaks gesture-drag "gesture-drag 元入力漏れなし"
 run_scenario_with_no_leaks gesture-wheel "gesture-wheel 元入力漏れなし"
 run_scenario_with_no_leaks kill-switch "kill-switch キー漏れなし"
+run_scenario_with_no_leaks gesture-wheel-then-kill-switch "gesture-wheel-then-kill-switch 暴走中停止"
 run_normal_after_release
 
 finish_summary

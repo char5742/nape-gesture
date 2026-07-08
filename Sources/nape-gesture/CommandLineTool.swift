@@ -92,8 +92,8 @@ final class CommandLineTool {
               nape-gesture log [--duration <秒>] [--out <path>] [--exclude-generated|--only-generated]
                   グローバル入力イベントを JSON Lines で記録します。メタ情報は標準エラー、イベント本体は標準出力または --out に出します。
 
-              nape-gesture analyze-log <path> [--json] [--assert-has-unmarked-passthrough-input] [--assert-kill-switch-shortcut]
-                  JSON Lines ログを解析し、しきい値候補を出します。--assert-has-unmarked-passthrough-input で未生成の移動またはスクロールがない場合、--assert-kill-switch-shortcut で未生成の Control + Option + Command + G keyDown / keyUp がない場合に失敗します。
+              nape-gesture analyze-log <path> [--json] [--assert-has-unmarked-passthrough-input] [--assert-kill-switch-shortcut] [--assert-gesture-before-kill-switch]
+                  JSON Lines ログを解析し、しきい値候補を出します。--assert-has-unmarked-passthrough-input で未生成の移動またはスクロールがない場合、--assert-kill-switch-shortcut で未生成の Control + Option + Command + G keyDown / keyUp がない場合、--assert-gesture-before-kill-switch でキルスイッチ前の未生成ジェスチャー入力がない場合に失敗します。
 
               nape-gesture compare-log <baseline> <candidate> [--json]
                   純正入力ログと生成イベントログなど、2つの JSON Lines ログ差分を比較します。

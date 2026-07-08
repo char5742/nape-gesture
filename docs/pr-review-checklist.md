@@ -41,6 +41,7 @@
 - キルスイッチで生成と慣性を即時停止できる
 - キルスイッチ自体を event tap で抑制し、前面アプリへ渡していない
 - `system-test run --scenario kill-switch --dry-run --log-json` を `analyze-log --assert-kill-switch-shortcut` で確認している
+- `system-test run --scenario gesture-wheel-then-kill-switch --dry-run --log-json` を `analyze-log --assert-kill-switch-shortcut --assert-gesture-before-kill-switch` で確認している
 - キルスイッチ後も通常入力を勝手に抑制し続けない
 - 一方向停止と明示 reset 以外で復帰しないことを Core の純粋テストで確認している
 - `normal-after-release` dry-run を `analyze-log --assert-has-unmarked-passthrough-input` で確認し、未生成キーだけを通常入力通過証跡として扱っていない

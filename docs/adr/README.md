@@ -21,6 +21,7 @@
 | [ADR-0012](0012-settings-ui-gesture-action-coverage.md) | 設定 UI の GestureAction 網羅性 | 設定 UI、GestureAction、アプリ別設定不要 |
 | [ADR-0013](0013-normal-input-passthrough-dry-run-assertion.md) | 通常入力通過 dry-run の機械判定 | Issue #6、Issue #16、normal-after-release、analyze-log |
 | [ADR-0014](0014-kill-switch-dry-run-shortcut-assertion.md) | キルスイッチ dry-run のショートカット機械判定 | Issue #12、Issue #16、kill-switch、analyze-log |
+| [ADR-0015](0015-gesture-wheel-then-kill-switch-evidence.md) | ジェスチャー中キルスイッチの前段証跡 | Issue #12、Issue #16、gesture-wheel-then-kill-switch |
 
 ## 追加時の確認
 

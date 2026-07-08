@@ -18,6 +18,7 @@ struct AnalyzeLogCommand {
         let analysis = InputLogAnalyzer.analyze(records)
         let assertHasUnmarkedPassthroughInput = options.contains("--assert-has-unmarked-passthrough-input")
         let assertKillSwitchShortcut = options.contains("--assert-kill-switch-shortcut")
+        let assertGestureBeforeKillSwitch = options.contains("--assert-gesture-before-kill-switch")
 
         if options.contains("--json") {
             let encoder = JSONEncoder()
@@ -36,21 +37,50 @@ struct AnalyzeLogCommand {
             fflush(stdout)
             throw InputLogMissingKillSwitchShortcutAssertionError(path: path)
         }
+        if assertGestureBeforeKillSwitch && !Self.hasGestureBeforeKillSwitch(records) {
+            fflush(stdout)
+            throw InputLogMissingGestureBeforeKillSwitchAssertionError(path: path)
+        }
     }
 
     private static func hasKillSwitchShortcut(_ records: [InputLogRecord]) -> Bool {
-        let matchingRecords = records.filter { record in
-            guard !record.generatedByNapeGesture, record.keyCode == 5 else {
-                return false
-            }
-            let flags = CGEventFlags(rawValue: record.flags)
-            return flags.contains(.maskCommand)
-                && flags.contains(.maskControl)
-                && flags.contains(.maskAlternate)
-        }
+        let matchingRecords = records.filter(isKillSwitchShortcutRecord)
 
         return matchingRecords.contains { $0.typeName == "keyDown" }
             && matchingRecords.contains { $0.typeName == "keyUp" }
+    }
+
+    private static func hasGestureBeforeKillSwitch(_ records: [InputLogRecord]) -> Bool {
+        guard hasKillSwitchShortcut(records),
+              let killSwitchTime = records
+                .filter({ $0.typeName == "keyDown" && isKillSwitchShortcutRecord($0) })
+                .map(\.timestamp)
+                .min()
+        else {
+            return false
+        }
+
+        let recordsBeforeKillSwitch = records.filter {
+            !$0.generatedByNapeGesture && $0.timestamp < killSwitchTime
+        }
+        let hasActivationButtonDown = recordsBeforeKillSwitch.contains {
+            $0.typeName == "otherMouseDown"
+        }
+        let hasGestureInput = recordsBeforeKillSwitch.contains {
+            $0.isMoveEvent || $0.isScrollEvent
+        }
+
+        return hasActivationButtonDown && hasGestureInput
+    }
+
+    private static func isKillSwitchShortcutRecord(_ record: InputLogRecord) -> Bool {
+        guard !record.generatedByNapeGesture, record.keyCode == 5 else {
+            return false
+        }
+        let flags = CGEventFlags(rawValue: record.flags)
+        return flags.contains(.maskCommand)
+            && flags.contains(.maskControl)
+            && flags.contains(.maskAlternate)
     }
 
 }
@@ -68,5 +98,13 @@ struct InputLogMissingKillSwitchShortcutAssertionError: LocalizedError {
 
     var errorDescription: String? {
         "input log に未生成の Control + Option + Command + G keyDown / keyUp がありません。キルスイッチ dry-run の確認には `analyze-log \(path) --json --assert-kill-switch-shortcut` を使ってください。"
+    }
+}
+
+struct InputLogMissingGestureBeforeKillSwitchAssertionError: LocalizedError {
+    var path: String
+
+    var errorDescription: String? {
+        "input log にキルスイッチ前の未生成ジェスチャー入力がありません。暴走中停止 dry-run の確認には `analyze-log \(path) --json --assert-kill-switch-shortcut --assert-gesture-before-kill-switch` を使ってください。"
     }
 }
