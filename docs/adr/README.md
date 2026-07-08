@@ -31,6 +31,7 @@
 | [ADR-0022](0022-benchmark-batch-percentile-metrics.md) | 純粋ロジック benchmark の batch p95 / p99 証跡 | Issue #14、Issue #16、benchmark、性能 |
 | [ADR-0023](0023-repo-local-provenance-guard.md) | repo-local 由来ガード | Issue #1、Issue #15、Issue #16、ライセンス、由来 |
 | [ADR-0024](0024-regular-gui-app-launch.md) | 通常 GUI アプリとして起動する | Issue #11、Issue #15、Issue #16、GUI、`.app` |
+| [ADR-0025](0025-gui-permission-recovery-actions.md) | GUI 権限復旧導線の表示契約 | Issue #74、Issue #11、Issue #13、Issue #16、GUI、TCC |
 
 ## 追加時の確認
 

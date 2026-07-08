@@ -73,6 +73,14 @@ final class StatusApp: NSObject, NSApplicationDelegate {
         permissionsItem.target = self
         appMenu.addItem(permissionsItem)
 
+        let accessibilitySettingsItem = NSMenuItem(title: "アクセシビリティ設定を開く", action: #selector(openAccessibilitySettings), keyEquivalent: "")
+        accessibilitySettingsItem.target = self
+        appMenu.addItem(accessibilitySettingsItem)
+
+        let inputMonitoringSettingsItem = NSMenuItem(title: "入力監視設定を開く", action: #selector(openInputMonitoringSettings), keyEquivalent: "")
+        inputMonitoringSettingsItem.target = self
+        appMenu.addItem(inputMonitoringSettingsItem)
+
         appMenu.addItem(.separator())
 
         let quitItem = NSMenuItem(title: "Nape Gesture を終了", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -115,6 +123,8 @@ final class StatusApp: NSObject, NSApplicationDelegate {
         menu.addItem(menuItem("停止", action: #selector(stopRuntime), enabled: presentation.stopEnabled))
         menu.addItem(menuItem("設定...", action: #selector(openSettings), enabled: true))
         menu.addItem(menuItem("権限とデバイスを確認", action: #selector(checkPermissions), enabled: true))
+        menu.addItem(menuItem("アクセシビリティ設定を開く", action: #selector(openAccessibilitySettings), enabled: true))
+        menu.addItem(menuItem("入力監視設定を開く", action: #selector(openInputMonitoringSettings), enabled: true))
         menu.addItem(.separator())
         menu.addItem(menuItem("終了", action: #selector(quit), enabled: true))
         statusItem?.menu = menu
@@ -173,17 +183,23 @@ final class StatusApp: NSObject, NSApplicationDelegate {
     }
 
     @objc private func checkPermissions() {
-        let accessibility = AccessibilityPermission.isTrusted ? "許可済み" : "未許可"
+        let accessibilityTrusted = AccessibilityPermission.isTrusted
         let identity = RuntimeIdentity.current
         let allDevices = (try? DeviceInventory.allDevices()) ?? []
         let devices = (try? DeviceInventory.pointingDevices()) ?? []
         let matched = (try? DeviceInventory.matchedDevices(settings: settings)) ?? []
         let inputMonitoring = probeInputMonitoring(matchedDevices: matched)
+        let recoveryPresentation = PermissionRecoveryPresenter.present(
+            accessibilityTrusted: accessibilityTrusted,
+            inputMonitoringGranted: inputMonitoring.granted,
+            permissionTargetDescription: identity.permissionTargetDescription
+        )
 
         var lines = [
-            "アクセシビリティ: \(accessibility)",
-            "入力監視: \(inputMonitoring)",
-            "権限対象: \(identity.permissionTargetDescription)",
+            "\(recoveryPresentation.accessibility.serviceTitle): \(recoveryPresentation.accessibility.statusTitle)",
+            "\(recoveryPresentation.inputMonitoring.serviceTitle): \(recoveryPresentation.inputMonitoring.statusTitle)",
+            "入力監視詳細: \(inputMonitoring.detail)",
+            "権限対象: \(recoveryPresentation.permissionTargetDescription)",
             "実行ファイル: \(identity.executablePath)",
             "バンドルID: \(identity.bundleIdentifier ?? "なし")",
             "キルスイッチ: \(KillSwitchShortcut.displayName)",
@@ -204,17 +220,21 @@ final class StatusApp: NSObject, NSApplicationDelegate {
             lines.append("対象: " + matched.map(\.displayName).joined(separator: ", "))
         }
 
-        if !AccessibilityPermission.isTrusted {
+        if !accessibilityTrusted {
             AccessibilityPermission.prompt()
-            lines.append("アクセシビリティ未許可の場合は、権限対象を許可してからアプリを再起動してください。")
         }
+        lines.append(recoveryPresentation.restartNotice)
 
-        showAlert(title: "権限とデバイス", message: lines.joined(separator: "\n"))
+        showPermissionAlert(
+            title: "権限とデバイス",
+            message: lines.joined(separator: "\n"),
+            presentation: recoveryPresentation
+        )
     }
 
-    private func probeInputMonitoring(matchedDevices: [DeviceIdentity]) -> String {
+    private func probeInputMonitoring(matchedDevices: [DeviceIdentity]) -> InputMonitoringProbeResult {
         if runtime.isRunning {
-            return "実行中"
+            return .notProbed("常駐実行中のため、停止せずに入力監視プローブは行いません。")
         }
 
         let gate = SharedTargetDeviceGate(
@@ -225,11 +245,22 @@ final class StatusApp: NSObject, NSApplicationDelegate {
         do {
             try monitor.start()
             monitor.stop()
-            return "許可済み"
+            return .granted
         } catch {
             monitor.stop()
-            return "未許可または開始失敗: \(describe(error))"
+            return .failed(describe(error))
         }
+    }
+
+    @objc private func openAccessibilitySettings() {
+        if !AccessibilityPermission.isTrusted {
+            AccessibilityPermission.prompt()
+        }
+        openSystemSettings(PermissionRecoveryPresenter.accessibilitySettingsURLString)
+    }
+
+    @objc private func openInputMonitoringSettings() {
+        openSystemSettings(PermissionRecoveryPresenter.inputMonitoringSettingsURLString)
     }
 
     @objc private func quit() {
@@ -242,6 +273,48 @@ final class StatusApp: NSObject, NSApplicationDelegate {
         alert.informativeText = message
         alert.alertStyle = .informational
         alert.runModal()
+    }
+
+    private func showPermissionAlert(
+        title: String,
+        message: String,
+        presentation: PermissionRecoveryPresentation
+    ) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = .informational
+
+        var buttonActions: [() -> Void] = [{}]
+        alert.addButton(withTitle: "閉じる")
+
+        if presentation.accessibility.shouldOpenSettings {
+            alert.addButton(withTitle: presentation.accessibility.settingsButtonTitle)
+            buttonActions.append { [weak self] in
+                self?.openAccessibilitySettings()
+            }
+        }
+
+        if presentation.inputMonitoring.shouldOpenSettings {
+            alert.addButton(withTitle: presentation.inputMonitoring.settingsButtonTitle)
+            buttonActions.append { [weak self] in
+                self?.openInputMonitoringSettings()
+            }
+        }
+
+        let response = alert.runModal()
+        let index = response.rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+        guard buttonActions.indices.contains(index) else {
+            return
+        }
+        buttonActions[index]()
+    }
+
+    private func openSystemSettings(_ urlString: String) {
+        guard let url = URL(string: urlString), NSWorkspace.shared.open(url) else {
+            showAlert(title: "システム設定を開けません", message: "次の URL を開けませんでした。\n\(urlString)")
+            return
+        }
     }
 
     private func describe(_ error: Error) -> String {
@@ -339,6 +412,34 @@ final class StatusApp: NSObject, NSApplicationDelegate {
 
     private func currentTime() -> TimeInterval {
         Date().timeIntervalSince1970
+    }
+}
+
+private enum InputMonitoringProbeResult {
+    case granted
+    case failed(String)
+    case notProbed(String)
+
+    var granted: Bool? {
+        switch self {
+        case .granted:
+            return true
+        case .failed:
+            return false
+        case .notProbed:
+            return nil
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .granted:
+            return "許可済み"
+        case let .failed(message):
+            return "未許可または開始失敗: \(message)"
+        case let .notProbed(message):
+            return "未判定: \(message)"
+        }
     }
 }
 
