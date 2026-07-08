@@ -225,12 +225,24 @@ run_split_success \
   ".build/debug/nape-gesture doctor --config $config_path --benchmark-events 50000 --json" \
   .build/debug/nape-gesture doctor --config "$config_path" --benchmark-events 50000 --json
 
+run_combined_success \
+  "doctor JSON runtimeReadiness / tccStatus field check" \
+  "$doctor_dir/doctor-json-field-check.log" \
+  "grep -q runtimeReadiness $doctor_dir/doctor-debug.json && grep -q tccStatus $doctor_dir/doctor-debug.json" \
+  sh -c "grep -q '\"runtimeReadiness\"' '$doctor_dir/doctor-debug.json' && grep -q '\"tccStatus\"' '$doctor_dir/doctor-debug.json'"
+
 run_split_success \
   "doctor HID probe JSON" \
   "$doctor_dir/doctor-hid-probe-debug.json" \
   "$doctor_dir/doctor-hid-probe-debug.stderr.log" \
   ".build/debug/nape-gesture doctor --config $config_path --probe-hid --benchmark-events 1000 --json" \
   .build/debug/nape-gesture doctor --config "$config_path" --probe-hid --benchmark-events 1000 --json
+
+run_combined_success \
+  "doctor HID probe JSON runtimeReadiness / tccStatus field check" \
+  "$doctor_dir/doctor-hid-probe-json-field-check.log" \
+  "grep -q runtimeReadiness $doctor_dir/doctor-hid-probe-debug.json && grep -q tccStatus $doctor_dir/doctor-hid-probe-debug.json" \
+  sh -c "grep -q '\"runtimeReadiness\"' '$doctor_dir/doctor-hid-probe-debug.json' && grep -q '\"tccStatus\"' '$doctor_dir/doctor-hid-probe-debug.json'"
 
 run_split_expected_failure \
   "doctor assert-runtime-ready requires HID probe" \
@@ -239,12 +251,24 @@ run_split_expected_failure \
   ".build/debug/nape-gesture doctor --config $config_path --benchmark-events 1000 --json --assert-runtime-ready" \
   .build/debug/nape-gesture doctor --config "$config_path" --benchmark-events 1000 --json --assert-runtime-ready
 
+run_combined_success \
+  "doctor assert-runtime-ready requires HID probe code check" \
+  "$doctor_dir/doctor-assert-runtime-ready-requires-probe-code-check.log" \
+  "grep -q inputMonitoring.notProbed $doctor_dir/doctor-assert-runtime-ready-requires-probe.json" \
+  grep -q "inputMonitoring.notProbed" "$doctor_dir/doctor-assert-runtime-ready-requires-probe.json"
+
 run_split_expected_failure \
   "doctor assert-runtime-ready target mismatch" \
   "$doctor_dir/doctor-assert-runtime-ready-target-mismatch.json" \
   "$doctor_dir/doctor-assert-runtime-ready-target-mismatch.stderr.log" \
   ".build/debug/nape-gesture doctor --config $blocked_config_path --probe-hid --benchmark-events 1000 --json --assert-runtime-ready" \
   .build/debug/nape-gesture doctor --config "$blocked_config_path" --probe-hid --benchmark-events 1000 --json --assert-runtime-ready
+
+run_combined_success \
+  "doctor assert-runtime-ready target mismatch code check" \
+  "$doctor_dir/doctor-assert-runtime-ready-target-mismatch-code-check.log" \
+  "grep -q targetDevice.notFound $doctor_dir/doctor-assert-runtime-ready-target-mismatch.json" \
+  grep -q "targetDevice.notFound" "$doctor_dir/doctor-assert-runtime-ready-target-mismatch.json"
 
 run_split_success \
   "benchmark baseline JSON" \

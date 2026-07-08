@@ -69,7 +69,9 @@
 - 設定 UI の割り当て候補は `GestureAction.settingsSelectableActions` から生成し、`GestureAction.allCases` との網羅性テストを維持している
 - 不正な設定値を保存前または起動前に止める
 - `runtimeIdentity` で権限付与対象が分かる
+- `runtimeReadiness.ready`、`runtimeReadiness.failures[].code`、`tccStatus.accessibility`、`tccStatus.inputMonitoring` で runtime ready と TCC 状態を構造化している
 - アクセシビリティと入力監視の失敗を区別している
+- doctor JSON 契約を変えた場合は CI smoke、completion evidence、関連 ADR を更新している
 - 常駐 UI の実行中、停止中、自動再試行中、スリープ待機中表示が `RuntimeStatusPresenter` の core test で固定されている
 - スリープ復帰、デバイス抜き差し、権限変更後の復旧状態を説明できる
 
