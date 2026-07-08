@@ -14,7 +14,7 @@
 ## 検証
 
 - [ ] `swift build --scratch-path .build`
-- [ ] `.build/debug/mac-gesture-core-tests`
+- [ ] `.build/debug/nape-gesture-core-tests`
 - [ ] `swift build -c release --scratch-path .build`
 - [ ] 必要な dry-run / analyzer / bundle 検証を実行した
 

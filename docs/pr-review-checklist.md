@@ -8,7 +8,7 @@
 - 対応 Issue が明記されている
 - 変更ファイルの所有範囲が説明されている
 - `swift build --scratch-path .build` が成功している
-- `.build/debug/mac-gesture-core-tests` が成功している
+- `.build/debug/nape-gesture-core-tests` が成功している
 - `swift build -c release --scratch-path .build` が必要な変更では成功している
 - 未検証事項を「完了」と表現していない
 - Mac Mouse Fix のコード、定数、状態遷移、係数をコピーしていない

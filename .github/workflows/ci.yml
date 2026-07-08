@@ -23,22 +23,22 @@ jobs:
         run: swift build --scratch-path .build
 
       - name: Run core tests
-        run: .build/debug/mac-gesture-core-tests
+        run: .build/debug/nape-gesture-core-tests
 
       - name: Run dry-run smoke tests
         run: |
-          .build/debug/mac-gesture generate-scroll --x 120 --y 0 --steps 3 --momentum-steps 2 --dry-run --log-json > /tmp/generated-scroll.jsonl
-          .build/debug/mac-gesture analyze-log /tmp/generated-scroll.jsonl
-          .build/debug/mac-gesture system-test run --scenario space-left --target finder --dry-run --log-json --out /tmp/system-space-left.jsonl
-          .build/debug/mac-gesture analyze-log /tmp/system-space-left.jsonl
-          .build/debug/mac-gesture compare-log Fixtures/sample-trackpad-scroll-log.jsonl Fixtures/sample-generated-scroll-log.jsonl
-          .build/debug/mac-gesture analyze-hid-log Fixtures/sample-hid-log.jsonl
-          .build/debug/mac-gesture analyze-target-log Fixtures/sample-target-log.jsonl
+          .build/debug/nape-gesture generate-scroll --x 120 --y 0 --steps 3 --momentum-steps 2 --dry-run --log-json > /tmp/generated-scroll.jsonl
+          .build/debug/nape-gesture analyze-log /tmp/generated-scroll.jsonl
+          .build/debug/nape-gesture system-test run --scenario space-left --target finder --dry-run --log-json --out /tmp/system-space-left.jsonl
+          .build/debug/nape-gesture analyze-log /tmp/system-space-left.jsonl
+          .build/debug/nape-gesture compare-log Fixtures/sample-trackpad-scroll-log.jsonl Fixtures/sample-generated-scroll-log.jsonl
+          .build/debug/nape-gesture analyze-hid-log Fixtures/sample-hid-log.jsonl
+          .build/debug/nape-gesture analyze-target-log Fixtures/sample-target-log.jsonl
 
       - name: Build release
         run: swift build -c release --scratch-path .build
 
       - name: Verify app bundle
         run: |
-          .build/release/mac-gesture bundle-app --out .build/MacGesture.app --replace
-          .build/release/mac-gesture verify-bundle .build/MacGesture.app
+          .build/release/nape-gesture bundle-app --out .build/NapeGesture.app --replace
+          .build/release/nape-gesture verify-bundle .build/NapeGesture.app

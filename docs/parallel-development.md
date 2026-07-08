@@ -41,8 +41,8 @@
 
 対象:
 
-- `Sources/MacGestureCore/`
-- `Sources/mac-gesture-core-tests/main.swift`
+- `Sources/NapeGestureCore/`
+- `Sources/nape-gesture-core-tests/main.swift`
 
 主な Issue:
 
@@ -63,12 +63,12 @@
 
 対象:
 
-- `Sources/mac-gesture/MacGestureRuntime.swift`
-- `Sources/mac-gesture/MacGestureDaemon.swift`
-- `Sources/mac-gesture/EventPoster.swift`
-- `Sources/mac-gesture/EventLogger.swift`
-- `Sources/mac-gesture/CGEventUtilities.swift`
-- `Sources/mac-gesture/KillSwitchShortcut.swift`
+- `Sources/nape-gesture/NapeGestureRuntime.swift`
+- `Sources/nape-gesture/NapeGestureDaemon.swift`
+- `Sources/nape-gesture/EventPoster.swift`
+- `Sources/nape-gesture/EventLogger.swift`
+- `Sources/nape-gesture/CGEventUtilities.swift`
+- `Sources/nape-gesture/KillSwitchShortcut.swift`
 
 主な Issue:
 
@@ -89,12 +89,12 @@
 
 対象:
 
-- `Sources/mac-gesture/HIDInputMonitor.swift`
-- `Sources/mac-gesture/HIDLogCommand.swift`
-- `Sources/mac-gesture/HIDDeviceMatch.swift`
-- `Sources/mac-gesture/DeviceLister.swift`
-- `Sources/mac-gesture/DeviceInventory.swift`
-- `Sources/mac-gesture/SharedTargetDeviceGate.swift`
+- `Sources/nape-gesture/HIDInputMonitor.swift`
+- `Sources/nape-gesture/HIDLogCommand.swift`
+- `Sources/nape-gesture/HIDDeviceMatch.swift`
+- `Sources/nape-gesture/DeviceLister.swift`
+- `Sources/nape-gesture/DeviceInventory.swift`
+- `Sources/nape-gesture/SharedTargetDeviceGate.swift`
 
 主な Issue:
 
@@ -114,9 +114,9 @@
 
 対象:
 
-- `Sources/mac-gesture/StatusApp.swift`
-- `Sources/mac-gesture/SettingsWindowController.swift`
-- `Sources/mac-gesture/ReferenceTargetApp.swift`
+- `Sources/nape-gesture/StatusApp.swift`
+- `Sources/nape-gesture/SettingsWindowController.swift`
+- `Sources/nape-gesture/ReferenceTargetApp.swift`
 
 主な Issue:
 
@@ -139,12 +139,12 @@
 - `docs/verification.md`
 - `docs/requirements.md`
 - `Fixtures/`
-- `Sources/mac-gesture/SystemBehaviorTestCommand.swift`
-- `Sources/mac-gesture/AnalyzeLogCommand.swift`
-- `Sources/mac-gesture/CompareLogCommand.swift`
-- `Sources/mac-gesture/AnalyzeTargetLogCommand.swift`
-- `Sources/mac-gesture/AnalyzeHIDLogCommand.swift`
-- `Sources/mac-gesture/BenchmarkCommand.swift`
+- `Sources/nape-gesture/SystemBehaviorTestCommand.swift`
+- `Sources/nape-gesture/AnalyzeLogCommand.swift`
+- `Sources/nape-gesture/CompareLogCommand.swift`
+- `Sources/nape-gesture/AnalyzeTargetLogCommand.swift`
+- `Sources/nape-gesture/AnalyzeHIDLogCommand.swift`
+- `Sources/nape-gesture/BenchmarkCommand.swift`
 
 主な Issue:
 
@@ -169,8 +169,8 @@
 - `README.md`
 - `LICENSE`
 - `THIRD_PARTY_NOTICES.md`
-- `Sources/mac-gesture/BundleAppCommand.swift`
-- `Sources/mac-gesture/BundleVerifier.swift`
+- `Sources/nape-gesture/BundleAppCommand.swift`
+- `Sources/nape-gesture/BundleVerifier.swift`
 - `.github/workflows/`
 
 主な Issue:
@@ -195,7 +195,7 @@ PR は最低限次を満たすまでマージしない。
 - 対応 Issue が明記されている
 - 変更ファイルの所有範囲が説明されている
 - `swift build` が成功している
-- `mac-gesture-core-tests` が成功している
+- `nape-gesture-core-tests` が成功している
 - runtime / HID / Accessibility に触る場合は、実機未検証か実機検証済みかが明記されている
 - 既知の未完了事項を「完了」と言い換えていない
 

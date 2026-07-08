@@ -5,27 +5,28 @@
 
 ## 現在の確認状態
 
-2026-07-08 時点の再起動後確認:
+2026-07-08 時点の `nape-gesture` rename 後確認:
 
 ```sh
-.build/debug/mac-gesture doctor --config /private/tmp/mac-gesture-probe-config.json --probe-hid --benchmark-events 10000 --json
+.build/debug/nape-gesture doctor --config /private/tmp/nape-gesture-doctor-config.json --probe-hid --benchmark-events 10000 --json
 ```
 
-外側の実行では HID 入力監視プローブは成功した。入力監視権限は現在の実行経路から見えている。
-一方で、アクセシビリティは未許可のまま。
+通常権限の実行では HID 入力監視プローブは成功した。入力監視権限は現在の実行経路から見えている。
+一方で、アクセシビリティは未許可のまま。`matchedTargetDeviceCount` は 0 で、Nape Pro 実機識別は未完了。
+サンドボックス内の実行では既定設定パス `~/Library/Application Support/NapeGesture/config.json` へ書き込めないため、検証時は `--config /private/tmp/...` を明示している。
 `doctor` の `runtimeIdentity.executablePath` は次を示している。
 
 ```text
-/Users/fujino/Documents/mac-gesture/.build/debug/mac-gesture
+/Users/fujino/Documents/mac-gesture/.build/debug/nape-gesture
 ```
 
-同じ時点で、再生成した `.app` からの確認も入力監視は成功、アクセシビリティは未許可だった。
+同じ時点で、再生成した `.app` からの確認も HID 入力監視プローブは成功、アクセシビリティは未許可だった。
 `doctor` の `runtimeIdentity` は次を示している。
 
 ```text
-bundlePath: /Users/fujino/Documents/mac-gesture/.build/MacGesture.app
-bundleIdentifier: local.mac-gesture.app
-executablePath: /Users/fujino/Documents/mac-gesture/.build/MacGesture.app/Contents/MacOS/mac-gesture
+bundlePath: /Users/fujino/Documents/mac-gesture/.build/NapeGesture.app
+bundleIdentifier: dev.char5742.nape-gesture
+executablePath: /Users/fujino/Documents/mac-gesture/.build/NapeGesture.app/Contents/MacOS/nape-gesture
 ```
 
 現時点で `run`、`log`、実イベント投稿、Spaces / Mission Control の実機検証は、アクセシビリティ許可が実利用する `.app` または実行ファイルに付与されるまで完了扱いにしない。
@@ -35,7 +36,7 @@ executablePath: /Users/fujino/Documents/mac-gesture/.build/MacGesture.app/Conten
 標準確認:
 
 ```sh
-.build/debug/mac-gesture doctor --config <設定ファイル> --probe-hid --benchmark-events 50000 --json
+.build/debug/nape-gesture doctor --config <設定ファイル> --probe-hid --benchmark-events 50000 --json
 ```
 
 完成判定では、少なくとも次が必要。
@@ -55,14 +56,14 @@ SwiftPM や debug バイナリを直接実行している場合は、`runtimeIde
 対象デバイスが通常のマウス usage で出るとは限らないため、まず全 HID を見る。
 
 ```sh
-.build/debug/mac-gesture devices --all --json
+.build/debug/nape-gesture devices --all --json
 ```
 
 候補が見つかったら、vendor/product/usage を絞って生入力を取る。
 
 ```sh
-.build/debug/mac-gesture hid-log --vendor-id <ID> --product-id <ID> --usage-page <ID> --usage <ID> --duration 10 > nape-hid.jsonl
-.build/debug/mac-gesture analyze-hid-log nape-hid.jsonl
+.build/debug/nape-gesture hid-log --vendor-id <ID> --product-id <ID> --usage-page <ID> --usage <ID> --duration 10 > nape-hid.jsonl
+.build/debug/nape-gesture analyze-hid-log nape-hid.jsonl
 ```
 
 `analyze-hid-log` が出す `init-config` 候補を使い、対象条件を設定へ反映する。
@@ -72,29 +73,29 @@ SwiftPM や debug バイナリを直接実行している場合は、`runtimeIde
 
 同じ形式で最低3種類のログを残す。
 
-- 純正トラックパッド操作時の `mac-gesture log`
-- Nape Pro 操作時の `mac-gesture log` または `hid-log`
+- 純正トラックパッド操作時の `nape-gesture log`
+- Nape Pro 操作時の `nape-gesture log` または `hid-log`
 - 生成イベントの `generate-scroll --dry-run --log-json`
-- AppKit が受け取ったイベントの `mac-gesture target --out`
+- AppKit が受け取ったイベントの `nape-gesture target --out`
 
 実入力ログ例:
 
 ```sh
-.build/debug/mac-gesture log --duration 8 --out trackpad-space-right.jsonl --exclude-generated
-.build/debug/mac-gesture log --duration 8 --out nape-space-right.jsonl --exclude-generated
-.build/debug/mac-gesture target --out target-space-right.jsonl
+.build/debug/nape-gesture log --duration 8 --out trackpad-space-right.jsonl --exclude-generated
+.build/debug/nape-gesture log --duration 8 --out nape-space-right.jsonl --exclude-generated
+.build/debug/nape-gesture target --out target-space-right.jsonl
 ```
 
 生成イベントログ例:
 
 ```sh
-.build/debug/mac-gesture generate-scroll --x 1200 --y 0 --steps 30 --mode space-right --phase auto --momentum-steps 8 --dry-run --log-json > generated-space-right.jsonl
-.build/debug/mac-gesture system-test run --scenario space-right --target finder --dry-run --log-json --out system-space-right.jsonl
-.build/debug/mac-gesture compare-log trackpad-space-right.jsonl generated-space-right.jsonl
+.build/debug/nape-gesture generate-scroll --x 1200 --y 0 --steps 30 --mode space-right --phase auto --momentum-steps 8 --dry-run --log-json > generated-space-right.jsonl
+.build/debug/nape-gesture system-test run --scenario space-right --target finder --dry-run --log-json --out system-space-right.jsonl
+.build/debug/nape-gesture compare-log trackpad-space-right.jsonl generated-space-right.jsonl
 ```
 
 `log` の開始・終了メッセージは標準エラーに出るため、`--out` や標準出力リダイレクトで保存したファイルは JSON Lines としてそのまま `analyze-log` / `compare-log` に渡せる。
-`--exclude-generated` は純正入力や実デバイス入力の記録、`--only-generated` は Mac Gesture が投稿したイベント列の確認に使う。
+`--exclude-generated` は純正入力や実デバイス入力の記録、`--only-generated` は Nape Gesture が投稿したイベント列の確認に使う。
 `system-test run --dry-run --log-json` は、実イベントを投稿せず、System Behavior Test が生成する予定のスクロールまたはショートカットイベントを同じ JSON Lines 形式で保存する。Spaces のスクロール系シナリオは `compare-log` の候補ログとして使い、Mission Control やページ戻る/進むなどの離散シナリオは keyDown / keyUp の証跡として確認する。
 `target --out` は AppKit が最終的に受け取った `scrollWheel`、`swipe`、`magnify`、`rotate`、マウスボタン、ドラッグを JSON Lines として保存する。`log` は CGEvent レベル、`target --out` は AppKit レベルの証跡として分けて扱う。
 保存した AppKit 受信ログは `analyze-target-log <path>` で集計し、`scrollWheel`、`swipe`、`magnify`、`rotate`、phase、momentumPhase、precise scroll の有無を確認する。
@@ -141,7 +142,7 @@ JSON Lines では、通常スクロールの `began` / `changed` / `ended` は `
 | `hid-log --all` が失敗 | 排他アクセスや一部デバイスで IOHID が開けない | 全 HID を一括で開こうとしている | `devices --all --json` で候補を絞り、vendor/product/usage を指定して記録する |
 | `.app` が古い | CLI では存在するコマンドが `.app` にない、設定UIや診断が古い | `.app` 作成後に本体を更新した | `swift build -c release` 後に `bundle-app --replace` と `verify-bundle` を再実行する |
 | 生成イベントが Spaces を動かさない | `compare-log` 上は近いが画面が動かない | CGEvent の公開 API 生成イベントを Mission Control が純正ジェスチャーと同等に扱わない可能性 | 純正ログ、生成ログ、`system-test` 結果を保存し、連続スクロール量、フェーズ、間隔、慣性を調整する。限界が残る場合は実測根拠つきで代替操作の品質目標を決める |
-| 生成イベントを再入力して暴走する | 自分で投げたイベントを再解釈する | 生成元判定または抑制が欠けている | `generatedByMacGesture` のログを確認し、イベントタップ側で自前生成イベントを無視できていることを確認する |
+| 生成イベントを再入力して暴走する | 自分で投げたイベントを再解釈する | 生成元判定または抑制が欠けている | `generatedByNapeGesture` のログを確認し、イベントタップ側で自前生成イベントを無視できていることを確認する |
 | スリープ復帰や抜き差し後に止まる | 常駐中に対象デバイスや権限を失う | HID 接続状態または TCC 状態が変わった | メニューバー常駐UIの自動再試行状態を確認し、`doctor` で対象デバイスと権限を再確認する |
 
 ## 完成判定チェック
@@ -149,7 +150,7 @@ JSON Lines では、通常スクロールの `began` / `changed` / `ended` は `
 完成扱いにするには、次の証跡をそろえる。
 
 - debug と release のビルド成功
-- `mac-gesture-core-tests` 成功
+- `nape-gesture-core-tests` 成功
 - `.app` 作成と `verify-bundle` 成功
 - 実利用する `.app` の `doctor --probe-hid --json` でアクセシビリティと入力監視が成功
 - `doctor --json` の `settingsValidationIssues` が空で、`check-config` が設定不正で停止しない

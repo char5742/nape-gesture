@@ -1,93 +1,88 @@
-# nape-gesture 命名移行メモ
+# nape-gesture 命名移行記録
 
-`nape-gesture` 新リポジトリ化に伴い、現在の `Mac Gesture` / `mac-gesture` 命名をどう扱うかを分離して管理する。
-権限対象、設定パス、JSON ログスキーマはユーザー環境に影響するため、単純な一括置換では進めない。
+`nape-gesture` 新リポジトリ化に伴い、旧 `Mac Gesture` / `mac-gesture` 系の命名から `Nape Gesture` / `nape-gesture` 系へ移行した内容を記録する。
+権限対象、設定パス、JSON ログスキーマはユーザー環境に影響するため、残る互換項目を明示する。
 
 ## P0: 権限対象になる `.app` 名と bundle ID
 
-現状:
+移行後:
 
-- 既定の `.app` 出力は `.build/MacGesture.app`
-- 表示名は `Mac Gesture`
-- bundle ID は `local.mac-gesture.app`
-- 実行ファイル名は `mac-gesture`
+- 既定の `.app` 出力は `.build/NapeGesture.app`
+- 表示名は `Nape Gesture`
+- bundle ID は `dev.char5742.nape-gesture`
+- 実行ファイル名は `nape-gesture`
 
-方針:
+注意点:
 
-- 最終的には `NapeGesture.app`、表示名 `Nape Gesture`、安定した bundle ID へ移行する
-- bundle ID 変更後は macOS のアクセシビリティ権限と入力監視権限を再付与する必要がある
+- 旧 `MacGesture.app` / `local.mac-gesture.app` に付与した macOS のアクセシビリティ権限と入力監視権限は、新 `NapeGesture.app` / `dev.char5742.nape-gesture` へ引き継がれない
 - `doctor --json` と常駐 UI では、例示名より `runtimeIdentity` の実値を優先して案内する
 
 ## P0: SwiftPM 名と CLI 名
 
-現状:
+移行後:
 
-- package: `MacGesture`
-- library: `MacGestureCore`
-- executable: `mac-gesture`
-- test executable: `mac-gesture-core-tests`
-- source directory: `Sources/mac-gesture`、`Sources/MacGestureCore`
+- package: `NapeGesture`
+- library: `NapeGestureCore`
+- executable: `nape-gesture`
+- test executable: `nape-gesture-core-tests`
+- source directory: `Sources/nape-gesture`、`Sources/NapeGestureCore`
 
-方針:
+注意点:
 
-- 新規公開前に `NapeGesture` / `NapeGestureCore` / `nape-gesture` へ移行するか決める
-- 既存 JSON Lines、ドキュメント、テスト、CI、README の更新を同一 PR に閉じ込める
-- CLI 名変更時は旧コマンド例を残さず、移行メモにだけ履歴として残す
+- 新規公開前の baseline として `NapeGesture` / `NapeGestureCore` / `nape-gesture` へ統一済み
+- 公開後は CLI 名や module 名の変更を破壊的変更として扱う
 
 ## P1: 設定パス
 
-現状:
+移行後:
 
-- `~/Library/Application Support/MacGesture/config.json`
+- `~/Library/Application Support/NapeGesture/config.json`
 
-方針:
+注意点:
 
-- 最終設定パスは `~/Library/Application Support/NapeGesture/config.json` を候補にする
-- 旧設定が存在する場合、初回起動時にコピーまたは明示的な移行導線を出す
+- 既に旧 `~/Library/Application Support/MacGesture/config.json` を使っている環境では、初回起動時にコピーまたは明示的な移行導線を出す必要がある
 - 自動移行する場合も、対象デバイス設定と不正値検証を通す
 
-## P1: 権限導線の旧名
+## P1: 権限導線
 
-現状:
+移行後:
 
-- README、doctor、help に `MacGesture.app`、`Mac Gesture`、`local.mac-gesture.app` が残る
+- README、doctor、help は `NapeGesture.app`、`Nape Gesture`、`dev.char5742.nape-gesture` を案内する
 
-方針:
+注意点:
 
-- 旧名例示を削除し、`runtimeIdentity.bundlePath`、`runtimeIdentity.bundleIdentifier`、`runtimeIdentity.executablePath` を見て許可する説明へ寄せる
-- 旧 `.app` に権限を付けても新 `.app` には引き継がれないことを明記する
+- 旧 `.app` に権限を付けても新 `.app` には引き継がれない
+- 最終的には `runtimeIdentity.bundlePath`、`runtimeIdentity.bundleIdentifier`、`runtimeIdentity.executablePath` を見て許可する説明へ寄せる
 
 ## P2: ログスキーマ
 
-現状:
+移行後:
 
-- JSON Lines に `generatedByMacGesture` がある
+- JSON Lines に `generatedByNapeGesture` がある
 
-方針:
+互換性:
 
-- 互換性重視なら legacy field として維持し、README と schema メモに明記する
-- 完全移行するなら `generatedByNapeGesture` を追加し、旧キー decode 互換を用意してから fixture を更新する
-- 比較ログが壊れるため、単純 rename はしない
+- 新規出力は `generatedByNapeGesture` を使う
+- 旧ログ互換のため、decode 時は `generatedByMacGesture` も読む
+- encode 時は旧キーを出さない
 
 ## P2: 配布文書
 
-現状:
+移行後:
 
-- `LICENSE`、`THIRD_PARTY_NOTICES.md`、bundle fallback に `Mac Gesture` がある
+- `LICENSE`、`THIRD_PARTY_NOTICES.md`、bundle fallback に `Nape Gesture` がある
 
-方針:
+注意点:
 
-- 配布物に含まれる表示名は release PR で新名へ統一する
 - Mac Mouse Fix のコード、定数、状態遷移、係数をコピーしていない方針は維持する
 
 ## P3: UI 表示
 
-現状:
+移行後:
 
-- メニューバー表示は `MG`
-- 設定ウィンドウや Reference Target App に `Mac Gesture` が残る
+- メニューバー表示は `NG`
+- 設定ウィンドウや Reference Target App に `Nape Gesture` が残る
 
-方針:
+注意点:
 
-- 新名確定後に `NG`、`Nape Gesture 設定` へ更新する
-- UI 名変更は権限導線と同じ PR で確認する
+- UI 名変更は権限導線と同じ検証で確認する

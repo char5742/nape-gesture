@@ -15,12 +15,12 @@ Codex の GitHub コネクタでは `char5742` の既存リポジトリ閲覧と
 ```sh
 git status --short
 swift build --scratch-path .build
-.build/debug/mac-gesture-core-tests
-.build/debug/mac-gesture generate-scroll --x 120 --y 0 --steps 3 --momentum-steps 2 --dry-run --log-json > /tmp/generated-scroll.jsonl
-.build/debug/mac-gesture analyze-log /tmp/generated-scroll.jsonl
+.build/debug/nape-gesture-core-tests
+.build/debug/nape-gesture generate-scroll --x 120 --y 0 --steps 3 --momentum-steps 2 --dry-run --log-json > /tmp/generated-scroll.jsonl
+.build/debug/nape-gesture analyze-log /tmp/generated-scroll.jsonl
 swift build -c release --scratch-path .build
-.build/release/mac-gesture bundle-app --out .build/MacGesture.app --replace
-.build/release/mac-gesture verify-bundle .build/MacGesture.app
+.build/release/nape-gesture bundle-app --out .build/NapeGesture.app --replace
+.build/release/nape-gesture verify-bundle .build/NapeGesture.app
 ```
 
 ## リポジトリ作成後の操作

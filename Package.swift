@@ -3,20 +3,20 @@
 import PackageDescription
 
 let package = Package(
-    name: "MacGesture",
+    name: "NapeGesture",
     platforms: [
         .macOS(.v13)
     ],
     products: [
-        .library(name: "MacGestureCore", targets: ["MacGestureCore"]),
-        .executable(name: "mac-gesture", targets: ["mac-gesture"]),
-        .executable(name: "mac-gesture-core-tests", targets: ["mac-gesture-core-tests"])
+        .library(name: "NapeGestureCore", targets: ["NapeGestureCore"]),
+        .executable(name: "nape-gesture", targets: ["nape-gesture"]),
+        .executable(name: "nape-gesture-core-tests", targets: ["nape-gesture-core-tests"])
     ],
     targets: [
-        .target(name: "MacGestureCore"),
+        .target(name: "NapeGestureCore"),
         .executableTarget(
-            name: "mac-gesture",
-            dependencies: ["MacGestureCore"],
+            name: "nape-gesture",
+            dependencies: ["NapeGestureCore"],
             linkerSettings: [
                 .linkedFramework("ApplicationServices"),
                 .linkedFramework("AppKit"),
@@ -25,8 +25,8 @@ let package = Package(
             ]
         ),
         .executableTarget(
-            name: "mac-gesture-core-tests",
-            dependencies: ["MacGestureCore"]
+            name: "nape-gesture-core-tests",
+            dependencies: ["NapeGestureCore"]
         )
     ]
 )
