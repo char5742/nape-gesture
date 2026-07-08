@@ -6,7 +6,7 @@ enum KillSwitchShortcut {
     static let remediation = "誤爆や暴走を感じたら Control + Option + Command + G を押してください。ジェスチャー生成と慣性を即座に停止し、再開は常駐UIの停止/開始またはプロセス再起動で行います。"
 
     static func matches(type: CGEventType, event: CGEvent) -> Bool {
-        guard type == .keyDown else {
+        guard type == .keyDown || type == .keyUp else {
             return false
         }
 

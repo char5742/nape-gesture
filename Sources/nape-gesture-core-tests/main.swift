@@ -852,6 +852,59 @@ func testGestureActionMomentumSupport() {
     expect(!GestureAction.pageBack.supportsMomentum, "ページ戻るは離散アクションなので慣性を持たない")
 }
 
+func testRuntimeSafetyStateStopsForKillSwitch() {
+    var state = RuntimeSafetyState()
+
+    let decision = state.stopForKillSwitch(at: 10)
+
+    expect(!state.isEnabled, "キルスイッチ発火後は無効状態になる")
+    expect(state.mode == .stopped(reason: .killSwitch, stoppedAt: 10), "停止理由と時刻を保持する")
+    expect(!decision.shouldProcessGestureInput, "キルスイッチ発火イベントではジェスチャー処理を進めない")
+    expect(decision.shouldSuppressOriginalEvent, "キルスイッチショートカットは前面アプリへ渡さない")
+    expect(decision.shouldCancelGesture, "キルスイッチ発火時に進行中ジェスチャーを停止対象にする")
+    expect(decision.shouldCancelMomentum, "キルスイッチ発火時に慣性を停止対象にする")
+    expect(decision.didEnterStoppedState, "初回発火は停止状態への遷移として扱う")
+}
+
+func testRuntimeSafetyStatePassesRegularInputAfterStop() {
+    var state = RuntimeSafetyState()
+
+    let beforeStop = state.regularInputDecision()
+    _ = state.stopForKillSwitch(at: 10)
+    let afterStop = state.regularInputDecision()
+
+    expect(beforeStop.shouldProcessGestureInput, "停止前の通常入力はジェスチャー処理へ渡す")
+    expect(!beforeStop.shouldSuppressOriginalEvent, "停止前の通常入力は安全状態だけでは抑制しない")
+    expect(!afterStop.shouldProcessGestureInput, "停止後の通常入力はジェスチャー処理へ渡さない")
+    expect(!afterStop.shouldSuppressOriginalEvent, "停止後の通常入力は前面アプリへ通す")
+}
+
+func testRuntimeSafetyStateDoesNotReenableWithoutReset() {
+    var state = RuntimeSafetyState()
+
+    _ = state.stopForKillSwitch(at: 10)
+    _ = state.regularInputDecision()
+    let repeatedKillSwitch = state.stopForKillSwitch(at: 11)
+
+    expect(!state.isEnabled, "通常入力や再度のキルスイッチでは再有効化しない")
+    expect(repeatedKillSwitch.shouldSuppressOriginalEvent, "停止済みでもキルスイッチショートカットは前面アプリへ渡さない")
+    expect(!repeatedKillSwitch.shouldCancelGesture, "停止済みの再発火ではジェスチャー停止を重ねない")
+    expect(!repeatedKillSwitch.shouldCancelMomentum, "停止済みの再発火では慣性停止を重ねない")
+    expect(!repeatedKillSwitch.didEnterStoppedState, "停止済みの再発火は新しい停止遷移ではない")
+}
+
+func testRuntimeSafetyStateResetReenablesGestureInput() {
+    var state = RuntimeSafetyState()
+
+    _ = state.stopForKillSwitch(at: 10)
+    state.reset()
+    let decision = state.regularInputDecision()
+
+    expect(state.isEnabled, "明示 reset 後は有効状態へ戻る")
+    expect(decision.shouldProcessGestureInput, "明示 reset 後の通常入力はジェスチャー処理へ渡す")
+    expect(!decision.shouldSuppressOriginalEvent, "明示 reset 後の通常入力は安全状態だけでは抑制しない")
+}
+
 testPassesThroughWhenActivationButtonIsNotPressed()
 testActivationButtonSuppressesOriginalInputBeforeThreshold()
 testDragBeginsAfterDeadZoneAndLocksDominantDirection()
@@ -886,6 +939,10 @@ testTargetDeviceGateOnlyHandlesRecentTargetActivity()
 testTargetDeviceGateKeepsHandlingWhileActivationButtonIsDown()
 testDefaultGestureBindingsMapSystemActions()
 testGestureActionMomentumSupport()
+testRuntimeSafetyStateStopsForKillSwitch()
+testRuntimeSafetyStatePassesRegularInputAfterStop()
+testRuntimeSafetyStateDoesNotReenableWithoutReset()
+testRuntimeSafetyStateResetReenablesGestureInput()
 
 if failures == 0 {
     print("すべてのコアテストに成功しました。")

@@ -12,7 +12,7 @@ final class NapeGestureDaemon {
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var momentumTimer: DispatchSourceTimer?
-    private var isEnabled = true
+    private var safetyState = RuntimeSafetyState()
 
     init(
         configuration: GestureConfiguration,
@@ -91,11 +91,13 @@ final class NapeGestureDaemon {
         }
 
         if KillSwitchShortcut.matches(type: type, event: event) {
-            emergencyStop(at: Double(event.timestamp) / 1_000_000_000.0)
-            return nil
+            let decision = emergencyStop(at: Double(event.timestamp) / 1_000_000_000.0)
+            return decision.shouldSuppressOriginalEvent ? nil : Unmanaged.passUnretained(event)
         }
 
-        guard isEnabled, let input = CGEventUtilities.rawInput(from: type, event: event) else {
+        guard safetyState.regularInputDecision().shouldProcessGestureInput,
+              let input = CGEventUtilities.rawInput(from: type, event: event)
+        else {
             return Unmanaged.passUnretained(event)
         }
 
@@ -144,6 +146,11 @@ final class NapeGestureDaemon {
     }
 
     private func tickMomentum() {
+        guard safetyState.regularInputDecision().shouldProcessGestureInput else {
+            cancelMomentum()
+            return
+        }
+
         guard let command = momentum.tick(at: Date().timeIntervalSince1970) else {
             cancelMomentum()
             return
@@ -161,14 +168,18 @@ final class NapeGestureDaemon {
         momentum = MomentumEngine(configuration: configuration.momentum)
     }
 
-    private func emergencyStop(at time: TimeInterval) {
-        guard isEnabled else {
-            return
+    private func emergencyStop(at time: TimeInterval) -> RuntimeSafetyDecision {
+        let decision = safetyState.stopForKillSwitch(at: time)
+        if decision.shouldCancelMomentum {
+            cancelMomentum()
         }
-        isEnabled = false
-        cancelMomentum()
-        _ = recognizer.handle(.cancel(time: time))
-        print("キルスイッチによりジェスチャーを無効化しました。再開するには常駐UIの停止/開始、またはプロセス再起動を行ってください。")
+        if decision.shouldCancelGesture {
+            _ = recognizer.handle(.cancel(time: time))
+        }
+        if decision.didEnterStoppedState {
+            print("キルスイッチによりジェスチャーを無効化しました。再開するには常駐UIの停止/開始、またはプロセス再起動を行ってください。")
+        }
+        return decision
     }
 }
 
