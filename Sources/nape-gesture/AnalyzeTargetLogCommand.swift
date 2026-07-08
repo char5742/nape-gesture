@@ -15,6 +15,7 @@ struct AnalyzeTargetLogCommand {
         let records = try loadRecords(from: path)
         let analysis = TargetEventLogAnalyzer.analyze(records)
         let assertNoLeaks = options.contains("--assert-no-leaks")
+        let assertHasUnmarkedInput = options.contains("--assert-has-unmarked-input")
 
         if options.contains("--json") {
             let encoder = JSONEncoder()
@@ -28,6 +29,10 @@ struct AnalyzeTargetLogCommand {
         if assertNoLeaks && !analysis.leakCandidateEvents.isEmpty {
             fflush(stdout)
             throw TargetLogLeakAssertionError(path: path, leakCandidateCount: analysis.leakCandidateEvents.count)
+        }
+        if assertHasUnmarkedInput && analysis.unmarkedInputEventCount == 0 {
+            fflush(stdout)
+            throw TargetLogMissingUnmarkedInputAssertionError(path: path)
         }
     }
 
@@ -66,6 +71,14 @@ struct TargetLogLeakAssertionError: LocalizedError {
     }
 }
 
+struct TargetLogMissingUnmarkedInputAssertionError: LocalizedError {
+    var path: String
+
+    var errorDescription: String? {
+        "target log に未マーク入力がありません。通常入力通過の確認には `analyze-target-log \(path) --json` で unmarkedMouseEvents、unmarkedScrollEvents、unmarkedKeyEvents を確認してください。"
+    }
+}
+
 struct TargetEventLogAnalysis: Codable, Equatable {
     var totalEvents: Int
     var generatedEvents: Int
@@ -90,6 +103,10 @@ struct TargetEventLogAnalysis: Codable, Equatable {
     var momentumPhaseCounts: [String: Int]
     var leakCandidateEvents: [TargetEventRecord]
     var leakCandidateCounts: [String: Int]
+
+    var unmarkedInputEventCount: Int {
+        unmarkedMouseEvents + unmarkedScrollEvents + unmarkedKeyEvents
+    }
 }
 
 enum TargetEventLogAnalyzer {

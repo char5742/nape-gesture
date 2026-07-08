@@ -153,6 +153,7 @@ Issue #10 の横スクロールは Safari / 対応アプリでの画面挙動確
 target log を検証する場合、`system-test run` には `--target finder` / `--target safari` を付けない。`--target` を指定すると Finder または Safari が前面化するため、Reference Target App の AppKit 受信ログではなく、`log` や画面挙動の検証として扱う。
 保存した AppKit 受信ログは `analyze-target-log <path>` で集計し、`scrollWheel`、`swipe`、`magnify`、`rotate`、phase、momentumPhase、precise scroll の有無を確認する。
 Issue #6 / #12 の最終実測へ進む前に、まず `analyze-target-log <path> --assert-no-leaks` で target log を機械判定する。
+通常入力通過を確認する `normal-after-release` では、解放後の未マーク `mouseMoved` / `scrollWheel` が AppKit に届くことが期待値になる。この場合は `--assert-no-leaks` ではなく、`analyze-target-log <path> --json --assert-has-unmarked-input` で未マーク入力の存在を機械判定する。
 人間の物理操作や macOS UI 操作は最後の手段とし、先に保存済みログ、`generate-scroll` / `system-test` の dry-run、アクセシビリティ許可済み環境での CGEvent 投稿で代替できる確認を済ませる。
 
 自動実行の基本形:
@@ -168,6 +169,20 @@ until test -f "$ready_file"; do sleep 0.1; done
 wait "$target_pid"
 .build/debug/nape-gesture analyze-target-log "$target_log" --json --assert-no-leaks
 ```
+
+Issue #6 / #12 の runtime event 証跡は、手順の取り違えを避けるため次のスクリプトを正とする。
+このスクリプトは `doctor --json` で `accessibilityTrusted: true` を確認し、未許可の場合は target log を空ログとして扱わず外部ブロッカーとして記録する。
+
+```sh
+NAPE_RUNTIME_EVENT_ARTIFACT_ROOT=artifacts/completion/$(date +%F)/runtime-event-evidence sh scripts/collect-runtime-event-evidence.sh
+```
+
+アクセシビリティ許可済みの場合、スクリプトは次を実行する。
+
+- `gesture-drag`: `analyze-target-log --json --assert-no-leaks` でジェスチャードラッグ中の元入力漏れがないことを確認する
+- `gesture-wheel`: `analyze-target-log --json --assert-no-leaks` でジェスチャーホイール中の元入力漏れがないことを確認する
+- `kill-switch`: `analyze-target-log --json --assert-no-leaks` でキルスイッチの `keyDown` / `keyUp` が前面アプリへ漏れないことを確認する
+- `normal-after-release`: `analyze-target-log --json --assert-has-unmarked-input` で解放後の通常入力が過剰抑制されていないことを確認する
 
 未マーク元入力の抑制を `run` と組み合わせて確認する場合は、Reference Target App を前面に保ったまま `gesture-drag` / `gesture-wheel` を `--target` なしで実行する。`--target finder` / `--target safari` を付けると Finder または Safari が前面化し、Reference Target App の AppKit 受信ログではなくなる。
 CGEvent system-test は HID 対象デバイスの生入力を伴わないため、`requireMatchingTargetDevice=true` の設定では対象デバイス gate に引っかかる可能性がある。デーモンと組み合わせる検証では、必要に応じて `init-config --allow-unmatched` で作った検証用設定を使い、実利用設定とは分けて扱う。
@@ -193,7 +208,7 @@ for scenario in gesture-drag gesture-wheel; do
 done
 ```
 
-`normal-after-release` は有効化ボタン解放後の通常入力通過を確認する材料を投稿する。Reference Target App を前面に保ち、同じく `--target` なしで実行する。解放後の `mouseMoved` / `scrollWheel` は未マーク通常入力として AppKit に届くことが期待値なので、`analyze-target-log --json` で `leakCandidateEvents` と `leakCandidateCounts` を確認する。`--assert-no-leaks` はこのシナリオでは非ゼロ終了してよく、成功した場合は通常入力が過剰に抑制されていないかを疑う。
+`normal-after-release` は有効化ボタン解放後の通常入力通過を確認する材料を投稿する。Reference Target App を前面に保ち、同じく `--target` なしで実行する。解放後の `mouseMoved` / `scrollWheel` は未マーク通常入力として AppKit に届くことが期待値なので、`analyze-target-log --json --assert-has-unmarked-input` で未マーク入力が存在することを確認する。`--assert-no-leaks` はこのシナリオでは非ゼロ終了してよく、成功した場合は通常入力が過剰に抑制されていないかを疑う。
 
 ```sh
 config=/tmp/nape-system-test-allow-unmatched.json
@@ -210,7 +225,7 @@ until test -f "$ready_file"; do sleep 0.1; done
 wait "$target_pid"
 kill "$daemon_pid" 2>/dev/null || true
 wait "$daemon_pid" 2>/dev/null || true
-.build/debug/nape-gesture analyze-target-log "$target_log" --json
+.build/debug/nape-gesture analyze-target-log "$target_log" --json --assert-has-unmarked-input
 ```
 
 Finder / Safari を対象にした画面挙動検証では、target log とは別に CGEvent レベルの `log` を保存する。

@@ -59,6 +59,7 @@ swift run nape-gesture hid-log --vendor-id <ID> --product-id <ID> --usage-page <
 swift run nape-gesture analyze-hid-log Fixtures/sample-hid-log.jsonl
 swift run nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/sample-association-event-log.jsonl --window 0.12
 swift run nape-gesture analyze-target-log Fixtures/sample-target-log.jsonl
+swift run nape-gesture analyze-target-log Fixtures/normal-input-target-log.jsonl --json --assert-has-unmarked-input
 swift run nape-gesture log
 swift run nape-gesture log --duration 8 --out trackpad-space-right.jsonl --exclude-generated
 swift run nape-gesture analyze-log Fixtures/sample-log.jsonl
@@ -140,6 +141,7 @@ ad-hoc 署名はローカル再現用です。公開配布では Developer ID Ap
 
 完成判定の証跡台帳と現在状態は `docs/completion-checklist.md` にまとめています。
 詳細な実機検証手順、既知の失敗条件と回復手順は `docs/verification.md` にまとめています。
+Issue #6 / #12 の runtime event 証跡は `sh scripts/collect-runtime-event-evidence.sh` で収集します。人間作業は TCC 権限付与や実機操作など、自動化できない最後の手段に限定します。
 
 1. `nape-gesture log --duration <秒> --out <path>` で純正トラックパッド、Nape Pro、生成イベントを同じ形式で記録する
 2. `nape-gesture analyze-log <path>` で移動量分布と `deadZonePoints` 候補を確認する

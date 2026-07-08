@@ -12,6 +12,7 @@
 | [ADR-0003](0003-dependabot-daily-review-policy.md) | Dependabot の対象、頻度、PR レビュー方針 | `.github/dependabot.yml`、依存更新 |
 | [ADR-0004](0004-main-thread-subagent-pr-and-merge-roles.md) | メインスレッドとサブエージェントの役割分担、PR レビュー、merge 判断 | 並列開発、PR レビュー、merge |
 | [ADR-0005](0005-issue-orchestration-and-evidence-close.md) | Issue による orchestration と証跡付き close 方針 | Issue 分割、証跡、完了判定 |
+| [ADR-0006](0006-runtime-event-evidence-automation.md) | Runtime event 証跡の自動収集と人間作業境界 | Issue #6/#12、TCC、target log、自動証跡 |
 
 ## 追加時の確認
 
