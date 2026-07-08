@@ -158,6 +158,50 @@ wait "$target_pid"
 .build/debug/nape-gesture analyze-target-log "$target_log" --json --assert-no-leaks
 ```
 
+未マーク元入力の抑制を `run` と組み合わせて確認する場合は、Reference Target App を前面に保ったまま `gesture-drag` / `gesture-wheel` を `--target` なしで実行する。`--target finder` / `--target safari` を付けると Finder または Safari が前面化し、Reference Target App の AppKit 受信ログではなくなる。
+CGEvent system-test は HID 対象デバイスの生入力を伴わないため、`requireMatchingTargetDevice=true` の設定では対象デバイス gate に引っかかる可能性がある。デーモンと組み合わせる検証では、必要に応じて `init-config --allow-unmatched` で作った検証用設定を使い、実利用設定とは分けて扱う。
+
+```sh
+config=/tmp/nape-system-test-allow-unmatched.json
+.build/debug/nape-gesture init-config --allow-unmatched --out "$config"
+
+for scenario in gesture-drag gesture-wheel; do
+  target_log="/tmp/nape-target-${scenario}.jsonl"
+  ready_file="/tmp/nape-target-${scenario}.ready.json"
+  rm -f "$target_log" "$ready_file"
+  .build/debug/nape-gesture run --config "$config" &
+  daemon_pid=$!
+  .build/debug/nape-gesture target --out "$target_log" --duration 8 --ready-file "$ready_file" &
+  target_pid=$!
+  until test -f "$ready_file"; do sleep 0.1; done
+  .build/debug/nape-gesture system-test run --scenario "$scenario"
+  wait "$target_pid"
+  kill "$daemon_pid" 2>/dev/null || true
+  wait "$daemon_pid" 2>/dev/null || true
+  .build/debug/nape-gesture analyze-target-log "$target_log" --json --assert-no-leaks
+done
+```
+
+`normal-after-release` は有効化ボタン解放後の通常入力通過を確認する材料を投稿する。Reference Target App を前面に保ち、同じく `--target` なしで実行する。解放後の `mouseMoved` / `scrollWheel` は未マーク通常入力として AppKit に届くことが期待値なので、`analyze-target-log --json` で `leakCandidateEvents` と `leakCandidateCounts` を確認する。`--assert-no-leaks` はこのシナリオでは非ゼロ終了してよく、成功した場合は通常入力が過剰に抑制されていないかを疑う。
+
+```sh
+config=/tmp/nape-system-test-allow-unmatched.json
+target_log=/tmp/nape-target-normal-after-release.jsonl
+ready_file=/tmp/nape-target-normal-after-release.ready.json
+rm -f "$target_log" "$ready_file"
+.build/debug/nape-gesture init-config --allow-unmatched --out "$config"
+.build/debug/nape-gesture run --config "$config" &
+daemon_pid=$!
+.build/debug/nape-gesture target --out "$target_log" --duration 8 --ready-file "$ready_file" &
+target_pid=$!
+until test -f "$ready_file"; do sleep 0.1; done
+.build/debug/nape-gesture system-test run --scenario normal-after-release
+wait "$target_pid"
+kill "$daemon_pid" 2>/dev/null || true
+wait "$daemon_pid" 2>/dev/null || true
+.build/debug/nape-gesture analyze-target-log "$target_log" --json
+```
+
 Finder / Safari を対象にした画面挙動検証では、target log とは別に CGEvent レベルの `log` を保存する。
 
 ```sh
