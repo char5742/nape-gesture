@@ -1,0 +1,108 @@
+# 性能測定基準
+
+この文書は Issue 14 の基準として、入力遅延と CPU 使用率を PR レビューで確認するための証跡を定義する。
+`benchmark` は純粋ロジックのベンチマークであり、イベントタップから CGEvent 投稿、AppKit 受信、画面反映までの実測ではない。
+
+## 保存する証跡
+
+PR には少なくとも次を添付または本文に要約する。
+
+```sh
+swift build --scratch-path .build
+.build/debug/nape-gesture-core-tests
+.build/debug/nape-gesture benchmark --events 200000 --json
+.build/debug/nape-gesture doctor --benchmark-events 50000 --json
+```
+
+`benchmark --json` は `BenchmarkReport` 単体の証跡、`doctor --benchmark-events ... --json` は権限、対象デバイス、実行主体、同じ純粋ロジック benchmark をまとめた証跡として扱う。
+どちらも `benchmark.measurementKind` または `measurementKind` が `pureLogic` で、`includesEventTapAndPosting` が `false` であることを確認する。
+
+## 現時点で測れるもの
+
+`benchmark --json` と `doctor --benchmark-events ... --json` で自動確認できるもの:
+
+- 認識器の wall 時間、CPU 時間、events/sec、平均 ns/event、CPU ns/event
+- スクロール計画の wall 時間、CPU 時間、commands/sec、平均 ns/command、CPU ns/command
+- 1 core 換算の CPU 使用率目安
+- `doctor --json` の `runtimeIdentity`、権限状態、対象デバイス検出状態
+
+`cpuPercentOfOneCore` と `reviewMetrics.totalCpuPercentOfOneCore` は、短時間の一括処理で CPU をどれだけ使ったかの目安であり、常駐時 CPU 使用率ではない。
+常駐時 CPU 使用率は、実機で `run` を動かしたプロセスを外部サンプルで測る。
+
+## 実機でしか測れないもの
+
+次は `benchmark` では完了扱いにしない。
+
+- IOHID または CGEvent tap へ入力が届くまでの遅延
+- tap callback から `CGEventPost` 完了までの処理時間
+- 投稿イベントが AppKit や対象アプリに届くまでの遅延
+- WindowServer、Spaces、Mission Control の画面反映時間
+- Nape Pro 実機の連続操作中 CPU 使用率
+- スリープ復帰、デバイス抜き差し、権限変更後の復旧時 CPU 使用率
+
+tap-to-post の自動集計は現在の CLI 出力だけでは算出できない。
+この値を完了条件に含める PR では、イベントタップ受信時刻、投稿直前/直後時刻、投稿コマンド数を同じ操作 ID で記録できる追加ログ、または同等の実測手順を添付する。
+
+## 合格基準
+
+純粋ロジック benchmark の初期合格基準:
+
+| 項目 | 基準 |
+| --- | --- |
+| `measurementKind` | `pureLogic` |
+| `includesEventTapAndPosting` | `false` |
+| `recognizer.averageNanosecondsPerEvent` | 2,000 ns/event 以下 |
+| `recognizer.cpuNanosecondsPerEvent` | 2,000 ns/event 以下 |
+| `scrollPlanner.averageNanosecondsPerCommand` | 2,000 ns/command 以下 |
+| `scrollPlanner.cpuNanosecondsPerCommand` | 2,000 ns/command 以下 |
+| `doctor.settingsValidationIssues` | 空 |
+
+実機の常駐 CPU 使用率の合格基準:
+
+| 状態 | 基準 |
+| --- | --- |
+| アイドル 30 秒 | 平均 1% 以下 |
+| 連続ジェスチャー 30 秒 | 平均 15% 以下 |
+| 操作終了 5 秒後 | 1% 以下へ戻る |
+
+実機の入力遅延の合格基準:
+
+| 区間 | 基準 |
+| --- | --- |
+| tap callback から最初の投稿まで | p95 8 ms 以下、p99 16 ms 以下 |
+| tap callback から連続スクロール投稿まで | p95 8 ms 以下、p99 16 ms 以下 |
+| 投稿から AppKit 受信まで | p95 16 ms 以下 |
+
+上記の実機基準は、アクセシビリティと入力監視が許可された日常利用と同じ `.app` または実行ファイルで測る。
+`doctor --json` の `runtimeIdentity` が、実際に許可した対象と一致していない測定は採用しない。
+
+## 実機 CPU 測定手順
+
+常駐プロセスを起動し、`doctor --json` の `runtimeIdentity` と同じ実行主体であることを確認する。
+別ターミナルで PID を特定し、1 秒間隔で CPU を採取する。
+
+```sh
+pid=$(pgrep -x nape-gesture | head -n 1)
+top -l 30 -s 1 -pid "$pid" -stats pid,cpu,time,command
+```
+
+アイドル、連続ジェスチャー、操作終了後の 3 区間を分けて保存する。
+連続ジェスチャー区間では、同時に `log --exclude-generated`、`log --only-generated`、`target --out` のいずれかを使い、操作が実際に発生していたことを残す。
+
+## 超過時に調整する項目
+
+純粋ロジックの基準を超えた場合:
+
+- 認識器の状態遷移で不要な command 生成や抑制判定が増えていないか確認する
+- `deadZonePoints`、`directionLockRatio`、`dragSensitivity`、`wheelSensitivity` の変更がイベント数や command 数を増やしていないか確認する
+- `acceleration` のしきい値、指数、最大倍率が過剰な計算や過剰なイベント生成につながっていないか確認する
+
+常駐 CPU または入力遅延の基準を超えた場合:
+
+- 対象デバイス条件を絞り、対象外デバイスの入力を処理していないか確認する
+- `momentum.frameInterval`、`minimumStartVelocity`、`stopVelocity`、`decayPerSecond` が投稿頻度を増やしすぎていないか確認する
+- スクロール生成の steps、interval、momentum steps、momentum decay、momentum scale の組み合わせで投稿数が増えすぎていないか確認する
+- 自前生成イベントを再解釈していないか、`generatedByNapeGesture` のログで確認する
+- 権限未許可、対象デバイス未検出、古い `.app` のまま測っていないか `doctor --json` で確認する
+
+調整後は、純粋ロジック benchmark と実機測定の両方を取り直す。

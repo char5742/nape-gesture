@@ -70,8 +70,8 @@ swift run nape-gesture generate-scroll --x 1200 --y 0 --steps 30 --mode space-ri
 swift run nape-gesture system-test list
 swift run nape-gesture system-test run --scenario space-left --target finder --dry-run
 swift run nape-gesture system-test run --scenario space-left --target finder --dry-run --log-json --out system-space-left.jsonl
-swift run nape-gesture benchmark --events 200000
-swift run nape-gesture doctor --probe-hid --benchmark-events 50000
+swift run nape-gesture benchmark --events 200000 --json
+swift run nape-gesture doctor --probe-hid --benchmark-events 50000 --json
 swift run nape-gesture init-config --out nape-gesture.config.json
 swift run nape-gesture init-config --vendor-id <ID> --product-id <ID> --usage-page <ID> --usage <ID> --out nape-gesture.config.json
 swift run nape-gesture run
@@ -132,10 +132,13 @@ swift build -c release
 6. `generate-scroll --dry-run --json` で began / changed / ended / momentum の生成計画を固定し、`--dry-run --log-json` で `compare-log` 用 JSON Lines を作る
 7. `system-test list` でシナリオを確認し、`system-test run --scenario space-left --target finder --dry-run` で生成計画を確認する
 8. `system-test run --scenario space-left --target finder --dry-run --log-json --out <path>` で System Behavior Test の生成予定イベントを JSON Lines として保存する
-9. `benchmark --events 200000` で認識器とスクロール計画の純粋ロジック処理時間を記録する
-10. `doctor --probe-hid --json` で権限、対象デバイス、HID 入力監視、ベンチマークを一括記録する
+9. `benchmark --events 200000 --json` で認識器とスクロール計画の純粋ロジック処理時間を記録する
+10. `doctor --benchmark-events 50000 --json` で権限、対象デバイス、実行主体、ベンチマークを一括記録する
 11. `system-test run --scenario space-left --target finder` や `system-test run --scenario mission-control` で Spaces / Mission Control / Safari / Finder の挙動を実測する
 12. 公開 API だけで連続 Spaces 操作が成立しない場合は、ログと画面挙動を根拠に限界を明文化する
+
+`benchmark` と `doctor` 内の benchmark は `measurementKind: "pureLogic"` の証跡であり、イベントタップから投稿、AppKit 受信、画面反映までの入力遅延実測ではありません。
+性能レビューで見る JSON キー、CPU 使用率、入力遅延の合格基準は `docs/performance-baseline.md` にまとめています。
 
 ## 開発運用
 

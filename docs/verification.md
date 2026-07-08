@@ -51,6 +51,31 @@ executablePath: /Users/fujino/Documents/mac-gesture/.build/NapeGesture.app/Conte
 `.app` として使うなら `runtimeIdentity.isAppBundle` が `true` になる経路で確認し、システム設定でもその `.app` を許可する。
 SwiftPM や debug バイナリを直接実行している場合は、`runtimeIdentity.executablePath` に出た実行ファイルを許可対象として扱う。
 
+## 性能測定
+
+入力遅延と CPU 使用率の基準は `docs/performance-baseline.md` を参照する。
+PR レビューでは、まず純粋ロジックの benchmark と doctor 証跡を保存する。
+
+```sh
+.build/debug/nape-gesture benchmark --events 200000 --json
+.build/debug/nape-gesture doctor --benchmark-events 50000 --json
+```
+
+`benchmark --json` と `doctor --benchmark-events ... --json` 内の benchmark は、`measurementKind: "pureLogic"`、`includesEventTapAndPosting: false` の測定である。
+この値は `GestureRecognizer` と `ScrollGenerationPlanner` の処理コストを見るためのもので、IOHID、CGEvent tap、実イベント投稿、AppKit 受信、画面反映の遅延を含まない。
+
+レビュー時に確認する主なキー:
+
+- `recognizer.averageNanosecondsPerEvent`
+- `recognizer.cpuNanosecondsPerEvent`
+- `scrollPlanner.averageNanosecondsPerCommand`
+- `scrollPlanner.cpuNanosecondsPerCommand`
+- `reviewMetrics.totalCpuPercentOfOneCore`
+
+常駐 CPU 使用率や tap-to-post 遅延を完了扱いにするには、アクセシビリティと入力監視が許可された実行主体で実機測定を行う。
+`doctor --json` の `runtimeIdentity` が許可済みの `.app` または実行ファイルと一致していない場合、その測定は採用しない。
+現時点の CLI だけでは tap callback から `CGEventPost` までの p95/p99 は自動算出できないため、入力遅延の完了判定には追加ログまたは同等の実測証跡が必要。
+
 ## Nape Pro 識別
 
 対象デバイスが通常のマウス usage で出るとは限らないため、まず全 HID を見る。

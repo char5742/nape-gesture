@@ -46,10 +46,21 @@ enum BenchmarkRunner {
     static func run(events: Int) -> BenchmarkReport {
         let recognizer = runRecognizerBenchmark(eventCount: events)
         let planner = runPlannerBenchmark(iterations: max(events / 64, 1))
+        let reviewMetrics = BenchmarkReviewMetrics(
+            totalWallClockSeconds: recognizer.wallClockSeconds + planner.wallClockSeconds,
+            totalCpuSeconds: recognizer.cpuSeconds + planner.cpuSeconds,
+            recognizerCpuNanosecondsPerEvent: recognizer.cpuNanosecondsPerEvent,
+            scrollPlannerCpuNanosecondsPerCommand: planner.cpuNanosecondsPerCommand
+        )
         return BenchmarkReport(
+            schemaVersion: 2,
+            measurementKind: "pureLogic",
+            measurementScope: "GestureRecognizer と ScrollGenerationPlanner のインプロセス処理。イベントタップ、IOHID、CGEvent 投稿、AppKit 受信、画面反映は含みません。",
+            includesEventTapAndPosting: false,
             rawInputEvents: events,
             recognizer: recognizer,
             scrollPlanner: planner,
+            reviewMetrics: reviewMetrics,
             note: "イベントタップ、IOHID、実イベント投稿を含まない純粋ロジックの目安です。"
         )
     }
@@ -97,8 +108,10 @@ enum BenchmarkRunner {
         return RecognizerBenchmarkReport(
             wallClockSeconds: elapsed,
             cpuSeconds: cpu.total,
+            cpuPercentOfOneCore: percent(cpu.total, elapsed),
             eventsPerSecond: rate(Double(eventCount), elapsed),
             averageNanosecondsPerEvent: elapsed * 1_000_000_000 / Double(eventCount),
+            cpuNanosecondsPerEvent: cpu.total * 1_000_000_000 / Double(eventCount),
             commandsProduced: commandCount,
             suppressedOriginalEvents: suppressedCount
         )
@@ -126,12 +139,17 @@ enum BenchmarkRunner {
 
         let elapsed = seconds(fromNanoseconds: DispatchTime.now().uptimeNanoseconds - start)
         let cpu = CPUTime.current() - startCPU
+        let commandTotal = Double(commandCount)
         return ScrollPlannerBenchmarkReport(
             iterations: iterations,
             commandsProduced: commandCount,
             wallClockSeconds: elapsed,
             cpuSeconds: cpu.total,
-            commandsPerSecond: rate(Double(commandCount), elapsed)
+            cpuPercentOfOneCore: percent(cpu.total, elapsed),
+            commandsPerSecond: rate(commandTotal, elapsed),
+            averageNanosecondsPerCommand: averageNanoseconds(elapsed, commandTotal),
+            cpuNanosecondsPerCommand: averageNanoseconds(cpu.total, commandTotal),
+            commandsPerIteration: Double(commandCount) / Double(iterations)
         )
     }
 
@@ -145,24 +163,51 @@ enum BenchmarkRunner {
         }
         return count / seconds
     }
+
+    private static func percent(_ cpuSeconds: Double, _ wallClockSeconds: Double) -> Double {
+        guard wallClockSeconds > 0 else {
+            return 0
+        }
+        return cpuSeconds / wallClockSeconds * 100
+    }
+
+    private static func averageNanoseconds(_ seconds: Double, _ count: Double) -> Double {
+        guard count > 0 else {
+            return 0
+        }
+        return seconds * 1_000_000_000 / count
+    }
 }
 
 enum BenchmarkFormatter {
     static func format(_ report: BenchmarkReport) -> String {
         """
         ベンチマーク結果
+        スキーマ版: \(report.schemaVersion)
+        測定種別: \(report.measurementKind)
+        測定範囲: \(report.measurementScope)
+        イベントタップから投稿までを含む: \(report.includesEventTapAndPosting ? "はい" : "いいえ")
         認識器イベント数: \(report.rawInputEvents)
         認識器 wall: \(formatSeconds(report.recognizer.wallClockSeconds)) 秒
         認識器 CPU: \(formatSeconds(report.recognizer.cpuSeconds)) 秒
+        認識器 CPU 使用率目安: \(formatPercent(report.recognizer.cpuPercentOfOneCore)) % / 1 core
         認識器処理速度: \(formatRate(report.recognizer.eventsPerSecond)) events/sec
         認識器平均処理時間: \(formatNanoseconds(report.recognizer.averageNanosecondsPerEvent)) ns/event
+        認識器 CPU コスト: \(formatNanoseconds(report.recognizer.cpuNanosecondsPerEvent)) ns/event
         生成コマンド数: \(report.recognizer.commandsProduced)
         元イベント抑制数: \(report.recognizer.suppressedOriginalEvents)
         スクロール計画回数: \(report.scrollPlanner.iterations)
         スクロール計画コマンド数: \(report.scrollPlanner.commandsProduced)
         スクロール計画 wall: \(formatSeconds(report.scrollPlanner.wallClockSeconds)) 秒
         スクロール計画 CPU: \(formatSeconds(report.scrollPlanner.cpuSeconds)) 秒
+        スクロール計画 CPU 使用率目安: \(formatPercent(report.scrollPlanner.cpuPercentOfOneCore)) % / 1 core
         スクロール計画処理速度: \(formatRate(report.scrollPlanner.commandsPerSecond)) commands/sec
+        スクロール計画平均処理時間: \(formatNanoseconds(report.scrollPlanner.averageNanosecondsPerCommand)) ns/command
+        スクロール計画 CPU コスト: \(formatNanoseconds(report.scrollPlanner.cpuNanosecondsPerCommand)) ns/command
+        スクロール計画コマンド数/回: \(formatDouble(report.scrollPlanner.commandsPerIteration))
+        合計 wall: \(formatSeconds(report.reviewMetrics.totalWallClockSeconds)) 秒
+        合計 CPU: \(formatSeconds(report.reviewMetrics.totalCpuSeconds)) 秒
+        合計 CPU 使用率目安: \(formatPercent(report.reviewMetrics.totalCpuPercentOfOneCore)) % / 1 core
         注記: \(report.note)
         """
     }
@@ -178,20 +223,35 @@ enum BenchmarkFormatter {
     private static func formatNanoseconds(_ value: Double) -> String {
         String(format: "%.0f", value)
     }
+
+    private static func formatPercent(_ value: Double) -> String {
+        String(format: "%.1f", value)
+    }
+
+    private static func formatDouble(_ value: Double) -> String {
+        String(format: "%.2f", value)
+    }
 }
 
 struct BenchmarkReport: Codable {
+    var schemaVersion: Int
+    var measurementKind: String
+    var measurementScope: String
+    var includesEventTapAndPosting: Bool
     var rawInputEvents: Int
     var recognizer: RecognizerBenchmarkReport
     var scrollPlanner: ScrollPlannerBenchmarkReport
+    var reviewMetrics: BenchmarkReviewMetrics
     var note: String
 }
 
 struct RecognizerBenchmarkReport: Codable {
     var wallClockSeconds: Double
     var cpuSeconds: Double
+    var cpuPercentOfOneCore: Double
     var eventsPerSecond: Double
     var averageNanosecondsPerEvent: Double
+    var cpuNanosecondsPerEvent: Double
     var commandsProduced: Int
     var suppressedOriginalEvents: Int
 }
@@ -201,7 +261,34 @@ struct ScrollPlannerBenchmarkReport: Codable {
     var commandsProduced: Int
     var wallClockSeconds: Double
     var cpuSeconds: Double
+    var cpuPercentOfOneCore: Double
     var commandsPerSecond: Double
+    var averageNanosecondsPerCommand: Double
+    var cpuNanosecondsPerCommand: Double
+    var commandsPerIteration: Double
+}
+
+struct BenchmarkReviewMetrics: Codable {
+    var totalWallClockSeconds: Double
+    var totalCpuSeconds: Double
+    var totalCpuPercentOfOneCore: Double
+    var recognizerCpuNanosecondsPerEvent: Double
+    var scrollPlannerCpuNanosecondsPerCommand: Double
+
+    init(
+        totalWallClockSeconds: Double,
+        totalCpuSeconds: Double,
+        recognizerCpuNanosecondsPerEvent: Double,
+        scrollPlannerCpuNanosecondsPerCommand: Double
+    ) {
+        self.totalWallClockSeconds = totalWallClockSeconds
+        self.totalCpuSeconds = totalCpuSeconds
+        self.totalCpuPercentOfOneCore = totalWallClockSeconds > 0
+            ? totalCpuSeconds / totalWallClockSeconds * 100
+            : 0
+        self.recognizerCpuNanosecondsPerEvent = recognizerCpuNanosecondsPerEvent
+        self.scrollPlannerCpuNanosecondsPerCommand = scrollPlannerCpuNanosecondsPerCommand
+    }
 }
 
 private struct CPUTime {
