@@ -33,11 +33,27 @@ jobs:
           .build/debug/nape-gesture analyze-log /tmp/system-space-left.jsonl
           .build/debug/nape-gesture system-test run --scenario horizontal-scroll --dry-run --log-json --out /tmp/system-horizontal-scroll.jsonl
           .build/debug/nape-gesture analyze-log /tmp/system-horizontal-scroll.jsonl --json
+          .build/debug/nape-gesture system-test run --scenario kill-switch --dry-run --log-json --out /tmp/system-kill-switch.jsonl
+          .build/debug/nape-gesture analyze-log /tmp/system-kill-switch.jsonl --json --assert-kill-switch-shortcut
+          .build/debug/nape-gesture system-test run --scenario normal-after-release --dry-run --log-json --out /tmp/system-normal-after-release.jsonl
+          .build/debug/nape-gesture analyze-log /tmp/system-normal-after-release.jsonl --json --assert-has-unmarked-passthrough-input
           .build/debug/nape-gesture compare-log Fixtures/sample-trackpad-scroll-log.jsonl Fixtures/sample-generated-scroll-log.jsonl
           .build/debug/nape-gesture analyze-hid-log Fixtures/sample-hid-log.jsonl
           .build/debug/nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/sample-association-event-log.jsonl --window 0.12 --json
-          .build/debug/nape-gesture analyze-target-log Fixtures/sample-target-log.jsonl
-          .build/debug/nape-gesture benchmark --events 50000 --json --assert-baseline > /tmp/nape-benchmark.json
+          .build/debug/nape-gesture analyze-target-log Fixtures/clean-target-log.jsonl --json --assert-no-leaks
+          .build/debug/nape-gesture analyze-target-log Fixtures/clean-target-log.jsonl --json --assert-has-generated-event
+          if .build/debug/nape-gesture analyze-target-log Fixtures/leaky-target-log.jsonl --json --assert-no-leaks; then
+            echo "leaky-target-log が漏れ候補なしとして通ってしまいました" >&2
+            exit 1
+          fi
+          if .build/debug/nape-gesture analyze-target-log Fixtures/no-generated-target-log.jsonl --json --assert-no-leaks --assert-has-generated-event; then
+            echo "no-generated-target-log が生成イベントありとして通ってしまいました" >&2
+            exit 1
+          fi
+          .build/debug/nape-gesture analyze-target-log Fixtures/normal-input-target-log.jsonl --json --assert-has-unmarked-input
+          .build/debug/nape-gesture analyze-target-log Fixtures/gesture-target-log.jsonl --json --assert-has-gesture
+          .build/debug/nape-gesture benchmark --events 200000 --json --assert-baseline > /tmp/nape-benchmark.json
+          .build/debug/nape-gesture doctor --benchmark-events 50000 --json > /tmp/nape-doctor.json
 
       - name: Build release
         run: swift build -c release --scratch-path .build

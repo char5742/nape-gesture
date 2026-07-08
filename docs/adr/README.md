@@ -19,6 +19,8 @@
 | [ADR-0010](0010-system-test-discrete-assignment-dry-run-evidence.md) | 離散割り当ての System Behavior Test dry-run 証跡 | Issue #10、ページ戻る/進む、ズーム、横スクロール |
 | [ADR-0011](0011-doctor-runtime-ready-assertion.md) | doctor runtime ready の機械判定 | Issue #13、Issue #16、権限、HID probe、対象デバイス一致 |
 | [ADR-0012](0012-settings-ui-gesture-action-coverage.md) | 設定 UI の GestureAction 網羅性 | 設定 UI、GestureAction、アプリ別設定不要 |
+| [ADR-0013](0013-normal-input-passthrough-dry-run-assertion.md) | 通常入力通過 dry-run の機械判定 | Issue #6、Issue #16、normal-after-release、analyze-log |
+| [ADR-0014](0014-kill-switch-dry-run-shortcut-assertion.md) | キルスイッチ dry-run のショートカット機械判定 | Issue #12、Issue #16、kill-switch、analyze-log |
 
 ## 追加時の確認
 

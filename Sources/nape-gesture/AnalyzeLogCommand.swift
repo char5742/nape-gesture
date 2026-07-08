@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import NapeGestureCore
 
@@ -15,6 +16,8 @@ struct AnalyzeLogCommand {
 
         let records = try InputLogFileReader.readRecords(path: path)
         let analysis = InputLogAnalyzer.analyze(records)
+        let assertHasUnmarkedPassthroughInput = options.contains("--assert-has-unmarked-passthrough-input")
+        let assertKillSwitchShortcut = options.contains("--assert-kill-switch-shortcut")
 
         if options.contains("--json") {
             let encoder = JSONEncoder()
@@ -24,6 +27,46 @@ struct AnalyzeLogCommand {
         } else {
             print(InputLogAnalyzer.japaneseReport(for: analysis))
         }
+
+        if assertHasUnmarkedPassthroughInput && analysis.unmarkedPassthroughInputEvents == 0 {
+            fflush(stdout)
+            throw InputLogMissingUnmarkedPassthroughInputAssertionError(path: path)
+        }
+        if assertKillSwitchShortcut && !Self.hasKillSwitchShortcut(records) {
+            fflush(stdout)
+            throw InputLogMissingKillSwitchShortcutAssertionError(path: path)
+        }
     }
 
+    private static func hasKillSwitchShortcut(_ records: [InputLogRecord]) -> Bool {
+        let matchingRecords = records.filter { record in
+            guard !record.generatedByNapeGesture, record.keyCode == 5 else {
+                return false
+            }
+            let flags = CGEventFlags(rawValue: record.flags)
+            return flags.contains(.maskCommand)
+                && flags.contains(.maskControl)
+                && flags.contains(.maskAlternate)
+        }
+
+        return matchingRecords.contains { $0.typeName == "keyDown" }
+            && matchingRecords.contains { $0.typeName == "keyUp" }
+    }
+
+}
+
+struct InputLogMissingUnmarkedPassthroughInputAssertionError: LocalizedError {
+    var path: String
+
+    var errorDescription: String? {
+        "input log に未生成の移動またはスクロールがありません。通常入力通過の前段確認には `analyze-log \(path) --json --assert-has-unmarked-passthrough-input` で unmarkedMoveEvents または unmarkedScrollEvents を確認してください。"
+    }
+}
+
+struct InputLogMissingKillSwitchShortcutAssertionError: LocalizedError {
+    var path: String
+
+    var errorDescription: String? {
+        "input log に未生成の Control + Option + Command + G keyDown / keyUp がありません。キルスイッチ dry-run の確認には `analyze-log \(path) --json --assert-kill-switch-shortcut` を使ってください。"
+    }
 }

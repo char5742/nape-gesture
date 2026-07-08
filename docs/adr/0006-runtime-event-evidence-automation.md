@@ -20,6 +20,7 @@ Issue #6 の元入力抑制と Issue #12 のキルスイッチは、最終的に
 - 物理キーボード操作へ進む前に、`system-test run --scenario kill-switch --dry-run --log-json` で `Control + Option + Command + G` 相当の未マーク keyDown / keyUp を completion evidence に保存する。
 - `normal-after-release` は通常入力通過が期待値なので、`--assert-no-leaks` を使わない。`--assert-has-unmarked-input` を使い、解放後の未マーク入力が届かない場合に失敗させる。
 - Reference Target App の gesture 受信形式は、人間によるトラックパッド操作へ進む前に `Fixtures/gesture-target-log.jsonl` と `analyze-target-log --assert-has-gesture` で `swipe`、`magnify`、`rotate` の解析経路を機械判定する。
+- CI は completion evidence と同じ target log fixture assertion を smoke test に含める。`clean-target-log`、`leaky-target-log`、`no-generated-target-log`、`normal-input-target-log`、`gesture-target-log` を assertion 付きで検証し、単なる集計表示だけに戻さない。
 - `system-test` は Reference Target App を前面に保つため、target log 証跡では `--target finder` / `--target safari` を付けない。
 - `system-test` は HID 生入力を伴わないため、runtime event 証跡では `init-config --allow-unmatched` の検証用設定を使い、実利用設定と分ける。
 - `.build/NapeGesture.app` に TCC 権限を集約する場合は、`NAPE_RUNTIME_EVENT_USE_APP_BUNDLE=1` で release build、`.app` 作成、bundle 検証、runtime event 証跡を一続きに実行する。

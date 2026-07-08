@@ -174,7 +174,8 @@ final class NapeGestureDaemon {
             cancelMomentum()
         }
         if decision.shouldCancelGesture {
-            _ = recognizer.handle(.cancel(time: time))
+            let cancelDecision = recognizer.handle(.cancel(time: time))
+            handle(commands: cancelDecision.commands)
         }
         if decision.didEnterStoppedState {
             print("キルスイッチによりジェスチャーを無効化しました。再開するには常駐UIの停止/開始、またはプロセス再起動を行ってください。")
