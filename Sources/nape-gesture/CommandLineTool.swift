@@ -41,6 +41,8 @@ final class CommandLineTool {
             try CompareLogCommand(options: options).run()
         case "analyze-hid-log":
             try AnalyzeHIDLogCommand(options: options).run()
+        case "analyze-association":
+            try AnalyzeAssociationCommand(options: options).run()
         case "analyze-target-log":
             try AnalyzeTargetLogCommand(options: options).run()
         case "check-config":
@@ -96,6 +98,9 @@ final class CommandLineTool {
 
               nape-gesture analyze-hid-log <path> [--json]
                   IOHID 生入力ログを device / usage ごとに集計します。
+
+              nape-gesture analyze-association <hid-log> <event-log> [--window <秒>] [--json]
+                  HID 生入力ログとイベントタップログを相関し、対象入力の紐づけ秒を検証します。
 
               nape-gesture analyze-target-log <path> [--json] [--assert-no-leaks]
                   Reference Target App が保存した AppKit 受信イベントを集計します。--assert-no-leaks で漏れ候補がある場合は失敗します。

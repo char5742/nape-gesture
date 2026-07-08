@@ -246,6 +246,13 @@ run_split_success \
   .build/debug/nape-gesture analyze-hid-log Fixtures/sample-hid-log.jsonl
 
 run_split_success \
+  "sample association analyze-association" \
+  "$fixtures_dir/analyze-sample-association.json" \
+  "$fixtures_dir/analyze-sample-association.stderr.log" \
+  ".build/debug/nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/sample-association-event-log.jsonl --window 0.12 --json" \
+  .build/debug/nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/sample-association-event-log.jsonl --window 0.12 --json
+
+run_split_success \
   "clean target log assert-no-leaks" \
   "$fixtures_dir/clean-target-log-analysis.json" \
   "$fixtures_dir/clean-target-log-analysis.stderr.log" \
