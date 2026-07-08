@@ -68,6 +68,7 @@
 ## UI / Doctor / 権限導線変更
 
 - 設定 UI にアプリ別の有効・無効、感度、割り当てを追加していない
+- 設定 UI の編集対象は `SettingsUIField.descriptors` に追加し、設定パス、control kind、JSON round-trip、アプリ別設定なしの core test を維持している
 - 設定 UI の割り当て候補は `GestureAction.settingsSelectableActions` から生成し、`GestureAction.allCases` との網羅性テストを維持している
 - 不正な設定値を保存前または起動前に止める
 - `runtimeIdentity` で権限付与対象が分かる

@@ -27,6 +27,7 @@
 | [ADR-0018](0018-target-device-not-found-diagnostics.md) | targetDevice.notFound の matcher 詳細診断 | Issue #4、Issue #13、Issue #16、doctor、targetDeviceDiagnostics |
 | [ADR-0019](0019-runtime-event-status-json.md) | Runtime event 証跡の status JSON | Issue #6、Issue #12、Issue #16、runtime event、status.json |
 | [ADR-0020](0020-doctor-tcc-permission-target.md) | doctor TCC 権限付与対象の構造化 | Issue #13、Issue #16、doctor、TCC、permissionTarget |
+| [ADR-0021](0021-settings-ui-field-catalog.md) | 設定 UI 編集項目 catalog の機械証跡化 | Issue #11、Issue #16、設定 UI、SettingsUIField |
 
 ## 追加時の確認
 
