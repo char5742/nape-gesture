@@ -2006,6 +2006,55 @@ func testRuntimeStatusPresenterShowsAutoRetryAndSleepStates() {
     expect(sleepPresentation.stopEnabled, "スリープ待機中は停止を有効化する")
 }
 
+func testPermissionRecoveryPresenterShowsSeparatePermissionActions() {
+    let presentation = PermissionRecoveryPresenter.present(
+        accessibilityTrusted: false,
+        inputMonitoringGranted: false,
+        permissionTargetDescription: "/Applications/NapeGesture.app (bundle ID: dev.char5742.nape-gesture)"
+    )
+
+    expect(presentation.permissionTargetDescription.contains("NapeGesture.app"), "権限付与対象を表示する")
+    expect(presentation.accessibility.serviceTitle == "アクセシビリティ", "アクセシビリティの表示名を固定する")
+    expect(presentation.accessibility.statusTitle == "未許可", "アクセシビリティ未許可を表示する")
+    expect(presentation.accessibility.shouldOpenSettings, "アクセシビリティ未許可時は設定を開く導線を出す")
+    expect(presentation.accessibility.settingsButtonTitle == "アクセシビリティ設定を開く", "アクセシビリティ設定ボタン名を固定する")
+    expect(
+        presentation.accessibility.settingsURLString == "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+        "アクセシビリティの System Settings URL を固定する"
+    )
+
+    expect(presentation.inputMonitoring.serviceTitle == "入力監視", "入力監視の表示名を固定する")
+    expect(presentation.inputMonitoring.statusTitle == "未許可または開始失敗", "入力監視未許可を表示する")
+    expect(presentation.inputMonitoring.shouldOpenSettings, "入力監視未許可時は設定を開く導線を出す")
+    expect(presentation.inputMonitoring.settingsButtonTitle == "入力監視設定を開く", "入力監視設定ボタン名を固定する")
+    expect(
+        presentation.inputMonitoring.settingsURLString == "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent",
+        "入力監視の System Settings URL を固定する"
+    )
+    expect(presentation.restartNotice.contains("再起動"), "権限変更後の再起動案内を出す")
+}
+
+func testPermissionRecoveryPresenterDoesNotOfferGrantedActions() {
+    let presentation = PermissionRecoveryPresenter.present(
+        accessibilityTrusted: true,
+        inputMonitoringGranted: true,
+        permissionTargetDescription: "/Applications/NapeGesture.app"
+    )
+
+    expect(presentation.accessibility.statusTitle == "許可済み", "許可済みのアクセシビリティ表示を出す")
+    expect(!presentation.accessibility.shouldOpenSettings, "許可済みならアクセシビリティ設定導線を必須表示しない")
+    expect(presentation.inputMonitoring.statusTitle == "許可済み", "許可済みの入力監視表示を出す")
+    expect(!presentation.inputMonitoring.shouldOpenSettings, "許可済みなら入力監視設定導線を必須表示しない")
+
+    let unknown = PermissionRecoveryPresenter.present(
+        accessibilityTrusted: true,
+        inputMonitoringGranted: nil,
+        permissionTargetDescription: "/Applications/NapeGesture.app"
+    )
+    expect(unknown.inputMonitoring.statusTitle == "未判定", "入力監視未判定を許可済みと混同しない")
+    expect(unknown.inputMonitoring.shouldOpenSettings, "入力監視未判定時は設定導線を出す")
+}
+
 testPassesThroughWhenActivationButtonIsNotPressed()
 testActivationButtonSuppressesOriginalInputBeforeThreshold()
 testDragBeginsAfterDeadZoneAndLocksDominantDirection()
@@ -2093,6 +2142,8 @@ testRuntimeRecoveryRetriesAfterWakeWhenRecoverableRetryWasPending()
 testRuntimeRecoveryKeepsWakeRetryWhenSleepNotificationRepeats()
 testRuntimeStatusPresenterShowsRunningAndStoppedStates()
 testRuntimeStatusPresenterShowsAutoRetryAndSleepStates()
+testPermissionRecoveryPresenterShowsSeparatePermissionActions()
+testPermissionRecoveryPresenterDoesNotOfferGrantedActions()
 
 if failures == 0 {
     print("すべてのコアテストに成功しました。")

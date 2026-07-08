@@ -269,6 +269,27 @@ Issue 1。
 並列化:
 UI 表示と CLI doctor は分担可能。
 
+### Issue 74: GUI から macOS の権限設定を直接開けるようにする
+
+Labels: `area:runtime`, `area:ui`, `type:feature`, `priority:p0`
+
+目的:
+アクセシビリティと入力監視の System Settings 画面を GUI から直接開けるようにし、人間作業を最後の許可操作だけへ縮小する。
+
+完了条件:
+
+- 常駐 UI または権限確認ダイアログからアクセシビリティ設定を開ける
+- 常駐 UI または権限確認ダイアログから入力監視設定を開ける
+- アクセシビリティと入力監視の状態表示、許可対象、再起動が必要な旨を同じ表示モデルで説明できる
+- 表示文言と System Settings URL を core test で固定する
+- 方針を ADR と検証文書に残す
+
+依存関係:
+Issue 11。
+
+並列化:
+core presenter、GUI 接続、docs/ADR 更新は分担可能。
+
 ### Issue 12: キルスイッチと暴走停止を回帰テスト可能にする
 
 Labels: `area:runtime`, `type:feature`, `priority:p0`

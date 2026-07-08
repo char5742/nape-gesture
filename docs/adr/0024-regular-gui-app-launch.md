@@ -30,5 +30,6 @@
 - [doctor TCC 権限付与対象の構造化](0020-doctor-tcc-permission-target.md)
 - [設定 UI 編集項目 catalog の機械証跡化](0021-settings-ui-field-catalog.md)
 - [repo-local 由来ガード](0023-repo-local-provenance-guard.md)
+- [GUI 権限復旧導線の表示契約](0025-gui-permission-recovery-actions.md)
 - [完成判定チェックリスト](../completion-checklist.md)
 - [リリース手順](../release.md)

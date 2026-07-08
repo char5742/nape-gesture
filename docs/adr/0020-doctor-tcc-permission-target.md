@@ -29,5 +29,6 @@
 
 - [doctor runtime ready の機械判定](0011-doctor-runtime-ready-assertion.md)
 - [Runtime event 証跡の status JSON](0019-runtime-event-status-json.md)
+- [GUI 権限復旧導線の表示契約](0025-gui-permission-recovery-actions.md)
 - [完成判定チェックリスト](../completion-checklist.md)
 - [検証方針](../verification.md)
