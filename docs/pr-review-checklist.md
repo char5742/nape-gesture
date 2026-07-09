@@ -94,6 +94,7 @@
 - `LICENSE` と `THIRD_PARTY_NOTICES.md` が同梱される
 - `LICENSE` と `THIRD_PARTY_NOTICES.md` はバンドル内の同梱ファイルと `cmp` で一致している
 - `CFBundleIdentifier`、`CFBundleExecutable`、`CFBundleName`、`CFBundleDisplayName`、`LSUIElement=false` の exact check が成功している
+- active macOS GUI session で `.build/NapeGesture.app/Contents/MacOS/nape-gesture gui-smoke --config <tmp> --json --assert` が成功し、通常 GUI activation policy、設定ウィンドウ、status item `NG`、通常アプリメニュー、status menu の生成契約を検査している。CI runner に active console session がなく skip された場合は、ローカル completion evidence を PR または Issue に残している
 - `.app` を通常 GUI アプリとして起動し、設定ウィンドウを初期表示する方針と矛盾していない
 - ローカル検証では ad-hoc 署名、公開配布では Developer ID Application 署名と公証を使う境界が明記されている
 - 公開配布前は `verify-bundle --require-signature` と `codesign --verify --deep --strict --verbose=2` が成功している

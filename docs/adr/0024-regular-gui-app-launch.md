@@ -17,13 +17,15 @@
 - Dock アイコンから再度開いた場合、表示中ウィンドウがなければ設定ウィンドウを再表示する。
 - CLI subcommand は維持する。`nape-gesture app` は GUI アプリモードの起動コマンドとして扱う。
 - bundle 検証、CI、completion evidence は `CFBundleIdentifier`、`CFBundleExecutable`、`CFBundleName`、`CFBundleDisplayName` に加えて `LSUIElement=false` を確認する。
-- `need:human` は、最終的な Dock 表示、設定ウィンドウ前面表示、メニューバー `NG` 操作を実 `.app` で目視確認する場合だけに使う。Info.plist や起動コードで機械確認できる範囲には使わない。
+- `gui-smoke --config <path> --json --assert` は、runtime を開始せずに `.app` 実行主体で AppKit 内の `.regular` activation policy、設定ウィンドウ、status item `NG`、通常アプリメニュー、status menu の生成契約を機械検査する。`--config` 未指定時は一時 config を使い、ユーザーの通常設定へ書き込まない。
+- CI は bundle 検証と GUI smoke を分ける。active macOS console session がない runner では GUI smoke を warning 付きで skip し、completion evidence では active GUI session 上の `collect-completion-evidence.sh` を hard evidence として採用する。
+- `need:human` は、最終的な Dock アイコン表示を目視確認する場合だけに使う。Info.plist、起動コード、AppKit 内 GUI smoke で機械確認できる範囲には使わない。
 
 ## 影響
 
 - 起動直後に設定画面が見えるため、`.app` が起動しているか分からない状態を避けられる。
 - メニューバー常駐 UI は残るため、実行中の開始、停止、緊急停止、権限確認は従来どおり使える。
-- 初回起動のウィンドウ表示そのものは機械的に Info.plist と起動コードで固定できるが、最終的な画面操作確認は macOS UI 操作として completion checklist に残す。
+- 初回起動のウィンドウ表示と status item `NG` の AppKit 契約は Info.plist、起動コード、`gui-smoke --config <path> --json --assert` で固定する。実メニューバー上のクリック操作が必要な場合は computer-use、Dock アイコンの最終目視が必要な場合だけ completion checklist に残す。
 
 ## 関連
 
