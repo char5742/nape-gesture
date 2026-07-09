@@ -11,11 +11,13 @@ sh scripts/check-provenance.sh
 swift build -c release --scratch-path .build
 .build/release/nape-gesture bundle-app --out .build/NapeGesture.app --replace
 .build/release/nape-gesture verify-bundle .build/NapeGesture.app
-/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' .build/NapeGesture.app/Contents/Info.plist | grep -Fx 'dev.char5742.nape-gesture'
-/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' .build/NapeGesture.app/Contents/Info.plist | grep -Fx 'nape-gesture'
-/usr/libexec/PlistBuddy -c 'Print :CFBundleName' .build/NapeGesture.app/Contents/Info.plist | grep -Fx 'Nape Gesture'
-/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' .build/NapeGesture.app/Contents/Info.plist | grep -Fx 'Nape Gesture'
-/usr/libexec/PlistBuddy -c 'Print :LSUIElement' .build/NapeGesture.app/Contents/Info.plist | grep -Fx 'false'
+rm -rf .build/NapeGestureBadIdentity.app
+cp -R .build/NapeGesture.app .build/NapeGestureBadIdentity.app
+/usr/libexec/PlistBuddy -c 'Set :CFBundleIdentifier dev.char5742.invalid-nape-gesture' .build/NapeGestureBadIdentity.app/Contents/Info.plist
+if .build/release/nape-gesture verify-bundle .build/NapeGestureBadIdentity.app; then
+  echo "verify-bundle accepted an unexpected CFBundleIdentifier" >&2
+  exit 1
+fi
 cmp LICENSE .build/NapeGesture.app/Contents/Resources/LICENSE.txt
 cmp THIRD_PARTY_NOTICES.md .build/NapeGesture.app/Contents/Resources/THIRD_PARTY_NOTICES.md
 ```
@@ -23,6 +25,10 @@ cmp THIRD_PARTY_NOTICES.md .build/NapeGesture.app/Contents/Resources/THIRD_PARTY
 `verify-bundle` は次を確認する。
 
 - `Contents/Info.plist`
+- `CFBundleIdentifier=dev.char5742.nape-gesture`
+- `CFBundleExecutable=nape-gesture`
+- `CFBundleName=Nape Gesture`
+- `CFBundleDisplayName=Nape Gesture`
 - `LSUIElement=false`
 - `Contents/MacOS/nape-gesture`
 - `Contents/Resources/LICENSE.txt`
@@ -30,8 +36,9 @@ cmp THIRD_PARTY_NOTICES.md .build/NapeGesture.app/Contents/Resources/THIRD_PARTY
 - `codesign --verify --deep --strict --verbose=2` による署名状態
 
 通常の `verify-bundle` は署名が未完了でも構造検証を続行し、署名状態を表示する。公開配布前のゲートでは `--require-signature` を付け、署名検証失敗をエラーにする。
+`NapeGestureBadIdentity.app` の expected failure は、`verify-bundle` が Info.plist identity の退行を検出することを固定する。
 `sh scripts/check-provenance.sh` は、外部ソースを読まずに tracked files だけを対象として、由来方針の削除や許可外の識別子混入を検出する。これは法的な完全証明ではなく、配布前に実施する repo-local の退行検知である。
-`PlistBuddy` と `cmp` は、権限付与対象の identity と同梱文書の原本一致を機械的に固定する。
+`verify-bundle` と `cmp` は、権限付与対象の identity と同梱文書の原本一致を機械的に固定する。
 `LSUIElement=false` は、`.app` が Dock に表示される通常 GUI アプリとして起動することを固定する。
 
 ```sh

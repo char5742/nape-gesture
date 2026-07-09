@@ -15,7 +15,7 @@ struct BundleAppCommand {
         let contentsURL = appURL.appendingPathComponent("Contents", isDirectory: true)
         let macOSURL = contentsURL.appendingPathComponent("MacOS", isDirectory: true)
         let resourcesURL = contentsURL.appendingPathComponent("Resources", isDirectory: true)
-        let bundledExecutableURL = macOSURL.appendingPathComponent("nape-gesture")
+        let bundledExecutableURL = macOSURL.appendingPathComponent(AppBundleIdentity.executableName)
 
         let fileManager = FileManager.default
         if fileManager.fileExists(atPath: appURL.path) {
@@ -68,17 +68,17 @@ struct BundleAppCommand {
             <key>CFBundleDevelopmentRegion</key>
             <string>ja</string>
             <key>CFBundleDisplayName</key>
-            <string>Nape Gesture</string>
+            <string>\(AppBundleIdentity.displayName)</string>
             <key>CFBundleExecutable</key>
-            <string>nape-gesture</string>
+            <string>\(AppBundleIdentity.executableName)</string>
             <key>CFBundleIdentifier</key>
-            <string>dev.char5742.nape-gesture</string>
+            <string>\(AppBundleIdentity.bundleIdentifier)</string>
             <key>CFBundleInfoDictionaryVersion</key>
             <string>6.0</string>
             <key>CFBundleName</key>
-            <string>Nape Gesture</string>
+            <string>\(AppBundleIdentity.bundleName)</string>
             <key>CFBundlePackageType</key>
-            <string>APPL</string>
+            <string>\(AppBundleIdentity.packageType)</string>
             <key>CFBundleShortVersionString</key>
             <string>0.1.0</string>
             <key>CFBundleVersion</key>

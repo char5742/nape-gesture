@@ -250,7 +250,7 @@ swift build -c release
 ```
 
 `bundle-app` は `Info.plist`、実行ファイル、`LICENSE.txt`、`THIRD_PARTY_NOTICES.md` を含む `.app` を作成し、作成直後に同じ検証を実行します。
-`verify-bundle` は既存の `.app` を再検証するためのコマンドで、通常 GUI アプリとして使うための `LSUIElement=false` とコード署名状態も表示します。
+`verify-bundle` は既存の `.app` を再検証するためのコマンドで、bundle ID、実行ファイル名、表示名、通常 GUI アプリとして使うための `LSUIElement=false`、コード署名状態を確認します。
 公開配布前は `verify-bundle --require-signature .build/NapeGesture.app` で署名検証を必須にしてください。
 
 ローカル検証では ad-hoc 署名を使えます。

@@ -7,7 +7,7 @@ enum BundleVerifier {
         let contentsURL = appURL.appendingPathComponent("Contents", isDirectory: true)
         let macOSURL = contentsURL.appendingPathComponent("MacOS", isDirectory: true)
         let resourcesURL = contentsURL.appendingPathComponent("Resources", isDirectory: true)
-        let executableURL = macOSURL.appendingPathComponent("nape-gesture")
+        let executableURL = macOSURL.appendingPathComponent(AppBundleIdentity.executableName)
         let infoPlistURL = contentsURL.appendingPathComponent("Info.plist")
         let licenseURL = resourcesURL.appendingPathComponent("LICENSE.txt")
         let noticesURL = resourcesURL.appendingPathComponent("THIRD_PARTY_NOTICES.md")
@@ -47,8 +47,12 @@ enum BundleVerifier {
 
         return [
             "Info.plist",
+            "Info.plist: CFBundleIdentifier=\(AppBundleIdentity.bundleIdentifier)",
+            "Info.plist: CFBundleExecutable=\(AppBundleIdentity.executableName)",
+            "Info.plist: CFBundleName=\(AppBundleIdentity.bundleName)",
+            "Info.plist: CFBundleDisplayName=\(AppBundleIdentity.displayName)",
             "Info.plist: LSUIElement=false",
-            "Contents/MacOS/nape-gesture",
+            "Contents/MacOS/\(AppBundleIdentity.executableName)",
             "Contents/Resources/LICENSE.txt",
             "Contents/Resources/THIRD_PARTY_NOTICES.md",
             signatureStatus.displayLine
@@ -74,17 +78,23 @@ enum BundleVerifier {
                 return
             }
 
-            if plist["CFBundleExecutable"] as? String != "nape-gesture" {
-                failures.append("CFBundleExecutable が nape-gesture ではありません。")
+            if plist["CFBundleExecutable"] as? String != AppBundleIdentity.executableName {
+                failures.append("CFBundleExecutable が \(AppBundleIdentity.executableName) ではありません。")
             }
-            if plist["CFBundlePackageType"] as? String != "APPL" {
-                failures.append("CFBundlePackageType が APPL ではありません。")
+            if plist["CFBundlePackageType"] as? String != AppBundleIdentity.packageType {
+                failures.append("CFBundlePackageType が \(AppBundleIdentity.packageType) ではありません。")
             }
             if plist["LSUIElement"] as? Bool != GUIAppLaunchPresenter.regularGUIApp.bundleLSUIElement {
                 failures.append("LSUIElement が false ではありません。")
             }
-            if (plist["CFBundleIdentifier"] as? String)?.isEmpty ?? true {
-                failures.append("CFBundleIdentifier が空です。")
+            if plist["CFBundleIdentifier"] as? String != AppBundleIdentity.bundleIdentifier {
+                failures.append("CFBundleIdentifier が \(AppBundleIdentity.bundleIdentifier) ではありません。")
+            }
+            if plist["CFBundleName"] as? String != AppBundleIdentity.bundleName {
+                failures.append("CFBundleName が \(AppBundleIdentity.bundleName) ではありません。")
+            }
+            if plist["CFBundleDisplayName"] as? String != AppBundleIdentity.displayName {
+                failures.append("CFBundleDisplayName が \(AppBundleIdentity.displayName) ではありません。")
             }
             if (plist["CFBundleShortVersionString"] as? String)?.isEmpty ?? true {
                 failures.append("CFBundleShortVersionString が空です。")
