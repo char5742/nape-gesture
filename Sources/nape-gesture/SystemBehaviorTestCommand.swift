@@ -91,12 +91,17 @@ struct SystemBehaviorTestCommand {
         let amount = try doubleValue("--amount", in: options, defaultValue: scenario.defaultAmount)
         let steps = try intValue("--steps", in: options, defaultValue: scenario.defaultSteps)
         let interval = try doubleValue("--interval", in: options, defaultValue: 0.008)
+        let postToPid = try optionalPIDValue("--post-to-pid", in: options)
+        if postToPid != nil && !scenario.supportsProcessTargetPosting {
+            throw ToolError.invalidValue("--post-to-pid", "\(scenario.rawValue) は process 直接投稿診断に未対応です。")
+        }
         let plan = try SystemTestPlan(
             scenario: scenario,
             target: target,
             amount: amount,
             steps: steps,
-            interval: interval
+            interval: interval,
+            postToPid: postToPid
         )
 
         if outputLogJSON {
@@ -161,9 +166,9 @@ struct SystemBehaviorTestCommand {
         case .zoomOut:
             poster.postZoomOut()
         case .killSwitch:
-            postUnmarkedKeyShortcut(keyCode: killSwitchKeyCode, flags: killSwitchFlags)
+            postUnmarkedInputEvents(unmarkedInputEvents(for: plan, startTime: now), to: nil)
         case .gestureDrag, .gestureWheel, .gestureWheelThenKillSwitch, .normalAfterRelease:
-            postUnmarkedInputEvents(unmarkedInputEvents(for: plan, startTime: now))
+            postUnmarkedInputEvents(unmarkedInputEvents(for: plan, startTime: now), to: plan.postToPid)
         }
     }
 
@@ -261,12 +266,7 @@ struct SystemBehaviorTestCommand {
         case .zoomOut:
             shortcutRecords(keyCode: CGKeyCode(kVK_ANSI_Minus), flags: .maskCommand, startTime: startTime)
         case .killSwitch:
-            shortcutRecords(
-                keyCode: killSwitchKeyCode,
-                flags: killSwitchFlags,
-                startTime: startTime,
-                generatedByNapeGesture: false
-            )
+            unmarkedInputEvents(for: plan, startTime: startTime).map { $0.logRecord() }
         case .gestureDrag, .gestureWheel, .gestureWheelThenKillSwitch, .normalAfterRelease:
             unmarkedInputEvents(for: plan, startTime: startTime).map { $0.logRecord() }
         }
@@ -372,6 +372,8 @@ struct SystemBehaviorTestCommand {
             return unmarkedGestureWheelThenKillSwitchEvents(plan: plan, startTime: startTime)
         case .normalAfterRelease:
             return unmarkedNormalAfterReleaseEvents(plan: plan, startTime: startTime)
+        case .killSwitch:
+            return unmarkedKillSwitchEvents(plan: plan, startTime: startTime)
         case .spaceLeft,
              .spaceRight,
              .horizontalScroll,
@@ -379,10 +381,26 @@ struct SystemBehaviorTestCommand {
              .pageBack,
              .pageForward,
              .zoomIn,
-             .zoomOut,
-             .killSwitch:
+             .zoomOut:
             return []
         }
+    }
+
+    private func unmarkedKillSwitchEvents(plan: SystemTestPlan, startTime: TimeInterval) -> [UnmarkedInputEvent] {
+        [
+            unmarkedKeyEvent(
+                type: .keyDown,
+                time: startTime,
+                keyCode: Int64(killSwitchKeyCode),
+                flags: killSwitchFlags.rawValue
+            ),
+            unmarkedKeyEvent(
+                type: .keyUp,
+                time: startTime + plan.interval,
+                keyCode: Int64(killSwitchKeyCode),
+                flags: killSwitchFlags.rawValue
+            )
+        ]
     }
 
     private func unmarkedGestureDragEvents(plan: SystemTestPlan, startTime: TimeInterval) -> [UnmarkedInputEvent] {
@@ -620,7 +638,7 @@ struct SystemBehaviorTestCommand {
         )
     }
 
-    private func postUnmarkedInputEvents(_ events: [UnmarkedInputEvent]) {
+    private func postUnmarkedInputEvents(_ events: [UnmarkedInputEvent], to pid: pid_t?) {
         let source = CGEventSource(stateID: .hidSystemState)
         source?.setLocalEventsFilterDuringSuppressionState([], state: .eventSuppressionStateSuppressionInterval)
         var cursorPosition = currentPointerLocation()
@@ -634,24 +652,15 @@ struct SystemBehaviorTestCommand {
                 previousTime = plannedEvent.time
                 continue
             }
-            event.post(tap: .cghidEventTap)
+            post(event, to: pid)
             previousTime = plannedEvent.time
         }
     }
 
-    private func postUnmarkedKeyShortcut(keyCode: CGKeyCode, flags: CGEventFlags) {
-        let source = CGEventSource(stateID: .hidSystemState)
-        source?.setLocalEventsFilterDuringSuppressionState([], state: .eventSuppressionStateSuppressionInterval)
-
-        guard
-            let down = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
-            let up = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
-        else {
-            return
-        }
-
-        for event in [down, up] {
-            event.flags = flags
+    private func post(_ event: CGEvent, to pid: pid_t?) {
+        if let pid {
+            event.postToPid(pid)
+        } else {
             event.post(tap: .cghidEventTap)
         }
     }
@@ -754,6 +763,17 @@ struct SystemBehaviorTestCommand {
         }
         return value
     }
+
+    private func optionalPIDValue(_ name: String, in options: [String]) throws -> pid_t? {
+        guard options.contains(name) else {
+            return nil
+        }
+        let raw = try requiredValue(name, in: options)
+        guard let value = Int32(raw), value > 0 else {
+            throw ToolError.invalidValue(name, raw)
+        }
+        return pid_t(value)
+    }
 }
 
 private struct SystemTestPlan {
@@ -762,6 +782,7 @@ private struct SystemTestPlan {
     var amount: Double
     var steps: Int
     var interval: TimeInterval
+    var postToPid: pid_t?
     var activationButtonNumber: Int64 {
         Int64(GestureConfiguration.default.activationButton.rawValue)
     }
@@ -771,7 +792,8 @@ private struct SystemTestPlan {
         target: String?,
         amount: Double,
         steps: Int,
-        interval: TimeInterval
+        interval: TimeInterval,
+        postToPid: pid_t?
     ) throws {
         self.scenario = scenario
 
@@ -787,6 +809,7 @@ private struct SystemTestPlan {
         self.amount = amount
         self.steps = steps
         self.interval = interval
+        self.postToPid = postToPid
     }
 
     var description: String {
@@ -796,7 +819,8 @@ private struct SystemTestPlan {
             "target=\(target?.rawValue ?? "none")",
             "amount=\(amount)",
             "steps=\(steps)",
-            "interval=\(interval)"
+            "interval=\(interval)",
+            "postToPid=\(postToPid.map(String.init) ?? "none")"
         ].joined(separator: "\n")
     }
 }
@@ -853,6 +877,26 @@ private enum SystemTestScenario: String {
              .gestureWheel,
              .gestureWheelThenKillSwitch:
             return 32
+        }
+    }
+
+    var supportsProcessTargetPosting: Bool {
+        switch self {
+        case .gestureDrag,
+             .gestureWheel,
+             .gestureWheelThenKillSwitch,
+             .normalAfterRelease:
+            return true
+        case .spaceLeft,
+             .spaceRight,
+             .horizontalScroll,
+             .missionControl,
+             .pageBack,
+             .pageForward,
+             .zoomIn,
+             .zoomOut,
+             .killSwitch:
+            return false
         }
     }
 }

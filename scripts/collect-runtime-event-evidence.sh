@@ -291,6 +291,22 @@ target_pid_from_ready_file() {
   plutil -extract pid raw -o - "$ready_file" 2>/dev/null || true
 }
 
+ready_file_value() {
+  ready_file=$1
+  key=$2
+  plutil -extract "$key" raw -o - "$ready_file" 2>/dev/null || true
+}
+
+target_ready_diagnostics_valid() {
+  ready_file=$1
+  [ "$(ready_file_value "$ready_file" diagnostics.appIsActive)" = "true" ] || return 1
+  [ "$(ready_file_value "$ready_file" diagnostics.windowIsKey)" = "true" ] || return 1
+  [ "$(ready_file_value "$ready_file" diagnostics.windowIsMain)" = "true" ] || return 1
+  [ "$(ready_file_value "$ready_file" diagnostics.firstResponderIsCaptureView)" = "true" ] || return 1
+  [ "$(ready_file_value "$ready_file" diagnostics.focusInsideCaptureView)" = "true" ] || return 1
+  return 0
+}
+
 wait_for_target_events_to_flush() {
   pid=$1
   attempts=0
@@ -395,6 +411,12 @@ run_scenario_with_no_leaks() {
   if [ "${target_pid:-}" = "" ]; then
     target_pid=$(target_pid_from_ready_file "$ready_file")
   fi
+  if ! target_ready_diagnostics_valid "$ready_file"; then
+    append_summary "失敗" "$title target ready diagnostics" "-" "$ready_file"
+    remember_failure "$ready_file"
+    cleanup_processes
+    return
+  fi
 
   printf '$ %s run --config %s --performance-log %s > %s 2>&1 &\n' "$tool_path" "$config_path" "$performance_log" "$daemon_log" >> "$commands_file"
   "$tool_path" run --config "$config_path" --performance-log "$performance_log" > "$daemon_log" 2>&1 &
@@ -429,8 +451,8 @@ run_scenario_with_no_leaks() {
   fi
 
   if [ "$scenario" = "gesture-drag" ] || [ "$scenario" = "gesture-wheel" ] || [ "$scenario" = "gesture-wheel-then-kill-switch" ]; then
-    printf '$ %s analyze-target-log %s --json --assert-no-leaks --assert-has-generated-event > %s 2> %s\n' "$tool_path" "$target_log" "$analysis_json" "$analysis_stderr" >> "$commands_file"
-    "$tool_path" analyze-target-log "$target_log" --json --assert-no-leaks --assert-has-generated-event > "$analysis_json" 2> "$analysis_stderr"
+    printf '$ %s analyze-target-log %s --json --assert-no-leaks --assert-has-generated-event --assert-has-foreground-capture > %s 2> %s\n' "$tool_path" "$target_log" "$analysis_json" "$analysis_stderr" >> "$commands_file"
+    "$tool_path" analyze-target-log "$target_log" --json --assert-no-leaks --assert-has-generated-event --assert-has-foreground-capture > "$analysis_json" 2> "$analysis_stderr"
   else
     printf '$ %s analyze-target-log %s --json --assert-no-leaks > %s 2> %s\n' "$tool_path" "$target_log" "$analysis_json" "$analysis_stderr" >> "$commands_file"
     "$tool_path" analyze-target-log "$target_log" --json --assert-no-leaks > "$analysis_json" 2> "$analysis_stderr"
@@ -486,6 +508,12 @@ run_normal_after_release() {
   if [ "${target_pid:-}" = "" ]; then
     target_pid=$(target_pid_from_ready_file "$ready_file")
   fi
+  if ! target_ready_diagnostics_valid "$ready_file"; then
+    append_summary "失敗" "$title target ready diagnostics" "-" "$ready_file"
+    remember_failure "$ready_file"
+    cleanup_processes
+    return
+  fi
 
   printf '$ %s run --config %s > %s 2>&1 &\n' "$tool_path" "$config_path" "$daemon_log" >> "$commands_file"
   "$tool_path" run --config "$config_path" > "$daemon_log" 2>&1 &
@@ -510,8 +538,8 @@ run_normal_after_release() {
     return
   fi
 
-  printf '$ %s analyze-target-log %s --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel > %s 2> %s\n' "$tool_path" "$target_log" "$analysis_json" "$analysis_stderr" >> "$commands_file"
-  "$tool_path" analyze-target-log "$target_log" --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel > "$analysis_json" 2> "$analysis_stderr"
+  printf '$ %s analyze-target-log %s --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel --assert-has-foreground-capture > %s 2> %s\n' "$tool_path" "$target_log" "$analysis_json" "$analysis_stderr" >> "$commands_file"
+  "$tool_path" analyze-target-log "$target_log" --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel --assert-has-foreground-capture > "$analysis_json" 2> "$analysis_stderr"
   analysis_status=$?
 
   if [ "$analysis_status" -eq 0 ]; then

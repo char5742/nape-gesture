@@ -1752,6 +1752,20 @@ func testRuntimeSafetyStatePassesRegularInputAfterStop() {
     expect(!afterStop.shouldSuppressOriginalEvent, "停止後の通常入力は前面アプリへ通す")
 }
 
+func testRuntimeSafetyStateSuppressesPendingActivationReleaseAfterKillSwitch() {
+    var state = RuntimeSafetyState()
+
+    _ = state.stopForKillSwitch(at: 10, suppressingReleaseOf: .button4)
+    let release = state.inputDecision(.buttonUp(button: .button4, time: 10.1))
+    let laterClick = state.inputDecision(.buttonDown(button: .left, time: 10.2))
+
+    expect(release.shouldSuppressOriginalEvent, "キルスイッチ時に押下中だったジェスチャーボタン解放は漏らさない")
+    expect(!release.shouldProcessGestureInput, "停止後の解放はジェスチャー処理へ戻さない")
+    expect(state.buttonsSuppressedUntilRelease.isEmpty, "解放を1回抑制したら pending を消す")
+    expect(!laterClick.shouldSuppressOriginalEvent, "後続の通常クリックは停止状態でも通す")
+    expect(!laterClick.shouldProcessGestureInput, "停止状態では後続入力をジェスチャー処理へ渡さない")
+}
+
 func testRuntimeSafetyStateDoesNotReenableWithoutReset() {
     var state = RuntimeSafetyState()
 
@@ -2241,6 +2255,7 @@ testSettingsUIFieldCatalogJSONRoundTrip()
 testGUIAppLaunchPresentationUsesRegularAppMode()
 testRuntimeSafetyStateStopsForKillSwitch()
 testRuntimeSafetyStatePassesRegularInputAfterStop()
+testRuntimeSafetyStateSuppressesPendingActivationReleaseAfterKillSwitch()
 testRuntimeSafetyStateDoesNotReenableWithoutReset()
 testRuntimeSafetyStateResetReenablesGestureInput()
 testRuntimeRecoveryStopsBeforeSleepAndDoesNotRetryDuringSleep()

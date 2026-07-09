@@ -101,10 +101,13 @@ final class NapeGestureDaemon {
             return decision.shouldSuppressOriginalEvent ? nil : Unmanaged.passUnretained(event)
         }
 
-        guard safetyState.regularInputDecision().shouldProcessGestureInput,
-              let input = CGEventUtilities.rawInput(from: type, event: event)
-        else {
+        guard let input = CGEventUtilities.rawInput(from: type, event: event) else {
             return Unmanaged.passUnretained(event)
+        }
+
+        let safetyDecision = safetyState.inputDecision(input)
+        guard safetyDecision.shouldProcessGestureInput else {
+            return safetyDecision.shouldSuppressOriginalEvent ? nil : Unmanaged.passUnretained(event)
         }
 
         if let targetGate, !targetGate.shouldHandle(input) {
@@ -220,7 +223,11 @@ final class NapeGestureDaemon {
     }
 
     private func emergencyStop(at time: TimeInterval) -> RuntimeSafetyDecision {
-        let decision = safetyState.stopForKillSwitch(at: time)
+        let releaseToSuppress = recognizer.isIdle ? nil : configuration.activationButton
+        let decision = safetyState.stopForKillSwitch(
+            at: time,
+            suppressingReleaseOf: releaseToSuppress
+        )
         if decision.shouldCancelMomentum {
             cancelMomentum()
         }

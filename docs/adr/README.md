@@ -38,6 +38,8 @@
 | [ADR-0029](0029-grok-operational-surface.md) | Grok 運用知見を AGENTS.md と Codex skill に同期する | Grok、AGENTS.md、Codex skill、補助レビュー |
 | [ADR-0030](0030-computer-use-gui-operation-evidence.md) | Computer Use で GUI 操作と画面証跡を前進させる | computer-use、GUI、System Settings、画面証跡、need:human |
 | [ADR-0031](0031-reference-target-cursor-focus.md) | Reference Target App の無人証跡では capture view へカーソルを固定する | runtime event、Reference Target App、system-test、target log |
+| [ADR-0032](0032-reference-target-foreground-capture.md) | Reference Target App は foreground capture 経路を証跡化する | runtime event、Reference Target App、foreground capture、postToPid |
+| [ADR-0033](0033-kill-switch-pending-release-suppression.md) | キルスイッチ後も進行中ジェスチャーの release は抑制する | Issue #12、kill-switch、activation button、元入力抑制 |
 
 ## 追加時の確認
 
