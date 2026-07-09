@@ -5,13 +5,19 @@
 
 ## 保存する証跡
 
-PR には少なくとも次を添付または本文に要約する。
+性能に関わる PR には、まず純粋ロジック benchmark と doctor benchmark を添付または本文に要約する。
 
 ```sh
 swift build --scratch-path .build
 .build/debug/nape-gesture-core-tests
 .build/debug/nape-gesture benchmark --events 200000 --json --assert-baseline
 .build/debug/nape-gesture doctor --benchmark-events 50000 --json
+```
+
+常駐 CPU 使用率を完了条件として扱う PR では、上記とは別に、日常利用と同じ `.app` または実行ファイルの `nape-gesture` PID へ `sample-cpu` を実行した証跡を添付する。
+completion evidence の短時間 smoke や `/bin/sleep` PID への実行は、コマンド形式の退行確認であり、常駐 CPU 完了証跡にはしない。
+
+```sh
 .build/debug/nape-gesture sample-cpu --pid <nape-gesture PID> --duration 30 --interval 1 --mode idle --json --assert-baseline
 ```
 
@@ -20,9 +26,8 @@ swift build --scratch-path .build
 `BenchmarkReport.schemaVersion` は `3` とし、認識器とスクロール計画の batch p95 / p99 を含める。
 `--assert-baseline` は純粋ロジック benchmark の初期合格基準を満たさない場合に非ゼロ終了する。
 `doctor --json` の `runtimeReadiness` と `tccStatus` は測定主体の状態確認に使うが、純粋ロジック benchmark の合否そのものとは分けて扱う。
-`sample-cpu --json --assert-baseline` は指定 PID の常駐 CPU 使用率を `ps` の `%CPU` で周期サンプルし、idle / active / recovery の平均基準を終了コードで判定する。
 CI では同じ基準として `benchmark --events 200000 --json --assert-baseline` と `doctor --benchmark-events 50000 --json` を実行し、短い smoke 用イベント数だけを性能証跡として扱わない。
-completion evidence の `sample-cpu` はコマンド形式の smoke であり、日常利用主体の常駐 CPU 完了証跡ではない。
+`sample-cpu --json --assert-baseline` は指定 PID の CPU 使用率を `ps` の `%CPU` で周期サンプルし、idle / active / recovery の平均基準を終了コードで判定する。
 
 ## 現時点で測れるもの
 
@@ -33,11 +38,16 @@ completion evidence の `sample-cpu` はコマンド形式の smoke であり、
 - 認識器とスクロール計画の固定 batch wall-clock 由来の p50 / p95 / p99 / max
 - 1 core 換算の CPU 使用率目安
 - `doctor --json` の `runtimeIdentity`、`runtimeReadiness`、`tccStatus`、対象デバイス検出状態
-- 任意 PID の CPU 使用率サンプル、平均値、最大値、基準判定
 
 `cpuPercentOfOneCore` と `reviewMetrics.totalCpuPercentOfOneCore` は、短時間の一括処理で CPU をどれだけ使ったかの目安であり、常駐時 CPU 使用率ではない。
 `sampledNanosecondsPerEvent` と `sampledNanosecondsPerCommand` は純粋ロジックを固定 batch で測った wall-clock 分布であり、tap-to-post や AppKit 受信までの入力遅延ではない。
 常駐時 CPU 使用率は、実機で `run` または `.app` を動かしたプロセスを `sample-cpu` で測る。
+`sample-cpu` で別に測れるもの:
+
+- 指定 PID の CPU 使用率サンプル、平均値、最大値、基準判定
+- `measurementKind: "processCpuSampling"` と `includesEventTapAndPosting: false`
+- idle / active / recovery のモード別 baseline 判定
+
 tap-to-post は、権限済み実行主体で `--performance-log` または `NAPE_RUNTIME_PERFORMANCE_LOG` を有効にし、`analyze-performance-log --json --assert-baseline` で集計する。
 
 ## 実機でしか測れないもの
