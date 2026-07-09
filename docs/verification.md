@@ -5,13 +5,13 @@
 
 ## 現在の確認状態
 
-2026-07-09 時点では、次の runtime event 証跡を最新状態として扱う。
+2026-07-10 時点では、次の runtime event 証跡を最新状態として扱う。
 
 ```sh
-NAPE_RUNTIME_EVENT_USE_APP_BUNDLE=1 NAPE_RUNTIME_EVENT_ARTIFACT_ROOT=artifacts/completion/2026-07-09/runtime-event-kill-switch-release-suppression sh scripts/collect-runtime-event-evidence.sh
+NAPE_RUNTIME_EVENT_USE_APP_BUNDLE=1 NAPE_RUNTIME_EVENT_ARTIFACT_ROOT=artifacts/completion/2026-07-10/runtime-event-main-e153f3c-summary-fix sh scripts/collect-runtime-event-evidence.sh
 ```
 
-この証跡では `.build/NapeGesture.app` を通常 GUI アプリとして作成し、bundle 検証後に同じ `.app` の実行主体で `doctor --probe-hid --json` を実行している。
+この証跡は main `e153f3cc6d71a7b7882bc7faff3db28ab2bc00b2` を対象に、`.build/NapeGesture.app` を通常 GUI アプリとして作成し、bundle 検証後に同じ `.app` の実行主体で `doctor --probe-hid --json` を実行している。
 アクセシビリティと入力監視はどちらも `.app` 経路で許可済み、HID 入力監視プローブは成功、`runtimeReadiness.ready` は `true` である。
 `status.json` は runtime event 証跡の成功を記録している。
 
@@ -33,6 +33,7 @@ executablePath: /Users/fujino/Documents/mac-gesture/.build/NapeGesture.app/Conte
 
 `doctor` の TCC 状態は、`tccStatus.inputMonitoring.status: "granted"`、`tccStatus.accessibility.status: "granted"`、`hidProbe.succeeded: true` を示している。
 `gesture-drag`、`gesture-wheel`、`kill-switch`、`gesture-wheel-then-kill-switch`、`normal-after-release` は target ready diagnostics、foreground capture、`analyze-target-log`、runtime 性能ログで機械判定済みである。
+`summary.md` の項目名は POSIX sh の関数変数が呼び出し元の scenario title を上書きしない修正後の出力を採用し、daemon 停止ログ、target log、runtime 性能ログを別行で読める。
 Nape Pro 実機識別、純正トラックパッド比較、Spaces / Mission Control の画面挙動、公証はまだ完了扱いにしない。
 
 ## 権限確認

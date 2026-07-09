@@ -58,11 +58,7 @@ cat > "$summary_file" <<EOF
 EOF
 
 append_summary() {
-  result=$1
-  title=$2
-  status=$3
-  log_path=$4
-  printf '| %s | %s | %s | `%s` |\n' "$result" "$title" "$status" "$log_path" >> "$summary_file"
+  printf '| %s | %s | %s | `%s` |\n' "$1" "$2" "$3" "$4" >> "$summary_file"
 }
 
 json_escape() {
@@ -116,50 +112,50 @@ $1"
 }
 
 run_combined_success() {
-  title=$1
-  log_path=$2
-  display=$3
+  run_title=$1
+  run_log_path=$2
+  run_display=$3
   shift 3
 
-  mkdir -p "$(dirname -- "$log_path")"
-  printf '$ %s > %s 2>&1\n' "$display" "$log_path" >> "$commands_file"
-  printf '%s\n' "実行中: $title"
+  mkdir -p "$(dirname -- "$run_log_path")"
+  printf '$ %s > %s 2>&1\n' "$run_display" "$run_log_path" >> "$commands_file"
+  printf '%s\n' "実行中: $run_title"
 
-  "$@" > "$log_path" 2>&1
-  status=$?
+  "$@" > "$run_log_path" 2>&1
+  run_status=$?
 
-  if [ "$status" -eq 0 ]; then
-    append_summary "成功" "$title" "$status" "$log_path"
+  if [ "$run_status" -eq 0 ]; then
+    append_summary "成功" "$run_title" "$run_status" "$run_log_path"
   else
-    append_summary "失敗" "$title" "$status" "$log_path"
-    remember_failure "$log_path"
+    append_summary "失敗" "$run_title" "$run_status" "$run_log_path"
+    remember_failure "$run_log_path"
   fi
 
-  return "$status"
+  return "$run_status"
 }
 
 run_split_success() {
-  title=$1
-  stdout_path=$2
-  stderr_path=$3
-  display=$4
+  run_title=$1
+  run_stdout_path=$2
+  run_stderr_path=$3
+  run_display=$4
   shift 4
 
-  mkdir -p "$(dirname -- "$stdout_path")" "$(dirname -- "$stderr_path")"
-  printf '$ %s > %s 2> %s\n' "$display" "$stdout_path" "$stderr_path" >> "$commands_file"
-  printf '%s\n' "実行中: $title"
+  mkdir -p "$(dirname -- "$run_stdout_path")" "$(dirname -- "$run_stderr_path")"
+  printf '$ %s > %s 2> %s\n' "$run_display" "$run_stdout_path" "$run_stderr_path" >> "$commands_file"
+  printf '%s\n' "実行中: $run_title"
 
-  "$@" > "$stdout_path" 2> "$stderr_path"
-  status=$?
+  "$@" > "$run_stdout_path" 2> "$run_stderr_path"
+  run_status=$?
 
-  if [ "$status" -eq 0 ]; then
-    append_summary "成功" "$title" "$status" "$stdout_path"
+  if [ "$run_status" -eq 0 ]; then
+    append_summary "成功" "$run_title" "$run_status" "$run_stdout_path"
   else
-    append_summary "失敗" "$title" "$status" "$stdout_path / $stderr_path"
-    remember_failure "$stdout_path / $stderr_path"
+    append_summary "失敗" "$run_title" "$run_status" "$run_stdout_path / $run_stderr_path"
+    remember_failure "$run_stdout_path / $run_stderr_path"
   fi
 
-  return "$status"
+  return "$run_status"
 }
 
 runtime_identity() {

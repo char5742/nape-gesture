@@ -108,6 +108,7 @@ NAPE_RUNTIME_PERFORMANCE_LOG=<runtime-performance.jsonl> .build/NapeGesture.app/
 
 `scripts/collect-runtime-event-evidence.sh` は、TCC 許可後の `gesture-drag`、`gesture-wheel`、`gesture-wheel-then-kill-switch` で runtime 性能ログを保存し、同じ基準を自動判定する。
 TCC 未許可で scenario が未実行の場合、runtime 性能ログも完成証跡として扱わない。
+2026-07-10 の main `e153f3c` では `artifacts/completion/2026-07-10/runtime-event-main-e153f3c-summary-fix/runtime-performance/` に、`.build/NapeGesture.app` 実行主体の `runtimeTapToPost` 証跡を保存した。`gesture-drag`、`gesture-wheel`、`gesture-wheel-then-kill-switch` はいずれも `missingPostRecordCount: 0` で、`tapToPostFinishedNanoseconds.p95Nanoseconds` はそれぞれ 455375、112458、54833 だった。
 
 ## 実機 CPU 測定手順
 
