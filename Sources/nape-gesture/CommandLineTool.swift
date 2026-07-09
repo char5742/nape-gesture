@@ -136,7 +136,7 @@ final class CommandLineTool {
               nape-gesture verify-bundle [--require-signature] <path>
                   .app バンドルの Info.plist、実行ファイル、配布文書、コード署名状態を検証します。
 
-              nape-gesture generate-scroll --x <値> --y <値> [--steps <数>] [--phase auto|began|changed|ended|cancelled|momentum] [--momentum-steps <数>] [--dry-run] [--json|--log-json]
+              nape-gesture generate-scroll --x <値> --y <値> [--steps <数>] [--phase auto|began|changed|ended|cancelled|momentum] [--momentum-steps <数>] [--ax-delivery sync|async] [--post-to-pid <PID>] [--dry-run] [--json|--log-json]
                   ピクセル単位のスクロールイベントを任意フェーズや慣性つきで生成します。--dry-run --log-json で compare-log 用 JSON Lines を出力します。
 
               nape-gesture init-config [--out <path>] [--vendor-id <ID>] [--product-id <ID>] [--manufacturer-contains <文字>] [--product-contains <文字>] [--transport-contains <文字>] [--usage-page <ID>] [--usage <ID>] [--association-window <秒>] [--allow-unmatched]

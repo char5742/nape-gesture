@@ -214,7 +214,7 @@ struct SystemBehaviorTestCommand {
         interval: TimeInterval
     ) {
         for command in commands {
-            poster.postScroll(command: command, mode: mode)
+            poster.postScroll(command: command, mode: mode, axDelivery: .synchronous)
             Thread.sleep(forTimeInterval: interval)
         }
     }

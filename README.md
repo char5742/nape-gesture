@@ -13,10 +13,10 @@ Mac Mouse Fix のコード、定数、状態遷移、係数は流用しません
 | メニューバー常駐 UI | 実装済み。AppKit `gui-smoke` で status item `NG`、状態、開始、緊急停止、停止、設定、権限導線の生成契約を検査する。SystemUIServer の AX name に出ない場合は `gui-smoke` を正とする | [docs/completion-checklist.md](docs/completion-checklist.md) |
 | 設定 UI | 実装済み。編集項目 catalog、JSON round-trip、computer-use による `.app` 設定表示と保存操作は確認済み。保存は設定ファイル更新までの証跡で、TCC 許可済み runtime と実イベントは completion matrix で管理する | [ADR-0021](docs/adr/0021-settings-ui-field-catalog.md)、[docs/completion-checklist.md](docs/completion-checklist.md) |
 | Runtime event | `.build/NapeGesture.app` の TCC 許可済み経路で成功。gesture-drag / gesture-wheel / kill-switch / gesture-wheel-then-kill-switch / normal-after-release を `scripts/collect-runtime-event-evidence.sh` で機械判定した | [ADR-0032](docs/adr/0032-reference-target-foreground-capture.md)、[ADR-0033](docs/adr/0033-kill-switch-pending-release-suppression.md) |
-| Safari 操作 | ページ戻る / 進む、ズーム、横スクロールの実動作を確認済み。横スクロールはポインタ直下が `AXWebArea` の場合に horizontal scrollbar 経路へ切り替え、`scrollX=0 -> 1272 -> 0` を確認した | [ADR-0034](docs/adr/0034-browser-discrete-shortcut-posting.md)、[ADR-0035](docs/adr/0035-scroll-event-target-process-routing.md) |
+| Safari 操作 | 権限付与済み `.app` の通常経路で、ページ戻る / 進む、ズーム、縦横スクロールの実動作を確認済み。自動化ホスト下の診断 override は通常 runtime と分離している | [ADR-0035](docs/adr/0035-browser-discrete-shortcut-posting.md)、[ADR-0036](docs/adr/0036-scroll-event-target-process-routing.md) |
 | 通常入力通過 | 機械証跡あり。ジェスチャーボタン未押下時と解放後の通常クリック、ドラッグ、ホイールを AppKit target log で確認する | [ADR-0016](docs/adr/0016-normal-input-kind-assertions.md) |
 | 権限導線 | 実装済み。GUI と `doctor` が TCC 権限付与対象を表示し、System Settings を開く | [ADR-0020](docs/adr/0020-doctor-tcc-permission-target.md)、[ADR-0025](docs/adr/0025-gui-permission-recovery-actions.md) |
-| runtime 性能測定 | tap callback から投稿直前/直後までを JSON Lines で保存し、p95 / p99 を判定できる | [docs/performance-baseline.md](docs/performance-baseline.md) |
+| runtime 性能測定 | tap callback から serial queue 内の実配送直前/直後までを JSON Lines schema 2 で保存する。provisional / completion を command ID で解決し、completion のない deferred record は不合格にする | [docs/performance-baseline.md](docs/performance-baseline.md) |
 | 実機完成判定 | 一部は人間作業待ち。純正トラックパッド操作、Nape Pro 実機操作、公証は自動化できない最後の手段として扱う。TCC 許可済み runtime event は機械証跡取得済み | [docs/completion-checklist.md](docs/completion-checklist.md) |
 | 署名・公証済みリリース | 未完了。Developer ID 署名、公証、stapler / Gatekeeper 評価の証跡が必要 | [docs/release.md](docs/release.md) |
 
@@ -141,7 +141,8 @@ swift run nape-gesture init-config --vendor-id <ID> --product-id <ID> --usage-pa
 | `bundle-app` / `verify-bundle` | `.app` を作成し、Info.plist、署名、同梱物、通常 GUI 設定を検証する |
 
 `system-test --post-to-pid` は Reference Target App の sink 診断専用です。
-完成証跡では `.cghidEventTap` 経由の `system-test` と `analyze-target-log --assert-has-foreground-capture` を使います。
+`generate-scroll --post-to-pid` は Codex などの自動化ホスト window がポインタ位置を覆う場合の画面証跡診断専用です。通常 runtime は引き続きポインタ直下の通常 window owner を対象にします。
+完成証跡は配送経路ごとに分けます。Spaces は `.cghidEventTap`、通常アプリ内スクロールはポインタ直下 PID への CGEvent / AX Web fallback、Reference Target App の受信は `analyze-target-log --assert-has-foreground-capture` を使います。
 `system-test run --scenario kill-switch` は未マークの `Control + Option + Command + G` を interval 付きの `keyDown` / `keyUp` として投稿し、daemon 停止ログと target log 漏れなしを確認します。
 
 <details>
@@ -293,7 +294,7 @@ NAPE_RUNTIME_EVENT_USE_APP_BUNDLE=1 sh scripts/collect-runtime-event-evidence.sh
 ```
 
 `benchmark` と `doctor` 内の benchmark は `measurementKind: "pureLogic"` の証跡であり、イベントタップから投稿、AppKit 受信、画面反映までの入力遅延実測ではありません。
-tap-to-post 遅延を完成証跡にする場合は、`run --performance-log` または `NAPE_RUNTIME_PERFORMANCE_LOG` で runtime 性能 JSON Lines を取り、`analyze-performance-log --json --assert-baseline` で判定します。
+tap-to-post 遅延を完成証跡にする場合は、`run --performance-log` または `NAPE_RUNTIME_PERFORMANCE_LOG` で runtime 性能 JSON Lines を取り、`analyze-performance-log --json --assert-baseline` で判定します。schema 2 では async enqueue の実配送 completion 時刻を記録し、`deliveryDeferred=true` の未完了 record が残る場合は不合格です。
 性能レビューで見る JSON キー、CPU 使用率、入力遅延の合格基準は [docs/performance-baseline.md](docs/performance-baseline.md) にまとめています。
 
 ## 開発運用

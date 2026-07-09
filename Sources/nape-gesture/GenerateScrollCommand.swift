@@ -19,6 +19,8 @@ struct GenerateScrollCommand {
         let momentumDecay = try doubleValue(for: "--momentum-decay", defaultValue: 0.85)
         let momentumScale = try doubleValue(for: "--momentum-scale", defaultValue: 1.0)
         let mode = try scrollModeValue()
+        let axDelivery = try axDeliveryValue()
+        let targetProcessID = try targetProcessIDValue()
         let isDryRun = options.contains("--dry-run")
         let outputLogJSON = options.contains("--log-json")
 
@@ -66,11 +68,17 @@ struct GenerateScrollCommand {
         try AccessibilityPermission.ensurePrompted()
         let poster = EventPoster()
         for (index, command) in commands.enumerated() {
-            poster.postScroll(command: command, mode: mode)
+            poster.postScroll(
+                command: command,
+                mode: mode,
+                axDelivery: axDelivery,
+                targetProcessOverride: targetProcessID
+            )
             if index < commands.count - 1 {
                 Thread.sleep(forTimeInterval: interval)
             }
         }
+        poster.waitForPendingAXScroll()
     }
 
     private func doubleValue(for name: String, defaultValue: Double) throws -> Double {
@@ -131,6 +139,31 @@ struct GenerateScrollCommand {
         default:
             throw ToolError.invalidValue("--mode", raw)
         }
+    }
+
+    private func axDeliveryValue() throws -> AXScrollDelivery {
+        guard let raw = SettingsStore.value(for: "--ax-delivery", in: options) else {
+            return .synchronous
+        }
+
+        switch raw {
+        case "sync", "synchronous":
+            return .synchronous
+        case "async", "asynchronous":
+            return .asynchronous
+        default:
+            throw ToolError.invalidValue("--ax-delivery", raw)
+        }
+    }
+
+    private func targetProcessIDValue() throws -> pid_t? {
+        guard let raw = SettingsStore.value(for: "--post-to-pid", in: options) else {
+            return nil
+        }
+        guard let value = Int(raw), (1...Int(Int32.max)).contains(value) else {
+            throw ToolError.invalidValue("--post-to-pid", raw)
+        }
+        return pid_t(value)
     }
 
     private func printPlan(_ commands: [GestureCommand], mode: ScrollPostMode) {

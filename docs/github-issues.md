@@ -237,7 +237,7 @@ Labels: `area:runtime`, `area:verification`, `type:qa`, `priority:p1`
 - 生成キーイベントのログと画面挙動が一致している
 
 現在の証跡:
-2026-07-10 時点で、権限付与済み `.app` bundle から Safari への `pageBack` / `pageForward` / `zoomIn` / `zoomOut` 実動作は確認済み。`horizontalScroll` は Safari Web content で未反映のため、横スクロール可能ビュー側の受信差分調査を残す。詳細は [ADR-0034](adr/0034-browser-discrete-shortcut-posting.md) を参照する。
+2026-07-10 時点で、権限付与済み `.app` bundle から Safari への `pageBack` / `pageForward` / `zoomIn` / `zoomOut` 実動作は確認済み。Safari Web content の CGEvent 合成 scrollWheel は `scrollX` / `scrollY` へ安定反映しないため、application 固定 hit-test と `AXWebArea` scrollbar 経路を補助実装として採用する。実カーソル下が Web content の通常 no-override async 経路で横 `0 -> 1609`、縦 `0 -> 1675`、両軸の原点復帰を確認した。Codex window が対象判定を覆う状態でも、`--post-to-pid <Safari PID>` を使った 32 step 再検証で横 `0 -> 1438`、縦 `0 -> 1675`、両軸の原点復帰を確認済み。通常 runtime の対象は引き続きポインタ直下 window owner とする。詳細は [ADR-0035](adr/0035-browser-discrete-shortcut-posting.md) と [ADR-0036](adr/0036-scroll-event-target-process-routing.md) を参照する。
 
 依存関係:
 アクセシビリティ権限、Issue 3。

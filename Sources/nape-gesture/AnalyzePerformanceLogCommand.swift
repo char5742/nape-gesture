@@ -71,13 +71,14 @@ struct AnalyzePerformanceLogCommand {
         イベントタップから投稿までを含む: \(report.includesEventTapAndPosting ? "はい" : "いいえ")
         レコード数: \(report.recordCount)
         投稿ありレコード数: \(report.postedRecordCount)
+        非同期配送レコード数: \(report.deferredDeliveryRecordCount)
         投稿なしレコード数: \(report.missingPostRecordCount)
         生成イベント数: \(report.generatedEventCount)
         イベント作成失敗数: \(report.failedEventCreationCount)
-        tap callback から投稿直前 p95: \(formatMilliseconds(report.tapToFirstPostNanoseconds.p95Nanoseconds)) ms
-        tap callback から投稿直前 p99: \(formatMilliseconds(report.tapToFirstPostNanoseconds.p99Nanoseconds)) ms
-        tap callback から投稿完了 p95: \(formatMilliseconds(report.tapToPostFinishedNanoseconds.p95Nanoseconds)) ms
-        tap callback から投稿完了 p99: \(formatMilliseconds(report.tapToPostFinishedNanoseconds.p99Nanoseconds)) ms
+        tap callback から実配送直前 p95: \(formatMilliseconds(report.tapToFirstPostNanoseconds.p95Nanoseconds)) ms
+        tap callback から実配送直前 p99: \(formatMilliseconds(report.tapToFirstPostNanoseconds.p99Nanoseconds)) ms
+        tap callback から実配送完了 p95: \(formatMilliseconds(report.tapToPostFinishedNanoseconds.p95Nanoseconds)) ms
+        tap callback から実配送完了 p99: \(formatMilliseconds(report.tapToPostFinishedNanoseconds.p99Nanoseconds)) ms
         認識処理 p95: \(formatMilliseconds(report.recognizerNanoseconds.p95Nanoseconds)) ms
         投稿処理 p95: \(formatMilliseconds(report.postingNanoseconds.p95Nanoseconds)) ms
         """

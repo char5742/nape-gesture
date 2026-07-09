@@ -45,6 +45,7 @@ final class NapeGestureDaemon {
 
     func start() throws {
         try AccessibilityPermission.ensurePrompted()
+        actionExecutor.prepareScrollTarget(synchronously: true)
 
         let mask = CGEventUtilities.eventMask(for: CGEventUtilities.observedMouseEventTypes)
         let userInfo = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
@@ -114,6 +115,11 @@ final class NapeGestureDaemon {
             return Unmanaged.passUnretained(event)
         }
 
+        if case let .buttonDown(button, _) = input,
+           button == configuration.activationButton {
+            actionExecutor.prepareScrollTarget()
+        }
+
         let decision = recognizer.handle(input)
         let performanceContext: RuntimePerformanceContext?
         if performanceRecorder == nil {
@@ -142,15 +148,34 @@ final class NapeGestureDaemon {
         performanceContext: RuntimePerformanceContext? = nil,
         allowsMomentumStart: Bool = true
     ) {
-        for command in commands {
-            let shouldRecordPerformance = performanceContext != nil
+        for (commandIndex, command) in commands.enumerated() {
+            let commandPerformanceContext = performanceContext.map { context in
+                var context = context
+                context.operationID += "-command-\(commandIndex + 1)"
+                return context
+            }
+            let shouldRecordPerformance = commandPerformanceContext != nil
             let postStartedAt = shouldRecordPerformance ? monotonicNanoseconds() : 0
-            let postResult = actionExecutor.post(command: command)
+            let deliveryCompletion: GestureActionDeliveryCompletionHandler?
+            if let commandPerformanceContext {
+                deliveryCompletion = { [weak self] deliveredResult, deliveryStartedAt, deliveryFinishedAt in
+                    self?.recordRuntimePerformance(
+                        command: command,
+                        postResult: deliveredResult,
+                        context: commandPerformanceContext,
+                        postStartedAtNanoseconds: deliveryStartedAt,
+                        postFinishedAtNanoseconds: deliveryFinishedAt
+                    )
+                }
+            } else {
+                deliveryCompletion = nil
+            }
+            let postResult = actionExecutor.post(command: command, completion: deliveryCompletion)
             let postFinishedAt = shouldRecordPerformance ? monotonicNanoseconds() : 0
             recordRuntimePerformance(
                 command: command,
                 postResult: postResult,
-                context: performanceContext,
+                context: commandPerformanceContext,
                 postStartedAtNanoseconds: postStartedAt,
                 postFinishedAtNanoseconds: postFinishedAt
             )
@@ -270,6 +295,7 @@ final class NapeGestureDaemon {
                 postFinishedAtNanoseconds: postFinishedAtNanoseconds,
                 generatedEventCount: postResult.generatedEventCount,
                 failedEventCreationCount: postResult.failedEventCreationCount,
+                deliveryDeferred: postResult.deliveryDeferred,
                 suppressedOriginal: context.suppressedOriginal
             )
         )

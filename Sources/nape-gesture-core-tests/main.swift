@@ -129,7 +129,8 @@ func makeRuntimePerformanceRecord(
     tapToPostFinishedNanoseconds: UInt64,
     source: RuntimePerformanceSource = .eventTap,
     generatedEventCount: Int = 1,
-    failedEventCreationCount: Int = 0
+    failedEventCreationCount: Int = 0,
+    deliveryDeferred: Bool = false
 ) -> RuntimePerformanceRecord {
     let base = UInt64(1_000_000_000 + index * 100_000_000)
     return RuntimePerformanceRecord(
@@ -146,6 +147,7 @@ func makeRuntimePerformanceRecord(
         postFinishedAtNanoseconds: base + tapToPostFinishedNanoseconds,
         generatedEventCount: generatedEventCount,
         failedEventCreationCount: failedEventCreationCount,
+        deliveryDeferred: deliveryDeferred,
         suppressedOriginal: true
     )
 }
@@ -2186,6 +2188,69 @@ func testRuntimePerformanceAnalyzerDoesNotTreatMomentumAsTapToPost() {
     expect(failedItems.contains("eventTapPostedRecordCount"), "event tap 由来投稿がないことを基準違反にする")
 }
 
+func testRuntimePerformanceAnalyzerDoesNotTreatDeferredDeliveryAsCompletedPost() {
+    let record = makeRuntimePerformanceRecord(
+        index: 1,
+        tapToPostStartNanoseconds: 1_000_000,
+        tapToPostFinishedNanoseconds: 1_100_000,
+        deliveryDeferred: true
+    )
+
+    let report = RuntimePerformanceAnalyzer.analyze(records: [record])
+    let evaluation = RuntimePerformanceAnalyzer.evaluate(report)
+    let failedItems = Set(evaluation.failures.map(\.item))
+
+    expect(report.postedRecordCount == 0, "非同期 enqueue を投稿完了件数へ含めない")
+    expect(report.deferredDeliveryRecordCount == 1, "非同期配送件数を独立集計する")
+    expect(report.missingPostRecordCount == 0, "非同期 enqueue をイベント作成失敗と混同しない")
+    expect(report.tapToPostFinishedNanoseconds.sampleCount == 0, "非同期 enqueue を投稿完了 latency に混ぜない")
+    expect(!evaluation.passed, "実配送完了を測っていない非同期ログは性能基準を通さない")
+    expect(failedItems.contains("deferredDeliveryRecordCount"), "非同期配送が残ることを基準違反にする")
+}
+
+func testRuntimePerformanceAnalyzerResolvesDeferredDeliveryCompletion() {
+    let deferred = makeRuntimePerformanceRecord(
+        index: 1,
+        tapToPostStartNanoseconds: 1_000_000,
+        tapToPostFinishedNanoseconds: 1_100_000,
+        deliveryDeferred: true
+    )
+    var completed = makeRuntimePerformanceRecord(
+        index: 2,
+        tapToPostStartNanoseconds: 2_000_000,
+        tapToPostFinishedNanoseconds: 2_100_000
+    )
+    completed.operationID = deferred.operationID
+
+    let report = RuntimePerformanceAnalyzer.analyze(records: [completed, deferred])
+    let evaluation = RuntimePerformanceAnalyzer.evaluate(report)
+
+    expect(report.recordCount == 1, "provisional と completion を1配送へ解決する")
+    expect(report.postedRecordCount == 1, "completion を実配送済みとして集計する")
+    expect(report.deferredDeliveryRecordCount == 0, "completion 済み provisional を未完了に残さない")
+    expect(report.tapToPostFinishedNanoseconds.sampleCount == 1, "completion の latency だけを集計する")
+    expect(evaluation.passed, "completion 済み非同期配送は性能基準を通る")
+}
+
+func testRuntimePerformanceRecordDecodesSchema1WithoutDeferredField() {
+    let source = makeRuntimePerformanceRecord(
+        index: 1,
+        tapToPostStartNanoseconds: 1_000_000,
+        tapToPostFinishedNanoseconds: 1_100_000
+    )
+    let encoded = try! JSONEncoder().encode(source)
+    var object = try! JSONSerialization.jsonObject(with: encoded) as! [String: Any]
+    object["schemaVersion"] = 1
+    object.removeValue(forKey: "deliveryDeferred")
+    let legacyData = try! JSONSerialization.data(withJSONObject: object)
+    let decoded = try! JSONDecoder().decode(RuntimePerformanceRecord.self, from: legacyData)
+    let report = RuntimePerformanceAnalyzer.analyze(records: [decoded])
+
+    expect(decoded.deliveryDeferred == nil, "schema 1 の欠落 deferred field を未指定として読む")
+    expect(report.postedRecordCount == 1, "schema 1 の同期投稿を完了済みとして維持する")
+    expect(report.deferredDeliveryRecordCount == 0, "schema 1 を非同期 enqueue と誤認しない")
+}
+
 testPassesThroughWhenActivationButtonIsNotPressed()
 testActivationButtonSuppressesOriginalInputBeforeThreshold()
 testDragBeginsAfterDeadZoneAndLocksDominantDirection()
@@ -2279,6 +2344,9 @@ testPermissionRecoveryPresenterDoesNotOfferGrantedActions()
 testRuntimePerformanceAnalyzerComputesTapToPostDistributions()
 testRuntimePerformanceAnalyzerRejectsMissingAndSlowPosts()
 testRuntimePerformanceAnalyzerDoesNotTreatMomentumAsTapToPost()
+testRuntimePerformanceAnalyzerDoesNotTreatDeferredDeliveryAsCompletedPost()
+testRuntimePerformanceAnalyzerResolvesDeferredDeliveryCompletion()
+testRuntimePerformanceRecordDecodesSchema1WithoutDeferredField()
 
 if failures == 0 {
     print("すべてのコアテストに成功しました。")

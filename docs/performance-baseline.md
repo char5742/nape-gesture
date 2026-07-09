@@ -34,21 +34,21 @@ CI では同じ基準として `benchmark --events 200000 --json --assert-baseli
 `cpuPercentOfOneCore` と `reviewMetrics.totalCpuPercentOfOneCore` は、短時間の一括処理で CPU をどれだけ使ったかの目安であり、常駐時 CPU 使用率ではない。
 `sampledNanosecondsPerEvent` と `sampledNanosecondsPerCommand` は純粋ロジックを固定 batch で測った wall-clock 分布であり、tap-to-post や AppKit 受信までの入力遅延ではない。
 常駐時 CPU 使用率は、実機で `run` を動かしたプロセスを外部サンプルで測る。
-tap-to-post は、権限済み実行主体で `--performance-log` または `NAPE_RUNTIME_PERFORMANCE_LOG` を有効にし、`analyze-performance-log --json --assert-baseline` で集計する。
+tap-to-post は、権限済み実行主体で `--performance-log` または `NAPE_RUNTIME_PERFORMANCE_LOG` を有効にし、`analyze-performance-log --json --assert-baseline` で集計する。非同期配送は enqueue 時の provisional record と serial queue 内の実配送 completion record を同じ command ID で結び、解析時に1配送へ確定する。
 
 ## 実機でしか測れないもの
 
 次は `benchmark` では完了扱いにしない。
 
 - IOHID または CGEvent tap へ入力が届くまでの遅延
-- tap callback から `CGEventPost` 完了までの処理時間
+- tap callback から AX / CGEvent 実配送完了までの処理時間
 - 投稿イベントが AppKit や対象アプリに届くまでの遅延
 - WindowServer、Spaces、Mission Control の画面反映時間
 - Nape Pro 実機の連続操作中 CPU 使用率
 - スリープ復帰、デバイス抜き差し、権限変更後の復旧時 CPU 使用率
 
 tap-to-post は runtime 性能 JSON Lines から自動集計する。
-この値を完了条件に含める PR では、イベントタップ受信時刻、投稿直前/直後時刻、投稿コマンド数を同じ操作 ID で記録した `RuntimePerformanceRecord` と、`analyze-performance-log --json --assert-baseline` の出力を添付する。
+この値を完了条件に含める PR では、イベントタップ受信時刻、serial queue 内の実配送直前/直後時刻、投稿コマンド数を同じ操作 ID で記録した `RuntimePerformanceRecord` schema 2 と、`analyze-performance-log --json --assert-baseline` の出力を添付する。
 投稿から AppKit 受信までの遅延と画面反映時間は runtime 性能ログだけでは算出できないため、Reference Target App の target log または同等の実測証跡を別途添付する。
 
 ## 合格基準
@@ -81,14 +81,14 @@ tap-to-post は runtime 性能 JSON Lines から自動集計する。
 
 | 区間 | 基準 |
 | --- | --- |
-| tap callback から最初の投稿まで | p95 8 ms 以下、p99 16 ms 以下 |
-| tap callback から連続スクロール投稿まで | p95 8 ms 以下、p99 16 ms 以下 |
+| tap callback から queue 内の最初の実配送まで | p95 8 ms 以下、p99 16 ms 以下 |
+| tap callback から連続スクロール実配送まで | p95 8 ms 以下、p99 16 ms 以下 |
 | 投稿から AppKit 受信まで | p95 16 ms 以下 |
 
 上記の実機基準は、アクセシビリティと入力監視が許可された日常利用と同じ `.app` または実行ファイルで測る。
 `doctor --json` の `runtimeIdentity` が、実際に許可した対象と一致していない測定は採用しない。
 tap callback から投稿までの基準は `analyze-performance-log --assert-baseline` で終了コード判定する。
-投稿なしレコード、生成イベント作成失敗、`measurementKind != runtimeTapToPost`、`includesEventTapAndPosting != true` は不合格とする。
+投稿なしレコード、生成イベント作成失敗、`deliveryDeferred=true` の未完了レコード、`measurementKind != runtimeTapToPost`、`includesEventTapAndPosting != true` は不合格とする。
 
 ## tap-to-post 測定手順
 
@@ -107,6 +107,7 @@ NAPE_RUNTIME_PERFORMANCE_LOG=<runtime-performance.jsonl> .build/NapeGesture.app/
 ```
 
 `scripts/collect-runtime-event-evidence.sh` は、TCC 許可後の `gesture-drag`、`gesture-wheel`、`gesture-wheel-then-kill-switch` で runtime 性能ログを保存し、同じ基準を自動判定する。
+schema 2 の `deferredDeliveryRecordCount` は 0 であることを要求する。completion 済み provisional は解析時に同じ `operationID` の completion へ解決し、queue completion が失われた provisional だけを未完了として残す。
 TCC 未許可で scenario が未実行の場合、runtime 性能ログも完成証跡として扱わない。
 
 ## 実機 CPU 測定手順

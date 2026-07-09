@@ -6,7 +6,7 @@ public enum RuntimePerformanceSource: String, Codable, Equatable, Sendable {
 }
 
 public struct RuntimePerformanceRecord: Codable, Equatable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public var schemaVersion: Int
     public var operationID: String
@@ -22,6 +22,7 @@ public struct RuntimePerformanceRecord: Codable, Equatable, Sendable {
     public var postFinishedAtNanoseconds: UInt64
     public var generatedEventCount: Int
     public var failedEventCreationCount: Int
+    public var deliveryDeferred: Bool?
     public var suppressedOriginal: Bool
 
     public init(
@@ -39,6 +40,7 @@ public struct RuntimePerformanceRecord: Codable, Equatable, Sendable {
         postFinishedAtNanoseconds: UInt64,
         generatedEventCount: Int,
         failedEventCreationCount: Int,
+        deliveryDeferred: Bool = false,
         suppressedOriginal: Bool
     ) {
         self.schemaVersion = schemaVersion
@@ -55,6 +57,7 @@ public struct RuntimePerformanceRecord: Codable, Equatable, Sendable {
         self.postFinishedAtNanoseconds = postFinishedAtNanoseconds
         self.generatedEventCount = generatedEventCount
         self.failedEventCreationCount = failedEventCreationCount
+        self.deliveryDeferred = deliveryDeferred
         self.suppressedOriginal = suppressedOriginal
     }
 }
@@ -67,6 +70,7 @@ public struct RuntimePerformanceReport: Codable, Equatable, Sendable {
     public var recordCount: Int
     public var postedRecordCount: Int
     public var eventTapPostedRecordCount: Int
+    public var deferredDeliveryRecordCount: Int
     public var missingPostRecordCount: Int
     public var generatedEventCount: Int
     public var failedEventCreationCount: Int
@@ -113,22 +117,27 @@ public enum RuntimePerformanceAnalyzer {
     public static let measurementKind = "runtimeTapToPost"
 
     public static func analyze(records: [RuntimePerformanceRecord]) -> RuntimePerformanceReport {
-        let postedRecords = records.filter { $0.generatedEventCount > 0 }
+        let resolvedRecords = resolveDeferredDeliveries(records)
+        let generatedRecords = resolvedRecords.filter { $0.generatedEventCount > 0 }
+        let deferredRecords = generatedRecords.filter { $0.deliveryDeferred == true }
+        let postedRecords = generatedRecords.filter { $0.deliveryDeferred != true }
         let eventTapPostedRecords = postedRecords.filter { $0.source == .eventTap }
+        let missingPostRecords = resolvedRecords.filter { $0.generatedEventCount == 0 }
 
         return RuntimePerformanceReport(
-            schemaVersion: 1,
+            schemaVersion: 2,
             measurementKind: measurementKind,
-            measurementScope: "event tap callback、認識処理、CGEvent 投稿直前/直後まで。AppKit 受信と画面反映は含みません。",
-            includesEventTapAndPosting: true,
-            recordCount: records.count,
+            measurementScope: "event tap callback、認識処理、serial queue 内の AX / CGEvent 実配送直前/直後まで。enqueue だけの非同期配送は件数だけ記録し、実配送 latency 分布には含めません。AppKit 受信と画面反映は含みません。",
+            includesEventTapAndPosting: !postedRecords.isEmpty,
+            recordCount: resolvedRecords.count,
             postedRecordCount: postedRecords.count,
             eventTapPostedRecordCount: eventTapPostedRecords.count,
-            missingPostRecordCount: records.count - postedRecords.count,
-            generatedEventCount: records.reduce(0) { $0 + $1.generatedEventCount },
-            failedEventCreationCount: records.reduce(0) { $0 + $1.failedEventCreationCount },
-            sourceCounts: counts(records.map { $0.source.rawValue }),
-            actionCounts: counts(records.map { $0.action.rawValue }),
+            deferredDeliveryRecordCount: deferredRecords.count,
+            missingPostRecordCount: missingPostRecords.count,
+            generatedEventCount: resolvedRecords.reduce(0) { $0 + $1.generatedEventCount },
+            failedEventCreationCount: resolvedRecords.reduce(0) { $0 + $1.failedEventCreationCount },
+            sourceCounts: counts(resolvedRecords.map { $0.source.rawValue }),
+            actionCounts: counts(resolvedRecords.map { $0.action.rawValue }),
             tapToFirstPostNanoseconds: RuntimePerformanceDistribution(
                 measurement: "tapCallbackToPostStartNanoseconds",
                 sampleUnit: "command",
@@ -146,7 +155,7 @@ public enum RuntimePerformanceAnalyzer {
             recognizerNanoseconds: RuntimePerformanceDistribution(
                 measurement: "recognizerNanoseconds",
                 sampleUnit: "command",
-                samples: records.map {
+                samples: resolvedRecords.map {
                     positiveDifference($0.recognizerFinishedAtNanoseconds, $0.tapCallbackStartedAtNanoseconds)
                 }
             ),
@@ -158,6 +167,34 @@ public enum RuntimePerformanceAnalyzer {
                 }
             )
         )
+    }
+
+    private static func resolveDeferredDeliveries(
+        _ records: [RuntimePerformanceRecord]
+    ) -> [RuntimePerformanceRecord] {
+        var operationOrder: [String] = []
+        var recordsByOperation: [String: [RuntimePerformanceRecord]] = [:]
+        for record in records {
+            if recordsByOperation[record.operationID] == nil {
+                operationOrder.append(record.operationID)
+            }
+            recordsByOperation[record.operationID, default: []].append(record)
+        }
+
+        return operationOrder.flatMap { operationID -> [RuntimePerformanceRecord] in
+            guard let operationRecords = recordsByOperation[operationID] else {
+                return []
+            }
+            guard operationRecords.contains(where: { $0.deliveryDeferred == true }) else {
+                return operationRecords
+            }
+            if let completed = operationRecords
+                .filter({ $0.deliveryDeferred != true })
+                .max(by: { $0.postFinishedAtNanoseconds < $1.postFinishedAtNanoseconds }) {
+                return [completed]
+            }
+            return operationRecords.last.map { [$0] } ?? []
+        }
     }
 
     public static func evaluate(
@@ -206,6 +243,12 @@ public enum RuntimePerformanceAnalyzer {
             )
         }
 
+        appendMaximumFailure(
+            item: "deferredDeliveryRecordCount",
+            actual: Double(report.deferredDeliveryRecordCount),
+            maximum: 0,
+            failures: &failures
+        )
         appendMaximumFailure(
             item: "missingPostRecordCount",
             actual: Double(report.missingPostRecordCount),
