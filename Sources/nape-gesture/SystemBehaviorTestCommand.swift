@@ -909,8 +909,25 @@ private struct SystemTestReadinessReport: Encodable {
         var failures: [String] = []
         let scenarioNames = Set(scenarios.map(\.scenario))
         let expectedNames = Set(SystemTestScenario.allCases.map(\.rawValue))
+        let expectedScreenBehaviorNames = Set([
+            SystemTestScenario.spaceLeft.rawValue,
+            SystemTestScenario.spaceRight.rawValue,
+            SystemTestScenario.missionControl.rawValue,
+            SystemTestScenario.horizontalScroll.rawValue,
+            SystemTestScenario.pageBack.rawValue,
+            SystemTestScenario.pageForward.rawValue,
+            SystemTestScenario.zoomIn.rawValue,
+            SystemTestScenario.zoomOut.rawValue
+        ])
+        let actualScreenBehaviorNames = Set(
+            scenarios
+                .filter(\.requiresScreenBehaviorEvidence)
+                .map(\.scenario)
+        )
         let missingScenarios = expectedNames.subtracting(scenarioNames).sorted()
         let unexpectedScenarios = scenarioNames.subtracting(expectedNames).sorted()
+        let missingScreenBehaviorScenarios = expectedScreenBehaviorNames.subtracting(actualScreenBehaviorNames).sorted()
+        let unexpectedScreenBehaviorScenarios = actualScreenBehaviorNames.subtracting(expectedScreenBehaviorNames).sorted()
         if !missingScenarios.isEmpty {
             failures.append("readiness にない system-test scenario: \(missingScenarios.joined(separator: ", "))")
         }
@@ -920,8 +937,15 @@ private struct SystemTestReadinessReport: Encodable {
         if summary.scenarioCount != SystemTestScenario.allCases.count {
             failures.append("scenarioCount が SystemTestScenario.allCases と一致しません。")
         }
-        if summary.screenBehaviorPendingScenarioCount < 7 {
-            failures.append("Issue #9 / #10 の画面挙動待ちシナリオ数が想定より少ないです。")
+        if !missingScreenBehaviorScenarios.isEmpty || !unexpectedScreenBehaviorScenarios.isEmpty {
+            failures.append(
+                "Issue #9 / #10 の画面挙動待ちシナリオが期待値と一致しません。"
+                    + " missing=[\(missingScreenBehaviorScenarios.joined(separator: ", "))]"
+                    + " unexpected=[\(unexpectedScreenBehaviorScenarios.joined(separator: ", "))]"
+            )
+        }
+        if summary.screenBehaviorPendingScenarioCount != expectedScreenBehaviorNames.count {
+            failures.append("Issue #9 / #10 の画面挙動待ちシナリオ数が想定と一致しません。")
         }
         if scenarios.filter({ $0.relatedIssues.contains(9) }).isEmpty {
             failures.append("Issue #9 に紐づく scenario がありません。")
