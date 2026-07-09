@@ -2,7 +2,20 @@ import AppKit
 import CoreGraphics
 import Foundation
 
-final class ReferenceTargetApp: NSObject, NSApplicationDelegate {
+private protocol ReferenceTargetEventSink: AnyObject {
+    func recordDelivered(event: NSEvent, source: String)
+}
+
+final class ReferenceTargetApplication: NSApplication {
+    fileprivate weak var eventSink: ReferenceTargetEventSink?
+
+    override func sendEvent(_ event: NSEvent) {
+        eventSink?.recordDelivered(event: event, source: "sendEvent")
+        super.sendEvent(event)
+    }
+}
+
+final class ReferenceTargetApp: NSObject, NSApplicationDelegate, ReferenceTargetEventSink {
     private static var retainedDelegate: ReferenceTargetApp?
 
     private let configuration: ReferenceTargetConfiguration
@@ -11,6 +24,7 @@ final class ReferenceTargetApp: NSObject, NSApplicationDelegate {
     private var terminationTimer: Timer?
     private var launchFailure: Error?
     private var window: NSWindow?
+    private weak var captureView: EventCaptureView?
     private var textView: NSTextView?
     private var focusRecord: ReferenceTargetFocusRecord?
     private var localEventMonitor: Any?
@@ -24,10 +38,13 @@ final class ReferenceTargetApp: NSObject, NSApplicationDelegate {
 
     static func run(options: [String]) throws {
         let configuration = try ReferenceTargetConfiguration(options: options)
-        let app = NSApplication.shared
+        guard let app = ReferenceTargetApplication.shared as? ReferenceTargetApplication else {
+            throw ToolError.invalidValue("target", "ReferenceTargetApplication を初期化できませんでした。")
+        }
         let delegate = ReferenceTargetApp(configuration: configuration)
         try delegate.openOutputIfNeeded()
         retainedDelegate = delegate
+        app.eventSink = delegate
         app.delegate = delegate
         app.setActivationPolicy(.regular)
         app.activate(ignoringOtherApps: true)
@@ -41,6 +58,9 @@ final class ReferenceTargetApp: NSObject, NSApplicationDelegate {
         terminationTimer?.invalidate()
         terminationTimer = nil
         removeEventMonitors()
+        if let app = NSApp as? ReferenceTargetApplication {
+            app.eventSink = nil
+        }
         closeOutputIfNeeded()
         Self.retainedDelegate = nil
     }
@@ -54,6 +74,7 @@ final class ReferenceTargetApp: NSObject, NSApplicationDelegate {
             defer: false
         )
         window.title = "Nape Gesture Reference Target"
+        window.acceptsMouseMovedEvents = true
         window.center()
 
         let split = NSSplitView(frame: frame)
@@ -80,7 +101,11 @@ final class ReferenceTargetApp: NSObject, NSApplicationDelegate {
         focusRecord = focusCapturePointIfNeeded(captureView: captureView, window: window)
 
         self.window = window
+        self.captureView = captureView
         self.textView = textView
+        captureView.onEvent = { [weak self] record in
+            self?.append(record)
+        }
         textView.appendLine("ここにマウス、スクロール、ジェスチャーイベントが表示されます。")
         if let outputPath = configuration.outputPath {
             textView.appendLine("JSON Lines 出力: \(outputPath)")
@@ -94,6 +119,10 @@ final class ReferenceTargetApp: NSObject, NSApplicationDelegate {
             launchFailure = error
             NSApp.terminate(nil)
         }
+    }
+
+    func recordDelivered(event: NSEvent, source: String) {
+        record(event: event, textView: textView, source: source)
     }
 
     private func openOutputIfNeeded() throws {
@@ -125,7 +154,8 @@ final class ReferenceTargetApp: NSObject, NSApplicationDelegate {
             pid: ProcessInfo.processInfo.processIdentifier,
             timestamp: Date().timeIntervalSince1970,
             outputPath: configuration.outputPath,
-            focus: focusRecord
+            focus: focusRecord,
+            diagnostics: makeReadyDiagnostics()
         ))
         data.append(Data("\n".utf8))
         try data.write(to: url, options: .atomic)
@@ -166,6 +196,57 @@ final class ReferenceTargetApp: NSObject, NSApplicationDelegate {
         )
     }
 
+    private func makeReadyDiagnostics() -> ReferenceTargetDiagnosticsRecord? {
+        guard let window else {
+            return nil
+        }
+
+        let app = NSApp
+        let windowBounds = quartzWindowBounds(for: window)
+        let firstResponder = window.firstResponder
+        let captureFrame = captureView?.frame ?? .zero
+        let focusWindowPoint = focusRecord.map {
+            window.convertPoint(fromScreen: NSPoint(x: $0.appKitScreenX, y: $0.appKitScreenY))
+        }
+        let focusContentPoint = focusWindowPoint.flatMap { point in
+            window.contentView?.convert(point, from: nil)
+        }
+        let hitTestClass = focusContentPoint.flatMap { point in
+            window.contentView?.hitTest(point).map { String(describing: type(of: $0)) }
+        }
+
+        return ReferenceTargetDiagnosticsRecord(
+            appIsActive: app?.isActive ?? false,
+            windowIsKey: window.isKeyWindow,
+            windowIsMain: window.isMainWindow,
+            firstResponderClass: firstResponder.map { String(describing: type(of: $0)) },
+            firstResponderIsCaptureView: firstResponder === captureView,
+            windowNumber: window.windowNumber,
+            appKitWindowX: Double(window.frame.minX),
+            appKitWindowY: Double(window.frame.minY),
+            appKitWindowWidth: Double(window.frame.width),
+            appKitWindowHeight: Double(window.frame.height),
+            captureFrameX: Double(captureFrame.minX),
+            captureFrameY: Double(captureFrame.minY),
+            captureFrameWidth: Double(captureFrame.width),
+            captureFrameHeight: Double(captureFrame.height),
+            focusInsideWindow: focusInside(bounds: windowBounds),
+            focusInsideCaptureView: focusContentPoint.map { captureFrame.contains($0) },
+            focusHitTestClass: hitTestClass,
+            quartzWindowX: windowBounds.map { Double($0.minX) },
+            quartzWindowY: windowBounds.map { Double($0.minY) },
+            quartzWindowWidth: windowBounds.map { Double($0.width) },
+            quartzWindowHeight: windowBounds.map { Double($0.height) }
+        )
+    }
+
+    private func focusInside(bounds: CGRect?) -> Bool? {
+        guard let bounds, let focusRecord else {
+            return nil
+        }
+        return bounds.contains(CGPoint(x: focusRecord.quartzX, y: focusRecord.quartzY))
+    }
+
     private func focusPoint(
         appKitScreenPoint point: NSPoint,
         screen: NSScreen?,
@@ -190,9 +271,27 @@ final class ReferenceTargetApp: NSObject, NSApplicationDelegate {
 
     private func quartzWindowBounds(for window: NSWindow) -> CGRect? {
         let windowID = CGWindowID(window.windowNumber)
-        guard let descriptions = CGWindowListCreateDescriptionFromArray([windowID] as CFArray) as? [[String: Any]],
-              let entry = descriptions.first,
-              let bounds = entry[kCGWindowBounds as String] as? [String: Any]
+        if let descriptions = CGWindowListCreateDescriptionFromArray([windowID] as CFArray) as? [[String: Any]],
+           let entry = descriptions.first,
+           let bounds = entry[kCGWindowBounds as String] as? [String: Any] {
+            return CGRect(dictionaryRepresentation: bounds as CFDictionary)
+        }
+
+        let options = CGWindowListOption(arrayLiteral: .optionOnScreenOnly, .excludeDesktopElements)
+        guard let descriptions = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
+            return nil
+        }
+        let currentPID = Int(ProcessInfo.processInfo.processIdentifier)
+        guard let entry = descriptions.first(where: { description in
+            let ownerPID = description[kCGWindowOwnerPID as String] as? Int
+            let number = description[kCGWindowNumber as String] as? Int
+            return ownerPID == currentPID && number == Int(windowID)
+        }) ?? descriptions.first(where: { description in
+            let ownerPID = description[kCGWindowOwnerPID as String] as? Int
+            let ownerName = description[kCGWindowOwnerName as String] as? String
+            return ownerPID == currentPID || ownerName == "Nape Gesture"
+        }),
+        let bounds = entry[kCGWindowBounds as String] as? [String: Any]
         else {
             return nil
         }
@@ -220,6 +319,7 @@ final class ReferenceTargetApp: NSObject, NSApplicationDelegate {
             .otherMouseDown,
             .otherMouseUp,
             .otherMouseDragged,
+            .mouseMoved,
             .scrollWheel,
             .keyDown,
             .keyUp,
@@ -228,11 +328,11 @@ final class ReferenceTargetApp: NSObject, NSApplicationDelegate {
             .rotate
         ])
         localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self, weak textView] event in
-            self?.record(event: event, textView: textView)
+            self?.record(event: event, textView: textView, source: "localMonitor")
             return event
         }
         globalEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self, weak textView] event in
-            self?.record(event: event, textView: textView)
+            self?.record(event: event, textView: textView, source: "globalMonitor")
         }
     }
 
@@ -247,15 +347,18 @@ final class ReferenceTargetApp: NSObject, NSApplicationDelegate {
         globalEventMonitor = nil
     }
 
-    private func record(event: NSEvent, textView: NSTextView?) {
+    private func record(event: NSEvent, textView: NSTextView?, source: String) {
         guard let eventName = targetEventName(for: event) else {
             return
         }
         let position = window?.contentView?.convert(event.locationInWindow, from: nil) ?? event.locationInWindow
-        let record = TargetEventRecord(name: eventName, event: event, position: position)
-        DispatchQueue.main.async { [weak self, weak textView] in
-            self?.write(record)
-            textView?.appendLine(record.displayLine)
+        let record = TargetEventRecord(name: eventName, event: event, position: position, captureSource: source)
+        if Thread.isMainThread {
+            append(record)
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                self?.append(record)
+            }
         }
     }
 
@@ -287,6 +390,8 @@ final class ReferenceTargetApp: NSObject, NSApplicationDelegate {
             return "otherMouseUp"
         case .otherMouseDragged:
             return "otherMouseDragged"
+        case .mouseMoved:
+            return "mouseMoved"
         case .keyDown:
             return "keyDown"
         case .keyUp:
@@ -304,6 +409,11 @@ final class ReferenceTargetApp: NSObject, NSApplicationDelegate {
         }
         outputHandle.write(data)
         outputHandle.write(Data("\n".utf8))
+    }
+
+    private func append(_ record: TargetEventRecord) {
+        write(record)
+        textView?.appendLine(record.displayLine)
     }
 
     private func closeOutputIfNeeded() {
@@ -351,6 +461,7 @@ private struct ReferenceTargetReadyRecord: Codable, Equatable {
     var timestamp: TimeInterval
     var outputPath: String?
     var focus: ReferenceTargetFocusRecord?
+    var diagnostics: ReferenceTargetDiagnosticsRecord?
 }
 
 private struct ReferenceTargetFocusRecord: Codable, Equatable {
@@ -365,6 +476,30 @@ private struct ReferenceTargetFocusRecord: Codable, Equatable {
     var windowQuartzY: Double?
     var windowQuartzWidth: Double?
     var windowQuartzHeight: Double?
+}
+
+private struct ReferenceTargetDiagnosticsRecord: Codable, Equatable {
+    var appIsActive: Bool
+    var windowIsKey: Bool
+    var windowIsMain: Bool
+    var firstResponderClass: String?
+    var firstResponderIsCaptureView: Bool
+    var windowNumber: Int
+    var appKitWindowX: Double
+    var appKitWindowY: Double
+    var appKitWindowWidth: Double
+    var appKitWindowHeight: Double
+    var captureFrameX: Double
+    var captureFrameY: Double
+    var captureFrameWidth: Double
+    var captureFrameHeight: Double
+    var focusInsideWindow: Bool?
+    var focusInsideCaptureView: Bool?
+    var focusHitTestClass: String?
+    var quartzWindowX: Double?
+    var quartzWindowY: Double?
+    var quartzWindowWidth: Double?
+    var quartzWindowHeight: Double?
 }
 
 final class EventCaptureView: NSView {
@@ -438,6 +573,10 @@ final class EventCaptureView: NSView {
         emit("rightMouseDragged", event: event)
     }
 
+    override func mouseMoved(with event: NSEvent) {
+        emit("mouseMoved", event: event)
+    }
+
     override func keyDown(with event: NSEvent) {
         emit("keyDown", event: event)
     }
@@ -448,7 +587,7 @@ final class EventCaptureView: NSView {
 
     private func emit(_ name: String, event: NSEvent) {
         let position = convert(event.locationInWindow, from: nil)
-        onEvent?(TargetEventRecord(name: name, event: event, position: position))
+        onEvent?(TargetEventRecord(name: name, event: event, position: position, captureSource: "captureView"))
     }
 }
 
@@ -471,26 +610,28 @@ struct TargetEventRecord: Codable, Equatable {
     var modifierFlags: UInt
     var keyCode: UInt16?
     var generatedByNapeGesture: Bool
+    var captureSource: String?
 
-    init(name: String, event: NSEvent, position: NSPoint) {
+    init(name: String, event: NSEvent, position: NSPoint, captureSource: String? = nil) {
         self.timestamp = event.timestamp
         self.name = name
         locationX = Double(position.x)
         locationY = Double(position.y)
-        deltaX = Double(event.deltaX)
-        deltaY = Double(event.deltaY)
-        scrollingDeltaX = Double(event.scrollingDeltaX)
-        scrollingDeltaY = Double(event.scrollingDeltaY)
-        phase = event.phase.rawValue
-        momentumPhase = event.momentumPhase.rawValue
-        hasPreciseScrollingDeltas = event.hasPreciseScrollingDeltas
-        magnification = Double(event.magnification)
-        rotation = Double(event.rotation)
-        buttonNumber = event.buttonNumber
-        clickCount = event.clickCount
+        deltaX = Self.readsDelta(event) ? Double(event.deltaX) : 0
+        deltaY = Self.readsDelta(event) ? Double(event.deltaY) : 0
+        scrollingDeltaX = event.type == .scrollWheel ? Double(event.scrollingDeltaX) : 0
+        scrollingDeltaY = event.type == .scrollWheel ? Double(event.scrollingDeltaY) : 0
+        phase = Self.readsPhase(event) ? event.phase.rawValue : 0
+        momentumPhase = event.type == .scrollWheel ? event.momentumPhase.rawValue : 0
+        hasPreciseScrollingDeltas = event.type == .scrollWheel ? event.hasPreciseScrollingDeltas : false
+        magnification = event.type == .magnify ? Double(event.magnification) : 0
+        rotation = event.type == .rotate ? Double(event.rotation) : 0
+        buttonNumber = Self.readsButtonMetadata(event) ? event.buttonNumber : 0
+        clickCount = Self.readsButtonMetadata(event) ? event.clickCount : 0
         modifierFlags = event.modifierFlags.rawValue
         keyCode = name == "keyDown" || name == "keyUp" ? event.keyCode : nil
         generatedByNapeGesture = event.cgEvent.map(CGEventUtilities.isGeneratedByThisTool) ?? false
+        self.captureSource = captureSource
     }
 
     enum CodingKeys: String, CodingKey {
@@ -512,6 +653,7 @@ struct TargetEventRecord: Codable, Equatable {
         case modifierFlags
         case keyCode
         case generatedByNapeGesture
+        case captureSource
     }
 
     init(from decoder: Decoder) throws {
@@ -534,6 +676,7 @@ struct TargetEventRecord: Codable, Equatable {
         modifierFlags = try container.decode(UInt.self, forKey: .modifierFlags)
         keyCode = try container.decodeIfPresent(UInt16.self, forKey: .keyCode)
         generatedByNapeGesture = try container.decodeIfPresent(Bool.self, forKey: .generatedByNapeGesture) ?? false
+        captureSource = try container.decodeIfPresent(String.self, forKey: .captureSource)
     }
 
     var displayLine: String {
@@ -569,6 +712,48 @@ struct TargetEventRecord: Codable, Equatable {
 
     private func format(_ value: Double) -> String {
         String(format: "%.3f", value)
+    }
+
+    private static func readsDelta(_ event: NSEvent) -> Bool {
+        switch event.type {
+        case .mouseMoved,
+             .leftMouseDragged,
+             .rightMouseDragged,
+             .otherMouseDragged,
+             .swipe:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static func readsPhase(_ event: NSEvent) -> Bool {
+        switch event.type {
+        case .scrollWheel,
+             .swipe,
+             .magnify,
+             .rotate:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static func readsButtonMetadata(_ event: NSEvent) -> Bool {
+        switch event.type {
+        case .leftMouseDown,
+             .leftMouseUp,
+             .leftMouseDragged,
+             .rightMouseDown,
+             .rightMouseUp,
+             .rightMouseDragged,
+             .otherMouseDown,
+             .otherMouseUp,
+             .otherMouseDragged:
+            return true
+        default:
+            return false
+        }
     }
 }
 

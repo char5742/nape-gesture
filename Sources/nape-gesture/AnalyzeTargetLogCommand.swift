@@ -22,6 +22,7 @@ struct AnalyzeTargetLogCommand {
         let assertHasUnmarkedClickDragWheel = options.contains("--assert-has-unmarked-click-drag-wheel")
         let assertHasGesture = options.contains("--assert-has-gesture")
         let assertHasGeneratedEvent = options.contains("--assert-has-generated-event")
+        let assertHasForegroundCapture = options.contains("--assert-has-foreground-capture")
 
         if options.contains("--json") {
             let encoder = JSONEncoder()
@@ -63,6 +64,10 @@ struct AnalyzeTargetLogCommand {
         if assertHasGeneratedEvent && analysis.generatedEvents == 0 {
             fflush(stdout)
             throw TargetLogMissingGeneratedEventAssertionError(path: path)
+        }
+        if assertHasForegroundCapture && analysis.foregroundCaptureEvents == 0 {
+            fflush(stdout)
+            throw TargetLogMissingForegroundCaptureAssertionError(path: path)
         }
     }
 
@@ -135,6 +140,14 @@ struct TargetLogMissingGeneratedEventAssertionError: LocalizedError {
     }
 }
 
+struct TargetLogMissingForegroundCaptureAssertionError: LocalizedError {
+    var path: String
+
+    var errorDescription: String? {
+        "target log に前面 AppKit 受信経路のイベントがありません。`analyze-target-log \(path) --json` で captureSourceCounts を確認し、globalMonitor だけの証跡を完成判定に使わないでください。"
+    }
+}
+
 struct TargetEventLogAnalysis: Codable, Equatable {
     var totalEvents: Int
     var generatedEvents: Int
@@ -162,6 +175,7 @@ struct TargetEventLogAnalysis: Codable, Equatable {
     var eventCounts: [String: Int]
     var phaseCounts: [String: Int]
     var momentumPhaseCounts: [String: Int]
+    var captureSourceCounts: [String: Int]
     var leakCandidateEvents: [TargetEventRecord]
     var leakCandidateCounts: [String: Int]
 
@@ -179,6 +193,14 @@ struct TargetEventLogAnalysis: Codable, Equatable {
 
     var gestureEventCount: Int {
         swipeEvents + magnifyEvents + rotateEvents
+    }
+
+    var foregroundCaptureEvents: Int {
+        let foregroundCaptureSources: Set<String> = ["sendEvent", "localMonitor", "captureView"]
+        return captureSourceCounts
+            .filter { source, _ in foregroundCaptureSources.contains(source) }
+            .map(\.value)
+            .reduce(0, +)
     }
 }
 
@@ -228,6 +250,7 @@ enum TargetEventLogAnalyzer {
             eventCounts: counts(records.map(\.name)),
             phaseCounts: counts(records.map { String($0.phase) }),
             momentumPhaseCounts: counts(scrollRecords.map { String($0.momentumPhase) }),
+            captureSourceCounts: counts(records.map { $0.captureSource ?? "unknown" }),
             leakCandidateEvents: leakCandidateRecords,
             leakCandidateCounts: counts(leakCandidateRecords.map(\.name))
         )
@@ -262,6 +285,7 @@ enum TargetEventLogAnalyzer {
         イベント出現数: \(formatCounts(analysis.eventCounts))
         phase 出現数: \(formatCounts(analysis.phaseCounts))
         momentumPhase 出現数: \(formatCounts(analysis.momentumPhaseCounts))
+        captureSource 出現数: \(formatCounts(analysis.captureSourceCounts))
         """
     }
 
