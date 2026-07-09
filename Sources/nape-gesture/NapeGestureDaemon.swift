@@ -38,8 +38,8 @@ final class NapeGestureDaemon {
 
     func run() throws {
         try start()
-        print("nape-gesture を開始しました。停止するには Ctrl-C を押してください。")
-        print("キルスイッチ: \(KillSwitchShortcut.displayName)")
+        writeOperationalLog("nape-gesture を開始しました。停止するには Ctrl-C を押してください。")
+        writeOperationalLog("キルスイッチ: \(KillSwitchShortcut.displayName)")
         CFRunLoopRun()
     }
 
@@ -229,9 +229,13 @@ final class NapeGestureDaemon {
             handle(commands: cancelDecision.commands)
         }
         if decision.didEnterStoppedState {
-            print("キルスイッチによりジェスチャーを無効化しました。再開するには常駐UIの停止/開始、またはプロセス再起動を行ってください。")
+            writeOperationalLog("キルスイッチによりジェスチャーを無効化しました。再開するには常駐UIの停止/開始、またはプロセス再起動を行ってください。")
         }
         return decision
+    }
+
+    private func writeOperationalLog(_ message: String) {
+        FileHandle.standardOutput.write(Data((message + "\n").utf8))
     }
 
     private func recordRuntimePerformance(

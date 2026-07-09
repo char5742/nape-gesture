@@ -273,6 +273,68 @@ wait_for_daemon_started() {
   return 1
 }
 
+app_bundle_for_tool() {
+  case "$tool_path" in
+    */Contents/MacOS/*)
+      bundle_path=$(CDPATH= cd -- "$(dirname -- "$tool_path")/../.." 2>/dev/null && pwd)
+      if [ -d "$bundle_path" ]; then
+        printf '%s\n' "$bundle_path"
+        return 0
+      fi
+      ;;
+  esac
+  return 1
+}
+
+target_pid_from_ready_file() {
+  ready_file=$1
+  plutil -extract pid raw -o - "$ready_file" 2>/dev/null || true
+}
+
+wait_for_target_events_to_flush() {
+  pid=$1
+  attempts=0
+  while [ "$attempts" -lt 90 ]; do
+    if [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null; then
+      return 0
+    fi
+    attempts=$((attempts + 1))
+    sleep 0.1
+  done
+}
+
+absolute_path() {
+  path=$1
+  case "$path" in
+    /*)
+      printf '%s\n' "$path"
+      ;;
+    *)
+      printf '%s/%s\n' "$repo_root" "$path"
+      ;;
+  esac
+}
+
+start_target_app() {
+  target_log=$1
+  ready_file=$2
+  target_stdout=$3
+  target_stderr=$4
+
+  if app_bundle=$(app_bundle_for_tool); then
+    target_log_arg=$(absolute_path "$target_log")
+    ready_file_arg=$(absolute_path "$ready_file")
+    printf '$ open -n %s --args target --out %s --duration 8 --ready-file %s --focus-capture-point > %s 2> %s\n' "$app_bundle" "$target_log_arg" "$ready_file_arg" "$target_stdout" "$target_stderr" >> "$commands_file"
+    open -n "$app_bundle" --args target --out "$target_log_arg" --duration 8 --ready-file "$ready_file_arg" --focus-capture-point > "$target_stdout" 2> "$target_stderr"
+    target_pid=""
+    return 0
+  fi
+
+  printf '$ %s target --out %s --duration 8 --ready-file %s --focus-capture-point > %s 2> %s &\n' "$tool_path" "$target_log" "$ready_file" "$target_stdout" "$target_stderr" >> "$commands_file"
+  "$tool_path" target --out "$target_log" --duration 8 --ready-file "$ready_file" --focus-capture-point > "$target_stdout" 2> "$target_stderr" &
+  target_pid=$!
+}
+
 run_dry_run_preflight() {
   scenario=$1
   title=$2
@@ -322,6 +384,18 @@ run_scenario_with_no_leaks() {
   rm -f "$target_log" "$ready_file" "$performance_log"
 
   printf '%s\n' "実行中: $title"
+  start_target_app "$target_log" "$ready_file" "$target_stdout" "$target_stderr"
+
+  if ! wait_for_ready_file "$ready_file"; then
+    append_summary "失敗" "$title ready-file" "-" "$target_stdout / $target_stderr"
+    remember_failure "$target_stdout / $target_stderr"
+    cleanup_processes
+    return
+  fi
+  if [ "${target_pid:-}" = "" ]; then
+    target_pid=$(target_pid_from_ready_file "$ready_file")
+  fi
+
   printf '$ %s run --config %s --performance-log %s > %s 2>&1 &\n' "$tool_path" "$config_path" "$performance_log" "$daemon_log" >> "$commands_file"
   "$tool_path" run --config "$config_path" --performance-log "$performance_log" > "$daemon_log" 2>&1 &
   daemon_pid=$!
@@ -332,21 +406,10 @@ run_scenario_with_no_leaks() {
     return
   fi
 
-  printf '$ %s target --out %s --duration 5 --ready-file %s > %s 2> %s &\n' "$tool_path" "$target_log" "$ready_file" "$target_stdout" "$target_stderr" >> "$commands_file"
-  "$tool_path" target --out "$target_log" --duration 5 --ready-file "$ready_file" > "$target_stdout" 2> "$target_stderr" &
-  target_pid=$!
-
-  if ! wait_for_ready_file "$ready_file"; then
-    append_summary "失敗" "$title ready-file" "-" "$target_stdout / $target_stderr"
-    remember_failure "$target_stdout / $target_stderr"
-    cleanup_processes
-    return
-  fi
-
   printf '$ %s system-test run --scenario %s > %s 2>&1\n' "$tool_path" "$scenario" "$system_log" >> "$commands_file"
   "$tool_path" system-test run --scenario "$scenario" > "$system_log" 2>&1
   system_status=$?
-  wait "$target_pid" 2>/dev/null || true
+  wait_for_target_events_to_flush "$target_pid"
   target_pid=""
   cleanup_processes
 
@@ -412,6 +475,18 @@ run_normal_after_release() {
   rm -f "$target_log" "$ready_file"
 
   printf '%s\n' "実行中: $title"
+  start_target_app "$target_log" "$ready_file" "$target_stdout" "$target_stderr"
+
+  if ! wait_for_ready_file "$ready_file"; then
+    append_summary "失敗" "$title ready-file" "-" "$target_stdout / $target_stderr"
+    remember_failure "$target_stdout / $target_stderr"
+    cleanup_processes
+    return
+  fi
+  if [ "${target_pid:-}" = "" ]; then
+    target_pid=$(target_pid_from_ready_file "$ready_file")
+  fi
+
   printf '$ %s run --config %s > %s 2>&1 &\n' "$tool_path" "$config_path" "$daemon_log" >> "$commands_file"
   "$tool_path" run --config "$config_path" > "$daemon_log" 2>&1 &
   daemon_pid=$!
@@ -422,21 +497,10 @@ run_normal_after_release() {
     return
   fi
 
-  printf '$ %s target --out %s --duration 5 --ready-file %s > %s 2> %s &\n' "$tool_path" "$target_log" "$ready_file" "$target_stdout" "$target_stderr" >> "$commands_file"
-  "$tool_path" target --out "$target_log" --duration 5 --ready-file "$ready_file" > "$target_stdout" 2> "$target_stderr" &
-  target_pid=$!
-
-  if ! wait_for_ready_file "$ready_file"; then
-    append_summary "失敗" "$title ready-file" "-" "$target_stdout / $target_stderr"
-    remember_failure "$target_stdout / $target_stderr"
-    cleanup_processes
-    return
-  fi
-
   printf '$ %s system-test run --scenario normal-after-release > %s 2>&1\n' "$tool_path" "$system_log" >> "$commands_file"
   "$tool_path" system-test run --scenario normal-after-release > "$system_log" 2>&1
   system_status=$?
-  wait "$target_pid" 2>/dev/null || true
+  wait_for_target_events_to_flush "$target_pid"
   target_pid=""
   cleanup_processes
 

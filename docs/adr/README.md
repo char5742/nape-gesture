@@ -37,6 +37,7 @@
 | [ADR-0028](0028-readme-product-dashboard.md) | README を製品入口兼状態ダッシュボードとして扱う | README、GUI、完成状態、Mermaid、キャプチャ |
 | [ADR-0029](0029-grok-operational-surface.md) | Grok 運用知見を AGENTS.md と Codex skill に同期する | Grok、AGENTS.md、Codex skill、補助レビュー |
 | [ADR-0030](0030-computer-use-gui-operation-evidence.md) | Computer Use で GUI 操作と画面証跡を前進させる | computer-use、GUI、System Settings、画面証跡、need:human |
+| [ADR-0031](0031-reference-target-cursor-focus.md) | Reference Target App の無人証跡では capture view へカーソルを固定する | runtime event、Reference Target App、system-test、target log |
 
 ## 追加時の確認
 

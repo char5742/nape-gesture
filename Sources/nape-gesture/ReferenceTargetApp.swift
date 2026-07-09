@@ -1,4 +1,5 @@
 import AppKit
+import CoreGraphics
 import Foundation
 
 final class ReferenceTargetApp: NSObject, NSApplicationDelegate {
@@ -11,6 +12,9 @@ final class ReferenceTargetApp: NSObject, NSApplicationDelegate {
     private var launchFailure: Error?
     private var window: NSWindow?
     private var textView: NSTextView?
+    private var focusRecord: ReferenceTargetFocusRecord?
+    private var localEventMonitor: Any?
+    private var globalEventMonitor: Any?
 
     private init(configuration: ReferenceTargetConfiguration) {
         self.configuration = configuration
@@ -36,6 +40,7 @@ final class ReferenceTargetApp: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         terminationTimer?.invalidate()
         terminationTimer = nil
+        removeEventMonitors()
         closeOutputIfNeeded()
         Self.retainedDelegate = nil
     }
@@ -66,18 +71,13 @@ final class ReferenceTargetApp: NSObject, NSApplicationDelegate {
         scrollView.documentView = textView
         scrollView.hasVerticalScroller = true
 
-        captureView.onEvent = { [weak self, weak textView] record in
-            DispatchQueue.main.async {
-                self?.write(record)
-                textView?.appendLine(record.displayLine)
-            }
-        }
-
         split.addArrangedSubview(captureView)
         split.addArrangedSubview(scrollView)
         window.contentView = split
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(captureView)
+        NSRunningApplication.current.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+        focusRecord = focusCapturePointIfNeeded(captureView: captureView, window: window)
 
         self.window = window
         self.textView = textView
@@ -85,6 +85,7 @@ final class ReferenceTargetApp: NSObject, NSApplicationDelegate {
         if let outputPath = configuration.outputPath {
             textView.appendLine("JSON Lines 出力: \(outputPath)")
         }
+        installEventMonitors(textView: textView)
 
         do {
             try writeReadyFileIfNeeded()
@@ -123,10 +124,79 @@ final class ReferenceTargetApp: NSObject, NSApplicationDelegate {
             ready: true,
             pid: ProcessInfo.processInfo.processIdentifier,
             timestamp: Date().timeIntervalSince1970,
-            outputPath: configuration.outputPath
+            outputPath: configuration.outputPath,
+            focus: focusRecord
         ))
         data.append(Data("\n".utf8))
         try data.write(to: url, options: .atomic)
+    }
+
+    private func focusCapturePointIfNeeded(
+        captureView: NSView,
+        window: NSWindow
+    ) -> ReferenceTargetFocusRecord? {
+        guard configuration.focusCapturePoint else {
+            return nil
+        }
+
+        let captureCenter = NSPoint(x: captureView.bounds.midX, y: captureView.bounds.midY)
+        let windowPoint = captureView.convert(captureCenter, to: nil)
+        let screenPoint = window.convertPoint(toScreen: windowPoint)
+        let windowBounds = quartzWindowBounds(for: window)
+        let quartzPoint = focusPoint(
+            appKitScreenPoint: screenPoint,
+            screen: window.screen,
+            windowBounds: windowBounds
+        )
+        CGWarpMouseCursorPosition(quartzPoint)
+        CGAssociateMouseAndMouseCursorPosition(boolean_t(1))
+        let cursorLocation = CGEvent(source: nil)?.location ?? quartzPoint
+        return ReferenceTargetFocusRecord(
+            requested: true,
+            appKitScreenX: Double(screenPoint.x),
+            appKitScreenY: Double(screenPoint.y),
+            quartzX: Double(quartzPoint.x),
+            quartzY: Double(quartzPoint.y),
+            cursorX: Double(cursorLocation.x),
+            cursorY: Double(cursorLocation.y),
+            windowQuartzX: windowBounds.map { Double($0.minX) },
+            windowQuartzY: windowBounds.map { Double($0.minY) },
+            windowQuartzWidth: windowBounds.map { Double($0.width) },
+            windowQuartzHeight: windowBounds.map { Double($0.height) }
+        )
+    }
+
+    private func focusPoint(
+        appKitScreenPoint point: NSPoint,
+        screen: NSScreen?,
+        windowBounds: CGRect?
+    ) -> CGPoint {
+        if let windowBounds {
+            let verticalOffset = min(max(windowBounds.height * 0.28, 96), windowBounds.height - 32)
+            return CGPoint(x: windowBounds.midX, y: windowBounds.minY + verticalOffset)
+        }
+        return quartzDisplayPoint(fromAppKitScreenPoint: point, screen: screen)
+    }
+
+    private func quartzDisplayPoint(
+        fromAppKitScreenPoint point: NSPoint,
+        screen: NSScreen?
+    ) -> CGPoint {
+        guard let screen else {
+            return CGPoint(x: point.x, y: point.y)
+        }
+        return CGPoint(x: point.x, y: screen.frame.maxY - point.y)
+    }
+
+    private func quartzWindowBounds(for window: NSWindow) -> CGRect? {
+        let windowID = CGWindowID(window.windowNumber)
+        guard let descriptions = CGWindowListCreateDescriptionFromArray([windowID] as CFArray) as? [[String: Any]],
+              let entry = descriptions.first,
+              let bounds = entry[kCGWindowBounds as String] as? [String: Any]
+        else {
+            return nil
+        }
+        return CGRect(dictionaryRepresentation: bounds as CFDictionary)
     }
 
     private func scheduleAutomaticTerminationIfNeeded() {
@@ -136,6 +206,93 @@ final class ReferenceTargetApp: NSObject, NSApplicationDelegate {
 
         terminationTimer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { _ in
             NSApp.terminate(nil)
+        }
+    }
+
+    private func installEventMonitors(textView: NSTextView) {
+        let mask = NSEvent.EventTypeMask([
+            .leftMouseDown,
+            .leftMouseUp,
+            .leftMouseDragged,
+            .rightMouseDown,
+            .rightMouseUp,
+            .rightMouseDragged,
+            .otherMouseDown,
+            .otherMouseUp,
+            .otherMouseDragged,
+            .scrollWheel,
+            .keyDown,
+            .keyUp,
+            .swipe,
+            .magnify,
+            .rotate
+        ])
+        localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self, weak textView] event in
+            self?.record(event: event, textView: textView)
+            return event
+        }
+        globalEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self, weak textView] event in
+            self?.record(event: event, textView: textView)
+        }
+    }
+
+    private func removeEventMonitors() {
+        if let localEventMonitor {
+            NSEvent.removeMonitor(localEventMonitor)
+        }
+        if let globalEventMonitor {
+            NSEvent.removeMonitor(globalEventMonitor)
+        }
+        localEventMonitor = nil
+        globalEventMonitor = nil
+    }
+
+    private func record(event: NSEvent, textView: NSTextView?) {
+        guard let eventName = targetEventName(for: event) else {
+            return
+        }
+        let position = window?.contentView?.convert(event.locationInWindow, from: nil) ?? event.locationInWindow
+        let record = TargetEventRecord(name: eventName, event: event, position: position)
+        DispatchQueue.main.async { [weak self, weak textView] in
+            self?.write(record)
+            textView?.appendLine(record.displayLine)
+        }
+    }
+
+    private func targetEventName(for event: NSEvent) -> String? {
+        switch event.type {
+        case .scrollWheel:
+            return "scrollWheel"
+        case .swipe:
+            return "swipe"
+        case .magnify:
+            return "magnify"
+        case .rotate:
+            return "rotate"
+        case .leftMouseDown:
+            return "mouseDown"
+        case .leftMouseUp:
+            return "mouseUp"
+        case .leftMouseDragged:
+            return "mouseDragged"
+        case .rightMouseDown:
+            return "rightMouseDown"
+        case .rightMouseUp:
+            return "rightMouseUp"
+        case .rightMouseDragged:
+            return "rightMouseDragged"
+        case .otherMouseDown:
+            return "otherMouseDown"
+        case .otherMouseUp:
+            return "otherMouseUp"
+        case .otherMouseDragged:
+            return "otherMouseDragged"
+        case .keyDown:
+            return "keyDown"
+        case .keyUp:
+            return "keyUp"
+        default:
+            return nil
         }
     }
 
@@ -159,11 +316,13 @@ private struct ReferenceTargetConfiguration {
     var outputPath: String?
     var duration: TimeInterval?
     var readyFilePath: String?
+    var focusCapturePoint: Bool
 
     init(options: [String]) throws {
         outputPath = try Self.optionalValue(for: "--out", in: options)
         duration = try Self.optionalDuration(in: options)
         readyFilePath = try Self.optionalValue(for: "--ready-file", in: options)
+        focusCapturePoint = options.contains("--focus-capture-point")
     }
 
     private static func optionalValue(for name: String, in options: [String]) throws -> String? {
@@ -191,6 +350,21 @@ private struct ReferenceTargetReadyRecord: Codable, Equatable {
     var pid: Int32
     var timestamp: TimeInterval
     var outputPath: String?
+    var focus: ReferenceTargetFocusRecord?
+}
+
+private struct ReferenceTargetFocusRecord: Codable, Equatable {
+    var requested: Bool
+    var appKitScreenX: Double
+    var appKitScreenY: Double
+    var quartzX: Double
+    var quartzY: Double
+    var cursorX: Double
+    var cursorY: Double
+    var windowQuartzX: Double?
+    var windowQuartzY: Double?
+    var windowQuartzWidth: Double?
+    var windowQuartzHeight: Double?
 }
 
 final class EventCaptureView: NSView {
