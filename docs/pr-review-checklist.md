@@ -12,10 +12,12 @@
 - コード、Package、workflow に影響する変更では `.build/debug/nape-gesture-core-tests` が成功している
 - release build が必要な変更では `swift build -c release --scratch-path .build` が成功している
 - docs/config のみの変更では、変更対象に合った検証と Swift build を省略した理由が PR 本文に明記されている
+- ユーザーが見る挙動、GUI、権限導線、検証手順、完成状態、配布手順を変えた場合、README を更新している。更新不要の場合は PR 本文で理由を明記している
 - 未検証事項を「完了」と表現していない
 - Mac Mouse Fix のコード、定数、状態遷移、係数をコピーしていない
 - 由来や配布物に影響する変更では `sh scripts/check-provenance.sh` が成功している
 - Grok CLI を使った補助レビューがある場合でも、指摘採否、テスト、CI、merge 判断はメインスレッドが責任を持つ
+- Mermaid 図やアプリキャプチャを使う場合、実装、docs、実際の画面証跡と矛盾していない
 
 ## 性能 / Benchmark 変更
 
