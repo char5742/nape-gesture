@@ -10,38 +10,44 @@ final class GestureActionExecutor {
         self.poster = poster
     }
 
-    func post(command: GestureCommand) {
+    func post(command: GestureCommand) -> GestureActionPostResult {
         let action = bindings.action(for: command)
 
         switch action {
         case .none:
-            return
+            return GestureActionPostResult(action: action, postResult: .none)
         case .smoothScroll:
-            poster.postScroll(command: command, mode: .free)
+            return GestureActionPostResult(action: action, postResult: poster.postScroll(command: command, mode: .free))
         case .horizontalScroll:
-            poster.postScroll(command: command, mode: .horizontal)
+            return GestureActionPostResult(action: action, postResult: poster.postScroll(command: command, mode: .horizontal))
         case .spaceLeft:
-            poster.postScroll(command: command, mode: .forcedHorizontal(sign: -1))
+            return GestureActionPostResult(
+                action: action,
+                postResult: poster.postScroll(command: command, mode: .forcedHorizontal(sign: -1))
+            )
         case .spaceRight:
-            poster.postScroll(command: command, mode: .forcedHorizontal(sign: 1))
+            return GestureActionPostResult(
+                action: action,
+                postResult: poster.postScroll(command: command, mode: .forcedHorizontal(sign: 1))
+            )
         case .missionControl:
-            postDiscrete(command: command) {
+            return postDiscrete(action: action, command: command) {
                 poster.postMissionControl()
             }
         case .pageBack:
-            postDiscrete(command: command) {
+            return postDiscrete(action: action, command: command) {
                 poster.postPageBack()
             }
         case .pageForward:
-            postDiscrete(command: command) {
+            return postDiscrete(action: action, command: command) {
                 poster.postPageForward()
             }
         case .zoomIn:
-            postDiscrete(command: command) {
+            return postDiscrete(action: action, command: command) {
                 poster.postZoomIn()
             }
         case .zoomOut:
-            postDiscrete(command: command) {
+            return postDiscrete(action: action, command: command) {
                 poster.postZoomOut()
             }
         }
@@ -51,18 +57,35 @@ final class GestureActionExecutor {
         bindings.action(for: command).supportsMomentum
     }
 
-    private func postDiscrete(command: GestureCommand, action: () -> Void) {
+    private func postDiscrete(
+        action: GestureAction,
+        command: GestureCommand,
+        post: () -> EventPostResult
+    ) -> GestureActionPostResult {
         switch command.kind {
         case .drag:
             if command.phase == .began {
-                action()
+                return GestureActionPostResult(action: action, postResult: post())
             }
         case .wheel:
             if command.phase == .began || command.phase == .changed {
-                action()
+                return GestureActionPostResult(action: action, postResult: post())
             }
         case .momentum:
-            return
+            break
         }
+        return GestureActionPostResult(action: action, postResult: .none)
+    }
+}
+
+struct GestureActionPostResult: Equatable {
+    var action: GestureAction
+    var generatedEventCount: Int
+    var failedEventCreationCount: Int
+
+    init(action: GestureAction, postResult: EventPostResult) {
+        self.action = action
+        generatedEventCount = postResult.generatedEventCount
+        failedEventCreationCount = postResult.failedEventCreationCount
     }
 }

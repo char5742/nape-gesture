@@ -25,11 +25,13 @@ final class NapeGestureRuntime {
                 gate: newGate,
                 matchedDevices: matchedDevices
             )
+            let performanceRecorder = try RuntimePerformanceLogWriter.make(path: nil)
             pendingMonitor = newMonitor
             let newDaemon = NapeGestureDaemon(
                 configuration: settings.gesture,
                 targetGate: newGate,
-                hidInputMonitor: newMonitor
+                hidInputMonitor: newMonitor,
+                performanceRecorder: performanceRecorder
             )
             try newDaemon.start()
 

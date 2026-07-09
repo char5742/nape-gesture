@@ -25,11 +25,15 @@ final class CommandLineTool {
             print("設定ファイル: \(loaded.path)")
             let matchedDevices = try validateTargetDevicesIfNeeded(settings)
             let gate = makeTargetDeviceGate(settings: settings)
+            let performanceRecorder = try RuntimePerformanceLogWriter.make(
+                path: SettingsStore.value(for: "--performance-log", in: options)
+            )
             let monitor = try makeHIDInputMonitor(settings: settings, gate: gate, matchedDevices: matchedDevices)
             let daemon = NapeGestureDaemon(
                 configuration: settings.gesture,
                 targetGate: gate,
-                hidInputMonitor: monitor
+                hidInputMonitor: monitor,
+                performanceRecorder: performanceRecorder
             )
             try daemon.run()
         case "log":
@@ -47,6 +51,8 @@ final class CommandLineTool {
             try AnalyzeAssociationCommand(options: options).run()
         case "analyze-target-log":
             try AnalyzeTargetLogCommand(options: options).run()
+        case "analyze-performance-log":
+            try AnalyzePerformanceLogCommand(options: options).run()
         case "check-config":
             try checkConfig(options: options)
         case "config-path":
@@ -83,11 +89,11 @@ final class CommandLineTool {
 
             使い方:
               nape-gesture app [--config <path>]
-                  通常 GUI アプリを起動し、設定ウィンドウとメニューバー常駐UIを表示します。
+                  通常 GUI アプリを起動し、設定ウィンドウとメニューバー常駐UIを表示します。環境変数 NAPE_RUNTIME_PERFORMANCE_LOG で runtime 性能 JSON Lines を保存できます。
 
-              nape-gesture run
+              nape-gesture run [--performance-log <path>]
                   特定ボタン押下中のドラッグ・ホイールを生成スクロールへ変換します。
-                  --config <path> で対象デバイスや感度を読み込みます。
+                  --config <path> で対象デバイスや感度を読み込みます。--performance-log で runtime 性能 JSON Lines を保存します。
 
               nape-gesture log [--duration <秒>] [--out <path>] [--exclude-generated|--only-generated]
                   グローバル入力イベントを JSON Lines で記録します。メタ情報は標準エラー、イベント本体は標準出力または --out に出します。
@@ -109,6 +115,9 @@ final class CommandLineTool {
 
               nape-gesture analyze-target-log <path> [--json] [--assert-no-leaks] [--assert-has-unmarked-input] [--assert-has-unmarked-click] [--assert-has-unmarked-drag] [--assert-has-unmarked-wheel] [--assert-has-unmarked-click-drag-wheel] [--assert-has-gesture] [--assert-has-generated-event]
                   Reference Target App が保存した AppKit 受信イベントを集計します。--assert-no-leaks で漏れ候補がある場合、--assert-has-unmarked-input で未マーク入力がない場合、--assert-has-unmarked-click / --assert-has-unmarked-drag / --assert-has-unmarked-wheel で未マーク通常クリック / 通常ドラッグ / 通常ホイールがない場合、--assert-has-unmarked-click-drag-wheel で3種類が揃わない場合、--assert-has-gesture で swipe / magnify / rotate がない場合、--assert-has-generated-event で Nape Gesture 生成イベントがない場合に失敗します。
+
+              nape-gesture analyze-performance-log <path> [--json] [--assert-baseline]
+                  runtime 性能 JSON Lines を集計します。tap callback から投稿直前/直後までの p95/p99、投稿数、作成失敗数を出します。--assert-baseline で入力遅延基準を満たさない場合に失敗します。
 
               nape-gesture check-config [--config <path>] [--probe-hid]
                   対象デバイス設定と HID 入力監視の開始可否を確認します。

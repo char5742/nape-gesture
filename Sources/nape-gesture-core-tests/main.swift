@@ -123,6 +123,33 @@ func makeInputLogRecord(
     )
 }
 
+func makeRuntimePerformanceRecord(
+    index: Int,
+    tapToPostStartNanoseconds: UInt64,
+    tapToPostFinishedNanoseconds: UInt64,
+    source: RuntimePerformanceSource = .eventTap,
+    generatedEventCount: Int = 1,
+    failedEventCreationCount: Int = 0
+) -> RuntimePerformanceRecord {
+    let base = UInt64(1_000_000_000 + index * 100_000_000)
+    return RuntimePerformanceRecord(
+        operationID: "\(source.rawValue)-\(index)",
+        source: source,
+        action: .smoothScroll,
+        commandKind: .drag,
+        commandPhase: index == 0 ? .began : .changed,
+        commandTimestamp: Double(index),
+        inputEventTimestampNanoseconds: source == .eventTap ? base - 1_000 : nil,
+        tapCallbackStartedAtNanoseconds: base,
+        recognizerFinishedAtNanoseconds: base + 500_000,
+        postStartedAtNanoseconds: base + tapToPostStartNanoseconds,
+        postFinishedAtNanoseconds: base + tapToPostFinishedNanoseconds,
+        generatedEventCount: generatedEventCount,
+        failedEventCreationCount: failedEventCreationCount,
+        suppressedOriginal: true
+    )
+}
+
 func testPassesThroughWhenActivationButtonIsNotPressed() {
     var recognizer = GestureRecognizer(configuration: .default)
 
@@ -2055,6 +2082,96 @@ func testPermissionRecoveryPresenterDoesNotOfferGrantedActions() {
     expect(unknown.inputMonitoring.shouldOpenSettings, "入力監視未判定時は設定導線を出す")
 }
 
+func testRuntimePerformanceAnalyzerComputesTapToPostDistributions() {
+    let records = (1...20).map { index in
+        makeRuntimePerformanceRecord(
+            index: index,
+            tapToPostStartNanoseconds: UInt64(index * 100_000),
+            tapToPostFinishedNanoseconds: UInt64(index * 100_000 + 10_000)
+        )
+    }
+
+    let report = RuntimePerformanceAnalyzer.analyze(records: records)
+    let evaluation = RuntimePerformanceAnalyzer.evaluate(report)
+
+    expect(report.measurementKind == "runtimeTapToPost", "runtime 性能測定種別を固定する")
+    expect(report.includesEventTapAndPosting, "runtime 性能ログは event tap と投稿を含む")
+    expect(report.recordCount == 20, "runtime 性能レコード数を集計する")
+    expect(report.postedRecordCount == 20, "投稿ありレコード数を集計する")
+    expect(report.eventTapPostedRecordCount == 20, "event tap 由来の投稿ありレコード数を集計する")
+    expect(report.missingPostRecordCount == 0, "投稿なしレコードがないことを集計する")
+    expect(report.generatedEventCount == 20, "生成イベント数を集計する")
+    expectApproximatelyEqual(
+        report.tapToFirstPostNanoseconds.p95Nanoseconds,
+        1_900_000,
+        "tap callback から投稿直前までの p95 を算出する"
+    )
+    expectApproximatelyEqual(
+        report.tapToFirstPostNanoseconds.p99Nanoseconds,
+        2_000_000,
+        "tap callback から投稿直前までの p99 を算出する"
+    )
+    expectApproximatelyEqual(
+        report.tapToPostFinishedNanoseconds.p95Nanoseconds,
+        1_910_000,
+        "tap callback から投稿完了までの p95 を算出する"
+    )
+    expect(evaluation.passed, "既定の runtime 性能基準内なら合格する")
+}
+
+func testRuntimePerformanceAnalyzerRejectsMissingAndSlowPosts() {
+    let records = [
+        makeRuntimePerformanceRecord(
+            index: 1,
+            tapToPostStartNanoseconds: 20_000_000,
+            tapToPostFinishedNanoseconds: 21_000_000
+        ),
+        makeRuntimePerformanceRecord(
+            index: 2,
+            tapToPostStartNanoseconds: 1_000_000,
+            tapToPostFinishedNanoseconds: 1_100_000,
+            generatedEventCount: 0,
+            failedEventCreationCount: 1
+        )
+    ]
+
+    let report = RuntimePerformanceAnalyzer.analyze(records: records)
+    let evaluation = RuntimePerformanceAnalyzer.evaluate(report)
+    let failedItems = Set(evaluation.failures.map(\.item))
+
+    expect(report.postedRecordCount == 1, "投稿なしレコードを postedRecordCount から除外する")
+    expect(report.missingPostRecordCount == 1, "投稿なしレコードを失敗候補として集計する")
+    expect(report.failedEventCreationCount == 1, "イベント作成失敗数を集計する")
+    expect(!evaluation.passed, "投稿なしまたは遅延超過は runtime 性能基準で失敗する")
+    expect(failedItems.contains("missingPostRecordCount"), "投稿なしレコードを基準違反にする")
+    expect(failedItems.contains("failedEventCreationCount"), "イベント作成失敗を基準違反にする")
+    expect(
+        failedItems.contains("tapToFirstPostNanoseconds.p95Nanoseconds"),
+        "tap callback から投稿直前までの p95 超過を基準違反にする"
+    )
+}
+
+func testRuntimePerformanceAnalyzerDoesNotTreatMomentumAsTapToPost() {
+    let records = [
+        makeRuntimePerformanceRecord(
+            index: 1,
+            tapToPostStartNanoseconds: 1_000_000,
+            tapToPostFinishedNanoseconds: 1_100_000,
+            source: .momentumTimer
+        )
+    ]
+
+    let report = RuntimePerformanceAnalyzer.analyze(records: records)
+    let evaluation = RuntimePerformanceAnalyzer.evaluate(report)
+    let failedItems = Set(evaluation.failures.map(\.item))
+
+    expect(report.postedRecordCount == 1, "momentum timer の投稿数自体は集計する")
+    expect(report.eventTapPostedRecordCount == 0, "momentum timer の投稿を event tap 由来として扱わない")
+    expect(report.tapToFirstPostNanoseconds.sampleCount == 0, "momentum timer の投稿を tap-to-post 分布に混ぜない")
+    expect(!evaluation.passed, "momentum timer だけでは tap-to-post 証跡として合格しない")
+    expect(failedItems.contains("eventTapPostedRecordCount"), "event tap 由来投稿がないことを基準違反にする")
+}
+
 testPassesThroughWhenActivationButtonIsNotPressed()
 testActivationButtonSuppressesOriginalInputBeforeThreshold()
 testDragBeginsAfterDeadZoneAndLocksDominantDirection()
@@ -2144,6 +2261,9 @@ testRuntimeStatusPresenterShowsRunningAndStoppedStates()
 testRuntimeStatusPresenterShowsAutoRetryAndSleepStates()
 testPermissionRecoveryPresenterShowsSeparatePermissionActions()
 testPermissionRecoveryPresenterDoesNotOfferGrantedActions()
+testRuntimePerformanceAnalyzerComputesTapToPostDistributions()
+testRuntimePerformanceAnalyzerRejectsMissingAndSlowPosts()
+testRuntimePerformanceAnalyzerDoesNotTreatMomentumAsTapToPost()
 
 if failures == 0 {
     print("すべてのコアテストに成功しました。")

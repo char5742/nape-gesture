@@ -24,7 +24,9 @@
 - `BenchmarkReport.schemaVersion` が `3` で、`sampledNanosecondsPerEvent` と `sampledNanosecondsPerCommand` の p95 / p99 が保存されている
 - `--assert-baseline` が成功し、`recognizer.averageNanosecondsPerEvent`、`recognizer.cpuNanosecondsPerEvent`、`recognizer.sampledNanosecondsPerEvent.p95Nanoseconds`、`recognizer.sampledNanosecondsPerEvent.p99Nanoseconds`、`scrollPlanner.averageNanosecondsPerCommand`、`scrollPlanner.cpuNanosecondsPerCommand`、`scrollPlanner.sampledNanosecondsPerCommand.p95Nanoseconds`、`scrollPlanner.sampledNanosecondsPerCommand.p99Nanoseconds` が `docs/performance-baseline.md` の基準内である
 - 純粋ロジック benchmark を、イベントタップから投稿までの入力遅延実測として扱っていない
-- 常駐 CPU 使用率や tap-to-post 遅延を完了扱いにする場合、実機・権限付きの測定手順と未検証事項が明記されている
+- tap-to-post 遅延を完了扱いにする場合、`run --performance-log` または `NAPE_RUNTIME_PERFORMANCE_LOG` で取得した runtime 性能 JSON Lines と `analyze-performance-log --json --assert-baseline` の結果が保存されている
+- runtime 性能ログを AppKit 受信や画面反映の証跡として扱っていない
+- 常駐 CPU 使用率を完了扱いにする場合、実機・権限付きの測定手順と未検証事項が明記されている
 - 閾値超過時に調整した設定値や生成パラメータが、ログと benchmark の再測定で確認されている
 
 ## Core 変更

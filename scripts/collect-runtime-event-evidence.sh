@@ -35,6 +35,7 @@ build_dir="$artifact_root/build"
 doctor_dir="$artifact_root/doctor"
 preflight_dir="$artifact_root/preflight"
 scenario_dir="$artifact_root/scenarios"
+performance_dir="$artifact_root/runtime-performance"
 config_path="$doctor_dir/system-test-allow-unmatched.json"
 failure_count=0
 failed_logs=""
@@ -97,6 +98,7 @@ write_status_json() {
   "doctorJsonPath" : "$(json_escape "$doctor_dir/doctor-debug.json")",
   "preflightDir" : "$(json_escape "$preflight_dir")",
   "scenarioDir" : "$(json_escape "$scenario_dir")",
+  "runtimePerformanceDir" : "$(json_escape "$performance_dir")",
   "toolPath" : "$(json_escape "$tool_path")",
   "failureCount" : $failure_count
 }
@@ -303,21 +305,25 @@ run_scenario_with_no_leaks() {
   title=$2
 
   dir="$scenario_dir/$scenario"
+  performance_scenario_dir="$performance_dir/$scenario"
   target_log="$dir/target.jsonl"
   ready_file="$dir/target.ready.json"
   daemon_log="$dir/daemon.log"
+  performance_log="$performance_scenario_dir/runtime-performance.jsonl"
+  performance_json="$performance_scenario_dir/analyze-performance-log.json"
+  performance_stderr="$performance_scenario_dir/analyze-performance-log.stderr.log"
   target_stdout="$dir/target.stdout.log"
   target_stderr="$dir/target.stderr.log"
   system_log="$dir/system-test.log"
   analysis_json="$dir/analyze-target-log.json"
   analysis_stderr="$dir/analyze-target-log.stderr.log"
 
-  mkdir -p "$dir"
-  rm -f "$target_log" "$ready_file"
+  mkdir -p "$dir" "$performance_scenario_dir"
+  rm -f "$target_log" "$ready_file" "$performance_log"
 
   printf '%s\n' "実行中: $title"
-  printf '$ %s run --config %s > %s 2>&1 &\n' "$tool_path" "$config_path" "$daemon_log" >> "$commands_file"
-  "$tool_path" run --config "$config_path" > "$daemon_log" 2>&1 &
+  printf '$ %s run --config %s --performance-log %s > %s 2>&1 &\n' "$tool_path" "$config_path" "$performance_log" "$daemon_log" >> "$commands_file"
+  "$tool_path" run --config "$config_path" --performance-log "$performance_log" > "$daemon_log" 2>&1 &
   daemon_pid=$!
   if ! wait_for_daemon_started "$daemon_log" "$daemon_pid"; then
     append_summary "失敗" "$title daemon 起動" "-" "$daemon_log"
@@ -373,6 +379,19 @@ run_scenario_with_no_leaks() {
   else
     append_summary "失敗" "$title" "$analysis_status" "$analysis_json / $analysis_stderr"
     remember_failure "$analysis_json / $analysis_stderr"
+  fi
+
+  if [ "$scenario" = "gesture-drag" ] || [ "$scenario" = "gesture-wheel" ] || [ "$scenario" = "gesture-wheel-then-kill-switch" ]; then
+    printf '$ %s analyze-performance-log %s --json --assert-baseline > %s 2> %s\n' "$tool_path" "$performance_log" "$performance_json" "$performance_stderr" >> "$commands_file"
+    "$tool_path" analyze-performance-log "$performance_log" --json --assert-baseline > "$performance_json" 2> "$performance_stderr"
+    performance_status=$?
+
+    if [ "$performance_status" -eq 0 ]; then
+      append_summary "成功" "$title runtime 性能ログ" "$performance_status" "$performance_json"
+    else
+      append_summary "失敗" "$title runtime 性能ログ" "$performance_status" "$performance_json / $performance_stderr"
+      remember_failure "$performance_json / $performance_stderr"
+    fi
   fi
 }
 
