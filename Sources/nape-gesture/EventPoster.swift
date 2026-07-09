@@ -13,11 +13,11 @@ final class EventPoster {
     }
 
     @discardableResult
-    func postScroll(command: GestureCommand, mode: ScrollPostMode) -> EventPostResult {
+    func postScroll(command: GestureCommand, mode: ScrollPostMode, to pid: pid_t? = nil) -> EventPostResult {
         guard let event = makeScrollEvent(command: command, mode: mode) else {
             return EventPostResult(generatedEventCount: 0, failedEventCreationCount: 1)
         }
-        event.post(tap: .cghidEventTap)
+        post(event, to: pid)
         return EventPostResult(generatedEventCount: 1, failedEventCreationCount: 0)
     }
 
@@ -48,31 +48,31 @@ final class EventPoster {
     }
 
     @discardableResult
-    func postMissionControl() -> EventPostResult {
-        postKeyShortcut(keyCode: CGKeyCode(kVK_UpArrow), flags: .maskControl)
+    func postMissionControl(to pid: pid_t? = nil) -> EventPostResult {
+        postKeyShortcut(keyCode: CGKeyCode(kVK_UpArrow), flags: .maskControl, to: pid)
     }
 
     @discardableResult
-    func postPageBack() -> EventPostResult {
-        postKeyShortcut(keyCode: CGKeyCode(kVK_LeftArrow), flags: .maskCommand)
+    func postPageBack(to pid: pid_t? = nil) -> EventPostResult {
+        postKeyShortcut(keyCode: CGKeyCode(kVK_LeftArrow), flags: .maskCommand, to: pid)
     }
 
     @discardableResult
-    func postPageForward() -> EventPostResult {
-        postKeyShortcut(keyCode: CGKeyCode(kVK_RightArrow), flags: .maskCommand)
+    func postPageForward(to pid: pid_t? = nil) -> EventPostResult {
+        postKeyShortcut(keyCode: CGKeyCode(kVK_RightArrow), flags: .maskCommand, to: pid)
     }
 
     @discardableResult
-    func postZoomIn() -> EventPostResult {
-        postKeyShortcut(keyCode: CGKeyCode(kVK_ANSI_Equal), flags: .maskCommand)
+    func postZoomIn(to pid: pid_t? = nil) -> EventPostResult {
+        postKeyShortcut(keyCode: CGKeyCode(kVK_ANSI_Equal), flags: .maskCommand, to: pid)
     }
 
     @discardableResult
-    func postZoomOut() -> EventPostResult {
-        postKeyShortcut(keyCode: CGKeyCode(kVK_ANSI_Minus), flags: .maskCommand)
+    func postZoomOut(to pid: pid_t? = nil) -> EventPostResult {
+        postKeyShortcut(keyCode: CGKeyCode(kVK_ANSI_Minus), flags: .maskCommand, to: pid)
     }
 
-    private func postKeyShortcut(keyCode: CGKeyCode, flags: CGEventFlags) -> EventPostResult {
+    private func postKeyShortcut(keyCode: CGKeyCode, flags: CGEventFlags, to pid: pid_t?) -> EventPostResult {
         let events = [
             CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
             CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
@@ -81,13 +81,21 @@ final class EventPoster {
         for event in events {
             CGEventUtilities.setGeneratedMarker(on: event)
             event.flags = flags
-            event.post(tap: .cghidEventTap)
+            post(event, to: pid)
         }
 
         return EventPostResult(
             generatedEventCount: events.count,
             failedEventCreationCount: 2 - events.count
         )
+    }
+
+    private func post(_ event: CGEvent, to pid: pid_t?) {
+        if let pid {
+            event.postToPid(pid)
+        } else {
+            event.post(tap: .cghidEventTap)
+        }
     }
 
     private func quantize(_ value: Double) -> Int32 {

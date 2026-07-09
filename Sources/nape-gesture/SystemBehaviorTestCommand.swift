@@ -73,6 +73,7 @@ struct SystemBehaviorTestCommand {
 
             例:
               nape-gesture system-test run --scenario space-left --target finder --amount 1800 --steps 36
+              nape-gesture system-test run --scenario horizontal-scroll --post-to-pid <Reference Target App PID>
               nape-gesture system-test run --scenario gesture-drag --dry-run --log-json
               nape-gesture system-test run --scenario mission-control --dry-run
             """
@@ -139,34 +140,37 @@ struct SystemBehaviorTestCommand {
                 makeHorizontalCommands(sign: -1, plan: plan, now: now),
                 poster: poster,
                 mode: .forcedHorizontal(sign: -1),
-                interval: plan.interval
+                interval: plan.interval,
+                targetPID: plan.postToPid
             )
         case .spaceRight:
             postScrollCommands(
                 makeHorizontalCommands(sign: 1, plan: plan, now: now),
                 poster: poster,
                 mode: .forcedHorizontal(sign: 1),
-                interval: plan.interval
+                interval: plan.interval,
+                targetPID: plan.postToPid
             )
         case .horizontalScroll:
             postScrollCommands(
                 makeHorizontalCommands(sign: 1, plan: plan, now: now),
                 poster: poster,
                 mode: .horizontal,
-                interval: plan.interval
+                interval: plan.interval,
+                targetPID: plan.postToPid
             )
         case .missionControl:
-            poster.postMissionControl()
+            poster.postMissionControl(to: plan.postToPid)
         case .pageBack:
-            poster.postPageBack()
+            poster.postPageBack(to: plan.postToPid)
         case .pageForward:
-            poster.postPageForward()
+            poster.postPageForward(to: plan.postToPid)
         case .zoomIn:
-            poster.postZoomIn()
+            poster.postZoomIn(to: plan.postToPid)
         case .zoomOut:
-            poster.postZoomOut()
+            poster.postZoomOut(to: plan.postToPid)
         case .killSwitch:
-            postUnmarkedInputEvents(unmarkedInputEvents(for: plan, startTime: now), to: nil)
+            postUnmarkedInputEvents(unmarkedInputEvents(for: plan, startTime: now), to: plan.postToPid)
         case .gestureDrag, .gestureWheel, .gestureWheelThenKillSwitch, .normalAfterRelease:
             postUnmarkedInputEvents(unmarkedInputEvents(for: plan, startTime: now), to: plan.postToPid)
         }
@@ -211,10 +215,11 @@ struct SystemBehaviorTestCommand {
         _ commands: [GestureCommand],
         poster: EventPoster,
         mode: ScrollPostMode,
-        interval: TimeInterval
+        interval: TimeInterval,
+        targetPID: pid_t?
     ) {
         for command in commands {
-            poster.postScroll(command: command, mode: mode)
+            poster.postScroll(command: command, mode: mode, to: targetPID)
             Thread.sleep(forTimeInterval: interval)
         }
     }
@@ -882,15 +887,15 @@ private enum SystemTestScenario: String {
 
     var supportsProcessTargetPosting: Bool {
         switch self {
-        case .gestureDrag,
+        case .spaceLeft,
+             .spaceRight,
+             .horizontalScroll,
+             .gestureDrag,
              .gestureWheel,
              .gestureWheelThenKillSwitch,
              .normalAfterRelease:
             return true
-        case .spaceLeft,
-             .spaceRight,
-             .horizontalScroll,
-             .missionControl,
+        case .missionControl,
              .pageBack,
              .pageForward,
              .zoomIn,

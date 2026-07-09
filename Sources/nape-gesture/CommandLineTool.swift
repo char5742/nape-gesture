@@ -155,7 +155,7 @@ final class CommandLineTool {
                   System Behavior Test のシナリオ一覧を表示します。
 
               nape-gesture system-test run --scenario <name> [--target finder|safari] [--dry-run] [--log-json] [--out <path>] [--post-to-pid <pid>]
-                  Spaces / Mission Control / Safari / Finder 向けの実挙動検証イベント、または未マーク元入力を生成します。--dry-run --log-json で計画したイベントを JSON Lines で出力します。--post-to-pid は Reference Target App の受信経路を切り分ける診断専用です。
+                  Spaces / Mission Control / Safari / Finder 向けの実挙動検証イベント、または未マーク元入力を生成します。--dry-run --log-json で計画したイベントを JSON Lines で出力します。--post-to-pid は対応シナリオを Reference Target App などへ直接投稿し、OS 画面遷移を避けて受信経路を切り分ける診断用です。
 
               nape-gesture benchmark [--events <数>] [--json] [--assert-baseline]
                   認識器とスクロール計画の純粋ロジック処理時間、CPU コスト、batch p95/p99 を測定します。--assert-baseline で性能基準を満たさない場合に失敗します。
