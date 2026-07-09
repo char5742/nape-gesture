@@ -47,6 +47,9 @@
 - 自前生成イベントを再解釈しない
 - ジェスチャー成立後の元入力漏れを増やしていない
 - 対象外デバイスの通常クリック、ドラッグ、ホイールを改変しない
+- 対象デバイスの activation button 押下中でも、直近の対象 HID pointer / wheel がない別デバイス move / wheel をジェスチャー処理へ巻き込まない
+- activation button release は HID と event tap の到着順が前後しても通常状態へ戻れる
+- `cancel` は状態復旧として通し、activation button 以外の buttonDown / buttonUp を押下中ジェスチャーへ巻き込まない
 - `doctor --json` の `targetDeviceDiagnostics` で、対象デバイス不一致時の matcher 条件差分を確認できる
 - キルスイッチで生成と慣性を即時停止できる
 - キルスイッチ自体を event tap で抑制し、前面アプリへ渡していない

@@ -16,12 +16,17 @@ Issue #5 の対象デバイス紐づけでは、Nape Pro の HID 入力と event
 - 空ログ、互換 HID 候補なし、runtime が記録しない AC Pan、非互換 HID 近傍、対象外互換 HID 近傍、複数 HID デバイス採用、associationWindow 外の入力を、完了証跡として扱わない。
 - 実機ログ取得後の採否は、`analyze-association --json --assert-valid-window --target-stable-id <ID>` の終了コードと `matches` の時刻差で行う。
 - completion evidence では、成功 fixture と期待失敗 fixture の両方を残し、判定が甘くならないことを確認する。
+- runtime の `TargetDeviceGate` は、対象デバイスの activation button が押下中でも、move / wheel を無条件には処理しない。直近の対象 HID pointer / wheel が `associationWindow` 内にある場合だけ処理する。
+- activation button の `buttonUp` は、対象 HID の buttonDown により active と分かっている間は stuck 防止のため通す。これにより、対象デバイス release の event tap が HID release より先に届いても通常状態へ戻れる。
+- `cancel` は状態復旧のため常に処理し、activation button 以外の buttonDown / buttonUp は押下中でもジェスチャー処理へ渡さない。
 
 ## 影響
 
 - `need:human` は Nape Pro 実機操作や TCC などの外部作業に限定し、ログ取得後の採否は機械判定へ寄せられる。
 - associationWindow の調整は、表示値の目視ではなく、非ゼロ終了した `matches` を根拠に行う。
 - 空ログ、時刻だけ近い usage 不一致ログ、対象外デバイス単体ログ、複数デバイス混在ログを「実測済み」として扱う事故を防ぐ。
+- 対象デバイスの activation button を押したまま、別マウスの移動やホイールが入っても、直近の対象 HID 活動がなければジェスチャー処理へ渡さない。
+- activation button 以外の button を押下中のジェスチャー状態に巻き込まず、通常クリックや補助ボタンの過剰抑制を避ける。
 
 ## 関連
 

@@ -1570,7 +1570,7 @@ func testTargetDeviceGateOnlyHandlesRecentTargetActivity() {
     expect(!gate.shouldHandle(staleMove), "対象デバイス入力が古い移動は処理しない")
 }
 
-func testTargetDeviceGateKeepsHandlingWhileActivationButtonIsDown() {
+func testTargetDeviceGateRequiresRecentTargetActivityWhileActivationButtonIsDown() {
     var gate = TargetDeviceGateState(
         configuration: TargetDeviceGateConfiguration(
             activationButton: .button4,
@@ -1579,11 +1579,37 @@ func testTargetDeviceGateKeepsHandlingWhileActivationButtonIsDown() {
     )
 
     gate.record(.buttonDown(button: .button4, time: 1))
-    expect(gate.shouldHandle(.move(deltaX: 5, deltaY: 0, time: 10)), "対象デバイスのジェスチャーボタン押下中は移動を処理する")
+    expect(!gate.shouldHandle(.move(deltaX: 5, deltaY: 0, time: 10)), "対象デバイスのジェスチャーボタン押下中でも直近の対象 HID 活動がない移動は処理しない")
+    expect(!gate.shouldHandle(.wheel(deltaX: 0, deltaY: -3, time: 10)), "対象デバイスのジェスチャーボタン押下中でも直近の対象 HID 活動がないホイールは処理しない")
 
-    gate.record(.buttonUp(button: .button4, time: 10.01))
-    expect(gate.shouldHandle(.buttonUp(button: .button4, time: 10.02)), "対象デバイスのボタン解放直後は終了処理を通す")
-    expect(!gate.shouldHandle(.move(deltaX: 5, deltaY: 0, time: 11)), "ボタン解放後しばらく経った移動は処理しない")
+    gate.record(.pointer(deltaX: 5, deltaY: 0, time: 10))
+    expect(gate.shouldHandle(.move(deltaX: 5, deltaY: 0, time: 10.03)), "対象デバイスの直近 pointer に続く移動は処理する")
+
+    gate.record(.wheel(deltaX: 0, deltaY: -3, time: 10.05))
+    expect(gate.shouldHandle(.wheel(deltaX: 0, deltaY: -3, time: 10.08)), "対象デバイスの直近 wheel に続くホイールは処理する")
+
+    expect(gate.shouldHandle(.buttonUp(button: .button4, time: 20)), "対象デバイスのジェスチャーボタンが active な間は、stuck 防止のため解放を通す")
+    gate.record(.buttonUp(button: .button4, time: 20.01))
+    expect(gate.shouldHandle(.buttonUp(button: .button4, time: 20.02)), "対象デバイスのボタン解放直後は終了処理を通す")
+    expect(!gate.shouldHandle(.move(deltaX: 5, deltaY: 0, time: 21)), "ボタン解放後しばらく経った移動は処理しない")
+}
+
+func testTargetDeviceGateKeepsCancelButRejectsNonActivationButtonsWhileActive() {
+    var gate = TargetDeviceGateState(
+        configuration: TargetDeviceGateConfiguration(
+            activationButton: .button4,
+            associationWindow: 0.1
+        )
+    )
+
+    gate.record(.buttonDown(button: .button4, time: 1))
+
+    expect(gate.shouldHandle(.cancel(time: 20)), "cancel は対象デバイス紐づけに関係なく状態復旧のため処理する")
+    expect(!gate.shouldHandle(.buttonDown(button: .left, time: 20.01)), "activation button 以外の押下は、押下中でもジェスチャー処理へ巻き込まない")
+    expect(!gate.shouldHandle(.buttonUp(button: .left, time: 20.02)), "activation button 以外の解放は、押下中でもジェスチャー処理へ巻き込まない")
+
+    gate.record(.pointer(deltaX: 1, deltaY: 0, time: 20.03))
+    expect(!gate.shouldHandle(.buttonDown(button: .left, time: 20.04)), "直近の対象 HID 活動があっても activation button 以外の押下はジェスチャー処理へ渡さない")
 }
 
 func testTargetDeviceGateUsesAssociationWindowFromSettings() {
@@ -2321,7 +2347,8 @@ testScrollGenerationPlannerAutoPhases()
 testScrollGenerationPlannerPhaseOverrideAndMomentum()
 testScrollEventPhaseEncoderSeparatesScrollAndMomentumPhases()
 testTargetDeviceGateOnlyHandlesRecentTargetActivity()
-testTargetDeviceGateKeepsHandlingWhileActivationButtonIsDown()
+testTargetDeviceGateRequiresRecentTargetActivityWhileActivationButtonIsDown()
+testTargetDeviceGateKeepsCancelButRejectsNonActivationButtonsWhileActive()
 testTargetDeviceGateUsesAssociationWindowFromSettings()
 testTargetDeviceGatePassesThroughNonTargetClickDragAndWheel()
 testDefaultGestureBindingsMapSystemActions()

@@ -126,7 +126,9 @@ Labels: `area:runtime`, `area:hid`, `type:feature`, `priority:p0`
 
 - 対象 HID 入力の直近時刻とイベントタップ入力の association window が設定可能
 - runtime が対象活動として記録する HID usage と無視する usage が `analyze-association` の期待 usage と一致している
-- ジェスチャーボタン押下中は対象入力として継続処理される
+- ジェスチャーボタン押下中の move / wheel は、association window 内の対象 HID pointer / wheel がある場合だけ継続処理される
+- ジェスチャーボタン押下中でも、直近の対象 HID pointer / wheel がない別デバイス move / wheel を巻き込まない
+- ジェスチャーボタン release は HID と event tap の到着順が前後しても通常状態へ戻れる
 - ボタン解放後は一定時間を超えると通常入力へ戻る
 - 対象外デバイスのクリック、ドラッグ、ホイールを改変しないテストがある
 - Nape Pro 実機ログで association window の初期値が妥当化されている

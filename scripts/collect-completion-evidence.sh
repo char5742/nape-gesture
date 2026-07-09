@@ -438,6 +438,13 @@ run_split_success \
   .build/debug/nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/clean-association-event-log.jsonl --window 0.12 --target-stable-id "$sample_target_stable_id" --json --assert-valid-window
 
 run_split_expected_failure \
+  "missing target stable ID association assert-valid-window" \
+  "$fixtures_dir/missing-target-stable-id-association-assert-valid-window.json" \
+  "$fixtures_dir/missing-target-stable-id-association-assert-valid-window.stderr.log" \
+  ".build/debug/nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/clean-association-event-log.jsonl --window 0.12 --json --assert-valid-window" \
+  .build/debug/nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/clean-association-event-log.jsonl --window 0.12 --json --assert-valid-window
+
+run_split_expected_failure \
   "sample association assert-valid-window" \
   "$fixtures_dir/sample-association-assert-valid-window.json" \
   "$fixtures_dir/sample-association-assert-valid-window.stderr.log" \

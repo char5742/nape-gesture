@@ -75,15 +75,12 @@ public struct TargetDeviceGateState: Equatable, Sendable {
     }
 
     public func shouldHandle(_ event: RawInputEvent) -> Bool {
-        if activeButtons.contains(configuration.activationButton) {
-            return true
-        }
-
         switch event {
         case let .buttonDown(button, time):
             return button == configuration.activationButton && hasRecentTargetActivity(at: time)
         case let .buttonUp(button, time):
-            return button == configuration.activationButton && hasRecentTargetActivity(at: time)
+            return button == configuration.activationButton
+                && (activeButtons.contains(configuration.activationButton) || hasRecentTargetActivity(at: time))
         case let .move(_, _, time), let .wheel(_, _, time):
             return hasRecentTargetActivity(at: time)
         case .cancel:
