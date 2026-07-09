@@ -32,7 +32,7 @@ executablePath: /Users/fujino/Documents/mac-gesture/.build/NapeGesture.app/Conte
 ```
 
 `doctor` の TCC 状態は、`tccStatus.inputMonitoring.status: "granted"`、`tccStatus.accessibility.status: "granted"`、`hidProbe.succeeded: true` を示している。
-`gesture-drag`、`gesture-wheel`、`kill-switch`、`gesture-wheel-then-kill-switch`、`normal-after-release` は target ready diagnostics、foreground capture、`analyze-target-log`、runtime 性能ログで機械判定済みである。
+`gesture-drag`、`gesture-wheel`、`kill-switch`、`gesture-wheel-then-kill-switch`、`normal-after-release` は target ready diagnostics、foreground capture、`analyze-target-log` で機械判定済みである。runtime 性能ログの機械判定は、投稿を伴う `gesture-drag`、`gesture-wheel`、`gesture-wheel-then-kill-switch` の3シナリオに限定する。
 `summary.md` の項目名は POSIX sh の関数変数が呼び出し元の scenario title を上書きしない修正後の出力を採用し、daemon 停止ログ、target log、runtime 性能ログを別行で読める。
 Nape Pro 実機識別、純正トラックパッド比較、Spaces / Mission Control の画面挙動、公証はまだ完了扱いにしない。
 

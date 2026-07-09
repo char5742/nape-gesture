@@ -52,11 +52,11 @@ GUI smoke 証跡は `gui-smoke` コマンド導入後の commit で採用し、P
 - 由来ガード summary: `artifacts/completion/2026-07-09/provenance-guard/summary.md`
 - GUI アプリ起動 root: `artifacts/completion/2026-07-09/gui-app-mode`
 - GUI アプリ起動 summary: `artifacts/completion/2026-07-09/gui-app-mode/summary.md`
-- GUI アプリ runtime event 最新 root: `artifacts/completion/2026-07-09/runtime-event-open-absolute-paths-final`
-- GUI アプリ runtime event 最新 summary: `artifacts/completion/2026-07-09/runtime-event-open-absolute-paths-final/summary.md`
-- GUI アプリ runtime event 最新 status: `artifacts/completion/2026-07-09/runtime-event-open-absolute-paths-final/status.json`
-- GUI アプリ runtime event 最新 doctor: `artifacts/completion/2026-07-09/runtime-event-open-absolute-paths-final/doctor/doctor-debug.json`
-- GUI アプリ runtime event 最新 Issue コメント: [#16](https://github.com/char5742/nape-gesture/issues/16#issuecomment-4926725190), [#6](https://github.com/char5742/nape-gesture/issues/6#issuecomment-4926725331), [#12](https://github.com/char5742/nape-gesture/issues/12#issuecomment-4926725580)
+- GUI アプリ runtime event 過去失敗 root: `artifacts/completion/2026-07-09/runtime-event-open-absolute-paths-final`
+- GUI アプリ runtime event 過去失敗 summary: `artifacts/completion/2026-07-09/runtime-event-open-absolute-paths-final/summary.md`
+- GUI アプリ runtime event 過去失敗 status: `artifacts/completion/2026-07-09/runtime-event-open-absolute-paths-final/status.json`
+- GUI アプリ runtime event 過去失敗 doctor: `artifacts/completion/2026-07-09/runtime-event-open-absolute-paths-final/doctor/doctor-debug.json`
+- GUI アプリ runtime event 過去失敗 Issue コメント: [#16](https://github.com/char5742/nape-gesture/issues/16#issuecomment-4926725190), [#6](https://github.com/char5742/nape-gesture/issues/6#issuecomment-4926725331), [#12](https://github.com/char5742/nape-gesture/issues/12#issuecomment-4926725580)
 - GUI アプリ runtime event main 最新 root: `artifacts/completion/2026-07-10/runtime-event-main-e153f3c-summary-fix`
 - GUI アプリ runtime event main 最新 summary: `artifacts/completion/2026-07-10/runtime-event-main-e153f3c-summary-fix/summary.md`
 - GUI アプリ runtime event main 最新 status: `artifacts/completion/2026-07-10/runtime-event-main-e153f3c-summary-fix/status.json`
@@ -102,7 +102,7 @@ NAPE_COMPLETION_ARTIFACT_ROOT=artifacts/completion/2026-07-09/gui-smoke-script-c
 runtime event 証跡は、権限付与後の `.build/NapeGesture.app` で `doctor.runtimeReadiness.ready: true`、target ready diagnostics、foreground capture、元入力抑制、キルスイッチ、通常入力通過まで成功しました。`accessibility.missing` の外部ブロッカーではありません。
 `runtime-event-main-e153f3c-summary-fix/status.json` では `status: "success"`、`failureCount: 0` として機械判定できます。
 同じ artifact root の `doctor/doctor-debug.json` では `runtimeIdentity.isAppBundle: true`、`bundleIdentifier: "dev.char5742.nape-gesture"`、`tccStatus.inputMonitoring.status: "granted"`、`tccStatus.accessibility.status: "granted"`、`hidProbe.succeeded: true`、`runtimeReadiness.ready: true` を確認できます。
-同じ artifact root の `summary.md` では、`gesture-drag`、`gesture-wheel`、`kill-switch`、`gesture-wheel-then-kill-switch`、`normal-after-release` が成功し、gesture 系 runtime 性能ログも成功しています。
+同じ artifact root の `summary.md` では、`gesture-drag`、`gesture-wheel`、`kill-switch`、`gesture-wheel-then-kill-switch`、`normal-after-release` が成功しています。runtime 性能ログの機械判定は、投稿を伴う `gesture-drag`、`gesture-wheel`、`gesture-wheel-then-kill-switch` の3シナリオで成功しています。
 `scripts/collect-runtime-event-evidence.sh` は summary 行名の誤記を防ぐため、POSIX sh 関数の引数変数が呼び出し元の scenario title を上書きしない形へ修正済みです。
 `runtime-event-open-absolute-paths-final` は、Reference Target App の target log 空問題を示す過去の失敗証跡として残します。空 target log は完成証跡として扱いません。
 `gui-computer-use-main-24f0f7f/summary.md` では、computer-use による `.build/NapeGesture.app` の frontmost / running 観測、`Nape Gesture 設定` ウィンドウ、主要 UI 要素、System Events による `Nape Gesture` process と Dock item `NapeGesture` の観測を保存済みです。
