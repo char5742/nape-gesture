@@ -1160,6 +1160,81 @@ func testHIDInputLogAnalyzerGroupsByDeviceAndUsage() {
     expect(buttonSummary?.nonZeroEventCount == 0, "ゼロ値イベントを非ゼロとして数えない")
 }
 
+func testHIDTargetActivityMapperMapsButtonPressAndRelease() {
+    let buttonDown = HIDTargetActivityMapper.activity(
+        usagePage: HIDTargetActivityMapper.buttonUsagePage,
+        usage: 5,
+        integerValue: 1,
+        time: 1
+    )
+    let buttonUp = HIDTargetActivityMapper.activity(
+        usagePage: HIDTargetActivityMapper.buttonUsagePage,
+        usage: 5,
+        integerValue: 0,
+        time: 1.1
+    )
+
+    expect(buttonDown == .buttonDown(button: .button4, time: 1), "HID Button usage は buttonNumber + 1 として押下へ変換する")
+    expect(buttonUp == .buttonUp(button: .button4, time: 1.1), "HID Button のゼロ値は release として変換する")
+}
+
+func testHIDTargetActivityMapperMapsPointerAndWheel() {
+    let x = HIDTargetActivityMapper.activity(
+        usagePage: HIDTargetActivityMapper.genericDesktopUsagePage,
+        usage: HIDTargetActivityMapper.xUsage,
+        integerValue: 12,
+        time: 2
+    )
+    let y = HIDTargetActivityMapper.activity(
+        usagePage: HIDTargetActivityMapper.genericDesktopUsagePage,
+        usage: HIDTargetActivityMapper.yUsage,
+        integerValue: -7,
+        time: 2.1
+    )
+    let wheel = HIDTargetActivityMapper.activity(
+        usagePage: HIDTargetActivityMapper.genericDesktopUsagePage,
+        usage: HIDTargetActivityMapper.wheelUsage,
+        integerValue: -3,
+        time: 2.2
+    )
+
+    expect(x == .pointer(deltaX: 12, deltaY: 0, time: 2), "Generic Desktop X を pointer deltaX へ変換する")
+    expect(y == .pointer(deltaX: 0, deltaY: -7, time: 2.1), "Generic Desktop Y を pointer deltaY へ変換する")
+    expect(wheel == .wheel(deltaX: 0, deltaY: -3, time: 2.2), "Generic Desktop Wheel を wheel deltaY へ変換する")
+}
+
+func testHIDTargetActivityMapperIgnoresUnsupportedAndZeroMovementUsages() {
+    let zeroPointer = HIDTargetActivityMapper.activity(
+        usagePage: HIDTargetActivityMapper.genericDesktopUsagePage,
+        usage: HIDTargetActivityMapper.xUsage,
+        integerValue: 0,
+        time: 3
+    )
+    let zeroWheel = HIDTargetActivityMapper.activity(
+        usagePage: HIDTargetActivityMapper.genericDesktopUsagePage,
+        usage: HIDTargetActivityMapper.wheelUsage,
+        integerValue: 0,
+        time: 3.1
+    )
+    let acPan = HIDTargetActivityMapper.activity(
+        usagePage: 0x0C,
+        usage: 0x238,
+        integerValue: 8,
+        time: 3.2
+    )
+    let unsupportedButton = HIDTargetActivityMapper.activity(
+        usagePage: HIDTargetActivityMapper.buttonUsagePage,
+        usage: 0,
+        integerValue: 1,
+        time: 3.3
+    )
+
+    expect(zeroPointer == nil, "pointer のゼロ値は対象活動として記録しない")
+    expect(zeroWheel == nil, "wheel のゼロ値は対象活動として記録しない")
+    expect(acPan == nil, "runtime が記録しない AC Pan は対象活動として採用しない")
+    expect(unsupportedButton == nil, "HID Button usage 0 は対象 button として採用しない")
+}
+
 func testInputAssociationAnalyzerMeasuresWindowDistribution() {
     let hidRecords = [
         makeHIDRecord(time: 2.0),
@@ -2228,6 +2303,9 @@ testLogDerivedTuningAnalyzerDerivesAccelerationAndMomentum()
 testLogDerivedTuningAnalyzerReportsMissingSamples()
 testLogDerivedTuningAnalyzerRejectsSyntheticTimestampAsCompleteEvidence()
 testHIDInputLogAnalyzerGroupsByDeviceAndUsage()
+testHIDTargetActivityMapperMapsButtonPressAndRelease()
+testHIDTargetActivityMapperMapsPointerAndWheel()
+testHIDTargetActivityMapperIgnoresUnsupportedAndZeroMovementUsages()
 testInputAssociationAnalyzerMeasuresWindowDistribution()
 testInputAssociationAnalyzerCountsUnmatchedWhenHIDLogIsEmpty()
 testInputAssociationAnalyzerKeepsZeroValueHIDReleaseEvents()

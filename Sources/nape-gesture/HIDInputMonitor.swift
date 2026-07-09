@@ -63,38 +63,15 @@ final class HIDInputMonitor {
         let integerValue = IOHIDValueGetIntegerValue(value)
         let time = ProcessInfo.processInfo.systemUptime
 
-        if usagePage == kHIDPage_Button, let button = MouseButton(hidButtonUsage: usage) {
-            if integerValue != 0 {
-                gate.record(.buttonDown(button: button, time: time))
-            } else {
-                gate.record(.buttonUp(button: button, time: time))
-            }
+        guard let activity = HIDTargetActivityMapper.activity(
+            usagePage: usagePage,
+            usage: usage,
+            integerValue: integerValue,
+            time: time
+        ) else {
             return
         }
-
-        guard usagePage == kHIDPage_GenericDesktop else {
-            return
-        }
-
-        switch usage {
-        case kHIDUsage_GD_X:
-            guard integerValue != 0 else {
-                return
-            }
-            gate.record(.pointer(deltaX: Double(integerValue), deltaY: 0, time: time))
-        case kHIDUsage_GD_Y:
-            guard integerValue != 0 else {
-                return
-            }
-            gate.record(.pointer(deltaX: 0, deltaY: Double(integerValue), time: time))
-        case kHIDUsage_GD_Wheel:
-            guard integerValue != 0 else {
-                return
-            }
-            gate.record(.wheel(deltaX: 0, deltaY: Double(integerValue), time: time))
-        default:
-            return
-        }
+        gate.record(activity)
     }
 
     private func isTargetDevice(_ device: DeviceIdentity) -> Bool {

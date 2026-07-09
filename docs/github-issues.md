@@ -105,6 +105,7 @@ Labels: `area:hid`, `type:research`, `priority:p0`, `blocked:external`
 - `devices --all --json` の Nape Pro 候補ログが保存されている
 - `hid-log` で移動、ホイール、ジェスチャーボタンの usage と値域が分かる
 - `analyze-hid-log` の出力から設定例を作成済み
+- runtime が採用する HID Button / Generic Desktop X / Y / Wheel と、採用しない usage が core test で固定されている
 - `requireMatchingTargetDevice: true` で `matchedTargetDeviceCount >= 1` になる
 - Nape Pro 未接続時に安全停止することを確認済み
 
@@ -124,6 +125,7 @@ Labels: `area:runtime`, `area:hid`, `type:feature`, `priority:p0`
 完了条件:
 
 - 対象 HID 入力の直近時刻とイベントタップ入力の association window が設定可能
+- runtime が対象活動として記録する HID usage と無視する usage が `analyze-association` の期待 usage と一致している
 - ジェスチャーボタン押下中は対象入力として継続処理される
 - ボタン解放後は一定時間を超えると通常入力へ戻る
 - 対象外デバイスのクリック、ドラッグ、ホイールを改変しないテストがある
