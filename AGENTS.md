@@ -7,6 +7,7 @@
 - ユーザーに見える返答、通常コメント、doc comment、Issue / PR コメントは日本語で書く。ログなど英語が自然な出力はそのまま扱ってよい。
 - 問題が起きたら後回しにせず、根本原因から対応する。
 - テスト失敗、CI 失敗、検証不足を見過ごさない。完了扱いにする前に証跡を残す。
+- GitHub Actions が billing / spending limit など外部状態でジョブ開始前に失敗した場合、`blocked:external` と `need:human` を付ける。ローカル検証は補助証跡であり、CI 成功の代替にしない。詳細は [ADR-0034](docs/adr/0034-github-actions-external-blocker.md) を正とする。
 - `chmod` は使わない。読み取り専用ファイルは編集しない。
 - Issue / PR コメント投稿、PR review、reply など GitHub 上の書き込みは、可能な限り `gh api` または GitHub app / MCP を使う。
 

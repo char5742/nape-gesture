@@ -20,6 +20,7 @@
 - Grok 運用ルールを変えた場合、`AGENTS.md`、[ADR-0027](adr/0027-grok-cli-auxiliary-review.md)、[ADR-0029](adr/0029-grok-operational-surface.md)、必要なら `$grok-auxiliary-review` skill の同期を確認している
 - computer-use で代替できる GUI 操作を `need:human` にしていない。OS セキュリティ設定を変更する UI 操作では直前確認を取っている
 - Mermaid 図やアプリキャプチャを使う場合、実装、docs、実際の画面証跡と矛盾していない
+- GitHub Actions が billing / spending limit など外部状態でジョブ開始前に失敗した場合、`blocked:external` と `need:human` を付け、ローカル検証を CI 成功の代替にせず、[ADR-0034](adr/0034-github-actions-external-blocker.md) に従っている
 
 ## 性能 / Benchmark 変更
 
@@ -108,3 +109,4 @@
 - 旧名、新名、bundle ID、設定パスの混在が増えている
 - Mac Mouse Fix 由来のコードや係数を持ち込んでいる
 - CI やローカル検証の失敗を後回しにしている
+- GitHub Actions の外部停止を、CI 成功と同等として merge している
