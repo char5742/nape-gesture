@@ -20,6 +20,8 @@ struct SystemBehaviorTestCommand {
         switch subcommand {
         case "list":
             printScenarios()
+        case "readiness", "matrix":
+            try printReadiness(options: rest)
         case "run":
             try runScenario(options: rest)
         default:
@@ -76,8 +78,49 @@ struct SystemBehaviorTestCommand {
               nape-gesture system-test run --scenario horizontal-scroll --post-to-pid <Reference Target App PID>
               nape-gesture system-test run --scenario gesture-drag --dry-run --log-json
               nape-gesture system-test run --scenario mission-control --dry-run
+              nape-gesture system-test readiness --json
+              nape-gesture system-test matrix --markdown --assert
             """
         )
+    }
+
+    private func printReadiness(options: [String]) throws {
+        let wantsJSON = options.contains("--json")
+        let wantsMarkdown = options.contains("--markdown")
+        let wantsAssert = options.contains("--assert")
+        if wantsJSON && wantsMarkdown {
+            throw ToolError.invalidValue("--json", "--markdown と併用できません。")
+        }
+
+        let output: String
+        let report = SystemTestReadinessReport.make()
+        if wantsAssert {
+            try report.assertValid()
+        }
+        if wantsJSON {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(report)
+            output = String(decoding: data, as: UTF8.self) + "\n"
+        } else {
+            output = report.markdown
+        }
+
+        try write(output, to: value("--out", in: options), label: "system-test readiness")
+    }
+
+    private func write(_ text: String, to outputPath: String?, label: String) throws {
+        if let outputPath {
+            let url = URL(fileURLWithPath: outputPath)
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try text.write(to: url, atomically: true, encoding: .utf8)
+            fputs("\(label)を書き出しました: \(outputPath)\n", stderr)
+        } else {
+            print(text, terminator: "")
+        }
     }
 
     private func runScenario(options: [String]) throws {
@@ -784,6 +827,171 @@ struct SystemBehaviorTestCommand {
     }
 }
 
+private struct SystemTestReadinessReport: Encodable {
+    let schemaVersion: Int
+    let scope: String
+    let completionState: String
+    let humanWorkPolicy: String
+    let summary: SystemTestReadinessSummary
+    let scenarios: [SystemTestScenarioReadiness]
+
+    static func make() -> SystemTestReadinessReport {
+        let scenarios = SystemTestScenario.allCases.map { $0.readiness }
+        return SystemTestReadinessReport(
+            schemaVersion: 1,
+            scope: "system-behavior-test-readiness",
+            completionState: scenarios.contains { $0.requiresScreenBehaviorEvidence }
+                ? "screen-behavior-evidence-pending"
+                : "machine-evidence-complete",
+            humanWorkPolicy: "人間作業は物理トラックパッド、Nape Pro 実機操作、外部アカウント操作など、CGEvent、保存済みログ、Reference Target App、computer-use で代替できない場合だけ need:human として扱う。",
+            summary: SystemTestReadinessSummary(scenarios: scenarios),
+            scenarios: scenarios
+        )
+    }
+
+    var markdown: String {
+        var lines: [String] = [
+            "# System Behavior Test readiness matrix",
+            "",
+            "この matrix は `system-test` の各シナリオについて、先に機械で埋める証跡、画面挙動の実測待ち、人間作業ラベルの境界を同じ定義から出力する。",
+            "人間作業は、物理トラックパッド、Nape Pro 実機操作、外部アカウント操作など、CGEvent、保存済みログ、Reference Target App、computer-use で代替できない場合だけ `need:human` として扱う。",
+            "",
+            "## Summary",
+            "",
+            "- schemaVersion: \(schemaVersion)",
+            "- scope: `\(scope)`",
+            "- completionState: `\(completionState)`",
+            "- scenarioCount: \(summary.scenarioCount)",
+            "- machinePreflightScenarioCount: \(summary.machinePreflightScenarioCount)",
+            "- screenBehaviorPendingScenarioCount: \(summary.screenBehaviorPendingScenarioCount)",
+            "- runtimeTargetEvidenceScenarioCount: \(summary.runtimeTargetEvidenceScenarioCount)",
+            "- needHumanLabelScenarioCount: \(summary.needHumanLabelScenarioCount)",
+            "",
+            "## Matrix",
+            "",
+            "| シナリオ | 完成要件 | 機械証跡 | 画面挙動 / 人間作業境界 | Issue | 状態 |",
+            "| --- | --- | --- | --- | --- | --- |"
+        ]
+
+        for scenario in scenarios {
+            lines.append(
+                [
+                    scenario.scenario,
+                    scenario.completionRequirement,
+                    markdownCodeCell(scenario.machineEvidence),
+                    markdownCell(scenario.screenBehaviorEvidence + scenario.humanWorkBoundary),
+                    scenario.relatedIssues.map { "#\($0)" }.joined(separator: ", "),
+                    scenario.completionState
+                ]
+                    .map(escapeTableCell)
+                    .joined(separator: " | ")
+                    .withTableBoundaries
+            )
+        }
+
+        lines.append("")
+        return lines.joined(separator: "\n")
+    }
+
+    private func markdownCell(_ values: [String]) -> String {
+        values.isEmpty ? "なし" : values.joined(separator: "<br>")
+    }
+
+    private func markdownCodeCell(_ values: [String]) -> String {
+        values.isEmpty ? "なし" : values.map { "`\($0)`" }.joined(separator: "<br>")
+    }
+
+    private func escapeTableCell(_ value: String) -> String {
+        value.replacingOccurrences(of: "|", with: "\\|")
+    }
+
+    func assertValid() throws {
+        var failures: [String] = []
+        let scenarioNames = Set(scenarios.map(\.scenario))
+        let expectedNames = Set(SystemTestScenario.allCases.map(\.rawValue))
+        let missingScenarios = expectedNames.subtracting(scenarioNames).sorted()
+        let unexpectedScenarios = scenarioNames.subtracting(expectedNames).sorted()
+        if !missingScenarios.isEmpty {
+            failures.append("readiness にない system-test scenario: \(missingScenarios.joined(separator: ", "))")
+        }
+        if !unexpectedScenarios.isEmpty {
+            failures.append("未知の readiness scenario: \(unexpectedScenarios.joined(separator: ", "))")
+        }
+        if summary.scenarioCount != SystemTestScenario.allCases.count {
+            failures.append("scenarioCount が SystemTestScenario.allCases と一致しません。")
+        }
+        if summary.screenBehaviorPendingScenarioCount < 7 {
+            failures.append("Issue #9 / #10 の画面挙動待ちシナリオ数が想定より少ないです。")
+        }
+        if scenarios.filter({ $0.relatedIssues.contains(9) }).isEmpty {
+            failures.append("Issue #9 に紐づく scenario がありません。")
+        }
+        if scenarios.filter({ $0.relatedIssues.contains(10) }).isEmpty {
+            failures.append("Issue #10 に紐づく scenario がありません。")
+        }
+        if summary.needHumanLabelScenarioCount != 0 {
+            failures.append("CLI が need:human 適用を直接要求しています。人間作業は外部作業が不可避な Issue / PR に限定してください。")
+        }
+        for scenario in scenarios {
+            if scenario.machineEvidence.isEmpty {
+                failures.append("\(scenario.scenario) に機械証跡コマンドがありません。")
+            }
+            if scenario.requiresScreenBehaviorEvidence && scenario.screenBehaviorEvidence.isEmpty {
+                failures.append("\(scenario.scenario) は画面挙動待ちなのに screenBehaviorEvidence が空です。")
+            }
+        }
+
+        if !failures.isEmpty {
+            throw SystemTestReadinessAssertionError(failures: failures)
+        }
+    }
+}
+
+private struct SystemTestReadinessSummary: Encodable {
+    let scenarioCount: Int
+    let machinePreflightScenarioCount: Int
+    let screenBehaviorPendingScenarioCount: Int
+    let runtimeTargetEvidenceScenarioCount: Int
+    let needHumanLabelScenarioCount: Int
+
+    init(scenarios: [SystemTestScenarioReadiness]) {
+        scenarioCount = scenarios.count
+        machinePreflightScenarioCount = scenarios.filter { !$0.machineEvidence.isEmpty }.count
+        screenBehaviorPendingScenarioCount = scenarios.filter(\.requiresScreenBehaviorEvidence).count
+        runtimeTargetEvidenceScenarioCount = scenarios.filter(\.requiresRuntimeTargetEvidence).count
+        needHumanLabelScenarioCount = scenarios.filter(\.needHumanLabelApplies).count
+    }
+}
+
+private struct SystemTestScenarioReadiness: Encodable {
+    let scenario: String
+    let completionRequirement: String
+    let relatedIssues: [Int]
+    let expectedTargets: [String]
+    let eventShape: String
+    let machineEvidence: [String]
+    let runtimeEvidence: [String]
+    let screenBehaviorEvidence: [String]
+    let humanWorkBoundary: [String]
+    let requiresScreenBehaviorEvidence: Bool
+    let requiresRuntimeTargetEvidence: Bool
+    let needHumanLabelApplies: Bool
+    let completionState: String
+}
+
+private struct SystemTestReadinessAssertionError: LocalizedError {
+    var failures: [String]
+
+    var errorDescription: String? {
+        let details = failures.map { "- \($0)" }.joined(separator: "\n")
+        return """
+        system-test readiness が完成判定 matrix として不完全です。
+        \(details)
+        `nape-gesture system-test readiness --json --assert` の出力定義を確認してください。
+        """
+    }
+}
+
 private struct SystemTestPlan {
     var scenario: SystemTestScenario
     var target: SystemTestTarget?
@@ -833,7 +1041,7 @@ private struct SystemTestPlan {
     }
 }
 
-private enum SystemTestScenario: String {
+private enum SystemTestScenario: String, CaseIterable {
     case spaceLeft = "space-left"
     case spaceRight = "space-right"
     case horizontalScroll = "horizontal-scroll"
@@ -907,11 +1115,273 @@ private enum SystemTestScenario: String {
             return false
         }
     }
+
+    var readiness: SystemTestScenarioReadiness {
+        let targetFlag = dryRunTarget.map { " --target \($0)" } ?? ""
+        let dryRunCommand = ".build/debug/nape-gesture system-test run --scenario \(rawValue)\(targetFlag) --dry-run --log-json --out <artifact>/system-\(rawValue).jsonl"
+        let analyzeCommand = ".build/debug/nape-gesture analyze-log <artifact>/system-\(rawValue).jsonl --json --assert-system-scenario \(rawValue)\(additionalAnalyzeAssertions)"
+        let machineEvidence = [
+            dryRunCommand,
+            analyzeCommand
+        ]
+
+        return SystemTestScenarioReadiness(
+            scenario: rawValue,
+            completionRequirement: completionRequirement,
+            relatedIssues: relatedIssues,
+            expectedTargets: expectedTargets,
+            eventShape: eventShape,
+            machineEvidence: machineEvidence,
+            runtimeEvidence: runtimeEvidence,
+            screenBehaviorEvidence: screenBehaviorEvidence,
+            humanWorkBoundary: humanWorkBoundary,
+            requiresScreenBehaviorEvidence: requiresScreenBehaviorEvidence,
+            requiresRuntimeTargetEvidence: requiresRuntimeTargetEvidence,
+            needHumanLabelApplies: needHumanLabelApplies,
+            completionState: completionState
+        )
+    }
+
+    private var completionRequirement: String {
+        switch self {
+        case .spaceLeft, .spaceRight, .missionControl:
+            return "Spaces / Mission Control"
+        case .horizontalScroll, .pageBack, .pageForward, .zoomIn, .zoomOut:
+            return "ページ戻る / 進む / ズーム / 横スクロール"
+        case .killSwitch, .gestureWheelThenKillSwitch:
+            return "キルスイッチ"
+        case .gestureDrag, .gestureWheel:
+            return "元入力抑制"
+        case .normalAfterRelease:
+            return "通常クリック / ドラッグ / ホイール通過"
+        }
+    }
+
+    private var relatedIssues: [Int] {
+        switch self {
+        case .spaceLeft, .spaceRight, .missionControl:
+            return [9, 16]
+        case .horizontalScroll, .pageBack, .pageForward, .zoomIn, .zoomOut:
+            return [10, 16]
+        case .killSwitch:
+            return [12, 16]
+        case .gestureWheelThenKillSwitch:
+            return [6, 12, 16]
+        case .gestureDrag, .gestureWheel, .normalAfterRelease:
+            return [6, 16]
+        }
+    }
+
+    private var expectedTargets: [String] {
+        switch self {
+        case .spaceLeft, .spaceRight:
+            return ["Finder", "Safari"]
+        case .missionControl:
+            return ["Finder", "Mission Control"]
+        case .horizontalScroll:
+            return ["横スクロール可能なビュー", "Reference Target App"]
+        case .pageBack, .pageForward:
+            return ["Safari"]
+        case .zoomIn, .zoomOut:
+            return ["Safari", "Preview などズーム可能なアプリ"]
+        case .killSwitch, .gestureDrag, .gestureWheel, .gestureWheelThenKillSwitch, .normalAfterRelease:
+            return ["Reference Target App"]
+        }
+    }
+
+    private var eventShape: String {
+        switch self {
+        case .spaceLeft:
+            return "生成済み水平 scrollWheel、左 Spaces 方向"
+        case .spaceRight:
+            return "生成済み水平 scrollWheel、右 Spaces 方向"
+        case .horizontalScroll:
+            return "生成済み水平 scrollWheel、通常横スクロール"
+        case .missionControl:
+            return "生成済み Control + 上矢印 keyDown / keyUp"
+        case .pageBack:
+            return "生成済み Command + 左矢印 keyDown / keyUp"
+        case .pageForward:
+            return "生成済み Command + 右矢印 keyDown / keyUp"
+        case .zoomIn:
+            return "生成済み Command + = keyDown / keyUp"
+        case .zoomOut:
+            return "生成済み Command + - keyDown / keyUp"
+        case .killSwitch:
+            return "未生成 Control + Option + Command + G keyDown / keyUp"
+        case .gestureDrag:
+            return "未生成 activation button 押下、ドラッグ、解放"
+        case .gestureWheel:
+            return "未生成 activation button 押下中のホイール、解放"
+        case .gestureWheelThenKillSwitch:
+            return "未生成 activation button 押下中のホイールとキルスイッチ"
+        case .normalAfterRelease:
+            return "activation button 解放後の未生成移動、通常クリック、通常ドラッグ、通常ホイール"
+        }
+    }
+
+    private var dryRunTarget: String? {
+        switch self {
+        case .spaceLeft, .spaceRight:
+            return "finder"
+        case .horizontalScroll,
+             .missionControl,
+             .pageBack,
+             .pageForward,
+             .zoomIn,
+             .zoomOut,
+             .killSwitch,
+             .gestureDrag,
+             .gestureWheel,
+             .gestureWheelThenKillSwitch,
+             .normalAfterRelease:
+            return nil
+        }
+    }
+
+    private var additionalAnalyzeAssertions: String {
+        switch self {
+        case .killSwitch:
+            return " --assert-kill-switch-shortcut"
+        case .gestureWheelThenKillSwitch:
+            return " --assert-kill-switch-shortcut --assert-gesture-before-kill-switch"
+        case .normalAfterRelease:
+            return " --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel"
+        case .spaceLeft,
+             .spaceRight,
+             .horizontalScroll,
+             .missionControl,
+             .pageBack,
+             .pageForward,
+             .zoomIn,
+             .zoomOut,
+             .gestureDrag,
+             .gestureWheel:
+            return ""
+        }
+    }
+
+    private var runtimeEvidence: [String] {
+        switch self {
+        case .gestureDrag, .gestureWheel:
+            return [
+                "scripts/collect-runtime-event-evidence.sh の target log",
+                "analyze-target-log --assert-no-leaks --assert-has-generated-event --assert-has-foreground-capture"
+            ]
+        case .gestureWheelThenKillSwitch:
+            return [
+                "scripts/collect-runtime-event-evidence.sh の daemon 停止ログと target log",
+                "analyze-target-log --assert-no-leaks --assert-has-generated-event --assert-has-foreground-capture"
+            ]
+        case .normalAfterRelease:
+            return [
+                "scripts/collect-runtime-event-evidence.sh の target log",
+                "analyze-target-log --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel --assert-has-foreground-capture"
+            ]
+        case .killSwitch:
+            return [
+                "system-test run --scenario kill-switch の実投稿ログ",
+                "daemon 停止ログ"
+            ]
+        case .spaceLeft,
+             .spaceRight,
+             .horizontalScroll,
+             .missionControl,
+             .pageBack,
+             .pageForward,
+             .zoomIn,
+             .zoomOut:
+            return []
+        }
+    }
+
+    private var screenBehaviorEvidence: [String] {
+        switch self {
+        case .spaceLeft, .spaceRight:
+            return [
+                "Finder / Safari 前面で Spaces が期待方向へ遷移した画面挙動証跡",
+                "同じ scenario 名の CGEvent log、AppKit target log、体感差分"
+            ]
+        case .missionControl:
+            return [
+                "Mission Control が表示される画面挙動証跡",
+                "純正操作ログと生成イベントログの比較"
+            ]
+        case .horizontalScroll:
+            return [
+                "横スクロール可能なビューの表示位置が期待方向へ変化した画面挙動証跡",
+                "AppKit target log または対象アプリの受信ログ"
+            ]
+        case .pageBack:
+            return ["Safari の履歴が戻る画面挙動証跡"]
+        case .pageForward:
+            return ["Safari の履歴が進む画面挙動証跡"]
+        case .zoomIn:
+            return ["対応アプリのズーム倍率が上がる画面挙動証跡"]
+        case .zoomOut:
+            return ["対応アプリのズーム倍率が下がる画面挙動証跡"]
+        case .killSwitch,
+             .gestureDrag,
+             .gestureWheel,
+             .gestureWheelThenKillSwitch,
+             .normalAfterRelease:
+            return []
+        }
+    }
+
+    private var humanWorkBoundary: [String] {
+        switch self {
+        case .spaceLeft,
+             .spaceRight,
+             .horizontalScroll,
+             .missionControl,
+             .pageBack,
+             .pageForward,
+             .zoomIn,
+             .zoomOut:
+            return [
+                "まず CGEvent 実投稿、Reference Target App、computer-use の画面証跡で代替する。",
+                "物理トラックパッド操作や人間の目視操作が不可避になった場合だけ need:human を付ける。"
+            ]
+        case .killSwitch:
+            return ["物理キーボード由来まで含める場合だけ need:human を検討する。"]
+        case .gestureDrag, .gestureWheel, .gestureWheelThenKillSwitch, .normalAfterRelease:
+            return ["Nape Pro 実機の物理操作でしか確認できない最終差分は Issue #4 / #16 へ分離する。"]
+        }
+    }
+
+    private var requiresScreenBehaviorEvidence: Bool {
+        !screenBehaviorEvidence.isEmpty
+    }
+
+    private var requiresRuntimeTargetEvidence: Bool {
+        !runtimeEvidence.isEmpty
+    }
+
+    private var needHumanLabelApplies: Bool {
+        false
+    }
+
+    private var completionState: String {
+        if requiresScreenBehaviorEvidence {
+            return "画面挙動実測待ち"
+        }
+        if requiresRuntimeTargetEvidence {
+            return "runtime target log 証跡対象"
+        }
+        return "機械前段証跡対象"
+    }
 }
 
 private enum SystemTestTarget: String {
     case finder
     case safari
+}
+
+private extension String {
+    var withTableBoundaries: String {
+        "| \(self) |"
+    }
 }
 
 private struct UnmarkedInputEvent {

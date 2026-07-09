@@ -323,6 +323,33 @@ run_combined_success \
   ".build/debug/nape-gesture system-test list" \
   .build/debug/nape-gesture system-test list
 
+run_split_success \
+  "system-test readiness JSON assert" \
+  "$system_dir/system-test-readiness.json" \
+  "$system_dir/system-test-readiness.stderr.log" \
+  ".build/debug/nape-gesture system-test readiness --json --assert" \
+  .build/debug/nape-gesture system-test readiness --json --assert
+
+run_split_success \
+  "system-test readiness Markdown assert" \
+  "$system_dir/system-test-readiness.md" \
+  "$system_dir/system-test-readiness-markdown.stderr.log" \
+  ".build/debug/nape-gesture system-test readiness --markdown --assert" \
+  .build/debug/nape-gesture system-test readiness --markdown --assert
+
+run_split_success \
+  "system-test matrix alias JSON assert" \
+  "$system_dir/system-test-matrix.json" \
+  "$system_dir/system-test-matrix.stderr.log" \
+  ".build/debug/nape-gesture system-test matrix --json --assert" \
+  .build/debug/nape-gesture system-test matrix --json --assert
+
+run_combined_success \
+  "system-test readiness JSON field check" \
+  "$system_dir/system-test-readiness-field-check.log" \
+  "grep -q scope / screenBehaviorPendingScenarioCount / needHumanLabelScenarioCount / relatedIssues $system_dir/system-test-readiness.json" \
+  sh -c "grep -q '\"scope\"[[:space:]]*:[[:space:]]*\"system-behavior-test-readiness\"' '$system_dir/system-test-readiness.json' && grep -q '\"screenBehaviorPendingScenarioCount\"' '$system_dir/system-test-readiness.json' && grep -q '\"needHumanLabelScenarioCount\"[[:space:]]*:[[:space:]]*0' '$system_dir/system-test-readiness.json' && grep -q '\"relatedIssues\"' '$system_dir/system-test-readiness.json' && grep -q '\"scenario\"[[:space:]]*:[[:space:]]*\"mission-control\"' '$system_dir/system-test-readiness.json' && grep -q '\"scenario\"[[:space:]]*:[[:space:]]*\"page-back\"' '$system_dir/system-test-readiness.json'"
+
 for scenario in space-left space-right mission-control horizontal-scroll page-back page-forward zoom-in zoom-out kill-switch; do
   if [ "$scenario" = "space-left" ] || [ "$scenario" = "space-right" ]; then
     run_combined_success \

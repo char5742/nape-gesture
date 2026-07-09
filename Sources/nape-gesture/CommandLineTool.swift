@@ -154,6 +154,9 @@ final class CommandLineTool {
               nape-gesture system-test list
                   System Behavior Test のシナリオ一覧を表示します。
 
+              nape-gesture system-test readiness [--json|--markdown] [--assert] [--out <path>]
+                  System Behavior Test のシナリオ別に、機械証跡、画面挙動実測待ち、need:human の境界を出力します。既定は Markdown です。system-test matrix は同じ出力の別名です。
+
               nape-gesture system-test run --scenario <name> [--target finder|safari] [--dry-run] [--log-json] [--out <path>] [--post-to-pid <pid>]
                   Spaces / Mission Control / Safari / Finder 向けの実挙動検証イベント、または未マーク元入力を生成します。--dry-run --log-json で計画したイベントを JSON Lines で出力します。--post-to-pid は対応シナリオを Reference Target App などへ直接投稿し、OS 画面遷移を避けて受信経路を切り分ける診断用です。--target とは同時指定できません。
 

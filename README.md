@@ -13,6 +13,7 @@ Mac Mouse Fix のコード、定数、状態遷移、係数は流用しません
 | メニューバー常駐 UI | 実装済み。AppKit `gui-smoke` で status item `NG`、状態、開始、緊急停止、停止、設定、権限導線の生成契約を検査する。SystemUIServer の AX name に出ない場合は `gui-smoke` を正とする | [docs/completion-checklist.md](docs/completion-checklist.md) |
 | 設定 UI | 実装済み。編集項目 catalog、JSON round-trip、computer-use による `.app` 設定表示と保存操作は確認済み。保存は設定ファイル更新までの証跡で、TCC 許可済み runtime と実イベントは completion matrix で管理する | [ADR-0021](docs/adr/0021-settings-ui-field-catalog.md)、[docs/completion-checklist.md](docs/completion-checklist.md) |
 | Runtime event | `.build/NapeGesture.app` の TCC 許可済み経路で成功。gesture-drag / gesture-wheel / kill-switch / gesture-wheel-then-kill-switch / normal-after-release を `scripts/collect-runtime-event-evidence.sh` で機械判定した | [ADR-0032](docs/adr/0032-reference-target-foreground-capture.md)、[ADR-0033](docs/adr/0033-kill-switch-pending-release-suppression.md) |
+| System Behavior Test | readiness matrix を CLI から JSON / Markdown で出力し、Issue #9 / #10 の前段機械証跡と画面挙動実測待ちを分離する。`need:human` は物理操作など不可避な外部作業だけに限定する | `system-test readiness --json --assert`、[docs/system-behavior-matrix.md](docs/system-behavior-matrix.md) |
 | 通常入力通過 | 機械証跡あり。ジェスチャーボタン未押下時と解放後の通常クリック、ドラッグ、ホイールを AppKit target log で確認する | [ADR-0016](docs/adr/0016-normal-input-kind-assertions.md) |
 | 権限導線 | 実装済み。GUI と `doctor` が TCC 権限付与対象を表示し、System Settings を開く | [ADR-0020](docs/adr/0020-doctor-tcc-permission-target.md)、[ADR-0025](docs/adr/0025-gui-permission-recovery-actions.md) |
 | runtime 性能測定 | tap callback から投稿直前/直後までを JSON Lines で保存し、p95 / p99 を判定できる | [docs/performance-baseline.md](docs/performance-baseline.md) |
@@ -134,7 +135,7 @@ swift run nape-gesture init-config --vendor-id <ID> --product-id <ID> --usage-pa
 | `hid-log` / `analyze-hid-log` | Nape Pro などの HID 生入力を記録、解析する |
 | `log` / `analyze-log` / `compare-log` | 実デバイス、純正トラックパッド、生成イベントを JSON Lines で記録、解析、比較する |
 | `target` / `analyze-target-log` | AppKit が受け取った `scrollWheel` / `swipe` / `magnify` などを画面と JSON Lines で確認する。無人証跡では `--focus-capture-point` で capture view 中心へカーソルを移動し、`--assert-has-foreground-capture` や `--assert-has-generated-foreground-capture` で `globalMonitor` だけの弱い証跡を除外する |
-| `system-test` | Spaces、Mission Control、横スクロール、キルスイッチなどのシナリオを dry-run または実行する。対応シナリオは `--post-to-pid` で Reference Target App の AppKit 受信も診断できる |
+| `system-test` | Spaces、Mission Control、横スクロール、キルスイッチなどのシナリオを dry-run または実行する。対応シナリオは `--post-to-pid` で Reference Target App の AppKit 受信を診断し、`readiness` / `matrix` で機械証跡、runtime 証跡、画面挙動待ちを構造化する |
 | `benchmark` | 認識器とスクロール計画の純粋ロジック処理時間を測る |
 | `analyze-performance-log` | runtime 性能 JSON Lines から tap-to-post の p95 / p99 を判定する |
 | `bundle-app` / `verify-bundle` | `.app` を作成し、Info.plist、署名、同梱物、通常 GUI 設定を検証する |
@@ -181,6 +182,8 @@ swift run nape-gesture generate-scroll --x 0 --y -480 --steps 24 --momentum-step
 swift run nape-gesture generate-scroll --x 1200 --y 0 --steps 30 --mode space-right --phase auto --dry-run --json
 
 swift run nape-gesture system-test list
+swift run nape-gesture system-test readiness --json --assert
+swift run nape-gesture system-test readiness --markdown --assert
 swift run nape-gesture system-test run --scenario space-left --target finder --dry-run
 swift run nape-gesture system-test run --scenario space-left --target finder --dry-run --log-json --out system-space-left.jsonl
 swift run nape-gesture system-test run --scenario horizontal-scroll --dry-run --log-json --out system-horizontal-scroll.jsonl

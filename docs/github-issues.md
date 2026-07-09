@@ -212,6 +212,7 @@ Labels: `area:verification`, `type:research`, `priority:p0`, `blocked:external`
 - Finder と Safari を対象に `space-left` / `space-right` を実測済み
 - Mission Control の純正操作ログと生成イベントログを比較済み
 - `screen behavior`, `CGEvent log`, `AppKit target log`, `体感差分` が同じシナリオ名で保存されている
+- `system-test readiness --json --assert` で、#9 対象 scenario、機械証跡、画面挙動待ち、`need:human` 境界が構造化されている
 - 公開 API の限界がある場合、ログを根拠に説明されている
 - 代替操作を使う場合のチューニング値と品質目標がある
 
@@ -235,6 +236,7 @@ Labels: `area:runtime`, `area:verification`, `type:qa`, `priority:p1`
 - `horizontalScroll` が横スクロール可能なビューで検証されている
 - 離散アクションは慣性を発生させない
 - 生成キーイベントのログと画面挙動が一致している
+- `system-test readiness --json --assert` で、#10 対象 scenario、機械証跡、画面挙動待ち、`need:human` 境界が構造化されている
 
 依存関係:
 アクセシビリティ権限、Issue 3。

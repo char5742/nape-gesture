@@ -18,6 +18,9 @@ Issue #9 と Issue #10 の System Behavior Test は、最終的に Finder、Safa
 - `analyze-log --json` は `generatedKeyEvents`、`unmarkedKeyEvents`、`generatedScrollEvents`、`momentumScrollEvents`、水平 scroll 方向数、`keySignatureCounts` を出し、シナリオ assertion の根拠を構造化して残す。
 - `kill-switch`、`gesture-wheel-then-kill-switch`、`normal-after-release` など既存の未生成入力シナリオも、同じ `--assert-system-scenario` 入口で確認できるようにする。
 - completion evidence と CI は、`system-test run --dry-run --log-json` の直後に `analyze-log --json --assert-system-scenario <name>` を実行する。
+- `system-test readiness --json --assert` は、scenario 一覧、Issue #9 / #10 の紐づけ、機械証跡コマンド、runtime target log 対象、画面挙動待ち、`need:human` 境界を同じ JSON schema で出力する。
+- `system-test matrix` は `system-test readiness` と同じ出力の別名とし、completion evidence で alias の退行も検出する。
+- CLI scenario 自体は `need:human` を直接要求しない。物理トラックパッド、Nape Pro 実機、TCC、外部アカウント操作など、代替不能な作業が発生した Issue / PR にだけ `need:human` を付ける。
 
 ## 影響
 
@@ -25,11 +28,13 @@ Issue #9 と Issue #10 の System Behavior Test は、最終的に Finder、Safa
 - `space-right` と `horizontal-scroll` のようにイベント形状が近いシナリオも、`systemTestScenario` で取り違えを検出できる。
 - `need:human` は、実画面挙動、純正トラックパッド操作、TCC 権限操作など、ログのシナリオ整合性では代替できない作業に絞られる。
 - `--assert-system-scenario` の成功は、生成予定イベント列の正しさを示す前段証跡であり、Finder / Safari / Mission Control / Spaces の画面が実際に動いた証跡ではない。
+- readiness matrix の成功も、画面挙動の完了証跡ではない。実測へ進む前に、何が機械で埋まっていて何が残っているかを終了コード付きで固定するための証跡である。
 
 ## 関連
 
 - [GitHub labels / milestones / Issue close 方針](0002-github-labels-milestones-and-issue-close.md)
 - [Issue による orchestration と証跡付き close 方針](0005-issue-orchestration-and-evidence-close.md)
 - [離散割り当ての System Behavior Test dry-run 証跡](0010-system-test-discrete-assignment-dry-run-evidence.md)
+- [System Behavior Test matrix](../system-behavior-matrix.md)
 - [完成判定チェックリスト](../completion-checklist.md)
 - [検証方針](../verification.md)
