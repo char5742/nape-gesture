@@ -317,6 +317,19 @@ run_combined_success \
   "grep -q schemaVersion 3 / sampledNanosecondsPerEvent / sampledNanosecondsPerCommand / p95Nanoseconds / p99Nanoseconds $doctor_dir/doctor-debug.json" \
   sh -c "grep -q '\"schemaVersion\"[[:space:]]*:[[:space:]]*3' '$doctor_dir/doctor-debug.json' && grep -q '\"sampledNanosecondsPerEvent\"' '$doctor_dir/doctor-debug.json' && grep -q '\"sampledNanosecondsPerCommand\"' '$doctor_dir/doctor-debug.json' && grep -q '\"p95Nanoseconds\"' '$doctor_dir/doctor-debug.json' && grep -q '\"p99Nanoseconds\"' '$doctor_dir/doctor-debug.json' && grep -q '\"recognizerP95NanosecondsPerEvent\"' '$doctor_dir/doctor-debug.json' && grep -q '\"scrollPlannerP99NanosecondsPerCommand\"' '$doctor_dir/doctor-debug.json'"
 
+run_split_success \
+  "sample-cpu idle smoke JSON" \
+  "$doctor_dir/sample-cpu-idle-smoke.json" \
+  "$doctor_dir/sample-cpu-idle-smoke.stderr.log" \
+  "sleep 2 & sample_pid=\$!; .build/debug/nape-gesture sample-cpu --pid \$sample_pid --duration 0.2 --interval 0.1 --mode idle --json --assert-baseline" \
+  sh -c 'sleep 2 & sample_pid=$!; .build/debug/nape-gesture sample-cpu --pid "$sample_pid" --duration 0.2 --interval 0.1 --mode idle --json --assert-baseline; sample_status=$?; wait "$sample_pid"; exit "$sample_status"'
+
+run_combined_success \
+  "sample-cpu JSON field check" \
+  "$doctor_dir/sample-cpu-json-field-check.log" \
+  "grep -q processCpuSampling / averagePercentOfOneCore / baseline $doctor_dir/sample-cpu-idle-smoke.json" \
+  sh -c "grep -q '\"measurementKind\"[[:space:]]*:[[:space:]]*\"processCpuSampling\"' '$doctor_dir/sample-cpu-idle-smoke.json' && grep -q '\"averagePercentOfOneCore\"' '$doctor_dir/sample-cpu-idle-smoke.json' && grep -q '\"baseline\"' '$doctor_dir/sample-cpu-idle-smoke.json' && grep -q '\"passed\"[[:space:]]*:[[:space:]]*true' '$doctor_dir/sample-cpu-idle-smoke.json'"
+
 run_combined_success \
   "system-test list" \
   "$system_dir/system-test-list.txt" \
@@ -565,7 +578,7 @@ cat >> "$summary_file" <<EOF
 - TCC のアクセシビリティ / 入力監視許可操作
 - Spaces / Mission Control の画面挙動実測
 - Issue #10 の Safari / 対応アプリでのページ戻る、進む、ズーム、横スクロール画面挙動実測
-- \`run\`、実イベント投稿、target 実測、常駐 CPU、入力遅延
+- \`run\`、実イベント投稿、target 実測、日常利用主体での常駐 CPU、入力遅延
 - Developer ID 署名、公証、stapler、Gatekeeper 評価
 
 EOF

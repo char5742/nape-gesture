@@ -137,6 +137,7 @@ swift run nape-gesture init-config --vendor-id <ID> --product-id <ID> --usage-pa
 | `system-test` | Spaces、Mission Control、横スクロール、キルスイッチなどのシナリオを dry-run または実行する |
 | `benchmark` | 認識器とスクロール計画の純粋ロジック処理時間を測る |
 | `analyze-performance-log` | runtime 性能 JSON Lines から tap-to-post の p95 / p99 を判定する |
+| `sample-cpu` | runtime など任意 PID の CPU 使用率を周期サンプルし、idle / active / recovery の基準を JSON と終了コードで判定する |
 | `bundle-app` / `verify-bundle` | `.app` を作成し、Info.plist、署名、同梱物、通常 GUI 設定を検証する |
 
 `system-test --post-to-pid` は Reference Target App の sink 診断専用です。
@@ -191,6 +192,7 @@ swift run nape-gesture doctor --probe-hid --benchmark-events 50000 --json --asse
 swift run nape-gesture run
 swift run nape-gesture run --performance-log runtime-performance.jsonl
 swift run nape-gesture analyze-performance-log runtime-performance.jsonl --json --assert-baseline
+swift run nape-gesture sample-cpu --pid <nape-gesture PID> --duration 30 --interval 1 --mode idle --json --assert-baseline
 
 swift run nape-gesture bundle-app --out .build/NapeGesture.app --replace
 swift run nape-gesture verify-bundle .build/NapeGesture.app
@@ -293,6 +295,7 @@ NAPE_RUNTIME_EVENT_USE_APP_BUNDLE=1 sh scripts/collect-runtime-event-evidence.sh
 
 `benchmark` と `doctor` 内の benchmark は `measurementKind: "pureLogic"` の証跡であり、イベントタップから投稿、AppKit 受信、画面反映までの入力遅延実測ではありません。
 tap-to-post 遅延を完成証跡にする場合は、`run --performance-log` または `NAPE_RUNTIME_PERFORMANCE_LOG` で runtime 性能 JSON Lines を取り、`analyze-performance-log --json --assert-baseline` で判定します。
+常駐 CPU を完成証跡にする場合は、日常利用と同じ実行主体の PID に対して `sample-cpu --json --assert-baseline` を実行します。
 性能レビューで見る JSON キー、CPU 使用率、入力遅延の合格基準は [docs/performance-baseline.md](docs/performance-baseline.md) にまとめています。
 
 ## 開発運用
