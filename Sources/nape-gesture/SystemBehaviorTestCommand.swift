@@ -984,6 +984,7 @@ private struct UnmarkedInputEvent {
             event?.setIntegerValueField(.scrollWheelEventIsContinuous, value: isContinuous)
             event?.setDoubleValueField(.scrollWheelEventPointDeltaAxis1, value: pointDeltaY)
             event?.setDoubleValueField(.scrollWheelEventPointDeltaAxis2, value: pointDeltaX)
+            event?.location = cursorPosition
         } else {
             cursorPosition.x += CGFloat(deltaX)
             cursorPosition.y += CGFloat(deltaY)

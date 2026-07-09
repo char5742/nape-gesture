@@ -17,7 +17,11 @@ final class EventPoster {
         guard let event = makeScrollEvent(command: command, mode: mode) else {
             return EventPostResult(generatedEventCount: 0, failedEventCreationCount: 1)
         }
-        event.post(tap: .cghidEventTap)
+        if let pid = targetProcessID(for: mode) {
+            event.postToPid(pid)
+        } else {
+            event.post(tap: postTap(for: mode))
+        }
         return EventPostResult(generatedEventCount: 1, failedEventCreationCount: 0)
     }
 
@@ -42,6 +46,20 @@ final class EventPoster {
         event.setIntegerValueField(.scrollWheelEventScrollPhase, value: phases.scroll)
         event.setIntegerValueField(.scrollWheelEventMomentumPhase, value: phases.momentum)
         event.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
+        event.setDoubleValueField(.scrollWheelEventPointDeltaAxis1, value: deltas.y)
+        event.setDoubleValueField(.scrollWheelEventPointDeltaAxis2, value: deltas.x)
+        let pointerLocation = currentPointerLocation()
+        event.location = pointerLocation
+        if let target = windowTargetUnderPointer(at: pointerLocation) {
+            event.setIntegerValueField(
+                .mouseEventWindowUnderMousePointer,
+                value: Int64(target.windowNumber)
+            )
+            event.setIntegerValueField(
+                .mouseEventWindowUnderMousePointerThatCanHandleThisEvent,
+                value: Int64(target.windowNumber)
+            )
+        }
 
         event.timestamp = CGEventTimestamp(max(command.timestamp, 0) * 1_000_000_000)
         return event
@@ -119,6 +137,77 @@ final class EventPoster {
         }
         return Int32(rounded)
     }
+
+    private func currentPointerLocation() -> CGPoint {
+        CGEvent(source: nil)?.location ?? .zero
+    }
+
+    private func postTap(for mode: ScrollPostMode) -> CGEventTapLocation {
+        switch mode {
+        case .free, .horizontal:
+            return .cgSessionEventTap
+        case .forcedHorizontal:
+            return .cghidEventTap
+        }
+    }
+
+    private func targetProcessID(for mode: ScrollPostMode) -> pid_t? {
+        switch mode {
+        case .free, .horizontal:
+            return windowTargetUnderPointer(at: currentPointerLocation())?.processID
+                ?? NSWorkspace.shared.frontmostApplication?.processIdentifier
+        case .forcedHorizontal:
+            return nil
+        }
+    }
+
+    private func windowTargetUnderPointer(at point: CGPoint) -> WindowTarget? {
+        let options = CGWindowListOption(arrayLiteral: .optionOnScreenOnly, .excludeDesktopElements)
+        guard let descriptions = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
+            return nil
+        }
+
+        for description in descriptions {
+            guard let layer = description[kCGWindowLayer as String] as? Int,
+                  layer == 0,
+                  let ownerPID = pidValue(description[kCGWindowOwnerPID as String]),
+                  let windowNumber = windowNumberValue(description[kCGWindowNumber as String]),
+                  let bounds = description[kCGWindowBounds as String] as? [String: Any],
+                  let rect = CGRect(dictionaryRepresentation: bounds as CFDictionary),
+                  rect.contains(point)
+            else {
+                continue
+            }
+            return WindowTarget(processID: ownerPID, windowNumber: windowNumber)
+        }
+
+        return nil
+    }
+
+    private func pidValue(_ raw: Any?) -> pid_t? {
+        if let value = raw as? pid_t {
+            return value
+        }
+        if let value = raw as? Int {
+            return pid_t(value)
+        }
+        return nil
+    }
+
+    private func windowNumberValue(_ raw: Any?) -> UInt32? {
+        if let value = raw as? UInt32 {
+            return value
+        }
+        if let value = raw as? Int, value >= 0 {
+            return UInt32(value)
+        }
+        return nil
+    }
+}
+
+private struct WindowTarget {
+    var processID: pid_t
+    var windowNumber: UInt32
 }
 
 struct EventPostResult: Equatable {
