@@ -59,6 +59,90 @@ Issue orchestration と証跡付き close は [ADR-0005](adr/0005-issue-orchestr
 
 Issue 4 と Issue 9 は実機と権限状態に依存するため、実機なしの dry-run だけで完了扱いにしない。
 
+## Grok CLI による補助レビュー
+
+Grok CLI の使い分けは [ADR-0027](adr/0027-grok-cli-auxiliary-review.md) を正とする。
+メインスレッドは GPT-5.5 / Codex として実装、テスト、PR レビュー、merge 判断、Issue 反映を主担当にする。
+Grok は別モデルの第二視点として、UI / UX、文言、レビュー観点の抜け、第三者視点の確認に使う。
+
+確認済みの非対話実行:
+
+```sh
+grok -p "Nape Gesture の設定画面で、初心者が迷いやすいUIリスクを日本語で3点だけ挙げてください。" \
+  --model grok-4.5 \
+  --disable-web-search \
+  --no-subagents \
+  --permission-mode plan \
+  --tools '' \
+  --max-turns 1
+```
+
+差分レビューは入力を明示する:
+
+```sh
+tmpdir=$(mktemp -d /tmp/grok-review.XXXXXX)
+artifact_dir=${GROK_REVIEW_ARTIFACT_DIR:-artifacts/grok-review/$(date +%F-%H%M%S)}
+mkdir -p "$artifact_dir"
+grok version > "$artifact_dir/grok-version.txt"
+git fetch origin main
+base_ref=$(git rev-parse origin/main)
+head_ref=$(git rev-parse HEAD)
+{
+  printf '%s\n' "以下の git diff だけを第三者視点でレビューしてください。外部ファイルは読まないでください。"
+  printf 'base: %s\nhead: %s\n' "$base_ref" "$head_ref"
+  git diff "$base_ref...$head_ref" -- <対象ファイル>
+} > "$tmpdir/prompt.md"
+cp "$tmpdir/prompt.md" "$artifact_dir/prompt.md"
+grok --prompt-file "$tmpdir/prompt.md" \
+  --model grok-4.5 \
+  --disable-web-search \
+  --no-subagents \
+  --permission-mode plan \
+  --tools '' \
+  --max-turns 1 \
+  > "$artifact_dir/stdout.txt" \
+  2> "$artifact_dir/stderr.log"
+```
+
+構造化されたレビュー観点が必要な場合:
+
+```sh
+tmpdir=$(mktemp -d /tmp/grok-review.XXXXXX)
+artifact_dir=${GROK_REVIEW_ARTIFACT_DIR:-artifacts/grok-review/$(date +%F-%H%M%S)}
+mkdir -p "$artifact_dir"
+grok version > "$artifact_dir/grok-version.txt"
+git fetch origin main
+base_ref=$(git rev-parse origin/main)
+head_ref=$(git rev-parse HEAD)
+{
+  printf '%s\n' "以下の git diff だけをレビューし、レビュー観点を最大3点返してください。外部ファイルは読まないでください。問題がなければ空配列にしてください。"
+  printf 'base: %s\nhead: %s\n' "$base_ref" "$head_ref"
+  git diff "$base_ref...$head_ref" -- <対象ファイル>
+} > "$tmpdir/prompt.md"
+cp "$tmpdir/prompt.md" "$artifact_dir/prompt.md"
+grok --prompt-file "$tmpdir/prompt.md" \
+  --model grok-4.5 \
+  --disable-web-search \
+  --no-subagents \
+  --permission-mode plan \
+  --tools '' \
+  --max-turns 1 \
+  --output-format json \
+  --json-schema '{"type":"object","properties":{"findings":{"type":"array","items":{"type":"string"},"maxItems":3}},"required":["findings"],"additionalProperties":false}' \
+  > "$artifact_dir/stdout.json" \
+  2> "$artifact_dir/stderr.log"
+```
+
+運用ルール:
+
+- Grok の出力は助言であり、機械証跡や完成判定の代替にしない
+- Grok のレビューを採用する前に、メインスレッドが Issue 要件、コード、docs、テストと照合する
+- 再現性が必要なレビューでは model と CLI version を固定・保存し、base/head SHA と対象差分を prompt-file に含め、prompt / stdout / stderr を保存する
+- レビュー用途では `--disable-web-search`、`--no-subagents`、`--permission-mode plan`、`--tools ''`、`--max-turns 1` を基本にし、必要以上に外部状態や編集権限を与えない
+- 非対話実行では MCP 警告が stderr に出る場合があるため、証跡にする場合は stdout と stderr を分けて保存する
+- Grok に編集させる場合は、通常のサブエージェントと同じく専用 branch / worktree / 所有範囲を分け、`--permission-mode default` から始める。最初から `--always-approve`、`auto`、`dontAsk`、`bypassPermissions` を使わない
+- UI 発散では Grok の候補を使ってよいが、アプリ別設定不要、TCC 境界、Mac Mouse Fix 由来禁止、完成判定の証跡要件はメインスレッドのルールを優先する
+
 ## 衝突しにくい所有範囲
 
 ### Core Agent
