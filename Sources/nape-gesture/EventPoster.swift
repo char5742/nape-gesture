@@ -48,31 +48,31 @@ final class EventPoster {
     }
 
     @discardableResult
-    func postMissionControl(to pid: pid_t? = nil) -> EventPostResult {
-        postKeyShortcut(keyCode: CGKeyCode(kVK_UpArrow), flags: .maskControl, to: pid)
+    func postMissionControl() -> EventPostResult {
+        postKeyShortcut(keyCode: CGKeyCode(kVK_UpArrow), flags: .maskControl)
     }
 
     @discardableResult
-    func postPageBack(to pid: pid_t? = nil) -> EventPostResult {
-        postKeyShortcut(keyCode: CGKeyCode(kVK_LeftArrow), flags: .maskCommand, to: pid)
+    func postPageBack() -> EventPostResult {
+        postKeyShortcut(keyCode: CGKeyCode(kVK_LeftArrow), flags: .maskCommand)
     }
 
     @discardableResult
-    func postPageForward(to pid: pid_t? = nil) -> EventPostResult {
-        postKeyShortcut(keyCode: CGKeyCode(kVK_RightArrow), flags: .maskCommand, to: pid)
+    func postPageForward() -> EventPostResult {
+        postKeyShortcut(keyCode: CGKeyCode(kVK_RightArrow), flags: .maskCommand)
     }
 
     @discardableResult
-    func postZoomIn(to pid: pid_t? = nil) -> EventPostResult {
-        postKeyShortcut(keyCode: CGKeyCode(kVK_ANSI_Equal), flags: .maskCommand, to: pid)
+    func postZoomIn() -> EventPostResult {
+        postKeyShortcut(keyCode: CGKeyCode(kVK_ANSI_Equal), flags: .maskCommand)
     }
 
     @discardableResult
-    func postZoomOut(to pid: pid_t? = nil) -> EventPostResult {
-        postKeyShortcut(keyCode: CGKeyCode(kVK_ANSI_Minus), flags: .maskCommand, to: pid)
+    func postZoomOut() -> EventPostResult {
+        postKeyShortcut(keyCode: CGKeyCode(kVK_ANSI_Minus), flags: .maskCommand)
     }
 
-    private func postKeyShortcut(keyCode: CGKeyCode, flags: CGEventFlags, to pid: pid_t?) -> EventPostResult {
+    private func postKeyShortcut(keyCode: CGKeyCode, flags: CGEventFlags) -> EventPostResult {
         let events = [
             CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
             CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
@@ -81,7 +81,7 @@ final class EventPoster {
         for event in events {
             CGEventUtilities.setGeneratedMarker(on: event)
             event.flags = flags
-            post(event, to: pid)
+            event.post(tap: .cghidEventTap)
         }
 
         return EventPostResult(

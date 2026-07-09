@@ -160,17 +160,17 @@ struct SystemBehaviorTestCommand {
                 targetPID: plan.postToPid
             )
         case .missionControl:
-            poster.postMissionControl(to: plan.postToPid)
+            poster.postMissionControl()
         case .pageBack:
-            poster.postPageBack(to: plan.postToPid)
+            poster.postPageBack()
         case .pageForward:
-            poster.postPageForward(to: plan.postToPid)
+            poster.postPageForward()
         case .zoomIn:
-            poster.postZoomIn(to: plan.postToPid)
+            poster.postZoomIn()
         case .zoomOut:
-            poster.postZoomOut(to: plan.postToPid)
+            poster.postZoomOut()
         case .killSwitch:
-            postUnmarkedInputEvents(unmarkedInputEvents(for: plan, startTime: now), to: plan.postToPid)
+            postUnmarkedInputEvents(unmarkedInputEvents(for: plan, startTime: now), to: nil)
         case .gestureDrag, .gestureWheel, .gestureWheelThenKillSwitch, .normalAfterRelease:
             postUnmarkedInputEvents(unmarkedInputEvents(for: plan, startTime: now), to: plan.postToPid)
         }
