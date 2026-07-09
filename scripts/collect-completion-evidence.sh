@@ -380,11 +380,11 @@ run_split_success \
   .build/debug/nape-gesture generate-scroll --x 1200 --y 0 --steps 30 --mode space-right --phase auto --momentum-steps 8 --dry-run --log-json
 
 run_split_success \
-  "generate-scroll space-right analyze-log" \
-  "$system_dir/generated-space-right-analysis.txt" \
+  "generate-scroll space-right analyze-log assert-generated-scroll-log" \
+  "$system_dir/generated-space-right-analysis.json" \
   "$system_dir/generated-space-right-analysis.stderr.log" \
-  ".build/debug/nape-gesture analyze-log $system_dir/generated-space-right.jsonl" \
-  .build/debug/nape-gesture analyze-log "$system_dir/generated-space-right.jsonl"
+  ".build/debug/nape-gesture analyze-log $system_dir/generated-space-right.jsonl --json --assert-generated-scroll-log" \
+  .build/debug/nape-gesture analyze-log "$system_dir/generated-space-right.jsonl" --json --assert-generated-scroll-log
 
 run_split_success \
   "sample scroll compare-log" \

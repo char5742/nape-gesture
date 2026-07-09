@@ -25,6 +25,8 @@ struct AnalyzeLogCommand {
         let assertHasUnmarkedClickDragWheel = options.contains("--assert-has-unmarked-click-drag-wheel")
         let assertKillSwitchShortcut = options.contains("--assert-kill-switch-shortcut")
         let assertGestureBeforeKillSwitch = options.contains("--assert-gesture-before-kill-switch")
+        let assertGeneratedScrollLog = options.contains("--assert-generated-scroll-log")
+            || options.contains("--assert-generated-scroll")
         let systemScenario = try Self.systemScenarioAssertion(in: options)
 
         if options.contains("--json") {
@@ -63,6 +65,13 @@ struct AnalyzeLogCommand {
         if assertGestureBeforeKillSwitch && !Self.hasGestureBeforeKillSwitch(records) {
             fflush(stdout)
             throw InputLogMissingGestureBeforeKillSwitchAssertionError(path: path)
+        }
+        if assertGeneratedScrollLog {
+            let evaluation = GeneratedScrollLogAssertion.evaluate(records)
+            if !evaluation.passed {
+                fflush(stdout)
+                throw InputLogGeneratedScrollAssertionError(path: path, failures: evaluation.failures)
+            }
         }
         if let systemScenario {
             let failures = Self.systemScenarioFailures(for: systemScenario, records: records, analysis: analysis)
@@ -428,6 +437,20 @@ struct InputLogSystemScenarioAssertionError: LocalizedError {
         input log は system-test \(scenario) の期待イベント列を満たしていません。
         \(details)
         `nape-gesture system-test run --scenario \(scenario) --dry-run --log-json --out \(path)` の出力を確認してください。
+        """
+    }
+}
+
+struct InputLogGeneratedScrollAssertionError: LocalizedError {
+    var path: String
+    var failures: [String]
+
+    var errorDescription: String? {
+        let details = failures.map { "- \($0)" }.joined(separator: "\n")
+        return """
+        input log は generate-scroll の生成スクロールログ条件を満たしていません。
+        \(details)
+        `nape-gesture generate-scroll --dry-run --log-json` の出力を確認してください: \(path)
         """
     }
 }

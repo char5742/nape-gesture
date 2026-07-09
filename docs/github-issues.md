@@ -170,6 +170,7 @@ Labels: `area:core`, `area:verification`, `type:feature`, `priority:p0`
 - 通常スクロールの `began` / `changed` / `ended` は `scrollPhase` にだけ出る
 - 慣性中と慣性終了は `momentumPhase` に出る
 - `generate-scroll --dry-run --log-json` が同じ規則で出力する
+- `analyze-log --assert-generated-scroll-log` が生成スクロールログの phase 分離、continuous、timestamp、momentum 終了を機械判定する
 - `system-test run --dry-run --log-json` が同じ規則で出力する
 - コアテストでフェーズ分離が検証されている
 

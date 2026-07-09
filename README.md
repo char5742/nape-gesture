@@ -178,6 +178,7 @@ swift run nape-gesture derive-parameters Fixtures/sample-tuning-trackpad-log.jso
 swift run nape-gesture generate-scroll --x 0 --y -480 --steps 24
 swift run nape-gesture generate-scroll --x 0 --y -480 --steps 24 --momentum-steps 12 --dry-run
 swift run nape-gesture generate-scroll --x 0 --y -480 --steps 24 --momentum-steps 12 --dry-run --log-json > generated-scroll.jsonl
+swift run nape-gesture analyze-log generated-scroll.jsonl --json --assert-generated-scroll-log
 swift run nape-gesture generate-scroll --x 1200 --y 0 --steps 30 --mode space-right --phase auto --dry-run --json
 
 swift run nape-gesture system-test list

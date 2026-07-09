@@ -41,6 +41,7 @@
 | [ADR-0032](0032-reference-target-foreground-capture.md) | Reference Target App は foreground capture 経路を証跡化する | runtime event、Reference Target App、foreground capture、postToPid |
 | [ADR-0033](0033-kill-switch-pending-release-suppression.md) | キルスイッチ後も進行中ジェスチャーの release は抑制する | Issue #12、kill-switch、activation button、元入力抑制 |
 | [ADR-0034](0034-github-actions-external-blocker.md) | GitHub Actions の外部停止は merge gate を代替しない | CI、billing、spending limit、need:human、merge 判断 |
+| [ADR-0035](0035-generated-scroll-log-assertion.md) | generate-scroll dry-run は analyze-log の生成スクロール assertion で判定する | Issue #7、Issue #8、Issue #16、generate-scroll、analyze-log |
 
 ## 追加時の確認
 

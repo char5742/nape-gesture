@@ -407,6 +407,89 @@ public enum InputLogAnalyzer {
     }
 }
 
+public struct GeneratedScrollLogEvaluation: Codable, Equatable, Sendable {
+    public var passed: Bool
+    public var failures: [String]
+
+    public init(passed: Bool, failures: [String]) {
+        self.passed = passed
+        self.failures = failures
+    }
+}
+
+public enum GeneratedScrollLogAssertion {
+    public static func evaluate(_ records: [InputLogRecord]) -> GeneratedScrollLogEvaluation {
+        var failures: [String] = []
+
+        if records.isEmpty {
+            failures.append("生成スクロールログが空です。")
+            return GeneratedScrollLogEvaluation(passed: false, failures: failures)
+        }
+
+        if records.contains(where: { !$0.isScrollEvent }) {
+            failures.append("scrollWheel 以外のイベントが混在しています。")
+        }
+        if records.contains(where: { !$0.generatedByNapeGesture }) {
+            failures.append("Nape Gesture 生成マークのないイベントが混在しています。")
+        }
+        if records.contains(where: { $0.isContinuous == 0 }) {
+            failures.append("continuous/precise ではない scrollWheel が混在しています。")
+        }
+        if !timestampsAreMonotonic(records) {
+            failures.append("timestamp が単調増加していません。")
+        }
+        if records.contains(where: { $0.systemTestScenario != nil }) {
+            failures.append("generate-scroll ログに systemTestScenario が混在しています。")
+        }
+        if records.contains(where: { $0.sequenceIndex != nil }) {
+            failures.append("generate-scroll ログに system-test 用の sequenceIndex が混在しています。")
+        }
+        if records.contains(where: { $0.scrollPhase != 0 && $0.momentumPhase != 0 }) {
+            failures.append("scrollPhase と momentumPhase が同じイベントに混在しています。")
+        }
+        if momentumStartsBeforeScrollEnds(records) {
+            failures.append("momentumPhase が通常スクロール phase の完了前に出ています。")
+        }
+        if hasMomentum(records), !lastMomentumRecordHasZeroDelta(records) {
+            failures.append("最後の momentumPhase イベントがゼロ delta で終了していません。")
+        }
+        if records.allSatisfy({ $0.scrollDeltaX == 0 && $0.scrollDeltaY == 0 && $0.pointDeltaX == 0 && $0.pointDeltaY == 0 }) {
+            failures.append("非ゼロのスクロール delta がありません。")
+        }
+        if !records.contains(where: { $0.scrollPhase != 0 }) {
+            failures.append("通常スクロール phase がありません。")
+        }
+
+        return GeneratedScrollLogEvaluation(passed: failures.isEmpty, failures: failures)
+    }
+
+    private static func timestampsAreMonotonic(_ records: [InputLogRecord]) -> Bool {
+        zip(records, records.dropFirst()).allSatisfy { $0.timestamp <= $1.timestamp }
+    }
+
+    private static func momentumStartsBeforeScrollEnds(_ records: [InputLogRecord]) -> Bool {
+        guard let firstMomentumIndex = records.firstIndex(where: { $0.momentumPhase != 0 }) else {
+            return false
+        }
+        return records[..<firstMomentumIndex].contains(where: { $0.scrollPhase == 0 })
+            || records[firstMomentumIndex...].contains(where: { $0.scrollPhase != 0 })
+    }
+
+    private static func hasMomentum(_ records: [InputLogRecord]) -> Bool {
+        records.contains { $0.momentumPhase != 0 }
+    }
+
+    private static func lastMomentumRecordHasZeroDelta(_ records: [InputLogRecord]) -> Bool {
+        guard let last = records.last(where: { $0.momentumPhase != 0 }) else {
+            return true
+        }
+        return last.scrollDeltaX == 0
+            && last.scrollDeltaY == 0
+            && last.pointDeltaX == 0
+            && last.pointDeltaY == 0
+    }
+}
+
 public struct LogComparison: Codable, Equatable, Sendable {
     public var baseline: LogAnalysis
     public var candidate: LogAnalysis

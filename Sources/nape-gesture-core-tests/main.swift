@@ -985,6 +985,107 @@ func testInputLogAnalyzerDoesNotTreatUnmarkedKeysAsPassthroughInput() {
     expect(analysis.unmarkedPassthroughInputEvents == 0, "キルスイッチなどの未生成キーだけでは通常入力通過扱いにしない")
 }
 
+func testGeneratedScrollLogAssertionAcceptsPhaseSeparatedMomentum() {
+    let records = [
+        makeInputLogRecord(
+            timestamp: 1,
+            typeName: "scrollWheel",
+            generatedByNapeGesture: true,
+            scrollDeltaX: 40,
+            pointDeltaX: 40,
+            scrollPhase: 1
+        ),
+        makeInputLogRecord(
+            timestamp: 2,
+            typeName: "scrollWheel",
+            generatedByNapeGesture: true,
+            scrollDeltaX: 32,
+            pointDeltaX: 32,
+            scrollPhase: 4
+        ),
+        makeInputLogRecord(
+            timestamp: 3,
+            typeName: "scrollWheel",
+            generatedByNapeGesture: true,
+            scrollDeltaX: 24,
+            pointDeltaX: 24,
+            scrollPhase: 8
+        ),
+        makeInputLogRecord(
+            timestamp: 4,
+            typeName: "scrollWheel",
+            generatedByNapeGesture: true,
+            scrollDeltaX: 12,
+            pointDeltaX: 12,
+            momentumPhase: 4
+        ),
+        makeInputLogRecord(
+            timestamp: 5,
+            typeName: "scrollWheel",
+            generatedByNapeGesture: true,
+            scrollDeltaX: 0,
+            scrollDeltaY: 0,
+            pointDeltaX: 0,
+            pointDeltaY: 0,
+            momentumPhase: 8
+        )
+    ]
+
+    let evaluation = GeneratedScrollLogAssertion.evaluate(records)
+
+    expect(evaluation.passed, "通常スクロール phase と momentumPhase が分離した生成スクロールログを受理する")
+    expect(evaluation.failures.isEmpty, "受理したログに失敗理由を残さない")
+}
+
+func testGeneratedScrollLogAssertionRejectsSystemTestMetadataAndPhaseMixing() {
+    let records = [
+        makeInputLogRecord(
+            timestamp: 1,
+            typeName: "scrollWheel",
+            generatedByNapeGesture: true,
+            scrollDeltaX: 40,
+            pointDeltaX: 40,
+            scrollPhase: 1,
+            momentumPhase: 4,
+            systemTestScenario: "space-right",
+            sequenceIndex: 0
+        )
+    ]
+
+    let evaluation = GeneratedScrollLogAssertion.evaluate(records)
+
+    expect(!evaluation.passed, "system-test メタ情報と phase 混在を含む生成スクロールログを拒否する")
+    expect(evaluation.failures.contains { $0.contains("systemTestScenario") }, "systemTestScenario 混在を失敗理由に出す")
+    expect(evaluation.failures.contains { $0.contains("sequenceIndex") }, "sequenceIndex 混在を失敗理由に出す")
+    expect(evaluation.failures.contains { $0.contains("scrollPhase と momentumPhase") }, "phase 混在を失敗理由に出す")
+}
+
+func testGeneratedScrollLogAssertionRejectsMomentumWithoutZeroEnd() {
+    let records = [
+        makeInputLogRecord(
+            timestamp: 1,
+            typeName: "scrollWheel",
+            generatedByNapeGesture: true,
+            scrollDeltaX: 40,
+            pointDeltaX: 40,
+            scrollPhase: 1
+        ),
+        makeInputLogRecord(
+            timestamp: 2,
+            typeName: "scrollWheel",
+            generatedByNapeGesture: true,
+            scrollDeltaX: 20,
+            pointDeltaX: 20,
+            momentumPhase: 4
+        )
+    ]
+
+    let evaluation = GeneratedScrollLogAssertion.evaluate(records)
+
+    expect(!evaluation.passed, "momentum がゼロ delta で終わらない生成スクロールログを拒否する")
+    expect(evaluation.failures.contains { $0.contains("ゼロ delta") }, "momentum 終了 delta の失敗理由を出す")
+}
+
 func testInputLogAnalyzerCountsNormalClickDragAndWheelSeparately() {
     let records = [
         makeInputLogRecord(timestamp: 1, typeName: "otherMouseDown", buttonNumber: 4),
@@ -2223,6 +2324,9 @@ testInputLogRecordEncodesSystemTestMetadataWhenPresent()
 testInputLogAnalyzerComparesBaselineAndCandidate()
 testInputLogAnalyzerCountsKeyEvents()
 testInputLogAnalyzerDoesNotTreatUnmarkedKeysAsPassthroughInput()
+testGeneratedScrollLogAssertionAcceptsPhaseSeparatedMomentum()
+testGeneratedScrollLogAssertionRejectsSystemTestMetadataAndPhaseMixing()
+testGeneratedScrollLogAssertionRejectsMomentumWithoutZeroEnd()
 testInputLogAnalyzerCountsNormalClickDragAndWheelSeparately()
 testLogDerivedTuningAnalyzerDerivesAccelerationAndMomentum()
 testLogDerivedTuningAnalyzerReportsMissingSamples()
