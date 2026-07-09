@@ -1,128 +1,234 @@
 # Nape Gesture
 
-Nape Pro などの通常マウス入力を、macOS 上でトラックパッド級のジェスチャー操作へ変換する常駐ツールです。
+Nape Gesture は、Nape Pro などの通常マウス入力を macOS 上でトラックパッド級のジェスチャー操作へ変換する常駐 GUI アプリです。
+特定ボタンを押している間だけジェスチャーモードへ入り、押していないときは通常のマウスとして振る舞います。
 
-Mac Mouse Fix のコード、定数、状態遷移、係数は流用しません。公開 API と実機ログから独自に挙動を作ります。
+Mac Mouse Fix のコード、定数、状態遷移、係数は流用しません。公開 API と、このリポジトリで取得した実機ログから独自に挙動を作ります。
 
-## 現在の構成
+## いまの完成状態
 
-- `NapeGestureCore`: ボタン押下中の移動・ホイールをジェスチャーへ変換する純粋ロジック
-- `nape-gesture run`: グローバルイベントタップで入力を読み、生成スクロールイベントを投稿する常駐本体
-- `nape-gesture log`: 実デバイス、純正トラックパッド、生成イベントを同じ JSON Lines 形式で記録するロガー
-- `nape-gesture compare-log`: 純正入力ログと生成イベントログなど、2つの JSON Lines ログを比較する解析器
-- `nape-gesture analyze-hid-log`: IOHID 生入力ログを device / usage ごとに集計する解析器
-- `nape-gesture analyze-target-log`: Reference Target App が保存した AppKit 受信ログを集計する解析器
-- `nape-gesture generate-scroll`: 任意のスクロールイベントを発火する生成器
-- `nape-gesture target`: AppKit が受け取った `scrollWheel` / `swipe` / `magnify` などを表示し、JSON Lines に保存できる基準ターゲット
-- `nape-gesture devices`: IOHID で認識できるマウス系または全 HID デバイスを一覧する補助コマンド
+| 項目 | 実装・検証状態 | 確認先 |
+| --- | --- | --- |
+| 通常 GUI アプリ | 実装済み。`.app` identity と通常 GUI 設定は機械確認済み。最終の Dock 表示と設定ウィンドウ目視証跡は completion matrix で管理する | `bundle-app` / `verify-bundle`、[ADR-0024](docs/adr/0024-regular-gui-app-launch.md) |
+| メニューバー常駐 UI | 実装済み。開始、停止、設定、権限確認を `NG` メニューから操作できる。最終操作証跡は completion matrix で管理する | [docs/completion-checklist.md](docs/completion-checklist.md) |
+| 設定 UI | 実装済み。編集項目 catalog と JSON round-trip は機械証跡あり。最終の `.app` 保存操作証跡は completion matrix で管理する | [ADR-0021](docs/adr/0021-settings-ui-field-catalog.md) |
+| 通常入力通過 | 機械証跡あり。ジェスチャーボタン未押下時と解放後の通常クリック、ドラッグ、ホイールを完了判定対象にしている | [ADR-0016](docs/adr/0016-normal-input-kind-assertions.md) |
+| 権限導線 | 実装済み。GUI と `doctor` が TCC 権限付与対象を表示し、System Settings を開く | [ADR-0020](docs/adr/0020-doctor-tcc-permission-target.md)、[ADR-0025](docs/adr/0025-gui-permission-recovery-actions.md) |
+| runtime 性能測定 | tap callback から投稿直前/直後までを JSON Lines で保存し、p95 / p99 を判定できる | [docs/performance-baseline.md](docs/performance-baseline.md) |
+| 実機完成判定 | 一部は人間作業待ち。TCC 許可、純正トラックパッド操作、Nape Pro 実機操作、公証は自動化できない最後の手段として扱う | [docs/completion-checklist.md](docs/completion-checklist.md) |
+| 署名・公証済みリリース | 未完了。Developer ID 署名、公証、stapler / Gatekeeper 評価の証跡が必要 | [docs/release.md](docs/release.md) |
 
-## 完成要件との対応
+`need:human` はレビュー待ちや判断待ちではなく、人間が実際に作業しないと進められない TCC 操作、物理デバイス操作、証明書操作などにだけ使います。
+自動化できる検証は先に自動化し、人間作業は最後の手段に限定します。
 
-実装済みの基盤:
+## 全体像
 
-- 特定ボタン押下中だけジェスチャーモードへ入る状態機械
-- ジェスチャーボタン未押下時の入力通過
-- 微小移動をジェスチャー化しないデッドゾーン
-- 方向ロック
-- 速度に応じた加速度倍率
-- 最大継続時間、無入力時間、軸ずれ比によるキャンセル条件
-- `began` / `changed` / `ended` / `momentum` 相当の抽象フェーズ
-- ピクセル単位スクロールイベント生成
-- イベントログ、イベント生成、基準ターゲット
-- 純正入力ログと生成イベントログの差分比較
-- HID 生入力ログの usage 別解析
-- Dock に表示され、起動時に設定ウィンドウを開く通常 GUI アプリ
-- メニューバー常駐UI
-- 設定UIからの主要ジェスチャー割り当て、方向ロック比、加速度、慣性、キャンセル条件の調整
-- `Control + Option + Command + G` によるキルスイッチ
-- 権限とデバイスの確認導線
-- 対象デバイス未検出、実行中のデバイス消失、権限未許可、スリープ復帰後の自動再試行
-- マウス系に限らない全 HID デバイスからの対象照合
-- 対象 HID 入力とイベントタップ入力の紐づけ秒数設定
-- 主要ロジックの自動テスト
+```mermaid
+flowchart LR
+    mouse["Nape Pro / 通常マウス"] --> hid["IOHID 入力監視"]
+    mouse --> tap["CGEvent tap"]
+    hid --> association["対象デバイス紐づけ"]
+    tap --> runtime["Nape Gesture runtime"]
+    association --> runtime
+    runtime --> pressed{"特定ボタン押下中?"}
+    pressed -->|いいえ| passthrough["通常入力として通過"]
+    pressed -->|はい| gesture["生成は実装済み<br/>Spaces / Mission Control などの OS 反応は実機検証待ち"]
+    gesture --> appkit["macOS / AppKit / 前面アプリ"]
+    passthrough --> appkit
+    runtime --> status["GUI 状態表示 / doctor / JSON Lines 証跡"]
+```
 
-未完了の大きな項目:
+この図は入力経路と責務の全体像です。
+Spaces / Mission Control など、OS 側の画面反応を最終完成扱いにするには、[docs/completion-checklist.md](docs/completion-checklist.md) の実機証跡が必要です。
 
-- 生成イベントによる Spaces / Mission Control の実機検証
-- Nape Pro 固有のデバイス識別とイベントタップ入力の厳密な紐づけ
-- 署名・公証済みリリース物の作成
+## 使い始める
 
-## 使い方
+### GUI アプリとして起動する
+
+開発中に直接起動する場合:
 
 ```sh
 swift run nape-gesture app
+```
+
+`.app` として起動する場合:
+
+```sh
+swift build -c release
+.build/release/nape-gesture bundle-app --out .build/NapeGesture.app --replace
+.build/release/nape-gesture verify-bundle .build/NapeGesture.app
+open .build/NapeGesture.app
+```
+
+作成した `.build/NapeGesture.app` は、設計・実装上は通常 GUI アプリとして Dock に表示され、起動時に設定ウィンドウを開きます。
+最終的な目視証跡は [docs/completion-checklist.md](docs/completion-checklist.md) で管理します。
+常駐状態の開始、停止、設定、権限確認はメニューバーの `NG` から操作できます。
+アクセシビリティと入力監視の許可は、実利用する `NapeGesture.app` に対して付与してください。bundle ID は `dev.char5742.nape-gesture` です。
+
+初回起動で詰まりやすい順序:
+
+1. `.build/NapeGesture.app` を作成して `open .build/NapeGesture.app` で起動する
+2. 設定ウィンドウまたは `init-config` で対象デバイス条件を保存する
+3. `NG` またはアプリメニューから「権限とデバイスを確認」を開く
+4. System Settings で `NapeGesture.app` にアクセシビリティと入力監視を許可する
+5. Nape Gesture を再起動する
+6. `NG` メニューから常駐処理を開始し、`doctor --json` の `runtimeIdentity` と許可対象が一致していることを確認する
+
+対象デバイス一致が必須のまま条件が空の場合、`app` と `run` は全デバイスへ誤適用しないよう開始前に停止します。
+
+### 権限とデバイスを確認する
+
+```sh
+swift run nape-gesture doctor --probe-hid --benchmark-events 50000 --json --assert-runtime-ready
+```
+
+GUI では、メニューバーの `NG` またはアプリメニューから「権限とデバイスを確認」を開きます。
+未許可または未判定の場合は「アクセシビリティ設定を開く」「入力監視設定を開く」から System Settings の該当画面を開き、許可後に Nape Gesture を再起動してください。
+
+`doctor --json` には実行ファイル、bundle ID、bundle path などの `runtimeIdentity` と、TCC 権限付与対象を構造化した `tccStatus.permissionTarget` が含まれます。
+権限が未許可のときは、この値でどの `.app` または実行ファイルを許可すべきか確認します。
+
+`run` と `log` はグローバル入力を扱うため、アクセシビリティ権限が必要です。
+`check-config --probe-hid` または対象デバイス設定つきの `run` は IOHID 入力を読むため、入力監視権限も必要です。
+`log` は `--duration <秒>` で自動停止、`--out <path>` で JSON Lines を保存します。
+開始・終了などのメタ情報は標準エラーに出し、イベント本体だけを標準出力または `--out` に出します。
+`--exclude-generated` は純正入力や実デバイス入力だけ、`--only-generated` は Nape Gesture が生成したイベントだけを記録します。
+
+### 設定ファイルを作る
+
+```sh
+swift run nape-gesture init-config --out nape-gesture.config.json
+swift run nape-gesture init-config --vendor-id <ID> --product-id <ID> --usage-page <ID> --usage <ID> --association-window 0.12 --out nape-gesture.config.json
+```
+
+`run`、`check-config`、`app` は `--config` を省略した場合、`~/Library/Application Support/NapeGesture/config.json` を使います。
+存在しない場合は Nape Pro 向けテンプレートを作成します。
+対象デバイス一致が必須のまま対象条件が空の場合は、全デバイスへ誤適用しないよう起動前に停止します。
+
+## GUI でできること
+
+- 設定ウィンドウで activation button、感度、方向ロック、加速度、慣性、キャンセル条件、対象デバイス、対象入力の紐づけ秒、主要ジェスチャー割り当てを編集する
+- メニューバー常駐 UI から runtime を開始、停止、再開する
+- 権限付与対象、アクセシビリティ状態、入力監視状態、実行ファイル、bundle ID、HID デバイス数、対象一致数を確認する
+- アクセシビリティまたは入力監視の System Settings 画面を開く
+- 対象デバイス未検出、実行中のデバイス消失、権限未許可、スリープ復帰後の停止を検出し、手動停止するまで 5 秒間隔で自動再試行する
+
+アプリごとの有効・無効、感度、割り当ては持ちません。
+特定ボタンを押していない状態では通常マウスとして振る舞うため、アプリ別に通常入力へ戻す設定は不要です。
+
+## コマンドの使い分け
+
+| コマンド | 用途 |
+| --- | --- |
+| `app` | 通常 GUI アプリモードで起動する |
+| `run` | グローバルイベントタップで入力を読み、生成イベントを投稿する |
+| `doctor` | 権限、対象デバイス、HID probe、runtime ready、benchmark を一括診断する |
+| `devices` | IOHID で認識できるマウス系または全 HID デバイスを一覧する |
+| `hid-log` / `analyze-hid-log` | Nape Pro などの HID 生入力を記録、解析する |
+| `log` / `analyze-log` / `compare-log` | 実デバイス、純正トラックパッド、生成イベントを JSON Lines で記録、解析、比較する |
+| `target` / `analyze-target-log` | AppKit が受け取った `scrollWheel` / `swipe` / `magnify` などを画面と JSON Lines で確認する |
+| `system-test` | Spaces、Mission Control、横スクロール、キルスイッチなどのシナリオを dry-run または実行する |
+| `benchmark` | 認識器とスクロール計画の純粋ロジック処理時間を測る |
+| `analyze-performance-log` | runtime 性能 JSON Lines から tap-to-post の p95 / p99 を判定する |
+| `bundle-app` / `verify-bundle` | `.app` を作成し、Info.plist、署名、同梱物、通常 GUI 設定を検証する |
+
+<details>
+<summary>CLI 例を開く</summary>
+
+```sh
 swift run nape-gesture help
 swift run nape-gesture devices
 swift run nape-gesture devices --all --json
 swift run nape-gesture check-config
+swift run nape-gesture check-config --probe-hid
+
 swift run nape-gesture hid-log --duration 10
 swift run nape-gesture hid-log --vendor-id <ID> --product-id <ID> --usage-page <ID> --usage <ID> --duration 10
 swift run nape-gesture analyze-hid-log Fixtures/sample-hid-log.jsonl
-swift run nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/sample-association-event-log.jsonl --window 0.12
-swift run nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/clean-association-event-log.jsonl --window 0.12 --json --assert-valid-window
-swift run nape-gesture analyze-target-log Fixtures/sample-target-log.jsonl
-swift run nape-gesture analyze-target-log Fixtures/clean-target-log.jsonl --json --assert-no-leaks --assert-has-generated-event
-swift run nape-gesture analyze-target-log Fixtures/normal-input-target-log.jsonl --json --assert-has-unmarked-input
-swift run nape-gesture analyze-target-log Fixtures/gesture-target-log.jsonl --json --assert-has-gesture
-swift run nape-gesture derive-parameters Fixtures/sample-tuning-trackpad-log.jsonl --json --assert-complete
+
 swift run nape-gesture log
 swift run nape-gesture log --duration 8 --out trackpad-space-right.jsonl --exclude-generated
 swift run nape-gesture analyze-log Fixtures/sample-log.jsonl
 swift run nape-gesture compare-log Fixtures/sample-trackpad-scroll-log.jsonl Fixtures/sample-generated-scroll-log.jsonl
+
 swift run nape-gesture target
 swift run nape-gesture target --out target-events.jsonl
+swift run nape-gesture analyze-target-log Fixtures/sample-target-log.jsonl
+swift run nape-gesture analyze-target-log Fixtures/clean-target-log.jsonl --json --assert-no-leaks --assert-has-generated-event
+swift run nape-gesture analyze-target-log Fixtures/normal-input-target-log.jsonl --json --assert-has-unmarked-input
+swift run nape-gesture analyze-target-log Fixtures/gesture-target-log.jsonl --json --assert-has-gesture
+
+swift run nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/sample-association-event-log.jsonl --window 0.12
+swift run nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/clean-association-event-log.jsonl --window 0.12 --json --assert-valid-window
+
+swift run nape-gesture derive-parameters Fixtures/sample-tuning-trackpad-log.jsonl --json --assert-complete
 swift run nape-gesture generate-scroll --x 0 --y -480 --steps 24
 swift run nape-gesture generate-scroll --x 0 --y -480 --steps 24 --momentum-steps 12 --dry-run
 swift run nape-gesture generate-scroll --x 0 --y -480 --steps 24 --momentum-steps 12 --dry-run --log-json > generated-scroll.jsonl
 swift run nape-gesture generate-scroll --x 1200 --y 0 --steps 30 --mode space-right --phase auto --dry-run --json
+
 swift run nape-gesture system-test list
 swift run nape-gesture system-test run --scenario space-left --target finder --dry-run
 swift run nape-gesture system-test run --scenario space-left --target finder --dry-run --log-json --out system-space-left.jsonl
 swift run nape-gesture system-test run --scenario horizontal-scroll --dry-run --log-json --out system-horizontal-scroll.jsonl
 swift run nape-gesture analyze-log system-horizontal-scroll.jsonl --json
+
 swift run nape-gesture benchmark --events 200000 --json
 swift run nape-gesture doctor --probe-hid --benchmark-events 50000 --json --assert-runtime-ready
-swift run nape-gesture init-config --out nape-gesture.config.json
-swift run nape-gesture init-config --vendor-id <ID> --product-id <ID> --usage-page <ID> --usage <ID> --association-window 0.12 --out nape-gesture.config.json
 swift run nape-gesture run
+swift run nape-gesture run --performance-log runtime-performance.jsonl
+swift run nape-gesture analyze-performance-log runtime-performance.jsonl --json --assert-baseline
+
 swift run nape-gesture bundle-app --out .build/NapeGesture.app --replace
 swift run nape-gesture verify-bundle .build/NapeGesture.app
 swift run nape-gesture-core-tests
 ```
 
-`run` と `log` はグローバル入力を扱うため、アクセシビリティ権限が必要です。
-`log` は `--duration <秒>` で自動停止、`--out <path>` で JSON Lines を保存します。開始・終了などのメタ情報は標準エラーに出し、イベント本体だけを標準出力または `--out` に出します。`--exclude-generated` は純正入力や実デバイス入力だけ、`--only-generated` は Nape Gesture が生成したイベントだけを記録します。
-`check-config --probe-hid` または対象デバイス設定つきの `run` は IOHID 入力を読むため、入力監視権限も必要です。
-誤爆や暴走を感じた場合は `Control + Option + Command + G` を押してください。ジェスチャー生成と慣性を即座に停止し、再開は常駐UIの停止/開始またはプロセス再起動で行います。発火後も通常クリック、ドラッグ、ホイールを勝手に抑制し続けませんが、このショートカット自体は前面アプリへ渡さないよう抑制します。
-`app` は通常 GUI アプリとして起動し、起動時に設定ウィンドウを開きます。Dock から再度開くと設定ウィンドウを再表示します。
-メニューバー常駐UIから、設定ファイルの作成、主要ジェスチャー割り当て、権限確認、常駐処理の開始・停止を行えます。
-`app` の「権限とデバイスを確認」は、アクセシビリティ、入力監視、権限付与対象、実行ファイル、bundle ID、HID デバイス数、対象一致数を表示します。
-`app` は対象デバイス未検出、実行中の対象デバイス消失、アクセシビリティ未許可、入力監視未許可、スリープ復帰後の停止を検出した場合、手動で「停止」するまで 5 秒間隔で自動再試行します。実行中も同じ間隔で対象デバイスとアクセシビリティ権限を確認し、失われた場合は停止して自動再試行状態へ移行します。
-`run`、`check-config`、`app` は `--config` を省略した場合、`~/Library/Application Support/NapeGesture/config.json` を使います。存在しない場合は Nape Pro 向けテンプレートを作成します。対象デバイス一致が必須のまま対象条件が空の場合は、全デバイスへ誤適用しないよう起動前に停止します。
-設定ファイルは起動前に検証されます。感度、加速度、慣性、キャンセル条件、対象入力の紐づけ秒、対象デバイス条件に不正値がある場合、`run` と `check-config` は開始せず、`doctor --json` は `settingsValidationIssues` に問題箇所を出します。
-設定の `targetDeviceAssociation.associationWindow` は、対象 HID 入力の直近時刻とイベントタップ入力を同一入力として扱う秒数です。デフォルトは従来挙動と同じ `0.12` 秒です。短くすると対象外デバイスを巻き込みにくくなりますが、イベントタップ側の到達が遅い環境では Nape Pro 入力を取りこぼす可能性があります。長くすると取りこぼしに強くなる一方、別デバイス入力を誤って紐づけるリスクが上がります。
-Nape Pro の HID ログと同時取得したイベントタップログは、`analyze-association <hid-log> <event-log> --window <秒>` で相関し、時刻差の p95 / p99、associationWindow 内外件数、推奨 `associationWindow` を確認します。
-設定の `gesture.acceleration.isEnabled` は速度に応じた加速度倍率を有効化します。`thresholdVelocity` を超えた速度から倍率が上がり、`exponent` でカーブ、`maximumMultiplier` で最大倍率を調整します。デフォルトでは無効です。
-設定の `gesture.momentum.isEnabled` はボタン解放後の慣性を有効化します。`minimumStartVelocity` で慣性開始速度、`stopVelocity` で終了速度、`decayPerSecond` で1秒あたりの減衰率、`frameInterval` で生成間隔を調整します。
-設定の `gesture.cancellation.maximumDuration` はジェスチャー全体の最大秒数、`maximumInactivityInterval` は入力が途切れたときにキャンセルする秒数、`offAxisCancelRatio` は方向ロック後に直交方向へ逸れたときのキャンセル比です。各値は `0` で無効化できます。
+</details>
 
-権限確認:
+## 設定と安全性
+
+設定ファイルは起動前に検証されます。
+感度、加速度、慣性、キャンセル条件、対象入力の紐づけ秒、対象デバイス条件に不正値がある場合、`run` と `check-config` は開始せず、`doctor --json` は `settingsValidationIssues` に問題箇所を出します。
+
+`targetDeviceAssociation.associationWindow` は、対象 HID 入力の直近時刻とイベントタップ入力を同一入力として扱う秒数です。
+デフォルトは `0.12` 秒です。
+短くすると対象外デバイスを巻き込みにくくなりますが、イベントタップ側の到達が遅い環境では Nape Pro 入力を取りこぼす可能性があります。
+長くすると取りこぼしに強くなる一方、別デバイス入力を誤って紐づけるリスクが上がります。
+
+`gesture.acceleration.isEnabled` は速度に応じた加速度倍率を有効化します。
+`thresholdVelocity` を超えた速度から倍率が上がり、`exponent` でカーブ、`maximumMultiplier` で最大倍率を調整します。
+デフォルトでは無効です。
+
+`gesture.momentum.isEnabled` はボタン解放後の慣性を有効化します。
+`minimumStartVelocity` で慣性開始速度、`stopVelocity` で終了速度、`decayPerSecond` で 1 秒あたりの減衰率、`frameInterval` で生成間隔を調整します。
+
+`gesture.cancellation.maximumDuration` はジェスチャー全体の最大秒数、`maximumInactivityInterval` は入力が途切れたときにキャンセルする秒数、`offAxisCancelRatio` は方向ロック後に直交方向へ逸れたときのキャンセル比です。
+各値は `0` で無効化できます。
+
+誤爆や暴走を感じた場合は `Control + Option + Command + G` を押してください。
+ジェスチャー生成と慣性を即座に停止し、再開は常駐 UI の停止/開始またはプロセス再起動で行います。
+発火後も通常クリック、ドラッグ、ホイールを勝手に抑制し続けません。
+
+## Nape Pro を識別する
+
+Nape Pro が通常の `devices` に出ない場合は、`devices --all --json` で全 HID デバイスを確認します。
+JSON には `stableID`、`vendorID`、`productID`、`primaryUsagePage`、`primaryUsage` が含まれます。
+
+対象らしい値が見つかったら、次のように Nape Pro を操作しながら HID 入力を記録します。
 
 ```sh
-swift run nape-gesture check-config --probe-hid
+swift run nape-gesture hid-log --vendor-id <ID> --product-id <ID> --usage-page <ID> --usage <ID> --duration 10 --out nape-pro-hid.jsonl
+swift run nape-gesture analyze-hid-log nape-pro-hid.jsonl
 ```
 
-`kIOReturnNotPermitted` が出る場合は、システム設定の「プライバシーとセキュリティ」で、実行元の Codex、ターミナル、または `NapeGesture.app` に「入力監視」を許可してください。
-権限を付与した直後に macOS が反映しない場合は、実行元アプリまたは `NapeGesture.app` を再起動してください。常駐UIは再起動後の初回起動で再度開始し、失敗時は自動再試行状態へ入ります。
-`doctor --probe-hid` はアクセシビリティ、入力監視、対象デバイス一致、HID デバイス数、ベンチマークを一括で出し、失敗時の復旧手順も表示します。`--json` を付けると検証ログとして保存しやすい形式になります。`--assert-runtime-ready` は runtime 開始前提を満たさない場合に非ゼロ終了します。
-`doctor --json` には実行ファイル、bundle ID、bundle path などの `runtimeIdentity` と、TCC 権限付与対象を構造化した `tccStatus.permissionTarget` も含めます。権限が未許可のときは、システム設定でどの `.app` または実行ファイルを許可すべきかをこの値で確認してください。
-GUI アプリでは、メニューバーの `NG` またはアプリメニューから「権限とデバイスを確認」を開くと、同じ権限対象、アクセシビリティ状態、入力監視状態を確認できます。未許可または未判定の場合は「アクセシビリティ設定を開く」「入力監視設定を開く」から System Settings の該当画面を開き、許可後に Nape Gesture を再起動してください。
-Nape Pro が通常の `devices` に出ない場合は、`devices --all --json` で全 HID デバイスを確認します。JSON には `stableID`、`vendorID`、`productID`、`primaryUsagePage`、`primaryUsage` が含まれます。対象らしい値が見つかったら、`hid-log --vendor-id <ID> --product-id <ID> --usage-page <ID> --usage <ID> --duration 10` を実行しながら Nape Pro を操作して、どの `usagePage` / `usage` で入力が来ているか確認します。取得した JSON Lines は `analyze-hid-log <path>` で集計し、イベント数、非ゼロ値、値域、`stableID` を見ます。`hid-log --all` は排他デバイスを含む環境で失敗することがあるため、通常はデバイスIDと usage を指定してください。
-特定した値は `init-config --vendor-id <ID> --product-id <ID> --usage-page <ID> --usage <ID> --association-window <秒> --out <path>` で設定ファイルへ直接反映できます。必要なら `--manufacturer-contains`、`--product-contains`、`--transport-contains` も併用できます。設定UIでも vendor ID、product ID、usagePage、usage、対象入力の紐づけ秒などを編集できます。
+取得した値は `init-config --vendor-id <ID> --product-id <ID> --usage-page <ID> --usage <ID> --association-window <秒> --out <path>` で設定ファイルへ反映できます。
+必要なら `--manufacturer-contains`、`--product-contains`、`--transport-contains` も併用できます。
+設定 UI でも vendor ID、product ID、usagePage、usage、対象入力の紐づけ秒などを編集できます。
 
-## アプリバンドル
+## アプリバンドルと配布
 
-`.app` として使う場合は、先に通常どおりビルドしてからバンドルを作成します。
+`.app` として使う場合は、先に release build を作成してからバンドル化します。
 
 ```sh
 swift build -c release
@@ -130,9 +236,9 @@ swift build -c release
 .build/release/nape-gesture verify-bundle .build/NapeGesture.app
 ```
 
-`bundle-app` は `Info.plist`、実行ファイル、`LICENSE.txt`、`THIRD_PARTY_NOTICES.md` を含む `.app` を作成し、作成直後に同じ検証を実行します。`verify-bundle` は既存の `.app` を再検証するためのコマンドで、通常 GUI アプリとして使うための `LSUIElement=false` とコード署名状態も表示します。公開配布前は `verify-bundle --require-signature .build/NapeGesture.app` で署名検証を必須にしてください。
-
-作成した `.build/NapeGesture.app` は引数なしで起動すると Dock に表示され、設定ウィンドウを開く通常 GUI アプリとして動きます。常駐状態の開始、停止、権限確認はメニューバーの `NG` からも操作できます。アクセシビリティや入力監視の許可は、この `.app` に対して付与してください。bundle ID は `dev.char5742.nape-gesture` です。
+`bundle-app` は `Info.plist`、実行ファイル、`LICENSE.txt`、`THIRD_PARTY_NOTICES.md` を含む `.app` を作成し、作成直後に同じ検証を実行します。
+`verify-bundle` は既存の `.app` を再検証するためのコマンドで、通常 GUI アプリとして使うための `LSUIElement=false` とコード署名状態も表示します。
+公開配布前は `verify-bundle --require-signature .build/NapeGesture.app` で署名検証を必須にしてください。
 
 ローカル検証では ad-hoc 署名を使えます。
 
@@ -142,48 +248,58 @@ codesign --verify --deep --strict --verbose=2 .build/NapeGesture.app
 .build/release/nape-gesture verify-bundle --require-signature .build/NapeGesture.app
 ```
 
-ad-hoc 署名はローカル再現用です。公開配布では Developer ID Application 証明書で署名し、公証と stapler 検証まで完了してください。配布手順は `docs/release.md` にまとめています。
+ad-hoc 署名はローカル再現用です。
+公開配布では Developer ID Application 証明書で署名し、公証と stapler 検証まで完了してください。
+配布手順は [docs/release.md](docs/release.md) にまとめています。
 
-## 検証方針
+## 検証と完成判定
 
-完成判定の証跡台帳と現在状態は `docs/completion-checklist.md` にまとめています。
-詳細な実機検証手順、既知の失敗条件と回復手順は `docs/verification.md` にまとめています。
-Issue #6 / #12 の runtime event 証跡は `sh scripts/collect-runtime-event-evidence.sh` で収集します。総合状態は `status.json` の `success` / `blocked` / `failed` で確認し、人間作業は TCC 権限付与、純正トラックパッド操作、Nape Pro 実機操作など、自動化できない最後の手段に限定します。
-実利用する `.build/NapeGesture.app` に権限を集約する場合は、次のように `.app` 作成と検証を含めて実行します。
+完成判定の正本は [docs/completion-checklist.md](docs/completion-checklist.md) です。
+詳細な実機検証手順、既知の失敗条件、回復手順は [docs/verification.md](docs/verification.md) にまとめています。
+
+```mermaid
+flowchart TD
+    change["変更"] --> machine["先に自動証跡を取る"]
+    machine --> status{"status.json / doctor / analyzer"}
+    status -->|success| evidence["Issue / PR へ証跡リンクを残す"]
+    status -->|blocked| human["need:human は TCC / 実機 / 証明書など最後の手段だけ"]
+    status -->|failed| fix["根本原因を修正して再実行"]
+    human --> evidence
+    fix --> machine
+```
+
+代表的な検証コマンド:
 
 ```sh
+swift build --scratch-path .build
+.build/debug/nape-gesture-core-tests
+swift run nape-gesture benchmark --events 200000 --json --assert-baseline
+swift run nape-gesture doctor --probe-hid --benchmark-events 50000 --json --assert-runtime-ready
 NAPE_RUNTIME_EVENT_USE_APP_BUNDLE=1 sh scripts/collect-runtime-event-evidence.sh
 ```
 
-1. `nape-gesture log --duration <秒> --out <path>` で純正トラックパッド、Nape Pro、生成イベントを同じ形式で記録する
-2. `nape-gesture analyze-log <path>` で移動量分布と `deadZonePoints` 候補を確認する
-3. `nape-gesture derive-parameters <純正ログ> --json --assert-complete` で deadZone、加速度、慣性の候補値を確認し、未導出や警告が残るログを完了証跡として扱わない
-4. `nape-gesture compare-log <純正ログ> <生成ログ>` でイベント数、precise 率、フェーズ分布、スクロール総量の差を確認する
-5. `nape-gesture hid-log` と `nape-gesture analyze-hid-log <path>` で Nape Pro の HID usage と値域を確認する
-6. `nape-gesture target --out <path>` で AppKit に届く `scrollWheel` / `swipe` / `magnify` / `rotate` などのイベント差分を画面と JSON Lines の両方で確認し、`analyze-target-log <path>` で集計する
-7. `generate-scroll --dry-run --json` で began / changed / ended / momentum の生成計画を固定し、`--dry-run --log-json` で `compare-log` 用 JSON Lines を作る
-8. `system-test list` でシナリオを確認し、`system-test run --scenario space-left --target finder --dry-run` で生成計画を確認する
-9. `system-test run --scenario space-left --target finder --dry-run --log-json --out <path>` や `system-test run --scenario horizontal-scroll --dry-run --log-json --out <path>` で System Behavior Test の生成予定イベントを JSON Lines として保存する
-10. `benchmark --events 200000 --json --assert-baseline` で認識器とスクロール計画の純粋ロジック処理時間を記録し、基準内であることを終了コードで確認する
-11. `doctor --benchmark-events 50000 --json` で権限、対象デバイス、実行主体、ベンチマークを一括記録する
-12. `system-test run --scenario space-left --target finder` や `system-test run --scenario mission-control` で Spaces / Mission Control / Safari / Finder の挙動を実測する。Issue #10 の横スクロールは Safari / 対応アプリでの画面挙動確認が残るため、この dry-run 証跡だけでは完了扱いにしない
-13. 公開 API だけで連続 Spaces 操作が成立しない場合は、ログと画面挙動を根拠に限界を明文化する
-
 `benchmark` と `doctor` 内の benchmark は `measurementKind: "pureLogic"` の証跡であり、イベントタップから投稿、AppKit 受信、画面反映までの入力遅延実測ではありません。
-性能レビューで見る JSON キー、CPU 使用率、入力遅延の合格基準は `docs/performance-baseline.md` にまとめています。
+tap-to-post 遅延を完成証跡にする場合は、`run --performance-log` または `NAPE_RUNTIME_PERFORMANCE_LOG` で runtime 性能 JSON Lines を取り、`analyze-performance-log --json --assert-baseline` で判定します。
+性能レビューで見る JSON キー、CPU 使用率、入力遅延の合格基準は [docs/performance-baseline.md](docs/performance-baseline.md) にまとめています。
 
 ## 開発運用
 
-`nape-gesture` として新リポジトリ化するための作業は、次の文書で管理します。
+`nape-gesture` の開発運用は次の文書を正とします。
 
-- `docs/repository-setup.md`: GitHub リポジトリ作成、初回 push、Issue 作成の手順
-- `docs/adr/README.md`: 開発運用 ADR の索引と採択済み方針
-- `docs/github-issues.md`: 初期 Issue の草案、依存関係、完了条件
-- `docs/parallel-development.md`: メインスレッドとサブエージェントの役割分担
-- `docs/pr-review-checklist.md`: PR レビューとマージ判断のチェックリスト
-- `docs/naming-migration.md`: 旧 `Mac Gesture` 系の命名から `Nape Gesture` / `nape-gesture` へ移行した内容と残る互換項目
+- [docs/repository-setup.md](docs/repository-setup.md): GitHub リポジトリ作成、初回 push、Issue 作成の手順
+- [docs/adr/README.md](docs/adr/README.md): 開発運用 ADR の索引と採択済み方針
+- [docs/github-issues.md](docs/github-issues.md): 初期 Issue の草案、依存関係、完了条件
+- [docs/parallel-development.md](docs/parallel-development.md): メインスレッドとサブエージェントの役割分担
+- [docs/pr-review-checklist.md](docs/pr-review-checklist.md): PR レビューとマージ判断のチェックリスト
+- [docs/naming-migration.md](docs/naming-migration.md): 旧 `Mac Gesture` 系の命名から `Nape Gesture` / `nape-gesture` へ移行した内容と残る互換項目
+
+README は製品入口兼状態ダッシュボードとして扱います。
+ユーザーが見る挙動、GUI、権限導線、検証手順、完成状態が変わる PR では、README 更新または更新不要の理由を PR に明記します。
+この方針は [ADR-0028](docs/adr/0028-readme-product-dashboard.md) に保存します。
 
 ## ライセンス方針
 
-Mac Mouse Fix のコードや調整値は取り込みません。実装パラメータはこのツールで取得したログから再導出します。
-このリポジトリのライセンスは `LICENSE`、依存通知は `THIRD_PARTY_NOTICES.md` に記載します。アプリバンドルにはそれぞれ `Contents/Resources/LICENSE.txt` と `Contents/Resources/THIRD_PARTY_NOTICES.md` として同梱します。
+Mac Mouse Fix のコードや調整値は取り込みません。
+実装パラメータはこのツールで取得したログから再導出します。
+このリポジトリのライセンスは [LICENSE](LICENSE)、依存通知は [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) に記載します。
+アプリバンドルにはそれぞれ `Contents/Resources/LICENSE.txt` と `Contents/Resources/THIRD_PARTY_NOTICES.md` として同梱します。
