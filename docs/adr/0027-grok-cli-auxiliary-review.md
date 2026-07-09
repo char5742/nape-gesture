@@ -21,6 +21,7 @@ Grok の出力は証跡や助言として扱い、検証済み事実や完成判
 - PR / diff レビューでは、対象差分と base/head commit SHA を `--prompt-file` に明示的に含める。単に「このPR」「この差分」と書くだけのプロンプトは採用しない。
 - 再現性が必要なレビューでは、prompt、stdout、stderr を `artifacts/grok-review/` などへ保存する。
 - 構造化された結果が必要な場合は `--json-schema` を使い、`structuredOutput` を保存または PR 本文に要約する。`structuredOutputError` が出た場合は構造化レビュー失敗として扱い、必要なら再実行する。
+- `structuredOutputError` が出た場合は、プロンプトを短くして 1 回再実行する。それでも失敗する場合は plain/text の助言としてだけ扱い、構造化レビュー証跡や PR gate にしない。
 - UI や文言の候補生成では Grok の発散力を使ってよいが、プロダクト方針、アプリ別設定不要、TCC / 実機検証境界、Mac Mouse Fix 由来禁止にはメインスレッドのルールを優先する。
 - CI や完成判定では、Grok の意見だけで合格扱いにしない。必ず `swift build`、core tests、script、GitHub Actions、runtime evidence などの機械証跡を使う。
 - Grok がファイル編集を行う必要がある場合は、通常のサブエージェントと同様に専用 branch / worktree / 所有範囲を分ける。レビュー用途では読み取り・要約に留める。

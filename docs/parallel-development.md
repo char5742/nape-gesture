@@ -62,6 +62,8 @@ Issue 4 と Issue 9 は実機と権限状態に依存するため、実機なし
 ## Grok CLI による補助レビュー
 
 Grok CLI の使い分けは [ADR-0027](adr/0027-grok-cli-auxiliary-review.md) を正とする。
+実行時の短いルールは repo 直下の `AGENTS.md`、再利用可能な手順はローカル Codex skill `$grok-auxiliary-review` にも置く。
+この 3 層の役割分担は [ADR-0029](adr/0029-grok-operational-surface.md) を正とする。
 メインスレッドは GPT-5.5 / Codex として実装、テスト、PR レビュー、merge 判断、Issue 反映を主担当にする。
 Grok は別モデルの第二視点として、UI / UX、文言、レビュー観点の抜け、第三者視点の確認に使う。
 

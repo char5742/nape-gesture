@@ -35,6 +35,7 @@
 | [ADR-0026](0026-runtime-performance-log-evidence.md) | runtime 性能ログによる tap-to-post 証跡 | Issue #14、Issue #16、runtime、性能、tap-to-post |
 | [ADR-0027](0027-grok-cli-auxiliary-review.md) | Grok CLI を補助レビューと発散に使う | Grok、並列開発、UI、PRレビュー、第三者視点 |
 | [ADR-0028](0028-readme-product-dashboard.md) | README を製品入口兼状態ダッシュボードとして扱う | README、GUI、完成状態、Mermaid、キャプチャ |
+| [ADR-0029](0029-grok-operational-surface.md) | Grok 運用知見を AGENTS.md と Codex skill に同期する | Grok、AGENTS.md、Codex skill、補助レビュー |
 
 ## 追加時の確認
 
