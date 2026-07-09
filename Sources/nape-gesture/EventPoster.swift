@@ -12,11 +12,13 @@ final class EventPoster {
         source?.setLocalEventsFilterDuringSuppressionState([], state: .eventSuppressionStateSuppressionInterval)
     }
 
-    func postScroll(command: GestureCommand, mode: ScrollPostMode) {
+    @discardableResult
+    func postScroll(command: GestureCommand, mode: ScrollPostMode) -> EventPostResult {
         guard let event = makeScrollEvent(command: command, mode: mode) else {
-            return
+            return EventPostResult(generatedEventCount: 0, failedEventCreationCount: 1)
         }
         event.post(tap: .cghidEventTap)
+        return EventPostResult(generatedEventCount: 1, failedEventCreationCount: 0)
     }
 
     func makeScrollEvent(command: GestureCommand, mode: ScrollPostMode) -> CGEvent? {
@@ -45,39 +47,47 @@ final class EventPoster {
         return event
     }
 
-    func postMissionControl() {
+    @discardableResult
+    func postMissionControl() -> EventPostResult {
         postKeyShortcut(keyCode: CGKeyCode(kVK_UpArrow), flags: .maskControl)
     }
 
-    func postPageBack() {
+    @discardableResult
+    func postPageBack() -> EventPostResult {
         postKeyShortcut(keyCode: CGKeyCode(kVK_LeftArrow), flags: .maskCommand)
     }
 
-    func postPageForward() {
+    @discardableResult
+    func postPageForward() -> EventPostResult {
         postKeyShortcut(keyCode: CGKeyCode(kVK_RightArrow), flags: .maskCommand)
     }
 
-    func postZoomIn() {
+    @discardableResult
+    func postZoomIn() -> EventPostResult {
         postKeyShortcut(keyCode: CGKeyCode(kVK_ANSI_Equal), flags: .maskCommand)
     }
 
-    func postZoomOut() {
+    @discardableResult
+    func postZoomOut() -> EventPostResult {
         postKeyShortcut(keyCode: CGKeyCode(kVK_ANSI_Minus), flags: .maskCommand)
     }
 
-    private func postKeyShortcut(keyCode: CGKeyCode, flags: CGEventFlags) {
-        guard
-            let down = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
-            let up = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
-        else {
-            return
-        }
+    private func postKeyShortcut(keyCode: CGKeyCode, flags: CGEventFlags) -> EventPostResult {
+        let events = [
+            CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
+            CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
+        ].compactMap { $0 }
 
-        for event in [down, up] {
+        for event in events {
             CGEventUtilities.setGeneratedMarker(on: event)
             event.flags = flags
             event.post(tap: .cghidEventTap)
         }
+
+        return EventPostResult(
+            generatedEventCount: events.count,
+            failedEventCreationCount: 2 - events.count
+        )
     }
 
     private func quantize(_ value: Double) -> Int32 {
@@ -90,6 +100,13 @@ final class EventPoster {
         }
         return Int32(rounded)
     }
+}
+
+struct EventPostResult: Equatable {
+    var generatedEventCount: Int
+    var failedEventCreationCount: Int
+
+    static let none = EventPostResult(generatedEventCount: 0, failedEventCreationCount: 0)
 }
 
 enum ScrollPostMode: Equatable {

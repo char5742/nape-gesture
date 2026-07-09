@@ -9,19 +9,23 @@ final class NapeGestureDaemon {
     private let configuration: GestureConfiguration
     private let targetGate: SharedTargetDeviceGate?
     private let hidInputMonitor: HIDInputMonitor?
+    private let performanceRecorder: RuntimePerformanceRecording?
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var momentumTimer: DispatchSourceTimer?
     private var safetyState = RuntimeSafetyState()
+    private var performanceOperationSequence = 0
 
     init(
         configuration: GestureConfiguration,
         targetGate: SharedTargetDeviceGate? = nil,
-        hidInputMonitor: HIDInputMonitor? = nil
+        hidInputMonitor: HIDInputMonitor? = nil,
+        performanceRecorder: RuntimePerformanceRecording? = nil
     ) {
         self.configuration = configuration
         self.targetGate = targetGate
         self.hidInputMonitor = hidInputMonitor
+        self.performanceRecorder = performanceRecorder
         actionExecutor = GestureActionExecutor(bindings: configuration.bindings)
         recognizer = GestureRecognizer(configuration: configuration)
         momentum = MomentumEngine(configuration: configuration.momentum)
@@ -79,6 +83,8 @@ final class NapeGestureDaemon {
     }
 
     fileprivate func handle(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+        let callbackStartedAt = performanceRecorder == nil ? 0 : monotonicNanoseconds()
+
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             if let eventTap {
                 CGEvent.tapEnable(tap: eventTap, enable: true)
@@ -106,7 +112,20 @@ final class NapeGestureDaemon {
         }
 
         let decision = recognizer.handle(input)
-        handle(commands: decision.commands)
+        let performanceContext: RuntimePerformanceContext?
+        if performanceRecorder == nil {
+            performanceContext = nil
+        } else {
+            performanceContext = RuntimePerformanceContext(
+                operationID: nextPerformanceOperationID(source: .eventTap),
+                source: .eventTap,
+                inputEventTimestampNanoseconds: event.timestamp,
+                tapCallbackStartedAtNanoseconds: callbackStartedAt,
+                recognizerFinishedAtNanoseconds: monotonicNanoseconds(),
+                suppressedOriginal: decision.shouldSuppressOriginal
+            )
+        }
+        handle(commands: decision.commands, performanceContext: performanceContext)
 
         if decision.shouldSuppressOriginal {
             return nil
@@ -115,11 +134,25 @@ final class NapeGestureDaemon {
         return Unmanaged.passUnretained(event)
     }
 
-    private func handle(commands: [GestureCommand]) {
+    private func handle(
+        commands: [GestureCommand],
+        performanceContext: RuntimePerformanceContext? = nil,
+        allowsMomentumStart: Bool = true
+    ) {
         for command in commands {
-            actionExecutor.post(command: command)
+            let shouldRecordPerformance = performanceContext != nil
+            let postStartedAt = shouldRecordPerformance ? monotonicNanoseconds() : 0
+            let postResult = actionExecutor.post(command: command)
+            let postFinishedAt = shouldRecordPerformance ? monotonicNanoseconds() : 0
+            recordRuntimePerformance(
+                command: command,
+                postResult: postResult,
+                context: performanceContext,
+                postStartedAtNanoseconds: postStartedAt,
+                postFinishedAtNanoseconds: postFinishedAt
+            )
 
-            if command.phase == .ended && actionExecutor.supportsMomentum(for: command) {
+            if allowsMomentumStart && command.phase == .ended && actionExecutor.supportsMomentum(for: command) {
                 startMomentumIfNeeded(from: command)
             } else if command.phase == .cancelled {
                 cancelMomentum()
@@ -156,7 +189,25 @@ final class NapeGestureDaemon {
             return
         }
 
-        actionExecutor.post(command: command)
+        let performanceContext: RuntimePerformanceContext?
+        if performanceRecorder == nil {
+            performanceContext = nil
+        } else {
+            let now = monotonicNanoseconds()
+            performanceContext = RuntimePerformanceContext(
+                operationID: nextPerformanceOperationID(source: .momentumTimer),
+                source: .momentumTimer,
+                inputEventTimestampNanoseconds: nil,
+                tapCallbackStartedAtNanoseconds: now,
+                recognizerFinishedAtNanoseconds: now,
+                suppressedOriginal: false
+            )
+        }
+        handle(
+            commands: [command],
+            performanceContext: performanceContext,
+            allowsMomentumStart: false
+        )
         if command.phase == .ended {
             cancelMomentum()
         }
@@ -182,6 +233,54 @@ final class NapeGestureDaemon {
         }
         return decision
     }
+
+    private func recordRuntimePerformance(
+        command: GestureCommand,
+        postResult: GestureActionPostResult,
+        context: RuntimePerformanceContext?,
+        postStartedAtNanoseconds: UInt64,
+        postFinishedAtNanoseconds: UInt64
+    ) {
+        guard let context else {
+            return
+        }
+        performanceRecorder?.record(
+            RuntimePerformanceRecord(
+                operationID: context.operationID,
+                source: context.source,
+                action: postResult.action,
+                commandKind: command.kind,
+                commandPhase: command.phase,
+                commandTimestamp: command.timestamp,
+                inputEventTimestampNanoseconds: context.inputEventTimestampNanoseconds,
+                tapCallbackStartedAtNanoseconds: context.tapCallbackStartedAtNanoseconds,
+                recognizerFinishedAtNanoseconds: context.recognizerFinishedAtNanoseconds,
+                postStartedAtNanoseconds: postStartedAtNanoseconds,
+                postFinishedAtNanoseconds: postFinishedAtNanoseconds,
+                generatedEventCount: postResult.generatedEventCount,
+                failedEventCreationCount: postResult.failedEventCreationCount,
+                suppressedOriginal: context.suppressedOriginal
+            )
+        )
+    }
+
+    private func nextPerformanceOperationID(source: RuntimePerformanceSource) -> String {
+        performanceOperationSequence += 1
+        return "\(source.rawValue)-\(performanceOperationSequence)"
+    }
+
+    private func monotonicNanoseconds() -> UInt64 {
+        DispatchTime.now().uptimeNanoseconds
+    }
+}
+
+private struct RuntimePerformanceContext {
+    var operationID: String
+    var source: RuntimePerformanceSource
+    var inputEventTimestampNanoseconds: UInt64?
+    var tapCallbackStartedAtNanoseconds: UInt64
+    var recognizerFinishedAtNanoseconds: UInt64
+    var suppressedOriginal: Bool
 }
 
 private let eventTapCallback: CGEventTapCallBack = { proxy, type, event, userInfo in
