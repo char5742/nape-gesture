@@ -109,6 +109,9 @@ private struct RecoveryReadinessReport: Codable {
         if schemaVersion != 1 {
             failures.append("schemaVersion は 1 である必要があります。")
         }
+        if reportKind != "runtimeRecoveryReadiness" {
+            failures.append("reportKind は runtimeRecoveryReadiness である必要があります。")
+        }
         if !expectedScenarioIDs.isSubset(of: actualScenarioIDs) {
             let missing = expectedScenarioIDs.subtracting(actualScenarioIDs).sorted().joined(separator: ", ")
             failures.append("復旧シナリオが不足しています: \(missing)")
