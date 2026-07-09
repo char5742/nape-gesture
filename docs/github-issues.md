@@ -236,6 +236,9 @@ Labels: `area:runtime`, `area:verification`, `type:qa`, `priority:p1`
 - 離散アクションは慣性を発生させない
 - 生成キーイベントのログと画面挙動が一致している
 
+現在の証跡:
+2026-07-10 時点で、権限付与済み `.app` bundle から Safari への `pageBack` / `pageForward` / `zoomIn` / `zoomOut` 実動作は確認済み。`horizontalScroll` は Safari Web content で未反映のため、横スクロール可能ビュー側の受信差分調査を残す。詳細は [ADR-0034](adr/0034-browser-discrete-shortcut-posting.md) を参照する。
+
 依存関係:
 アクセシビリティ権限、Issue 3。
 

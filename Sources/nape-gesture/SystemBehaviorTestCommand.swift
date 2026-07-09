@@ -258,11 +258,11 @@ struct SystemBehaviorTestCommand {
         case .missionControl:
             shortcutRecords(keyCode: CGKeyCode(kVK_UpArrow), flags: .maskControl, startTime: startTime)
         case .pageBack:
-            shortcutRecords(keyCode: CGKeyCode(kVK_LeftArrow), flags: .maskCommand, startTime: startTime)
+            shortcutRecords(keyCode: CGKeyCode(kVK_ANSI_LeftBracket), flags: .maskCommand, startTime: startTime)
         case .pageForward:
-            shortcutRecords(keyCode: CGKeyCode(kVK_RightArrow), flags: .maskCommand, startTime: startTime)
+            shortcutRecords(keyCode: CGKeyCode(kVK_ANSI_RightBracket), flags: .maskCommand, startTime: startTime)
         case .zoomIn:
-            shortcutRecords(keyCode: CGKeyCode(kVK_ANSI_Equal), flags: .maskCommand, startTime: startTime)
+            shortcutRecords(keyCode: CGKeyCode(kVK_ANSI_Equal), flags: [.maskCommand, .maskShift], startTime: startTime)
         case .zoomOut:
             shortcutRecords(keyCode: CGKeyCode(kVK_ANSI_Minus), flags: .maskCommand, startTime: startTime)
         case .killSwitch:
@@ -314,24 +314,18 @@ struct SystemBehaviorTestCommand {
         startTime: TimeInterval,
         generatedByNapeGesture: Bool = true
     ) -> [InputLogRecord] {
-        [
+        let sequence = ShortcutEventSequence.keyEvents(keyCode: keyCode, flags: flags)
+        let step = 0.01
+        return sequence.enumerated().map { offset, shortcutEvent in
             keyRecord(
-                typeName: "keyDown",
-                type: .keyDown,
-                keyCode: keyCode,
-                flags: flags,
-                time: startTime,
-                generatedByNapeGesture: generatedByNapeGesture
-            ),
-            keyRecord(
-                typeName: "keyUp",
-                type: .keyUp,
-                keyCode: keyCode,
-                flags: flags,
-                time: startTime + 0.01,
+                typeName: shortcutEvent.typeName,
+                type: shortcutEvent.type,
+                keyCode: shortcutEvent.keyCode,
+                flags: shortcutEvent.flags,
+                time: startTime + Double(offset) * step,
                 generatedByNapeGesture: generatedByNapeGesture
             )
-        ]
+        }
     }
 
     private func keyRecord(
@@ -717,21 +711,42 @@ struct SystemBehaviorTestCommand {
             return
         }
 
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
-
         switch target {
         case .finder:
-            guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.finder") else {
-                throw ToolError.targetApplicationNotFound("Finder")
-            }
-            NSWorkspace.shared.openApplication(at: url, configuration: configuration)
+            try activateApplication(bundleIdentifier: "com.apple.finder", displayName: "Finder")
         case .safari:
-            guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Safari") else {
-                throw ToolError.targetApplicationNotFound("Safari")
+            try activateApplication(bundleIdentifier: "com.apple.Safari", displayName: "Safari")
+        }
+    }
+
+    private func activateApplication(bundleIdentifier: String, displayName: String) throws {
+        if NSWorkspace.shared.runningApplications.contains(where: { $0.bundleIdentifier == bundleIdentifier }) {
+            activateRunningApplication(bundleIdentifier: bundleIdentifier)
+        } else {
+            guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) else {
+                throw ToolError.targetApplicationNotFound(displayName)
             }
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.activates = true
             NSWorkspace.shared.openApplication(at: url, configuration: configuration)
         }
+
+        let deadline = Date().addingTimeInterval(2)
+        while Date() < deadline {
+            activateRunningApplication(bundleIdentifier: bundleIdentifier)
+            if NSWorkspace.shared.frontmostApplication?.bundleIdentifier == bundleIdentifier {
+                return
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+
+        throw ToolError.invalidValue("--target", "\(displayName) を前面化できませんでした。")
+    }
+
+    private func activateRunningApplication(bundleIdentifier: String) {
+        NSWorkspace.shared.runningApplications
+            .first { $0.bundleIdentifier == bundleIdentifier }?
+            .activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
     }
 
     private func value(_ name: String, in options: [String]) -> String? {

@@ -103,11 +103,11 @@ struct AnalyzeLogCommand {
         case .missionControl:
             failures.append(contentsOf: generatedShortcutFailures(records: records, keyCode: CGKeyCode(kVK_UpArrow), flags: .maskControl))
         case .pageBack:
-            failures.append(contentsOf: generatedShortcutFailures(records: records, keyCode: CGKeyCode(kVK_LeftArrow), flags: .maskCommand))
+            failures.append(contentsOf: generatedShortcutFailures(records: records, keyCode: CGKeyCode(kVK_ANSI_LeftBracket), flags: .maskCommand))
         case .pageForward:
-            failures.append(contentsOf: generatedShortcutFailures(records: records, keyCode: CGKeyCode(kVK_RightArrow), flags: .maskCommand))
+            failures.append(contentsOf: generatedShortcutFailures(records: records, keyCode: CGKeyCode(kVK_ANSI_RightBracket), flags: .maskCommand))
         case .zoomIn:
-            failures.append(contentsOf: generatedShortcutFailures(records: records, keyCode: CGKeyCode(kVK_ANSI_Equal), flags: .maskCommand))
+            failures.append(contentsOf: generatedShortcutFailures(records: records, keyCode: CGKeyCode(kVK_ANSI_Equal), flags: [.maskCommand, .maskShift]))
         case .zoomOut:
             failures.append(contentsOf: generatedShortcutFailures(records: records, keyCode: CGKeyCode(kVK_ANSI_Minus), flags: .maskCommand))
         case .killSwitch:
@@ -238,6 +238,55 @@ struct AnalyzeLogCommand {
         flags: CGEventFlags,
         generatedByNapeGesture: Bool
     ) -> [String] {
+        if !generatedByNapeGesture {
+            return compactShortcutFailures(
+                records: records,
+                keyCode: keyCode,
+                flags: flags,
+                generatedByNapeGesture: generatedByNapeGesture
+            )
+        }
+
+        let expected = ShortcutEventSequence.keyEvents(keyCode: keyCode, flags: flags)
+        var failures: [String] = []
+
+        if records.count != expected.count {
+            failures.append("期待 shortcut は \(expected.count) イベントで構成される必要があります。実際は \(records.count) イベントです。")
+        }
+        for (index, expectedRecord) in expected.enumerated() {
+            guard records.indices.contains(index) else {
+                break
+            }
+            let record = records[index]
+            if !record.isKeyEvent {
+                failures.append("期待 shortcut の \(index) 番目が key event ではありません。")
+            }
+            if record.typeName != expectedRecord.typeName {
+                failures.append("期待 shortcut の \(index) 番目 type が \(expectedRecord.typeName) ではありません。")
+            }
+            if record.keyCode != Int64(expectedRecord.keyCode) {
+                failures.append("期待 shortcut の \(index) 番目 keyCode が \(expectedRecord.keyCode) ではありません。")
+            }
+            if !hasExactShortcutFlags(record.flags, expectedRecord.flags) {
+                failures.append("期待 shortcut の \(index) 番目 modifier が一致しません。")
+            }
+            if record.generatedByNapeGesture != generatedByNapeGesture {
+                failures.append("期待 shortcut の \(index) 番目 generated marker が一致しません。")
+            }
+        }
+        if !timestampsAreMonotonic(records) {
+            failures.append("shortcut key event の timestamp が単調増加していません。")
+        }
+
+        return failures
+    }
+
+    private static func compactShortcutFailures(
+        records: [InputLogRecord],
+        keyCode: CGKeyCode,
+        flags: CGEventFlags,
+        generatedByNapeGesture: Bool
+    ) -> [String] {
         let matchingRecords = records.filter {
             $0.isKeyEvent
                 && $0.keyCode == Int64(keyCode)
@@ -250,7 +299,7 @@ struct AnalyzeLogCommand {
             failures.append("期待した keyCode / modifier / generated marker 以外のイベントが混在しています。")
         }
         if matchingRecords.count != 2 {
-            failures.append("期待 shortcut は keyDown / keyUp の2イベントだけで構成される必要があります。")
+            failures.append("期待 shortcut は keyDown / keyUp の2イベントで構成される必要があります。")
         }
         if !matchingRecords.contains(where: { $0.typeName == "keyDown" }) {
             failures.append("期待 shortcut の keyDown がありません。")
@@ -382,6 +431,7 @@ private enum SystemLogScenario: String {
     case gestureWheelThenKillSwitch = "gesture-wheel-then-kill-switch"
     case normalAfterRelease = "normal-after-release"
 }
+
 
 struct InputLogMissingUnmarkedPassthroughInputAssertionError: LocalizedError {
     var path: String

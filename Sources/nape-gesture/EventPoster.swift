@@ -54,17 +54,17 @@ final class EventPoster {
 
     @discardableResult
     func postPageBack() -> EventPostResult {
-        postKeyShortcut(keyCode: CGKeyCode(kVK_LeftArrow), flags: .maskCommand)
+        postKeyShortcut(keyCode: CGKeyCode(kVK_ANSI_LeftBracket), flags: .maskCommand)
     }
 
     @discardableResult
     func postPageForward() -> EventPostResult {
-        postKeyShortcut(keyCode: CGKeyCode(kVK_RightArrow), flags: .maskCommand)
+        postKeyShortcut(keyCode: CGKeyCode(kVK_ANSI_RightBracket), flags: .maskCommand)
     }
 
     @discardableResult
     func postZoomIn() -> EventPostResult {
-        postKeyShortcut(keyCode: CGKeyCode(kVK_ANSI_Equal), flags: .maskCommand)
+        postKeyShortcut(keyCode: CGKeyCode(kVK_ANSI_Equal), flags: [.maskCommand, .maskShift])
     }
 
     @discardableResult
@@ -73,21 +73,40 @@ final class EventPoster {
     }
 
     private func postKeyShortcut(keyCode: CGKeyCode, flags: CGEventFlags) -> EventPostResult {
-        let events = [
-            CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
-            CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
-        ].compactMap { $0 }
+        let sequence = ShortcutEventSequence.keyEvents(keyCode: keyCode, flags: flags)
+        let rawEvents = sequence.map { shortcutEvent in
+            makeKeyEvent(
+                keyCode: shortcutEvent.keyCode,
+                keyDown: shortcutEvent.isKeyDown,
+                flags: shortcutEvent.flags
+            )
+        }
+        guard rawEvents.allSatisfy({ $0 != nil }) else {
+            return EventPostResult(
+                generatedEventCount: 0,
+                failedEventCreationCount: rawEvents.filter { $0 == nil }.count
+            )
+        }
+        let events = rawEvents.compactMap { $0 }
 
-        for event in events {
+        for (index, event) in events.enumerated() {
             CGEventUtilities.setGeneratedMarker(on: event)
-            event.flags = flags
-            event.post(tap: .cghidEventTap)
+            event.post(tap: .cgSessionEventTap)
+            if index < events.count - 1 {
+                Thread.sleep(forTimeInterval: 0.002)
+            }
         }
 
         return EventPostResult(
             generatedEventCount: events.count,
-            failedEventCreationCount: 2 - events.count
+            failedEventCreationCount: rawEvents.count - events.count
         )
+    }
+
+    private func makeKeyEvent(keyCode: CGKeyCode, keyDown: Bool, flags: CGEventFlags) -> CGEvent? {
+        let event = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: keyDown)
+        event?.flags = flags
+        return event
     }
 
     private func quantize(_ value: Double) -> Int32 {
