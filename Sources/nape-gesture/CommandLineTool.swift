@@ -19,6 +19,8 @@ final class CommandLineTool {
         case "app":
             let configPath = try SettingsStore.configPath(from: options)
             try StatusApp.run(configPath: configPath)
+        case "gui-smoke":
+            try guiSmoke(options: options)
         case "run":
             let loaded = try SettingsStore.loadRuntimeSettings(from: options)
             let settings = loaded.settings
@@ -90,6 +92,9 @@ final class CommandLineTool {
             使い方:
               nape-gesture app [--config <path>]
                   通常 GUI アプリを起動し、設定ウィンドウとメニューバー常駐UIを表示します。環境変数 NAPE_RUNTIME_PERFORMANCE_LOG で runtime 性能 JSON Lines を保存できます。
+
+              nape-gesture gui-smoke [--config <path>] [--json] [--assert]
+                  runtime を開始せずに active macOS GUI session 上で通常 GUI activation policy、設定ウィンドウ、status item NG、通常アプリメニュー、status menu を AppKit 内で作成して検査します。--assert で期待 UI と一致しない場合に失敗します。--config 未指定時は一時 config を使います。
 
               nape-gesture run [--performance-log <path>]
                   特定ボタン押下中のドラッグ・ホイールを生成スクロールへ変換します。
@@ -178,6 +183,41 @@ final class CommandLineTool {
         } else {
             print(try SettingsStore.string(for: settings))
         }
+    }
+
+    private func guiSmoke(options: [String]) throws {
+        let usesExplicitConfig = options.contains("--config")
+        let configPath = try guiSmokeConfigPath(options: options)
+        if !usesExplicitConfig {
+            try SettingsStore.writeTemplate(to: configPath)
+        }
+        let snapshot = try StatusApp.smokeSnapshot(configPath: configPath)
+        if options.contains("--assert") {
+            try snapshot.assertRegularGUI()
+        }
+
+        if options.contains("--json") {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(snapshot)
+            print(String(decoding: data, as: UTF8.self))
+            return
+        }
+
+        print("通常 GUI app smoke: 成功")
+        print("activationPolicy: \(snapshot.activationPolicy)")
+        print("status item: \(snapshot.statusItemTitle ?? "なし")")
+        print("settings window: \(snapshot.settingsWindowTitle ?? "なし")")
+    }
+
+    private func guiSmokeConfigPath(options: [String]) throws -> String {
+        if options.contains("--config") {
+            return try SettingsStore.configPath(from: options)
+        }
+        return FileManager.default.temporaryDirectory
+            .appendingPathComponent("NapeGesture", isDirectory: true)
+            .appendingPathComponent("gui-smoke.config.json")
+            .path
     }
 
     private func makeInitialSettings(options: [String]) throws -> NapeGestureSettings {
@@ -387,6 +427,7 @@ enum ToolError: LocalizedError {
     case executablePathUnavailable
     case targetApplicationNotFound(String)
     case benchmarkBaselineFailed(String)
+    case guiSmokeFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -423,6 +464,8 @@ enum ToolError: LocalizedError {
             return "\(name) を見つけられませんでした。"
         case let .benchmarkBaselineFailed(message):
             return "benchmark の純粋ロジック基準を満たしていません。\n\(message)"
+        case let .guiSmokeFailed(message):
+            return "GUI smoke 検証に失敗しました。\n\(message)"
         }
     }
 }

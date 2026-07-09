@@ -162,3 +162,16 @@ jobs:
           /usr/libexec/PlistBuddy -c 'Print :LSUIElement' .build/NapeGesture.app/Contents/Info.plist | grep -Fx 'false'
           cmp LICENSE .build/NapeGesture.app/Contents/Resources/LICENSE.txt
           cmp THIRD_PARTY_NOTICES.md .build/NapeGesture.app/Contents/Resources/THIRD_PARTY_NOTICES.md
+
+      - name: Verify GUI smoke
+        run: |
+          if ! launchctl print "gui/$(id -u)" 2>/dev/null | grep -q 'session = Aqua'; then
+            echo "::warning::GUI smoke skipped because this runner has no active macOS Aqua session"
+            exit 0
+          fi
+          gui_config="${RUNNER_TEMP:-/tmp}/nape-gui-smoke.config.json"
+          .build/NapeGesture.app/Contents/MacOS/nape-gesture gui-smoke --config "$gui_config" --json --assert > /tmp/nape-gui-smoke.json
+          test "$(/usr/bin/plutil -extract activationPolicy raw /tmp/nape-gui-smoke.json)" = "regular"
+          test "$(/usr/bin/plutil -extract statusItemTitle raw /tmp/nape-gui-smoke.json)" = "NG"
+          test "$(/usr/bin/plutil -extract settingsWindowTitle raw /tmp/nape-gui-smoke.json)" = "Nape Gesture 設定"
+          test "$(/usr/bin/plutil -extract runtimeIdentity.isAppBundle raw /tmp/nape-gui-smoke.json)" = "true"

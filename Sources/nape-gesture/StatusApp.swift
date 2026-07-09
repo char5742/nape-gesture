@@ -31,9 +31,38 @@ final class StatusApp: NSObject, NSApplicationDelegate {
         app.run()
     }
 
+    static func smokeSnapshot(configPath: String) throws -> StatusAppSmokeSnapshot {
+        let app = NSApplication.shared
+        let previousDelegate = app.delegate
+        let previousMainMenu = app.mainMenu
+        let previousActivationPolicy = app.activationPolicy()
+        let previousRetainedDelegate = retainedDelegate
+        let delegate = try StatusApp(configPath: configPath)
+        retainedDelegate = delegate
+        app.delegate = delegate
+        app.setActivationPolicy(GUIAppLaunchPresenter.regularGUIApp.activationPolicyValue)
+
+        defer {
+            delegate.settingsWindow?.close()
+            if let statusItem = delegate.statusItem {
+                NSStatusBar.system.removeStatusItem(statusItem)
+            }
+            delegate.statusItem = nil
+            app.mainMenu = previousMainMenu
+            app.setActivationPolicy(previousActivationPolicy)
+            app.delegate = previousDelegate
+            retainedDelegate = previousRetainedDelegate
+        }
+
+        delegate.installLaunchUIChrome()
+        delegate.openSettings()
+        delegate.waitForSmokeWindowVisibility()
+
+        return delegate.makeSmokeSnapshot()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
-        installApplicationMenu()
-        installStatusItem()
+        installLaunchUIChrome()
         installLifecycleObservers()
         startRetryTimer()
         startRuntime()
@@ -58,6 +87,12 @@ final class StatusApp: NSObject, NSApplicationDelegate {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.button?.title = "NG"
         statusItem = item
+    }
+
+    private func installLaunchUIChrome() {
+        installApplicationMenu()
+        installStatusItem()
+        refreshMenu()
     }
 
     private func installApplicationMenu() {
@@ -107,6 +142,7 @@ final class StatusApp: NSObject, NSApplicationDelegate {
 
     private func refreshMenu() {
         let menu = NSMenu()
+        menu.autoenablesItems = false
         let presentation = RuntimeStatusPresenter.present(
             isRuntimeRunning: runtime.isRunning,
             recoveryState: recoveryState
@@ -413,6 +449,115 @@ final class StatusApp: NSObject, NSApplicationDelegate {
     private func currentTime() -> TimeInterval {
         Date().timeIntervalSince1970
     }
+
+    private func makeSmokeSnapshot() -> StatusAppSmokeSnapshot {
+        let launchPresentation = GUIAppLaunchPresenter.regularGUIApp
+        return StatusAppSmokeSnapshot(
+            runtimeIdentity: RuntimeIdentity.current,
+            activationPolicy: NSApp.activationPolicy().smokeValue,
+            expectedActivationPolicy: launchPresentation.activationPolicy,
+            opensSettingsWindowOnLaunch: launchPresentation.opensSettingsWindowOnLaunch,
+            reopensSettingsWindowFromDock: launchPresentation.reopensSettingsWindowFromDock,
+            keepsStatusMenu: launchPresentation.keepsStatusMenu,
+            bundleLSUIElement: launchPresentation.bundleLSUIElement,
+            statusItemTitle: statusItem?.button?.title,
+            statusMenuItems: statusItem?.menu?.items.map(StatusAppSmokeMenuItem.init) ?? [],
+            applicationMenuItems: NSApp.mainMenu?.items.first?.submenu?.items.map(StatusAppSmokeMenuItem.init) ?? [],
+            settingsWindowTitle: settingsWindow?.window?.title,
+            settingsWindowIsVisible: settingsWindow?.window?.isVisible ?? false
+        )
+    }
+
+    private func waitForSmokeWindowVisibility(timeout: TimeInterval = 2.0) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !(settingsWindow?.window?.isVisible ?? false) && Date() < deadline {
+            _ = RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+        }
+    }
+}
+
+struct StatusAppSmokeSnapshot: Codable {
+    var runtimeIdentity: RuntimeIdentity
+    var activationPolicy: String
+    var expectedActivationPolicy: String
+    var opensSettingsWindowOnLaunch: Bool
+    var reopensSettingsWindowFromDock: Bool
+    var keepsStatusMenu: Bool
+    var bundleLSUIElement: Bool
+    var statusItemTitle: String?
+    var statusMenuItems: [StatusAppSmokeMenuItem]
+    var applicationMenuItems: [StatusAppSmokeMenuItem]
+    var settingsWindowTitle: String?
+    var settingsWindowIsVisible: Bool
+
+    func assertRegularGUI() throws {
+        var failures: [String] = []
+        if activationPolicy != expectedActivationPolicy {
+            failures.append("activationPolicy が \(expectedActivationPolicy) ではありません: \(activationPolicy)")
+        }
+        if statusItemTitle != "NG" {
+            failures.append("status item title が NG ではありません: \(statusItemTitle ?? "なし")")
+        }
+        if settingsWindowTitle != "Nape Gesture 設定" {
+            failures.append("設定ウィンドウ title が Nape Gesture 設定ではありません: \(settingsWindowTitle ?? "なし")")
+        }
+        if !settingsWindowIsVisible {
+            failures.append("設定ウィンドウが表示状態ではありません。")
+        }
+
+        let statusTitles = statusMenuItems.map(\.title)
+        let expectedStatusTitles = [
+            "状態: 停止中",
+            "開始",
+            "緊急停止",
+            "停止",
+            "設定...",
+            "権限とデバイスを確認",
+            "アクセシビリティ設定を開く",
+            "入力監視設定を開く",
+            "終了"
+        ]
+        for title in expectedStatusTitles where !statusTitles.contains(title) {
+            failures.append("status menu に \(title) がありません。")
+        }
+        if statusMenuItems.first(where: { $0.title == "開始" })?.enabled != true {
+            failures.append("停止中の status menu で 開始 が有効ではありません。")
+        }
+        if statusMenuItems.first(where: { $0.title == "緊急停止" })?.enabled != true {
+            failures.append("自動再試行が有効な停止中の status menu で 緊急停止 が有効ではありません。")
+        }
+        if statusMenuItems.first(where: { $0.title == "停止" })?.enabled != true {
+            failures.append("自動再試行が有効な停止中の status menu で 停止 が有効ではありません。")
+        }
+
+        let applicationTitles = applicationMenuItems.map(\.title)
+        let expectedApplicationTitles = [
+            "設定...",
+            "権限とデバイスを確認",
+            "アクセシビリティ設定を開く",
+            "入力監視設定を開く",
+            "Nape Gesture を終了"
+        ]
+        for title in expectedApplicationTitles where !applicationTitles.contains(title) {
+            failures.append("application menu に \(title) がありません。")
+        }
+
+        guard failures.isEmpty else {
+            throw ToolError.guiSmokeFailed(failures.joined(separator: "\n"))
+        }
+    }
+}
+
+struct StatusAppSmokeMenuItem: Codable {
+    var title: String
+    var enabled: Bool
+    var isSeparator: Bool
+
+    init(_ item: NSMenuItem) {
+        title = item.title
+        enabled = item.isEnabled
+        isSeparator = item.isSeparatorItem
+    }
 }
 
 private enum InputMonitoringProbeResult {
@@ -452,6 +597,21 @@ private extension GUIAppLaunchPresentation {
             return .accessory
         default:
             return .prohibited
+        }
+    }
+}
+
+private extension NSApplication.ActivationPolicy {
+    var smokeValue: String {
+        switch self {
+        case .regular:
+            return "regular"
+        case .accessory:
+            return "accessory"
+        case .prohibited:
+            return "prohibited"
+        @unknown default:
+            return "unknown"
         }
     }
 }

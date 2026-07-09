@@ -9,8 +9,8 @@ Mac Mouse Fix のコード、定数、状態遷移、係数は流用しません
 
 | 項目 | 実装・検証状態 | 確認先 |
 | --- | --- | --- |
-| 通常 GUI アプリ | 実装済み。`.app` identity、通常 GUI 設定、computer-use による設定ウィンドウ表示は確認済み。最終の Dock 表示は completion matrix で管理する | `bundle-app` / `verify-bundle`、[ADR-0024](docs/adr/0024-regular-gui-app-launch.md) |
-| メニューバー常駐 UI | 実装済み。開始、停止、設定、権限確認を `NG` メニューから操作できる。通常アプリメニューの権限導線は computer-use で確認済みだが、TCC 許可そのものではない。ステータスアイテム `NG` の最終操作証跡は completion matrix で管理する | [docs/completion-checklist.md](docs/completion-checklist.md) |
+| 通常 GUI アプリ | 実装済み。`.app` identity、通常 GUI 設定、AppKit `gui-smoke`、computer-use による設定ウィンドウ表示は確認済み。最終の Dock アイコン目視だけ completion matrix で管理する | `bundle-app` / `verify-bundle` / `gui-smoke`、[ADR-0024](docs/adr/0024-regular-gui-app-launch.md) |
+| メニューバー常駐 UI | 実装済み。AppKit `gui-smoke` で status item `NG`、状態、開始、緊急停止、停止、設定、権限導線の生成契約を検査する。実メニューバー上のクリック操作や TCC 許可そのものではない | [docs/completion-checklist.md](docs/completion-checklist.md) |
 | 設定 UI | 実装済み。編集項目 catalog、JSON round-trip、computer-use による `.app` 設定表示と保存操作は確認済み。保存は設定ファイル更新までの証跡で、TCC 許可済み runtime と実イベントは completion matrix で管理する | [ADR-0021](docs/adr/0021-settings-ui-field-catalog.md)、[docs/completion-checklist.md](docs/completion-checklist.md) |
 | 通常入力通過 | 機械証跡あり。ジェスチャーボタン未押下時と解放後の通常クリック、ドラッグ、ホイールを完了判定対象にしている | [ADR-0016](docs/adr/0016-normal-input-kind-assertions.md) |
 | 権限導線 | 実装済み。GUI と `doctor` が TCC 権限付与対象を表示し、System Settings を開く | [ADR-0020](docs/adr/0020-doctor-tcc-permission-target.md)、[ADR-0025](docs/adr/0025-gui-permission-recovery-actions.md) |
@@ -63,7 +63,9 @@ open .build/NapeGesture.app
 作成した `.build/NapeGesture.app` は、設計・実装上は通常 GUI アプリとして Dock に表示され、起動時に設定ウィンドウを開きます。
 2026-07-09 の main `f43e217` では computer-use により、起動時の `Nape Gesture 設定` ウィンドウ、主要設定項目、`保存して再起動` の押下と設定ファイル更新、通常アプリメニューの権限導線を確認済みです。
 この権限導線確認は System Settings へ進む前の UI 確認であり、TCC 許可そのものではありません。
-最終的な Dock 表示、ステータスアイテム `NG`、TCC 許可済み runtime の証跡は [docs/completion-checklist.md](docs/completion-checklist.md) で管理します。
+`gui-smoke --json --assert` は runtime を開始せずに、active macOS GUI session 上の AppKit 内で `.regular` activation policy、設定ウィンドウ、status item `NG`、通常アプリメニュー、status menu の生成契約を機械検査します。
+これは実メニューバー上のクリック操作や TCC 許可済み runtime の証跡ではありません。
+最終的な Dock アイコン目視、TCC 許可済み runtime の証跡は [docs/completion-checklist.md](docs/completion-checklist.md) で管理します。
 常駐状態の開始、停止、設定、権限確認はメニューバーの `NG` から操作できます。
 アクセシビリティと入力監視の許可は、実利用する `NapeGesture.app` に対して付与してください。bundle ID は `dev.char5742.nape-gesture` です。
 
@@ -123,6 +125,7 @@ swift run nape-gesture init-config --vendor-id <ID> --product-id <ID> --usage-pa
 | コマンド | 用途 |
 | --- | --- |
 | `app` | 通常 GUI アプリモードで起動する |
+| `gui-smoke` | runtime を開始せずに通常 GUI activation policy、設定ウィンドウ、status item `NG`、通常アプリメニュー、status menu を JSON で検査する。`--config` 未指定時は一時 config を使う |
 | `run` | グローバルイベントタップで入力を読み、生成イベントを投稿する |
 | `doctor` | 権限、対象デバイス、HID probe、runtime ready、benchmark を一括診断する |
 | `devices` | IOHID で認識できるマウス系または全 HID デバイスを一覧する |

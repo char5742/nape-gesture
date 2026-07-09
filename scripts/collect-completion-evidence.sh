@@ -131,6 +131,7 @@ run_split_expected_failure() {
 
 build_dir="$artifact_root/build-and-tests"
 bundle_dir="$artifact_root/bundle"
+gui_dir="$artifact_root/gui-smoke"
 provenance_dir="$artifact_root/provenance"
 doctor_dir="$artifact_root/doctor-and-performance"
 system_dir="$artifact_root/system-test-dry-run"
@@ -139,6 +140,7 @@ hid_dir="$artifact_root/hid-inventory"
 
 config_path="$doctor_dir/nape-gesture.config.json"
 blocked_config_path="$doctor_dir/nape-gesture-impossible-target.config.json"
+gui_config_path="$gui_dir/nape-gui-smoke.config.json"
 
 run_combined_success \
   "由来ガード" \
@@ -181,6 +183,19 @@ run_combined_success \
   "$bundle_dir/info-plist-identity-check.log" \
   "PlistBuddy CFBundleIdentifier / CFBundleExecutable / CFBundleName / CFBundleDisplayName / LSUIElement exact check" \
   sh -c "/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' .build/NapeGesture.app/Contents/Info.plist | grep -Fx 'dev.char5742.nape-gesture' && /usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' .build/NapeGesture.app/Contents/Info.plist | grep -Fx 'nape-gesture' && /usr/libexec/PlistBuddy -c 'Print :CFBundleName' .build/NapeGesture.app/Contents/Info.plist | grep -Fx 'Nape Gesture' && /usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' .build/NapeGesture.app/Contents/Info.plist | grep -Fx 'Nape Gesture' && /usr/libexec/PlistBuddy -c 'Print :LSUIElement' .build/NapeGesture.app/Contents/Info.plist | grep -Fx 'false'"
+
+run_combined_success \
+  "GUI smoke 設定作成" \
+  "$gui_dir/init-gui-smoke-config.log" \
+  ".build/debug/nape-gesture init-config --out $gui_config_path" \
+  .build/debug/nape-gesture init-config --out "$gui_config_path"
+
+run_split_success \
+  "app GUI smoke JSON" \
+  "$gui_dir/gui-smoke-app.json" \
+  "$gui_dir/gui-smoke-app.stderr.log" \
+  ".build/NapeGesture.app/Contents/MacOS/nape-gesture gui-smoke --config $gui_config_path --json --assert" \
+  .build/NapeGesture.app/Contents/MacOS/nape-gesture gui-smoke --config "$gui_config_path" --json --assert
 
 run_split_expected_failure \
   "未署名 app bundle 署名必須検証" \
