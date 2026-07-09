@@ -1,10 +1,13 @@
 import AppKit
+import ApplicationServices
 import Carbon.HIToolbox
 import CoreGraphics
 import Foundation
 import NapeGestureCore
 
 final class EventPoster {
+    // AX scrollbar はピクセル幅ではなく 0...1 の正規化値を公開するため、過剰移動を避ける保守的な換算にする。
+    private let axHorizontalScrollScale = 3_200.0
     private let source: CGEventSource?
 
     init() {
@@ -16,6 +19,9 @@ final class EventPoster {
     func postScroll(command: GestureCommand, mode: ScrollPostMode) -> EventPostResult {
         guard let event = makeScrollEvent(command: command, mode: mode) else {
             return EventPostResult(generatedEventCount: 0, failedEventCreationCount: 1)
+        }
+        if postAXHorizontalScrollIfNeeded(for: command, mode: mode, at: event.location) {
+            return EventPostResult(generatedEventCount: 1, failedEventCreationCount: 0)
         }
         if let pid = targetProcessID(for: mode) {
             event.postToPid(pid)
@@ -184,6 +190,107 @@ final class EventPoster {
         return nil
     }
 
+    private func postAXHorizontalScrollIfNeeded(
+        for command: GestureCommand,
+        mode: ScrollPostMode,
+        at point: CGPoint
+    ) -> Bool {
+        guard mode.usesAXHorizontalScrollFallback else {
+            return false
+        }
+
+        let delta = mode.deltas(for: command).x
+        guard delta != 0,
+              let scrollBar = webContentHorizontalAXScrollBarUnderPointer(at: point),
+              let currentValue = axNumericAttribute(scrollBar, kAXValueAttribute as CFString)
+        else {
+            return false
+        }
+
+        let nextValue = clampedUnitValue(currentValue + delta / axHorizontalScrollScale)
+        guard nextValue != currentValue else {
+            return false
+        }
+
+        return AXUIElementSetAttributeValue(
+            scrollBar,
+            kAXValueAttribute as CFString,
+            NSNumber(value: nextValue) as CFTypeRef
+        ) == .success
+    }
+
+    private func webContentHorizontalAXScrollBarUnderPointer(at point: CGPoint) -> AXUIElement? {
+        let systemWideElement = AXUIElementCreateSystemWide()
+        var rawElement: AXUIElement?
+        guard AXUIElementCopyElementAtPosition(
+            systemWideElement,
+            Float(point.x),
+            Float(point.y),
+            &rawElement
+        ) == .success else {
+            return nil
+        }
+
+        var current = rawElement
+        var foundWebArea = false
+        for _ in 0..<12 {
+            guard let element = current else {
+                return nil
+            }
+            if axStringAttribute(element, kAXRoleAttribute as CFString) == "AXWebArea" {
+                foundWebArea = true
+            }
+            if foundWebArea,
+               let scrollBar = axElementAttribute(element, kAXHorizontalScrollBarAttribute as CFString) {
+                return scrollBar
+            }
+            current = axElementAttribute(element, kAXParentAttribute as CFString)
+        }
+
+        return nil
+    }
+
+    private func axElementAttribute(_ element: AXUIElement, _ attribute: CFString) -> AXUIElement? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute, &value) == .success,
+              let value,
+              CFGetTypeID(value) == AXUIElementGetTypeID()
+        else {
+            return nil
+        }
+        return (value as! AXUIElement)
+    }
+
+    private func axNumericAttribute(_ element: AXUIElement, _ attribute: CFString) -> Double? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute, &value) == .success,
+              let value
+        else {
+            return nil
+        }
+        if let number = value as? NSNumber {
+            return number.doubleValue
+        }
+        if let double = value as? Double {
+            return double
+        }
+        return nil
+    }
+
+    private func axStringAttribute(_ element: AXUIElement, _ attribute: CFString) -> String? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute, &value) == .success,
+              let value
+        else {
+            return nil
+        }
+        return value as? String
+    }
+
+    private func clampedUnitValue(_ value: Double) -> Double {
+        min(max(value, 0), 1)
+    }
+
     private func pidValue(_ raw: Any?) -> pid_t? {
         if let value = raw as? pid_t {
             return value
@@ -237,5 +344,14 @@ enum ScrollPostMode: Equatable {
 
     private func normalizeZero(_ value: Double) -> Double {
         value == 0 ? 0 : value
+    }
+
+    var usesAXHorizontalScrollFallback: Bool {
+        switch self {
+        case .horizontal:
+            return true
+        case .free, .forcedHorizontal:
+            return false
+        }
     }
 }

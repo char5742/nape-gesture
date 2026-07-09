@@ -41,7 +41,7 @@
 | [ADR-0032](0032-reference-target-foreground-capture.md) | Reference Target App は foreground capture 経路を証跡化する | runtime event、Reference Target App、foreground capture、postToPid |
 | [ADR-0033](0033-kill-switch-pending-release-suppression.md) | キルスイッチ後も進行中ジェスチャーの release は抑制する | Issue #12、kill-switch、activation button、元入力抑制 |
 | [ADR-0034](0034-browser-discrete-shortcut-posting.md) | ブラウザ離散操作はメニュー互換ショートカットを明示 modifier 列で投稿する | Issue #10、Safari、ページ戻る/進む、ズーム、TCC |
-| [ADR-0035](0035-scroll-event-target-process-routing.md) | 通常スクロールはポインタ直下 window owner PID へ投稿する | Issue #10、横スクロール、Safari、Reference Target、CGEvent |
+| [ADR-0035](0035-scroll-event-target-process-routing.md) | 通常スクロールはポインタ直下 window owner PID と AX horizontal fallback で配送する | Issue #10、横スクロール、Safari、Reference Target、CGEvent、AX |
 
 ## 追加時の確認
 
