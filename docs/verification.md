@@ -404,7 +404,7 @@ JSON Lines では、通常スクロールの `began` / `changed` / `ended` は `
 | 通常 GUI 化でステータスメニューが消える | 開始、停止、緊急停止、権限確認をメニューバーから操作できない | Dock 表示対応時に `NSStatusItem` の作成や menu refresh が失われている、または SystemUIServer の AX name に status item が露出していないだけ | `.build/NapeGesture.app/Contents/MacOS/nape-gesture gui-smoke --config /tmp/nape-gui-smoke.config.json --json --assert` で `statusItemTitle: "NG"` と status menu の状態、開始、緊急停止、停止、設定、権限確認を確認する。SystemUIServer の AX name 検索が空でも不在とは判定せず、実メニューバー上の操作切り分けが必要な場合だけ computer-use で確認する |
 | 生成イベントが Spaces を動かさない | `compare-log` 上は近いが画面が動かない | CGEvent の公開 API 生成イベントを Mission Control が純正ジェスチャーと同等に扱わない可能性 | 純正ログ、生成ログ、`system-test` 結果を保存し、連続スクロール量、フェーズ、間隔、慣性を調整する。限界が残る場合は実測根拠つきで代替操作の品質目標を決める |
 | 生成イベントを再入力して暴走する | 自分で投げたイベントを再解釈する | 生成元判定または抑制が欠けている | `generatedByNapeGesture` のログを確認し、イベントタップ側で自前生成イベントを無視できていることを確認する |
-| スリープ復帰や抜き差し後に止まる | 常駐中に対象デバイスや権限を失う | HID 接続状態または TCC 状態が変わった | メニューバー常駐UIの自動再試行状態を確認し、`doctor` で対象デバイスと権限を再確認する |
+| スリープ復帰や抜き差し後に止まる | 常駐中に対象デバイスや権限を失う | HID 接続状態または TCC 状態が変わった | `recovery-readiness --json --assert` で機械 readiness 境界を確認し、メニューバー常駐UIの自動再試行状態、実機操作ログ、復旧後の `doctor` で対象デバイスと権限を再確認する |
 
 キルスイッチの一方向停止は `NapeGestureCore` の `RuntimeSafetyState` で回帰テストする。`Control + Option + Command + G` 自体は event tap で抑制し、発火後はジェスチャー処理と慣性を停止する。daemon の emergency stop は recognizer の cancel decision を破棄せず、`.cancelled` コマンドを action executor と慣性停止経路へ流す。停止後の通常入力は前面アプリへ通し、通常入力や再度のキルスイッチでは再有効化しない。再開は常駐UIの停止/開始による daemon 再作成、プロセス再起動、または明示 reset に限定する。
 
@@ -414,6 +414,10 @@ Issue #13 の実機前に機械で固定できる復旧条件は `NapeGestureCor
 常駐 UI の表示は、実行中、停止中、自動再試行中、スリープ待機中の state title と、開始 / 緊急停止 / 停止の有効状態を `RuntimeStatusPresenter` の core test で確認する。実機 UI 操作へ進む前に、表示文字列と復旧状態の対応をここで固定する。
 GUI の権限復旧導線は `PermissionRecoveryPresenter` の core test で確認する。アクセシビリティと入力監視の状態、System Settings URL、権限対象、再起動案内を固定し、GUI はこの presenter の出力をメニュー項目とダイアログボタンへ接続する。
 `scripts/collect-completion-evidence.sh` は `doctor --probe-hid --json` も保存する。これは入力監視プローブ、`runtimeIdentity`、復旧手順を確認する機械証跡であり、スリープ、抜き差し、TCC 変更の実機操作ログを代替しない。
+`recovery-readiness --json --assert` は、Issue #13 の主要シナリオを `sleep-wake-runtime-retry`、`target-device-disconnect`、`target-device-reconnect`、`accessibility-permission-change`、`input-monitoring-permission-change`、`recoverable-runtime-failure`、`human-fix-required-failure` に分け、機械で固定済みの契約と残る外部証跡を同じ JSON に出す。
+completion evidence では `recovery-readiness/recovery-readiness.json` と `recovery-readiness/recovery-readiness.md` を保存する。
+このコマンドの成功は、実 Mac のスリープ復帰、Nape Pro 抜き差し、TCC 変更後の runtime 復旧ログを代替しない。
+実機へ進む場合は、`recovery-readiness` の `externalEvidenceRequired` に沿って、常駐 UI の表示、runtime ログ、`doctor --probe-hid --json --assert-runtime-ready`、target log を同じシナリオ名で保存する。
 
 ## 完成判定チェック
 

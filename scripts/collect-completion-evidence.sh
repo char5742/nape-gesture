@@ -134,6 +134,7 @@ bundle_dir="$artifact_root/bundle"
 gui_dir="$artifact_root/gui-smoke"
 provenance_dir="$artifact_root/provenance"
 doctor_dir="$artifact_root/doctor-and-performance"
+recovery_dir="$artifact_root/recovery-readiness"
 system_dir="$artifact_root/system-test-dry-run"
 fixtures_dir="$artifact_root/fixtures-analysis"
 hid_dir="$artifact_root/hid-inventory"
@@ -316,6 +317,26 @@ run_combined_success \
   "$doctor_dir/doctor-benchmark-percentile-field-check.log" \
   "grep -q schemaVersion 3 / sampledNanosecondsPerEvent / sampledNanosecondsPerCommand / p95Nanoseconds / p99Nanoseconds $doctor_dir/doctor-debug.json" \
   sh -c "grep -q '\"schemaVersion\"[[:space:]]*:[[:space:]]*3' '$doctor_dir/doctor-debug.json' && grep -q '\"sampledNanosecondsPerEvent\"' '$doctor_dir/doctor-debug.json' && grep -q '\"sampledNanosecondsPerCommand\"' '$doctor_dir/doctor-debug.json' && grep -q '\"p95Nanoseconds\"' '$doctor_dir/doctor-debug.json' && grep -q '\"p99Nanoseconds\"' '$doctor_dir/doctor-debug.json' && grep -q '\"recognizerP95NanosecondsPerEvent\"' '$doctor_dir/doctor-debug.json' && grep -q '\"scrollPlannerP99NanosecondsPerCommand\"' '$doctor_dir/doctor-debug.json'"
+
+run_split_success \
+  "runtime recovery readiness JSON" \
+  "$recovery_dir/recovery-readiness.json" \
+  "$recovery_dir/recovery-readiness.stderr.log" \
+  ".build/debug/nape-gesture recovery-readiness --json --assert" \
+  .build/debug/nape-gesture recovery-readiness --json --assert
+
+run_combined_success \
+  "runtime recovery readiness JSON field check" \
+  "$recovery_dir/recovery-readiness-field-check.log" \
+  "grep -q schemaVersion 1 / runtimeRecoveryReadiness / sleep-wake-runtime-retry / needHumanLabelCandidateScenarioCount $recovery_dir/recovery-readiness.json" \
+  sh -c "grep -q '\"schemaVersion\"[[:space:]]*:[[:space:]]*1' '$recovery_dir/recovery-readiness.json' && grep -q '\"reportKind\"[[:space:]]*:[[:space:]]*\"runtimeRecoveryReadiness\"' '$recovery_dir/recovery-readiness.json' && grep -q '\"sleep-wake-runtime-retry\"' '$recovery_dir/recovery-readiness.json' && grep -q '\"needHumanLabelCandidateScenarioCount\"' '$recovery_dir/recovery-readiness.json'"
+
+run_split_success \
+  "runtime recovery readiness Markdown" \
+  "$recovery_dir/recovery-readiness.md" \
+  "$recovery_dir/recovery-readiness-markdown.stderr.log" \
+  ".build/debug/nape-gesture recovery-readiness --markdown --assert" \
+  .build/debug/nape-gesture recovery-readiness --markdown --assert
 
 run_combined_success \
   "system-test list" \
@@ -563,6 +584,7 @@ cat >> "$summary_file" <<EOF
 - Nape Pro 実機の接続、HID 識別、操作ログ
 - 純正トラックパッドでの実操作ログ
 - TCC のアクセシビリティ / 入力監視許可操作
+- Mac スリープ復帰、Nape Pro 抜き差し、TCC 変更後の実復旧ログ
 - Spaces / Mission Control の画面挙動実測
 - Issue #10 の Safari / 対応アプリでのページ戻る、進む、ズーム、横スクロール画面挙動実測
 - \`run\`、実イベント投稿、target 実測、常駐 CPU、入力遅延

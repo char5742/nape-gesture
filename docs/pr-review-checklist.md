@@ -86,6 +86,7 @@
 - アクセシビリティと入力監視の失敗を区別している
 - doctor JSON 契約を変えた場合は CI smoke、completion evidence、関連 ADR を更新している
 - 常駐 UI の実行中、停止中、自動再試行中、スリープ待機中表示が `RuntimeStatusPresenter` の core test で固定されている
+- 復旧系の変更では `recovery-readiness --json --assert` を通し、機械で固定済みの契約と残る実機・外部証跡を混同していない
 - スリープ復帰、デバイス抜き差し、権限変更後の復旧状態を説明できる
 
 ## Release 変更

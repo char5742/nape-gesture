@@ -15,6 +15,7 @@ Mac Mouse Fix のコード、定数、状態遷移、係数は流用しません
 | Runtime event | `.build/NapeGesture.app` の TCC 許可済み経路で成功。gesture-drag / gesture-wheel / kill-switch / gesture-wheel-then-kill-switch / normal-after-release を `scripts/collect-runtime-event-evidence.sh` で機械判定した | [ADR-0032](docs/adr/0032-reference-target-foreground-capture.md)、[ADR-0033](docs/adr/0033-kill-switch-pending-release-suppression.md) |
 | 通常入力通過 | 機械証跡あり。ジェスチャーボタン未押下時と解放後の通常クリック、ドラッグ、ホイールを AppKit target log で確認する | [ADR-0016](docs/adr/0016-normal-input-kind-assertions.md) |
 | 権限導線 | 実装済み。GUI と `doctor` が TCC 権限付与対象を表示し、System Settings を開く | [ADR-0020](docs/adr/0020-doctor-tcc-permission-target.md)、[ADR-0025](docs/adr/0025-gui-permission-recovery-actions.md) |
+| 復旧 readiness | 機械証跡あり。スリープ復帰、対象デバイス抜き差し、TCC 権限変更後復旧を、機械で固定済みの契約と残る実機・外部証跡に分けて出力する | [docs/runtime-recovery-readiness.md](docs/runtime-recovery-readiness.md)、[ADR-0008](docs/adr/0008-runtime-recovery-boundary-evidence.md) |
 | runtime 性能測定 | tap callback から投稿直前/直後までを JSON Lines で保存し、p95 / p99 を判定できる | [docs/performance-baseline.md](docs/performance-baseline.md) |
 | 実機完成判定 | 一部は人間作業待ち。純正トラックパッド操作、Nape Pro 実機操作、公証は自動化できない最後の手段として扱う。TCC 許可済み runtime event は機械証跡取得済み | [docs/completion-checklist.md](docs/completion-checklist.md) |
 | 署名・公証済みリリース | 未完了。Developer ID 署名、公証、stapler / Gatekeeper 評価の証跡が必要 | [docs/release.md](docs/release.md) |
@@ -130,6 +131,7 @@ swift run nape-gesture init-config --vendor-id <ID> --product-id <ID> --usage-pa
 | `gui-smoke` | runtime を開始せずに通常 GUI activation policy、設定ウィンドウ、status item `NG`、通常アプリメニュー、status menu を JSON で検査する。`--config` 未指定時は一時 config を使う |
 | `run` | グローバルイベントタップで入力を読み、生成イベントを投稿する |
 | `doctor` | 権限、対象デバイス、HID probe、runtime ready、benchmark を一括診断する |
+| `recovery-readiness` | スリープ復帰、対象デバイス抜き差し、TCC 権限変更後復旧を、機械で固定済みの契約と残る実機・外部証跡に分けて JSON / Markdown 出力する |
 | `devices` | IOHID で認識できるマウス系または全 HID デバイスを一覧する |
 | `hid-log` / `analyze-hid-log` | Nape Pro などの HID 生入力を記録、解析する |
 | `log` / `analyze-log` / `compare-log` | 実デバイス、純正トラックパッド、生成イベントを JSON Lines で記録、解析、比較する |
@@ -188,6 +190,7 @@ swift run nape-gesture analyze-log system-horizontal-scroll.jsonl --json
 
 swift run nape-gesture benchmark --events 200000 --json
 swift run nape-gesture doctor --probe-hid --benchmark-events 50000 --json --assert-runtime-ready
+swift run nape-gesture recovery-readiness --json --assert
 swift run nape-gesture run
 swift run nape-gesture run --performance-log runtime-performance.jsonl
 swift run nape-gesture analyze-performance-log runtime-performance.jsonl --json --assert-baseline

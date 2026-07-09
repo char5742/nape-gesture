@@ -320,6 +320,7 @@ Labels: `area:runtime`, `area:verification`, `type:qa`, `priority:p1`, `blocked:
 
 完了条件:
 
+- `recovery-readiness --json --assert` で、機械で固定済みの契約と残る外部証跡がシナリオ別に保存されている
 - スリープ復帰後に対象デバイスと権限状態を再確認する
 - 対象デバイス抜去時に安全停止し、再接続後に復旧する
 - 権限が失われた場合に停止し、復旧導線を出す
@@ -330,7 +331,8 @@ Labels: `area:runtime`, `area:verification`, `type:qa`, `priority:p1`, `blocked:
 Issue 4、Issue 11。
 
 並列化:
-実機検証担当が独立して進められる。
+`recovery-readiness`、core tests、`doctor` の前段証跡は実機検証と並列で進められる。
+Mac スリープ復帰、Nape Pro 抜き差し、TCC 変更そのものは、最後の手段として人間作業に切り出す。
 
 ### Issue 14: 入力遅延と CPU 使用率の測定基準を作る
 

@@ -79,6 +79,8 @@ final class CommandLineTool {
             try BenchmarkCommand(options: options).run()
         case "doctor":
             try DoctorCommand(options: options).run()
+        case "recovery-readiness":
+            try RecoveryReadinessCommand(options: options).run()
         default:
             throw ToolError.unknownCommand(command)
         }
@@ -162,6 +164,9 @@ final class CommandLineTool {
 
               nape-gesture doctor [--config <path>] [--probe-hid] [--benchmark-events <数>] [--json] [--assert-runtime-ready]
                   権限、対象デバイス、HID入力監視、ベンチマークを一括診断します。--assert-runtime-ready で runtime 開始前提を満たさない場合に失敗します。
+
+              nape-gesture recovery-readiness [--json|--markdown] [--assert] [--out <path>]
+                  スリープ復帰、対象デバイス抜き差し、TCC 権限変更後復旧について、機械で固定済みの契約と実機・外部状態として残る証跡を分けて出力します。--assert で Issue #13 の readiness 境界が欠けた場合に失敗します。
             """
         )
     }
