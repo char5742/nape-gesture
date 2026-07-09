@@ -18,6 +18,7 @@
 - 由来や配布物に影響する変更では `sh scripts/check-provenance.sh` が成功している
 - Grok CLI を使った補助レビューがある場合でも、指摘採否、テスト、CI、merge 判断はメインスレッドが責任を持つ
 - Grok 運用ルールを変えた場合、`AGENTS.md`、[ADR-0027](adr/0027-grok-cli-auxiliary-review.md)、[ADR-0029](adr/0029-grok-operational-surface.md)、必要なら `$grok-auxiliary-review` skill の同期を確認している
+- computer-use で代替できる GUI 操作を `need:human` にしていない。OS セキュリティ設定を変更する UI 操作では直前確認を取っている
 - Mermaid 図やアプリキャプチャを使う場合、実装、docs、実際の画面証跡と矛盾していない
 
 ## 性能 / Benchmark 変更

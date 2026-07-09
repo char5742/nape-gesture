@@ -20,9 +20,18 @@
 - Grok に編集させる場合は専用 branch / worktree / 所有範囲を分け、メインスレッドが差分をレビューしてから取り込む。
 - ローカル skill `$grok-auxiliary-review` が使える場合は、Grok 運用の実行手順として優先的に参照する。詳細方針は [ADR-0027](docs/adr/0027-grok-cli-auxiliary-review.md) と [ADR-0029](docs/adr/0029-grok-operational-surface.md) を正とする。
 
+## Computer Use
+
+- 専用 CLI、GitHub / browser / app plugin、スクリプトで完結する作業はそれらを優先する。
+- ローカル Mac アプリ UI の読み取り、クリック、入力、スクロール、ドラッグ、画面証跡取得が必要な場合は computer-use を積極的に使う。
+- `.app` 起動、設定ウィンドウ、メニューバー `NG`、System Settings pane の表示確認、スクリーンショット取得は computer-use で前進させる。
+- TCC、アクセシビリティ、入力監視、VPN、OS セキュリティなど local system settings の変更直前には、具体的な操作内容とリスクを説明してユーザー確認を取る。
+- computer-use で代替できる GUI 操作は `need:human` にしない。物理デバイス操作、ユーザー本人しか通せない認証、秘密情報入力など、エージェントが代替できない作業だけを `need:human` に残す。
+- computer-use の画面証跡は、ログ、`doctor --json`、runtime evidence、CI の代替にしない。詳細方針は [ADR-0030](docs/adr/0030-computer-use-gui-operation-evidence.md) を正とする。
+
 ## Nape Gesture 固有制約
 
 - アプリごとの有効・無効、感度、割り当て設定は追加しない。特定ボタン未押下時は通常マウスとして振る舞う方針を維持する。
-- `need:human` は、TCC 操作、純正トラックパッド操作、Nape Pro 実機操作、証明書操作など、人間が実作業しないと進められない項目だけに使う。レビュー待ちや判断待ちには使わない。
+- `need:human` は、computer-use と直前確認でも代替できない TCC 操作、純正トラックパッド操作、Nape Pro 実機操作、証明書操作など、人間が実作業しないと進められない項目だけに使う。レビュー待ちや判断待ちには使わない。
 - 第三者プロジェクト由来のコード、定数、状態遷移、係数をコピーしない。実装パラメータはこのリポジトリのログと公開 API から再導出する。
 - ユーザーが見る挙動、GUI、権限導線、検証手順、完成状態、配布手順を変える場合は README を更新する。更新不要なら PR 本文で理由を明記する。

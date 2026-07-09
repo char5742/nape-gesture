@@ -145,6 +145,18 @@ grok --prompt-file "$tmpdir/prompt.md" \
 - Grok に編集させる場合は、通常のサブエージェントと同じく専用 branch / worktree / 所有範囲を分け、`--permission-mode default` から始める。最初から `--always-approve`、`auto`、`dontAsk`、`bypassPermissions` を使わない
 - UI 発散では Grok の候補を使ってよいが、アプリ別設定不要、TCC 境界、Mac Mouse Fix 由来禁止、完成判定の証跡要件はメインスレッドのルールを優先する
 
+## Computer Use による GUI 操作
+
+Computer Use の使い分けは [ADR-0030](adr/0030-computer-use-gui-operation-evidence.md) を正とする。
+メインスレッドは、`.app` 起動、設定ウィンドウ、メニューバー `NG`、System Settings pane 表示、スクリーンショット取得など、ローカル Mac UI が必要な作業を computer-use で前進させる。
+
+運用ルール:
+
+- 専用 CLI、GitHub / browser / app plugin、スクリプトで完結する場合はそれらを優先する
+- computer-use で代替できる GUI 目視や UI 操作は、すぐ `need:human` にしない
+- TCC、アクセシビリティ、入力監視など OS セキュリティ設定を変更する最終操作の直前には、具体的な操作内容とリスクを説明してユーザー確認を取る
+- 画面証跡は `doctor --json`、runtime log、CI、analyzer の代替ではなく、対応づけて completion evidence に残す
+
 ## 衝突しにくい所有範囲
 
 ### Core Agent
