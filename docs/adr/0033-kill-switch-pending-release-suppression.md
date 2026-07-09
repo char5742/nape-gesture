@@ -22,7 +22,7 @@
 
 - 暴走停止時に、生成スクロール・慣性・キルスイッチキー・activation button release が前面アプリへ漏れない。
 - キルスイッチ後の通常クリック、通常ドラッグ、通常ホイールは引き続き通せる。
-- runtime event 証跡では `gesture-wheel-then-kill-switch` が `analyze-target-log --assert-no-leaks --assert-has-generated-event --assert-has-foreground-capture` を満たす。
+- runtime event 証跡では `gesture-wheel-then-kill-switch` が `analyze-target-log --assert-no-leaks --assert-has-generated-foreground-capture` を満たす。
 
 ## 関連
 

@@ -16,6 +16,7 @@ TCC、HID probe、daemon 起動、`system-test` の CGEvent 投稿、runtime 性
 
 - Reference Target App は `NSApplication.sendEvent`、local monitor、capture view override の経路を `captureSource` として target log に残す。
 - `analyze-target-log --assert-has-foreground-capture` を追加し、`globalMonitor` だけの target log を完成証跡にしない。
+- Nape Gesture 生成イベントが前面 AppKit 経路へ届いたこと自体を成功条件にする場合は、`--assert-has-generated-foreground-capture` を使う。これは `generatedByNapeGesture` と `captureSource` の両方を満たすイベントだけを見る。
 - ready file には `diagnostics` として active/key/main window、first responder、focus hit-test、window/capture bounds を残す。
 - `scripts/collect-runtime-event-evidence.sh` は ready diagnostics を検査し、target window が active/key/main で capture view に focus 済みでない場合は scenario を失敗にする。
 - `system-test --post-to-pid <pid>` は `space-left`、`space-right`、`horizontal-scroll` など対応シナリオの無人 foreground 受信診断に使える。ただし completion evidence では `.cghidEventTap` 経由の `system-test`、target log assertion、対象アプリの画面挙動証跡と分けて採否する。

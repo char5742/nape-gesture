@@ -500,12 +500,26 @@ run_split_success \
   ".build/debug/nape-gesture analyze-target-log Fixtures/clean-target-log.jsonl --json --assert-has-generated-event" \
   .build/debug/nape-gesture analyze-target-log Fixtures/clean-target-log.jsonl --json --assert-has-generated-event
 
+run_split_success \
+  "clean target log assert-has-generated-foreground-capture" \
+  "$fixtures_dir/clean-target-log-generated-foreground-analysis.json" \
+  "$fixtures_dir/clean-target-log-generated-foreground-analysis.stderr.log" \
+  ".build/debug/nape-gesture analyze-target-log Fixtures/clean-target-log.jsonl --json --assert-has-generated-foreground-capture --assert-generated-foreground-scroll-x-positive --assert-generated-foreground-scroll-events-at-least 3 --assert-generated-foreground-scroll-abs-x-at-least 100" \
+  .build/debug/nape-gesture analyze-target-log Fixtures/clean-target-log.jsonl --json --assert-has-generated-foreground-capture --assert-generated-foreground-scroll-x-positive --assert-generated-foreground-scroll-events-at-least 3 --assert-generated-foreground-scroll-abs-x-at-least 100
+
 run_split_expected_failure \
   "leaky target log assert-no-leaks" \
   "$fixtures_dir/leaky-target-log-analysis.json" \
   "$fixtures_dir/leaky-target-log-analysis.stderr.log" \
   ".build/debug/nape-gesture analyze-target-log Fixtures/leaky-target-log.jsonl --json --assert-no-leaks" \
   .build/debug/nape-gesture analyze-target-log Fixtures/leaky-target-log.jsonl --json --assert-no-leaks
+
+run_split_expected_failure \
+  "generated global unmarked foreground target log assert-has-generated-foreground-capture" \
+  "$fixtures_dir/generated-global-unmarked-foreground-target-log-analysis.json" \
+  "$fixtures_dir/generated-global-unmarked-foreground-target-log.stderr.log" \
+  ".build/debug/nape-gesture analyze-target-log Fixtures/generated-global-unmarked-foreground-target-log.jsonl --json --assert-has-generated-foreground-capture" \
+  .build/debug/nape-gesture analyze-target-log Fixtures/generated-global-unmarked-foreground-target-log.jsonl --json --assert-has-generated-foreground-capture
 
 run_split_expected_failure \
   "no generated target log assert-has-generated-event" \

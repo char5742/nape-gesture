@@ -118,8 +118,8 @@ final class CommandLineTool {
               nape-gesture analyze-association <hid-log> <event-log> [--window <秒>] [--target-stable-id <ID>] [--json] [--assert-valid-window]
                   HID 生入力ログとイベントタップログを相関し、対象入力の紐づけ秒を検証します。--assert-valid-window で対象 stableID 未指定、解析対象なし、互換 HID 候補なし、非互換 HID 近傍、対象外互換 HID 近傍、複数 HID デバイス採用、または associationWindow 外の入力がある場合に失敗します。
 
-              nape-gesture analyze-target-log <path> [--json] [--assert-no-leaks] [--assert-has-unmarked-input] [--assert-has-unmarked-click] [--assert-has-unmarked-drag] [--assert-has-unmarked-wheel] [--assert-has-unmarked-click-drag-wheel] [--assert-has-gesture] [--assert-has-generated-event] [--assert-has-foreground-capture]
-                  Reference Target App が保存した AppKit 受信イベントを集計します。--assert-no-leaks で漏れ候補がある場合、--assert-has-unmarked-input で未マーク入力がない場合、--assert-has-unmarked-click / --assert-has-unmarked-drag / --assert-has-unmarked-wheel で未マーク通常クリック / 通常ドラッグ / 通常ホイールがない場合、--assert-has-unmarked-click-drag-wheel で3種類が揃わない場合、--assert-has-gesture で swipe / magnify / rotate がない場合、--assert-has-generated-event で Nape Gesture 生成イベントがない場合、--assert-has-foreground-capture で globalMonitor 以外の前面受信経路がない場合に失敗します。
+              nape-gesture analyze-target-log <path> [--json] [--assert-no-leaks] [--assert-has-unmarked-input] [--assert-has-unmarked-click] [--assert-has-unmarked-drag] [--assert-has-unmarked-wheel] [--assert-has-unmarked-click-drag-wheel] [--assert-has-gesture] [--assert-has-generated-event] [--assert-has-foreground-capture] [--assert-has-generated-foreground-capture] [--assert-generated-foreground-scroll-x-positive|--assert-generated-foreground-scroll-x-negative] [--assert-generated-foreground-scroll-events-at-least <数>] [--assert-generated-foreground-scroll-abs-x-at-least <値>]
+                  Reference Target App が保存した AppKit 受信イベントを集計します。--assert-no-leaks で漏れ候補がある場合、--assert-has-unmarked-input で未マーク入力がない場合、--assert-has-unmarked-click / --assert-has-unmarked-drag / --assert-has-unmarked-wheel で未マーク通常クリック / 通常ドラッグ / 通常ホイールがない場合、--assert-has-unmarked-click-drag-wheel で3種類が揃わない場合、--assert-has-gesture で swipe / magnify / rotate がない場合、--assert-has-generated-event で Nape Gesture 生成イベントがない場合、--assert-has-foreground-capture で globalMonitor 以外の前面受信経路がない場合、--assert-has-generated-foreground-capture で前面受信経路へ届いた Nape Gesture 生成イベントがない場合に失敗します。生成foregroundスクロールの方向、重複排除後イベント数、X方向絶対量も assertion できます。
 
               nape-gesture analyze-performance-log <path> [--json] [--assert-baseline]
                   runtime 性能 JSON Lines を集計します。tap callback から投稿直前/直後までの p95/p99、投稿数、作成失敗数を出します。--assert-baseline で入力遅延基準を満たさない場合に失敗します。
@@ -155,7 +155,7 @@ final class CommandLineTool {
                   System Behavior Test のシナリオ一覧を表示します。
 
               nape-gesture system-test run --scenario <name> [--target finder|safari] [--dry-run] [--log-json] [--out <path>] [--post-to-pid <pid>]
-                  Spaces / Mission Control / Safari / Finder 向けの実挙動検証イベント、または未マーク元入力を生成します。--dry-run --log-json で計画したイベントを JSON Lines で出力します。--post-to-pid は対応シナリオを Reference Target App などへ直接投稿し、OS 画面遷移を避けて受信経路を切り分ける診断用です。
+                  Spaces / Mission Control / Safari / Finder 向けの実挙動検証イベント、または未マーク元入力を生成します。--dry-run --log-json で計画したイベントを JSON Lines で出力します。--post-to-pid は対応シナリオを Reference Target App などへ直接投稿し、OS 画面遷移を避けて受信経路を切り分ける診断用です。--target とは同時指定できません。
 
               nape-gesture benchmark [--events <数>] [--json] [--assert-baseline]
                   認識器とスクロール計画の純粋ロジック処理時間、CPU コスト、batch p95/p99 を測定します。--assert-baseline で性能基準を満たさない場合に失敗します。

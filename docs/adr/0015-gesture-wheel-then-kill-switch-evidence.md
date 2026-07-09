@@ -14,7 +14,7 @@
 - このシナリオは activation button 押下、未生成ホイール入力、未生成 `Control + Option + Command + G`、activation button 解放を同じ JSON Lines 形式で生成する。
 - `analyze-log` に `--assert-gesture-before-kill-switch` を追加し、キルスイッチ前に未生成の activation button 押下と移動またはスクロール入力がある場合だけ成功する。
 - CI と completion evidence は、`gesture-wheel-then-kill-switch` dry-run を `--assert-kill-switch-shortcut --assert-gesture-before-kill-switch` で確認する。
-- runtime event evidence は、アクセシビリティ許可済み環境で同じシナリオを実投稿し、daemon 停止ログ、`analyze-target-log --assert-no-leaks --assert-has-generated-event` で判定する。
+- runtime event evidence は、アクセシビリティ許可済み環境で同じシナリオを実投稿し、daemon 停止ログ、`analyze-target-log --assert-no-leaks --assert-has-generated-foreground-capture` で判定する。
 
 ## 影響
 

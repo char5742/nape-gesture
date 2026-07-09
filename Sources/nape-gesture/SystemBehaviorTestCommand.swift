@@ -93,6 +93,9 @@ struct SystemBehaviorTestCommand {
         let steps = try intValue("--steps", in: options, defaultValue: scenario.defaultSteps)
         let interval = try doubleValue("--interval", in: options, defaultValue: 0.008)
         let postToPid = try optionalPIDValue("--post-to-pid", in: options)
+        if postToPid != nil && target != nil {
+            throw ToolError.invalidValue("--post-to-pid", "--target と同時指定できません。process 直接投稿診断では Reference Target App を前面にしたまま PID だけを指定してください。")
+        }
         if postToPid != nil && !scenario.supportsProcessTargetPosting {
             throw ToolError.invalidValue("--post-to-pid", "\(scenario.rawValue) は process 直接投稿診断に未対応です。")
         }

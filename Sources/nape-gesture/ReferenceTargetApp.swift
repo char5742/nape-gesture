@@ -29,6 +29,7 @@ final class ReferenceTargetApp: NSObject, NSApplicationDelegate, ReferenceTarget
     private var focusRecord: ReferenceTargetFocusRecord?
     private var localEventMonitor: Any?
     private var globalEventMonitor: Any?
+    private var readyDiagnosticsAttempts = 0
 
     private init(configuration: ReferenceTargetConfiguration) {
         self.configuration = configuration
@@ -112,13 +113,7 @@ final class ReferenceTargetApp: NSObject, NSApplicationDelegate, ReferenceTarget
         }
         installEventMonitors(textView: textView)
 
-        do {
-            try writeReadyFileIfNeeded()
-            scheduleAutomaticTerminationIfNeeded()
-        } catch {
-            launchFailure = error
-            NSApp.terminate(nil)
-        }
+        finishLaunchWhenReady()
     }
 
     func recordDelivered(event: NSEvent, source: String) {
@@ -159,6 +154,34 @@ final class ReferenceTargetApp: NSObject, NSApplicationDelegate, ReferenceTarget
         ))
         data.append(Data("\n".utf8))
         try data.write(to: url, options: .atomic)
+    }
+
+    private func finishLaunchWhenReady() {
+        guard configuration.readyFilePath != nil else {
+            scheduleAutomaticTerminationIfNeeded()
+            return
+        }
+
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        NSRunningApplication.current.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+
+        let diagnostics = makeReadyDiagnostics()
+        if diagnostics?.isForegroundEvidenceReady == true || readyDiagnosticsAttempts >= 20 {
+            do {
+                try writeReadyFileIfNeeded()
+                scheduleAutomaticTerminationIfNeeded()
+            } catch {
+                launchFailure = error
+                NSApp.terminate(nil)
+            }
+            return
+        }
+
+        readyDiagnosticsAttempts += 1
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            self?.finishLaunchWhenReady()
+        }
     }
 
     private func focusCapturePointIfNeeded(
@@ -500,6 +523,14 @@ private struct ReferenceTargetDiagnosticsRecord: Codable, Equatable {
     var quartzWindowY: Double?
     var quartzWindowWidth: Double?
     var quartzWindowHeight: Double?
+
+    var isForegroundEvidenceReady: Bool {
+        appIsActive
+            && windowIsKey
+            && windowIsMain
+            && firstResponderIsCaptureView
+            && (focusInsideCaptureView ?? true)
+    }
 }
 
 final class EventCaptureView: NSView {

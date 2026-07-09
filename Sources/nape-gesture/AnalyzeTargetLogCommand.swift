@@ -1,5 +1,7 @@
 import Foundation
 
+private let targetForegroundCaptureSources: Set<String> = ["sendEvent", "localMonitor", "captureView"]
+
 struct AnalyzeTargetLogCommand {
     private let options: [String]
 
@@ -23,6 +25,11 @@ struct AnalyzeTargetLogCommand {
         let assertHasGesture = options.contains("--assert-has-gesture")
         let assertHasGeneratedEvent = options.contains("--assert-has-generated-event")
         let assertHasForegroundCapture = options.contains("--assert-has-foreground-capture")
+        let assertHasGeneratedForegroundCapture = options.contains("--assert-has-generated-foreground-capture")
+        let assertGeneratedForegroundScrollXPositive = options.contains("--assert-generated-foreground-scroll-x-positive")
+        let assertGeneratedForegroundScrollXNegative = options.contains("--assert-generated-foreground-scroll-x-negative")
+        let minimumGeneratedForegroundScrollEvents = try optionalIntValue("--assert-generated-foreground-scroll-events-at-least")
+        let minimumGeneratedForegroundScrollAbsoluteX = try optionalDoubleValue("--assert-generated-foreground-scroll-abs-x-at-least")
 
         if options.contains("--json") {
             let encoder = JSONEncoder()
@@ -69,6 +76,36 @@ struct AnalyzeTargetLogCommand {
             fflush(stdout)
             throw TargetLogMissingForegroundCaptureAssertionError(path: path)
         }
+        if assertHasGeneratedForegroundCapture && analysis.generatedForegroundCaptureEvents == 0 {
+            fflush(stdout)
+            throw TargetLogMissingGeneratedForegroundCaptureAssertionError(path: path)
+        }
+        if assertGeneratedForegroundScrollXPositive && analysis.canonicalGeneratedForegroundCaptureScrollingDeltaXTotal <= 0 {
+            fflush(stdout)
+            throw TargetLogGeneratedForegroundScrollDirectionAssertionError(path: path, expected: "正", actual: analysis.canonicalGeneratedForegroundCaptureScrollingDeltaXTotal)
+        }
+        if assertGeneratedForegroundScrollXNegative && analysis.canonicalGeneratedForegroundCaptureScrollingDeltaXTotal >= 0 {
+            fflush(stdout)
+            throw TargetLogGeneratedForegroundScrollDirectionAssertionError(path: path, expected: "負", actual: analysis.canonicalGeneratedForegroundCaptureScrollingDeltaXTotal)
+        }
+        if let minimumGeneratedForegroundScrollEvents,
+           analysis.canonicalGeneratedForegroundCaptureScrollEvents < minimumGeneratedForegroundScrollEvents {
+            fflush(stdout)
+            throw TargetLogGeneratedForegroundScrollEventCountAssertionError(
+                path: path,
+                expected: minimumGeneratedForegroundScrollEvents,
+                actual: analysis.canonicalGeneratedForegroundCaptureScrollEvents
+            )
+        }
+        if let minimumGeneratedForegroundScrollAbsoluteX,
+           abs(analysis.canonicalGeneratedForegroundCaptureScrollingDeltaXTotal) < minimumGeneratedForegroundScrollAbsoluteX {
+            fflush(stdout)
+            throw TargetLogGeneratedForegroundScrollAmountAssertionError(
+                path: path,
+                expected: minimumGeneratedForegroundScrollAbsoluteX,
+                actual: analysis.canonicalGeneratedForegroundCaptureScrollingDeltaXTotal
+            )
+        }
     }
 
     private func loadRecords(from path: String) throws -> [TargetEventRecord] {
@@ -94,6 +131,36 @@ struct AnalyzeTargetLogCommand {
         }
 
         return records
+    }
+
+    private func optionalIntValue(_ name: String) throws -> Int? {
+        guard let index = options.firstIndex(of: name) else {
+            return nil
+        }
+        let valueIndex = options.index(after: index)
+        guard valueIndex < options.endIndex else {
+            throw ToolError.missingValue(name)
+        }
+        let raw = options[valueIndex]
+        guard let value = Int(raw), value > 0 else {
+            throw ToolError.invalidValue(name, raw)
+        }
+        return value
+    }
+
+    private func optionalDoubleValue(_ name: String) throws -> Double? {
+        guard let index = options.firstIndex(of: name) else {
+            return nil
+        }
+        let valueIndex = options.index(after: index)
+        guard valueIndex < options.endIndex else {
+            throw ToolError.missingValue(name)
+        }
+        let raw = options[valueIndex]
+        guard let value = Double(raw), value.isFinite, value > 0 else {
+            throw ToolError.invalidValue(name, raw)
+        }
+        return value
     }
 }
 
@@ -148,10 +215,51 @@ struct TargetLogMissingForegroundCaptureAssertionError: LocalizedError {
     }
 }
 
+struct TargetLogMissingGeneratedForegroundCaptureAssertionError: LocalizedError {
+    var path: String
+
+    var errorDescription: String? {
+        "target log に前面 AppKit 受信経路へ届いた Nape Gesture 生成イベントがありません。`analyze-target-log \(path) --json` で generatedForegroundCaptureEvents と captureSourceCounts を確認してください。"
+    }
+}
+
+struct TargetLogGeneratedForegroundScrollDirectionAssertionError: LocalizedError {
+    var path: String
+    var expected: String
+    var actual: Double
+
+    var errorDescription: String? {
+        "target log の重複排除済み生成foregroundスクロールX方向が期待と違います。期待=\(expected)、実際=\(actual)。`analyze-target-log \(path) --json` で canonicalGeneratedForegroundCaptureScrollingDeltaXTotal を確認してください。"
+    }
+}
+
+struct TargetLogGeneratedForegroundScrollEventCountAssertionError: LocalizedError {
+    var path: String
+    var expected: Int
+    var actual: Int
+
+    var errorDescription: String? {
+        "target log の重複排除済み生成foregroundスクロールイベント数が不足しています。期待=\(expected) 以上、実際=\(actual)。`analyze-target-log \(path) --json` で canonicalGeneratedForegroundCaptureScrollEvents を確認してください。"
+    }
+}
+
+struct TargetLogGeneratedForegroundScrollAmountAssertionError: LocalizedError {
+    var path: String
+    var expected: Double
+    var actual: Double
+
+    var errorDescription: String? {
+        "target log の重複排除済み生成foregroundスクロールX量が不足しています。期待=絶対値 \(expected) 以上、実際=\(actual)。`analyze-target-log \(path) --json` で canonicalGeneratedForegroundCaptureScrollingDeltaXTotal を確認してください。"
+    }
+}
+
 struct TargetEventLogAnalysis: Codable, Equatable {
     var totalEvents: Int
     var generatedEvents: Int
     var unmarkedEvents: Int
+    var generatedForegroundCaptureEvents: Int
+    var canonicalGeneratedForegroundCaptureEvents: Int
+    var canonicalGeneratedForegroundCaptureScrollEvents: Int
     var scrollEvents: Int
     var preciseScrollEvents: Int
     var swipeEvents: Int
@@ -168,6 +276,8 @@ struct TargetEventLogAnalysis: Codable, Equatable {
     var unmarkedWheelEvents: Int
     var scrollingDeltaXTotal: Double
     var scrollingDeltaYTotal: Double
+    var canonicalGeneratedForegroundCaptureScrollingDeltaXTotal: Double
+    var canonicalGeneratedForegroundCaptureScrollingDeltaYTotal: Double
     var deltaXTotal: Double
     var deltaYTotal: Double
     var magnificationTotal: Double
@@ -196,15 +306,20 @@ struct TargetEventLogAnalysis: Codable, Equatable {
     }
 
     var foregroundCaptureEvents: Int {
-        let foregroundCaptureSources: Set<String> = ["sendEvent", "localMonitor", "captureView"]
         return captureSourceCounts
-            .filter { source, _ in foregroundCaptureSources.contains(source) }
+            .filter { source, _ in targetForegroundCaptureSources.contains(source) }
             .map(\.value)
             .reduce(0, +)
     }
 }
 
 enum TargetEventLogAnalyzer {
+    private static let foregroundCaptureSourcePriority = [
+        "captureView": 0,
+        "sendEvent": 1,
+        "localMonitor": 2
+    ]
+
     static func analyze(_ records: [TargetEventRecord]) -> TargetEventLogAnalysis {
         let scrollRecords = records.filter { $0.name == "scrollWheel" }
         let swipeRecords = records.filter { $0.name == "swipe" }
@@ -212,6 +327,9 @@ enum TargetEventLogAnalyzer {
         let rotateRecords = records.filter { $0.name == "rotate" }
         let mouseRecords = records.filter(isMouseEvent)
         let generatedRecords = records.filter(\.generatedByNapeGesture)
+        let generatedForegroundCaptureRecords = generatedRecords.filter(isForegroundCapture)
+        let canonicalGeneratedForegroundCaptureRecords = canonicalForegroundRecords(from: generatedForegroundCaptureRecords)
+        let canonicalGeneratedForegroundCaptureScrollRecords = canonicalGeneratedForegroundCaptureRecords.filter(isScrollEvent)
         let unmarkedRecords = records.filter { !$0.generatedByNapeGesture }
         let unmarkedMouseRecords = unmarkedRecords.filter(isMouseEvent)
         let unmarkedScrollRecords = unmarkedRecords.filter(isScrollEvent)
@@ -227,6 +345,9 @@ enum TargetEventLogAnalyzer {
             totalEvents: records.count,
             generatedEvents: generatedRecords.count,
             unmarkedEvents: unmarkedRecords.count,
+            generatedForegroundCaptureEvents: generatedForegroundCaptureRecords.count,
+            canonicalGeneratedForegroundCaptureEvents: canonicalGeneratedForegroundCaptureRecords.count,
+            canonicalGeneratedForegroundCaptureScrollEvents: canonicalGeneratedForegroundCaptureScrollRecords.count,
             scrollEvents: scrollRecords.count,
             preciseScrollEvents: scrollRecords.filter(\.hasPreciseScrollingDeltas).count,
             swipeEvents: swipeRecords.count,
@@ -243,6 +364,8 @@ enum TargetEventLogAnalyzer {
             unmarkedWheelEvents: unmarkedWheelRecords.count,
             scrollingDeltaXTotal: scrollRecords.reduce(0) { $0 + $1.scrollingDeltaX },
             scrollingDeltaYTotal: scrollRecords.reduce(0) { $0 + $1.scrollingDeltaY },
+            canonicalGeneratedForegroundCaptureScrollingDeltaXTotal: canonicalGeneratedForegroundCaptureScrollRecords.reduce(0) { $0 + $1.scrollingDeltaX },
+            canonicalGeneratedForegroundCaptureScrollingDeltaYTotal: canonicalGeneratedForegroundCaptureScrollRecords.reduce(0) { $0 + $1.scrollingDeltaY },
             deltaXTotal: records.reduce(0) { $0 + $1.deltaX },
             deltaYTotal: records.reduce(0) { $0 + $1.deltaY },
             magnificationTotal: magnifyRecords.reduce(0) { $0 + $1.magnification },
@@ -262,6 +385,9 @@ enum TargetEventLogAnalyzer {
         総イベント数: \(analysis.totalEvents)
         Nape Gesture生成イベント: \(analysis.generatedEvents)
         未マークイベント: \(analysis.unmarkedEvents)
+        生成かつ前面AppKit受信: \(analysis.generatedForegroundCaptureEvents)
+        生成かつ前面AppKit受信（重複排除後）: \(analysis.canonicalGeneratedForegroundCaptureEvents)
+        生成foreground scrollWheel（重複排除後）: \(analysis.canonicalGeneratedForegroundCaptureScrollEvents)
         scrollWheel: \(analysis.scrollEvents)
         precise scrollWheel: \(analysis.preciseScrollEvents)
         swipe: \(analysis.swipeEvents)
@@ -279,6 +405,7 @@ enum TargetEventLogAnalyzer {
         漏れ候補: \(analysis.leakCandidateEvents.count)
         漏れ候補出現数: \(formatCounts(analysis.leakCandidateCounts))
         scrollingDelta 合計: x=\(format(analysis.scrollingDeltaXTotal)), y=\(format(analysis.scrollingDeltaYTotal))
+        生成foreground scrollingDelta 合計（重複排除後）: x=\(format(analysis.canonicalGeneratedForegroundCaptureScrollingDeltaXTotal)), y=\(format(analysis.canonicalGeneratedForegroundCaptureScrollingDeltaYTotal))
         delta 合計: x=\(format(analysis.deltaXTotal)), y=\(format(analysis.deltaYTotal))
         magnification 合計: \(format(analysis.magnificationTotal))
         rotation 合計: \(format(analysis.rotationTotal))
@@ -299,6 +426,65 @@ enum TargetEventLogAnalyzer {
 
     private static func isLeakCandidate(_ record: TargetEventRecord) -> Bool {
         isMouseEvent(record) || isScrollEvent(record) || isKeyEvent(record)
+    }
+
+    private static func canonicalForegroundRecords(from records: [TargetEventRecord]) -> [TargetEventRecord] {
+        var bestRecords: [String: TargetEventRecord] = [:]
+
+        for record in records {
+            let key = eventFingerprint(for: record)
+            if let current = bestRecords[key] {
+                if sourcePriority(for: record) < sourcePriority(for: current) {
+                    bestRecords[key] = record
+                }
+            } else {
+                bestRecords[key] = record
+            }
+        }
+
+        return bestRecords.values.sorted { lhs, rhs in
+            if lhs.timestamp == rhs.timestamp {
+                return sourcePriority(for: lhs) < sourcePriority(for: rhs)
+            }
+            return lhs.timestamp < rhs.timestamp
+        }
+    }
+
+    private static func sourcePriority(for record: TargetEventRecord) -> Int {
+        guard let captureSource = record.captureSource else {
+            return Int.max
+        }
+        return foregroundCaptureSourcePriority[captureSource] ?? Int.max
+    }
+
+    private static func eventFingerprint(for record: TargetEventRecord) -> String {
+        [
+            String(record.timestamp),
+            record.name,
+            String(record.locationX),
+            String(record.locationY),
+            String(record.deltaX),
+            String(record.deltaY),
+            String(record.scrollingDeltaX),
+            String(record.scrollingDeltaY),
+            String(record.phase),
+            String(record.momentumPhase),
+            String(record.hasPreciseScrollingDeltas),
+            String(record.magnification),
+            String(record.rotation),
+            String(record.buttonNumber),
+            String(record.clickCount),
+            String(record.modifierFlags),
+            record.keyCode.map(String.init) ?? "",
+            String(record.generatedByNapeGesture)
+        ].joined(separator: "|")
+    }
+
+    private static func isForegroundCapture(_ record: TargetEventRecord) -> Bool {
+        guard let captureSource = record.captureSource else {
+            return false
+        }
+        return targetForegroundCaptureSources.contains(captureSource)
     }
 
     private static func isMouseEvent(_ record: TargetEventRecord) -> Bool {

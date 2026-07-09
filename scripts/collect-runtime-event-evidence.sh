@@ -451,8 +451,8 @@ run_scenario_with_no_leaks() {
   fi
 
   if [ "$scenario" = "gesture-drag" ] || [ "$scenario" = "gesture-wheel" ] || [ "$scenario" = "gesture-wheel-then-kill-switch" ]; then
-    printf '$ %s analyze-target-log %s --json --assert-no-leaks --assert-has-generated-event --assert-has-foreground-capture > %s 2> %s\n' "$tool_path" "$target_log" "$analysis_json" "$analysis_stderr" >> "$commands_file"
-    "$tool_path" analyze-target-log "$target_log" --json --assert-no-leaks --assert-has-generated-event --assert-has-foreground-capture > "$analysis_json" 2> "$analysis_stderr"
+    printf '$ %s analyze-target-log %s --json --assert-no-leaks --assert-has-generated-foreground-capture > %s 2> %s\n' "$tool_path" "$target_log" "$analysis_json" "$analysis_stderr" >> "$commands_file"
+    "$tool_path" analyze-target-log "$target_log" --json --assert-no-leaks --assert-has-generated-foreground-capture > "$analysis_json" 2> "$analysis_stderr"
   else
     printf '$ %s analyze-target-log %s --json --assert-no-leaks > %s 2> %s\n' "$tool_path" "$target_log" "$analysis_json" "$analysis_stderr" >> "$commands_file"
     "$tool_path" analyze-target-log "$target_log" --json --assert-no-leaks > "$analysis_json" 2> "$analysis_stderr"

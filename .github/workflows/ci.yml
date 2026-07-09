@@ -106,8 +106,14 @@ jobs:
           fi
           .build/debug/nape-gesture analyze-target-log Fixtures/clean-target-log.jsonl --json --assert-no-leaks
           .build/debug/nape-gesture analyze-target-log Fixtures/clean-target-log.jsonl --json --assert-has-generated-event
+          .build/debug/nape-gesture analyze-target-log Fixtures/clean-target-log.jsonl --json --assert-has-generated-foreground-capture
+          .build/debug/nape-gesture analyze-target-log Fixtures/clean-target-log.jsonl --json --assert-generated-foreground-scroll-x-positive --assert-generated-foreground-scroll-events-at-least 3 --assert-generated-foreground-scroll-abs-x-at-least 100
           if .build/debug/nape-gesture analyze-target-log Fixtures/leaky-target-log.jsonl --json --assert-no-leaks; then
             echo "leaky-target-log が漏れ候補なしとして通ってしまいました" >&2
+            exit 1
+          fi
+          if .build/debug/nape-gesture analyze-target-log Fixtures/generated-global-unmarked-foreground-target-log.jsonl --json --assert-has-generated-foreground-capture; then
+            echo "generated-global-unmarked-foreground-target-log が生成foreground受信ありとして通ってしまいました" >&2
             exit 1
           fi
           if .build/debug/nape-gesture analyze-target-log Fixtures/no-generated-target-log.jsonl --json --assert-no-leaks --assert-has-generated-event; then
