@@ -36,6 +36,7 @@
 | [ADR-0027](0027-grok-cli-auxiliary-review.md) | Grok CLI を補助レビューと発散に使う | Grok、並列開発、UI、PRレビュー、第三者視点 |
 | [ADR-0028](0028-readme-product-dashboard.md) | README を製品入口兼状態ダッシュボードとして扱う | README、GUI、完成状態、Mermaid、キャプチャ |
 | [ADR-0029](0029-grok-operational-surface.md) | Grok 運用知見を AGENTS.md と Codex skill に同期する | Grok、AGENTS.md、Codex skill、補助レビュー |
+| [ADR-0030](0030-computer-use-gui-operation-evidence.md) | Computer Use で GUI 操作と画面証跡を前進させる | computer-use、GUI、System Settings、画面証跡、need:human |
 
 ## 追加時の確認
 
