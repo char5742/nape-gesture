@@ -54,6 +54,8 @@ public enum TargetDeviceActivity: Equatable, Sendable {
 public struct TargetDeviceGateState: Equatable, Sendable {
     public private(set) var activeButtons: Set<MouseButton> = []
     public private(set) var lastTargetActivityTime: TimeInterval?
+    public private(set) var lastTargetPointerOrWheelActivityTime: TimeInterval?
+    public private(set) var isWaitingForActivationButtonRelease = false
 
     private let configuration: TargetDeviceGateConfiguration
 
@@ -67,22 +69,32 @@ public struct TargetDeviceGateState: Equatable, Sendable {
         switch activity {
         case let .buttonDown(button, _):
             activeButtons.insert(button)
+            if button == configuration.activationButton {
+                isWaitingForActivationButtonRelease = true
+            }
         case let .buttonUp(button, _):
+            let wasActive = activeButtons.contains(button)
             activeButtons.remove(button)
+            if button == configuration.activationButton, !wasActive {
+                isWaitingForActivationButtonRelease = true
+            }
         case .pointer, .wheel:
-            break
+            lastTargetPointerOrWheelActivityTime = activity.time
         }
     }
 
-    public func shouldHandle(_ event: RawInputEvent) -> Bool {
+    public mutating func shouldHandle(_ event: RawInputEvent) -> Bool {
         switch event {
         case let .buttonDown(button, time):
             return button == configuration.activationButton && hasRecentTargetActivity(at: time)
-        case let .buttonUp(button, time):
-            return button == configuration.activationButton
-                && (activeButtons.contains(configuration.activationButton) || hasRecentTargetActivity(at: time))
+        case let .buttonUp(button, _):
+            guard button == configuration.activationButton, isWaitingForActivationButtonRelease else {
+                return false
+            }
+            isWaitingForActivationButtonRelease = false
+            return true
         case let .move(_, _, time), let .wheel(_, _, time):
-            return hasRecentTargetActivity(at: time)
+            return hasRecentTargetPointerOrWheelActivity(at: time)
         case .cancel:
             return true
         }
@@ -93,5 +105,12 @@ public struct TargetDeviceGateState: Equatable, Sendable {
             return false
         }
         return abs(time - lastTargetActivityTime) <= configuration.associationWindow
+    }
+
+    private func hasRecentTargetPointerOrWheelActivity(at time: TimeInterval) -> Bool {
+        guard let lastTargetPointerOrWheelActivityTime else {
+            return false
+        }
+        return abs(time - lastTargetPointerOrWheelActivityTime) <= configuration.associationWindow
     }
 }

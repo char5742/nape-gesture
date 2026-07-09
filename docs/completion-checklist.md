@@ -179,7 +179,7 @@ NAPE_COMPLETION_ARTIFACT_ROOT=/tmp/nape-completion-machine-evidence sh scripts/c
 `SettingsUIField.descriptors` の core test は、設定 UI が activation button、対象入力の紐づけ秒、感度、加速度、慣性、キャンセル条件、対象デバイス、主要割り当ての設定パスを網羅し、control kind、表示名重複なし、設定パス重複なし、アプリ別設定なし、JSON round-trip を満たすことを記録します。
 `GUIAppLaunchPresenter.regularGUIApp` の core test は、通常 GUI activation policy、起動時設定ウィンドウ表示、Dock 再オープン時の再表示、メニューバー `NG` 常駐 UI 維持、`LSUIElement=false` の方針を固定します。`gui-smoke --config <artifact> --json --assert` は `.app` 実行主体で AppKit 内に同じ UI 契約が実際に生成されることを確認します。
 `GestureAction.settingsSelectableActions` の core test は、設定 UI の割り当て候補が Mission Control、Spaces、ページ戻る/進む、ズーム、横スクロールを含む全 `GestureAction` を網羅することを記録します。
-`TargetDeviceGate` の core test は、押下中 move / wheel の機械的な巻き込み境界、activation button release の stuck 防止、cancel 復旧、activation 以外の button 不採用を固定します。これは実測の代替ではなく、Nape Pro と通常入力デバイスを同じ環境で操作したログ取得は未完了のまま扱います。
+`TargetDeviceGate` の core test は、押下中 move / wheel の機械的な巻き込み境界、button HID だけでは move / wheel を通さない境界、activation button release の 1 回消費 stuck 防止、cancel 復旧、activation 以外の button 不採用を固定します。これは実測の代替ではなく、Nape Pro と通常入力デバイスを同じ環境で操作したログ取得は未完了のまま扱います。
 `Fixtures/sample-tuning-trackpad-log.jsonl` の `derive-parameters --json --assert-complete` は、純正トラックパッド実測ログ取得後に deadZone、加速度、慣性候補を同じ形式で保存し、未導出や警告がない場合だけ完了証跡として扱えることを記録します。
 `Fixtures/sample-log.jsonl` の `derive-parameters --json --assert-complete` は、移動速度、慣性、timestamp 品質が足りないログを完了証跡として扱わず非ゼロ終了することを期待値として記録します。
 `Fixtures/synthetic-timestamp-tuning-trackpad-log.jsonl` の `derive-parameters --json --assert-complete` は、候補値が出ていても合成 timestamp 警告が残るログを完了証跡として扱わず非ゼロ終了することを期待値として記録します。

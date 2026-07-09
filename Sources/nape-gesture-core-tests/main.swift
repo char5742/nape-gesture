@@ -1579,6 +1579,8 @@ func testTargetDeviceGateRequiresRecentTargetActivityWhileActivationButtonIsDown
     )
 
     gate.record(.buttonDown(button: .button4, time: 1))
+    expect(!gate.shouldHandle(.move(deltaX: 5, deltaY: 0, time: 1.03)), "対象デバイスのボタン押下だけでは、紐づけ秒内でも移動を処理しない")
+    expect(!gate.shouldHandle(.wheel(deltaX: 0, deltaY: -3, time: 1.04)), "対象デバイスのボタン押下だけでは、紐づけ秒内でもホイールを処理しない")
     expect(!gate.shouldHandle(.move(deltaX: 5, deltaY: 0, time: 10)), "対象デバイスのジェスチャーボタン押下中でも直近の対象 HID 活動がない移動は処理しない")
     expect(!gate.shouldHandle(.wheel(deltaX: 0, deltaY: -3, time: 10)), "対象デバイスのジェスチャーボタン押下中でも直近の対象 HID 活動がないホイールは処理しない")
 
@@ -1590,8 +1592,28 @@ func testTargetDeviceGateRequiresRecentTargetActivityWhileActivationButtonIsDown
 
     expect(gate.shouldHandle(.buttonUp(button: .button4, time: 20)), "対象デバイスのジェスチャーボタンが active な間は、stuck 防止のため解放を通す")
     gate.record(.buttonUp(button: .button4, time: 20.01))
-    expect(gate.shouldHandle(.buttonUp(button: .button4, time: 20.02)), "対象デバイスのボタン解放直後は終了処理を通す")
+    expect(!gate.shouldHandle(.buttonUp(button: .button4, time: 20.02)), "処理済みのジェスチャーボタン解放は、後続の HID 解放で再び待機状態にしない")
     expect(!gate.shouldHandle(.move(deltaX: 5, deltaY: 0, time: 21)), "ボタン解放後しばらく経った移動は処理しない")
+}
+
+func testTargetDeviceGateConsumesActivationReleaseOnceAcrossHIDOrdering() {
+    var gate = TargetDeviceGateState(
+        configuration: TargetDeviceGateConfiguration(
+            activationButton: .button4,
+            associationWindow: 0.1
+        )
+    )
+
+    gate.record(.buttonDown(button: .button4, time: 1))
+    expect(gate.shouldHandle(.buttonDown(button: .button4, time: 1.01)), "対象デバイスのジェスチャーボタン押下を処理する")
+    gate.record(.buttonUp(button: .button4, time: 1.02))
+    expect(gate.shouldHandle(.buttonUp(button: .button4, time: 2)), "HID 解放が先に届いても、event tap 解放を一度だけ通して stuck を防ぐ")
+    expect(!gate.shouldHandle(.buttonUp(button: .button4, time: 2.01)), "消費済みの解放待ちは、次のジェスチャーボタン解放へ持ち越さない")
+
+    gate.record(.buttonDown(button: .button4, time: 3))
+    expect(gate.shouldHandle(.buttonUp(button: .button4, time: 3.02)), "event tap 解放が HID 解放より先に届いても処理する")
+    gate.record(.buttonUp(button: .button4, time: 3.03))
+    expect(!gate.shouldHandle(.buttonUp(button: .button4, time: 4)), "event tap 解放を先に処理済みなら、後続の HID 解放で再び待機状態にしない")
 }
 
 func testTargetDeviceGateKeepsCancelButRejectsNonActivationButtonsWhileActive() {
@@ -2348,6 +2370,7 @@ testScrollGenerationPlannerPhaseOverrideAndMomentum()
 testScrollEventPhaseEncoderSeparatesScrollAndMomentumPhases()
 testTargetDeviceGateOnlyHandlesRecentTargetActivity()
 testTargetDeviceGateRequiresRecentTargetActivityWhileActivationButtonIsDown()
+testTargetDeviceGateConsumesActivationReleaseOnceAcrossHIDOrdering()
 testTargetDeviceGateKeepsCancelButRejectsNonActivationButtonsWhileActive()
 testTargetDeviceGateUsesAssociationWindowFromSettings()
 testTargetDeviceGatePassesThroughNonTargetClickDragAndWheel()
