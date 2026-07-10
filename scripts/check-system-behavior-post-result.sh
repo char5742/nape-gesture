@@ -10,6 +10,7 @@ test_dir=$(mktemp -d /tmp/nape-system-behavior-post-result.XXXXXX) || {
 }
 test_source="$test_dir/main.swift"
 test_binary="$test_dir/check-system-behavior-post-result"
+source_file="$repo_root/Sources/nape-gesture/SystemBehaviorPostResult.swift"
 
 cleanup() {
   rm -rf "$test_dir"
@@ -42,6 +43,10 @@ let noGeneratedEvents = SystemBehaviorPostResultSnapshot(
     generatedEventCount: 0,
     failedEventCreationCount: 0
 ).status
+let creationFailureWithoutGeneratedEvents = SystemBehaviorPostResultSnapshot(
+    generatedEventCount: 0,
+    failedEventCreationCount: 2
+).status
 
 expect(success == .success, "生成成功を成功状態にする")
 expect(success.failureName == nil, "生成成功にエラー名を付けない")
@@ -55,6 +60,10 @@ expect(creationFailure.failureName == "CGEvent timestamp", "timestamp / CGEvent�
 expect(
     creationFailure.failureDescription == "現在の起動後単調時刻から60秒以内の値を生成できませんでした。",
     "timestamp / CGEvent作成失敗の既存診断を維持する"
+)
+expect(
+    creationFailureWithoutGeneratedEvents == .eventCreationFailure(count: 2),
+    "生成0件でも作成失敗を優先する"
 )
 
 expect(noGeneratedEvents == .noGeneratedEvents, "生成0件を独立した失敗状態にする")
@@ -75,8 +84,7 @@ SWIFT
 
 if ! swiftc \
   -swift-version 5 \
-  -D SYSTEM_BEHAVIOR_POST_RESULT_TESTING \
-  "$repo_root/Sources/nape-gesture/SystemBehaviorTestCommand.swift" \
+  "$source_file" \
   "$test_source" \
   -o "$test_binary"; then
   printf '%s\n' "失敗: 投稿結果テストをコンパイルできません。" >&2

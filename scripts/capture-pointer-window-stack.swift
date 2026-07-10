@@ -5,6 +5,7 @@ import Foundation
 struct PointerWindowStackReport: Encodable {
     var schemaVersion: Int
     var wallClockUnixSeconds: Double
+    var systemUptimeSeconds: Double
     var pointer: PointRecord
     var frontmostApplication: ApplicationRecord?
     var windows: [WindowRecord]
@@ -47,7 +48,72 @@ func integerValue<T: FixedWidthInteger>(_ value: Any?, as type: T.Type) -> T? {
     return nil
 }
 
-let pointer = CGEvent(source: nil)?.location ?? .zero
+func runSelfTest() -> Bool {
+    guard integerValue(NSNumber(value: 7), as: Int32.self) == 7,
+          integerValue(7, as: UInt32.self) == 7,
+          integerValue(NSNumber(value: -1), as: UInt32.self) == nil
+    else {
+        fputs("数値変換のself-testに失敗しました。\n", stderr)
+        return false
+    }
+
+    let sample = PointerWindowStackReport(
+        schemaVersion: 1,
+        wallClockUnixSeconds: 1,
+        systemUptimeSeconds: 2,
+        pointer: PointRecord(x: 3, y: 4),
+        frontmostApplication: ApplicationRecord(
+            processID: 5,
+            bundleIdentifier: "example.app",
+            localizedName: "Example"
+        ),
+        windows: [
+            WindowRecord(
+                stackIndex: 0,
+                ownerName: "Example",
+                ownerProcessID: 5,
+                windowNumber: 6,
+                bounds: BoundsRecord(x: 0, y: 0, width: 10, height: 10),
+                alpha: 1
+            )
+        ]
+    )
+    do {
+        let data = try JSONEncoder().encode(sample)
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        guard object?["schemaVersion"] as? Int == 1,
+              object?["systemUptimeSeconds"] as? Double == 2,
+              let windows = object?["windows"] as? [[String: Any]],
+              windows.first?["stackIndex"] as? Int == 0
+        else {
+            fputs("JSON schemaのself-testに失敗しました。\n", stderr)
+            return false
+        }
+    } catch {
+        fputs("JSON encodeのself-testに失敗しました: \(error)\n", stderr)
+        return false
+    }
+    return true
+}
+
+let arguments = Array(CommandLine.arguments.dropFirst())
+if !arguments.isEmpty {
+    guard arguments == ["--self-test"] else {
+        fputs("使い方: swift scripts/capture-pointer-window-stack.swift [--self-test]\n", stderr)
+        exit(2)
+    }
+    guard runSelfTest() else {
+        exit(1)
+    }
+    print("ポインタ直下window stackのself-testに成功しました。")
+    exit(0)
+}
+
+guard let pointerEvent = CGEvent(source: nil) else {
+    fputs("Quartzポインタ位置を取得できませんでした。\n", stderr)
+    exit(1)
+}
+let pointer = pointerEvent.location
 let options = CGWindowListOption(arrayLiteral: .optionOnScreenOnly, .excludeDesktopElements)
 guard let descriptions = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
     fputs("ポインタ直下window一覧を取得できませんでした。\n", stderr)
@@ -100,6 +166,7 @@ let frontmostApplication = NSWorkspace.shared.frontmostApplication.map {
 let report = PointerWindowStackReport(
     schemaVersion: 1,
     wallClockUnixSeconds: Date().timeIntervalSince1970,
+    systemUptimeSeconds: ProcessInfo.processInfo.systemUptime,
     pointer: PointRecord(x: pointer.x, y: pointer.y),
     frontmostApplication: frontmostApplication,
     windows: windows
