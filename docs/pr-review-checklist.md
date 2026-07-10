@@ -31,7 +31,10 @@
 - 純粋ロジック benchmark を、イベントタップから投稿までの入力遅延実測として扱っていない
 - tap-to-post 遅延を完了扱いにする場合、`run --performance-log` または `NAPE_RUNTIME_PERFORMANCE_LOG` で取得した runtime 性能 JSON Lines と `analyze-performance-log --json --assert-baseline` の結果が保存されている
 - runtime 性能ログを AppKit 受信や画面反映の証跡として扱っていない
-- 常駐 CPU 使用率を完了扱いにする場合、日常利用と同じ実行主体の PID に対する `sample-cpu --json --assert-baseline` の結果が保存されている
+- 常駐 CPU 使用率を完了扱いにする場合、日常利用と同じ executable を直接起動した `$!` と絶対パスを `sample-cpu --pid ... --expected-executable ... --json --assert-baseline` に渡した結果が保存されている。GUI runtime は `.build/NapeGesture.app/Contents/MacOS/nape-gesture` 自身である
+- 常駐 CPU の PID 確定に、同名別プロセスを選び得る `pgrep`、launcher の PID になり得る `open` / `swift run` を使っていない
+- `sample-cpu` の `expectedExecutablePath` と `resolvedExecutablePath` が一致し、`executableIdentityMatched` と `processIdentityStable` と `baseline.passed` が `true`、report と各 sample の `processStartToken` が同じである
+- 正しい `/bin/sleep`、誤った expected executable、sleep を待つ shell wrapper、途中 `exec`、identity JSON fields の回帰テストが通っている
 - completion evidence の短時間 `sample-cpu` smoke を、日常利用時の常駐 CPU 完了証跡として扱っていない
 - 閾値超過時に調整した設定値や生成パラメータが、ログと benchmark の再測定で確認されている
 

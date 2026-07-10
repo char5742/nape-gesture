@@ -28,6 +28,12 @@ jobs:
       - name: Run core tests
         run: .build/debug/nape-gesture-core-tests
 
+      - name: CPU サンプリング実行主体テスト
+        run: |
+          sh -n scripts/test-sample-cpu.sh
+          sh -n scripts/collect-completion-evidence.sh
+          sh scripts/test-sample-cpu.sh
+
       - name: Run dry-run smoke tests
         run: |
           sh -n scripts/collect-runtime-event-evidence.sh

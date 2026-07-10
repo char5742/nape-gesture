@@ -129,6 +129,48 @@ run_split_expected_failure() {
   fi
 }
 
+run_sample_cpu_sleep_smoke() {
+  /bin/sleep 2 &
+  sample_pid=$!
+
+  .build/debug/nape-gesture sample-cpu \
+    --pid "$sample_pid" \
+    --expected-executable /bin/sleep \
+    --duration 0.2 \
+    --interval 0.1 \
+    --mode idle \
+    --json \
+    --assert-baseline
+  sample_status=$?
+
+  kill "$sample_pid" 2>/dev/null || true
+  wait "$sample_pid" 2>/dev/null || true
+  return "$sample_status"
+}
+
+check_sample_cpu_sleep_smoke_json() {
+  json_path=$1
+  expected_path=$(/usr/bin/plutil -extract expectedExecutablePath raw -o - "$json_path")
+  resolved_path=$(/usr/bin/plutil -extract resolvedExecutablePath raw -o - "$json_path")
+  report_start_token=$(/usr/bin/plutil -extract processStartToken raw -o - "$json_path")
+  first_sample_start_token=$(/usr/bin/plutil -extract samples.0.processStartToken raw -o - "$json_path")
+  sample_count=$(/usr/bin/plutil -extract sampleCount raw -o - "$json_path")
+  average_cpu=$(/usr/bin/plutil -extract averagePercentOfOneCore raw -o - "$json_path")
+
+  [ "$(/usr/bin/plutil -extract schemaVersion raw -o - "$json_path")" = "1" ] &&
+    [ "$(/usr/bin/plutil -extract measurementKind raw -o - "$json_path")" = "processCpuSampling" ] &&
+    [ "$expected_path" = "/bin/sleep" ] &&
+    [ "$resolved_path" = "$expected_path" ] &&
+    [ "$(/usr/bin/plutil -extract executableIdentityMatched raw -o - "$json_path")" = "true" ] &&
+    [ "$(/usr/bin/plutil -extract processIdentityStable raw -o - "$json_path")" = "true" ] &&
+    [ "$report_start_token" = "$first_sample_start_token" ] &&
+    [ "$(/usr/bin/plutil -extract samples.0.resolvedExecutablePath raw -o - "$json_path")" = "$expected_path" ] &&
+    [ "$(/usr/bin/plutil -extract samples.0.executableIdentityMatched raw -o - "$json_path")" = "true" ] &&
+    [ "$sample_count" -gt 0 ] &&
+    [ -n "$average_cpu" ] &&
+    [ "$(/usr/bin/plutil -extract baseline.passed raw -o - "$json_path")" = "true" ]
+}
+
 build_dir="$artifact_root/build-and-tests"
 bundle_dir="$artifact_root/bundle"
 gui_dir="$artifact_root/gui-smoke"
@@ -159,6 +201,12 @@ run_combined_success \
   "$build_dir/core-tests.log" \
   ".build/debug/nape-gesture-core-tests" \
   .build/debug/nape-gesture-core-tests
+
+run_combined_success \
+  "sample-cpu 実行主体同一性テスト" \
+  "$build_dir/sample-cpu-identity-tests.log" \
+  "sh scripts/test-sample-cpu.sh" \
+  sh scripts/test-sample-cpu.sh
 
 run_combined_success \
   "release build" \
@@ -321,14 +369,14 @@ run_split_success \
   "sample-cpu idle smoke JSON" \
   "$doctor_dir/sample-cpu-idle-smoke.json" \
   "$doctor_dir/sample-cpu-idle-smoke.stderr.log" \
-  "sleep 2 & sample_pid=\$!; .build/debug/nape-gesture sample-cpu --pid \$sample_pid --duration 0.2 --interval 0.1 --mode idle --json --assert-baseline" \
-  sh -c 'sleep 2 & sample_pid=$!; .build/debug/nape-gesture sample-cpu --pid "$sample_pid" --duration 0.2 --interval 0.1 --mode idle --json --assert-baseline; sample_status=$?; wait "$sample_pid"; exit "$sample_status"'
+  "/bin/sleep 2 & sample_pid=\$!; .build/debug/nape-gesture sample-cpu --pid \$sample_pid --expected-executable /bin/sleep --duration 0.2 --interval 0.1 --mode idle --json --assert-baseline" \
+  run_sample_cpu_sleep_smoke
 
 run_combined_success \
   "sample-cpu JSON field check" \
   "$doctor_dir/sample-cpu-json-field-check.log" \
-  "grep -q processCpuSampling / averagePercentOfOneCore / baseline $doctor_dir/sample-cpu-idle-smoke.json" \
-  sh -c "grep -q '\"measurementKind\"[[:space:]]*:[[:space:]]*\"processCpuSampling\"' '$doctor_dir/sample-cpu-idle-smoke.json' && grep -q '\"averagePercentOfOneCore\"' '$doctor_dir/sample-cpu-idle-smoke.json' && grep -q '\"baseline\"' '$doctor_dir/sample-cpu-idle-smoke.json' && grep -q '\"passed\"[[:space:]]*:[[:space:]]*true' '$doctor_dir/sample-cpu-idle-smoke.json'"
+  "plutil で schemaVersion / processCpuSampling / averagePercentOfOneCore / expectedExecutablePath / resolvedExecutablePath / executableIdentityMatched / processStartToken / processIdentityStable / baseline を検査" \
+  check_sample_cpu_sleep_smoke_json "$doctor_dir/sample-cpu-idle-smoke.json"
 
 run_combined_success \
   "system-test list" \

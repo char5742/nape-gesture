@@ -126,8 +126,8 @@ final class CommandLineTool {
               nape-gesture analyze-performance-log <path> [--json] [--assert-baseline]
                   runtime 性能 JSON Lines を集計します。tap callback から投稿直前/直後までの p95/p99、投稿数、作成失敗数を出します。--assert-baseline で入力遅延基準を満たさない場合に失敗します。
 
-              nape-gesture sample-cpu --pid <pid> [--duration <秒>] [--interval <秒>] [--mode idle|active|recovery] [--json] [--assert-baseline] [--out <path>]
-                  指定 PID の CPU 使用率を周期サンプルし、常駐 CPU 基準を JSON と終了コードで確認します。idle / recovery は平均 1% 以下、active は平均 15% 以下を基準にします。
+              nape-gesture sample-cpu --pid <pid> --expected-executable <path> [--duration <秒>] [--interval <秒>] [--mode idle|active|recovery] [--json] [--assert-baseline] [--out <path>]
+                  指定 PID の実行ファイルと開始時刻を各 sample で照合しながら CPU 使用率を測定します。idle / recovery は平均 1% 以下、active は平均 15% 以下を基準にし、実行主体の不一致や途中変化も不合格にします。
 
               nape-gesture check-config [--config <path>] [--probe-hid]
                   対象デバイス設定と HID 入力監視の開始可否を確認します。
