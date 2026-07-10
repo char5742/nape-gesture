@@ -25,17 +25,23 @@ struct GenerateScrollCommand {
         guard steps > 0 else {
             throw ToolError.invalidValue("--steps", String(steps))
         }
-        guard interval > 0 else {
+        guard interval.isFinite, interval > 0 else {
             throw ToolError.invalidValue("--interval", String(interval))
         }
         guard momentumSteps >= 0 else {
             throw ToolError.invalidValue("--momentum-steps", String(momentumSteps))
         }
-        guard (0...1).contains(momentumDecay) else {
+        guard momentumDecay.isFinite, (0...1).contains(momentumDecay) else {
             throw ToolError.invalidValue("--momentum-decay", String(momentumDecay))
         }
-        guard momentumScale >= 0 else {
+        guard momentumScale.isFinite, momentumScale >= 0 else {
             throw ToolError.invalidValue("--momentum-scale", String(momentumScale))
+        }
+        guard deltaX.isFinite else {
+            throw ToolError.invalidValue("--x", String(deltaX))
+        }
+        guard deltaY.isFinite else {
+            throw ToolError.invalidValue("--y", String(deltaY))
         }
 
         let commands = ScrollGenerationPlanner.makeCommands(
@@ -47,12 +53,12 @@ struct GenerateScrollCommand {
             momentumSteps: momentumSteps,
             momentumDecay: momentumDecay,
             momentumScale: momentumScale,
-            startTime: Date().timeIntervalSince1970
+            startTime: MonotonicEventClock.nowSeconds
         )
 
         if isDryRun {
             if outputLogJSON {
-                printInputLog(commands, mode: mode)
+                try printInputLog(commands, mode: mode)
             } else {
                 printPlan(commands, mode: mode)
             }
@@ -169,15 +175,20 @@ struct GenerateScrollCommand {
         }
     }
 
-    private func printInputLog(_ commands: [GestureCommand], mode: ScrollPostMode) {
+    private func printInputLog(_ commands: [GestureCommand], mode: ScrollPostMode) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
 
         for command in commands {
+            guard let timestamp = MonotonicEventClock.timestampNanoseconds(
+                fromSecondsSinceStartup: command.timestamp
+            ) else {
+                throw ToolError.invalidValue("timestamp", String(command.timestamp))
+            }
             let posted = mode.deltas(for: command)
             let phases = CGEventUtilities.phaseValues(for: command)
             let record = InputLogRecord(
-                timestamp: UInt64(max(command.timestamp, 0) * 1_000_000_000),
+                timestamp: timestamp,
                 typeName: "scrollWheel",
                 typeRaw: Int(CGEventType.scrollWheel.rawValue),
                 generatedByNapeGesture: true,

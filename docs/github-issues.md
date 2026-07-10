@@ -179,6 +179,9 @@ Labels: `area:core`, `area:verification`, `type:feature`, `priority:p0`
 並列化:
 完了済み。今後は純正ログとの差分調整に進める。
 
+時刻基準:
+Issue #102 で `CGEventTimestamp`、慣性、生成ログを起動後単調時刻へ統一する。Issue #102 より前の生成ログは epoch 混入有無を確認し、純正比較の完成証跡には修正後ログを使う。
+
 ### Issue 8: 純正トラックパッドログから加速度・しきい値・慣性パラメータを再導出する
 
 Labels: `area:core`, `area:verification`, `type:research`, `priority:p1`
@@ -241,6 +244,33 @@ Labels: `area:runtime`, `area:verification`, `type:qa`, `priority:p1`
 
 並列化:
 Spaces 検証と並列可能。
+
+時刻基準:
+PR #101 の Safari 診断は epoch timestamp 投稿が混在した可能性を除外できない。Issue #102 の修正後に CGEvent log と画面挙動を再取得するまで、ページ戻る / 進む、ズーム、縦横スクロールを完了扱いにしない。
+
+### Issue 102: CGEvent と慣性の時刻基準を起動後単調時刻へ統一する
+
+Labels: `area:core`, `area:runtime`, `area:verification`, `type:bug`, `priority:p0`, `parallel:ready`
+
+目的:
+SDK の `CGEventTimestamp` 契約に合わせ、実入力、HID、慣性、生成イベント、runtime 性能を起動後の単調時刻へ統一する。Unix epoch と uptime の混在で慣性が最初の tick に終了し、Safari 診断条件が通常 runtime と異なっていた問題を根本修正する。
+
+完了条件:
+
+- 共通の小さな clock / 秒・ナノ秒変換 API があり、CGEvent 経路に `Date().timeIntervalSince1970` がない
+- 実入力相当 uptime command の最初の慣性 tick が `.momentum` になる core test がある
+- epoch 混入、時刻逆行、異常 elapsed、投稿時の uptime 範囲外 timestamp を安全側に拒否する
+- `generate-scroll` と `system-test` の dry-run / 実投稿 timestamp を `analyze-log --assert-current-uptime` で機械判定できる
+- runtime performance の command timestamp とナノ秒計測値が同じ uptime ドメインである
+- wall clock metadata はイベント timestamp と名前・単位を分離する
+- ADR-0037、README、verification、completion checklist、PR review checklist、この Issue 台帳が更新されている
+- PR #101 の Safari 診断を過大評価せず、Issue #10 / #16 を時刻修正後の再取得待ちへ戻す
+
+依存関係:
+なし。Safari 画面挙動は computer-use で再取得し、純正トラックパッドと Nape Pro の物理比較だけを関連 Issue の人間作業として残す。
+
+並列化:
+実装修正、文書更新、修正後 Safari 証跡は分離できるが、同じ worktree を共有しない。完成判定は core tests、debug / release build、completion collector、provenance、diff check をそろえて行う。
 
 ## Milestone 4: 常駐アプリ品質
 
@@ -353,6 +383,9 @@ Labels: `area:runtime`, `area:verification`, `type:qa`, `priority:p1`, `parallel
 並列化:
 実装作業と並列可能。
 
+時刻基準:
+Issue #102 以後、`commandTimestamp` は起動後秒、`inputEventTimestampNanoseconds` と tap / recognizer / post の各ナノ秒値は起動後ナノ秒として扱う。時刻修正前の慣性 runtime performance は最初の momentum tick 成立証跡にしない。
+
 ## Milestone 5: 配布と完成判定
 
 ### Issue 15: `.app` バンドル、署名、公証、ライセンス同梱を整える
@@ -401,3 +434,6 @@ Issue 4、Issue 6、Issue 9、Issue 10、Issue 13、Issue 15。
 
 並列化:
 証跡収集は複数担当で並列可能だが、最終判定はメインスレッドで行う。
+
+時刻基準:
+PR #101 を含む時刻修正前の Safari 証跡は Issue #10 の完了根拠から外す。Issue #102 適用後の CGEvent log に `--assert-current-uptime` を通し、computer-use の画面挙動と実行 commit を対応付けてから再採用する。

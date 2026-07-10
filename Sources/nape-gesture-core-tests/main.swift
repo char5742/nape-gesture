@@ -471,6 +471,130 @@ func testMomentumDecaysAndEventuallyEnds() {
     expect(engine.state == .idle, "慣性終了後は idle に戻る")
 }
 
+func testMonotonicEventClockConvertsTimestampUnits() {
+    let timestamp: UInt64 = 12_345_678_901
+    let seconds = MonotonicEventClock.seconds(fromTimestampNanoseconds: timestamp)
+    let roundTripped = MonotonicEventClock.timestampNanoseconds(fromSecondsSinceStartup: seconds)
+
+    expectApproximatelyEqual(seconds, 12.345678901, "起動後ナノ秒を起動後秒へ変換する")
+    expect(roundTripped.map { abs(Int64($0) - Int64(timestamp)) <= 1 } == true, "起動後秒をナノ秒へ戻せる")
+    expect(
+        MonotonicEventClock.timestampNanoseconds(fromSecondsSinceStartup: -1) == nil,
+        "負の時刻は CGEvent timestamp 候補にしない"
+    )
+    expect(
+        MonotonicEventClock.timestampNanoseconds(fromSecondsSinceStartup: .infinity) == nil,
+        "非有限時刻は CGEvent timestamp 候補にしない"
+    )
+}
+
+func testMonotonicEventClockRejectsEpochForPosting() {
+    let uptimeSeconds: TimeInterval = 12_345
+    let uptimeNanoseconds: UInt64 = 12_345_000_000_000
+
+    expect(
+        MonotonicEventClock.validatedTimestampNanosecondsForPosting(
+            fromSecondsSinceStartup: uptimeSeconds,
+            referenceTimestampNanoseconds: uptimeNanoseconds
+        ) == uptimeNanoseconds,
+        "現在 uptime 近傍の timestamp を投稿可能にする"
+    )
+    expect(
+        MonotonicEventClock.validatedTimestampNanosecondsForPosting(
+            fromSecondsSinceStartup: 1_700_000_000,
+            referenceTimestampNanoseconds: uptimeNanoseconds
+        ) == nil,
+        "Unix epoch 秒を uptime timestamp として投稿しない"
+    )
+}
+
+func testMomentumFirstTickUsesUptimeDomain() {
+    let configuration = MomentumConfiguration(
+        minimumStartVelocity: 10,
+        stopVelocity: 1,
+        decayPerSecond: 0.5,
+        frameInterval: 0.016
+    )
+    var engine = MomentumEngine(configuration: configuration)
+    let inputUptime = MonotonicEventClock.seconds(fromTimestampNanoseconds: 12_345_000_000_000)
+    engine.start(from: GestureCommand(
+        kind: .drag,
+        phase: .ended,
+        direction: .right,
+        deltaX: 0,
+        deltaY: 0,
+        velocityX: 100,
+        velocityY: 0,
+        timestamp: inputUptime
+    ))
+
+    let firstTick = engine.tick(at: inputUptime + configuration.frameInterval)
+
+    expect(firstTick?.kind == .momentum, "実入力相当 uptime から最初の慣性コマンドを出す")
+    expect(firstTick?.phase == .momentum, "実入力相当 uptime の最初の tick は momentum になる")
+    expect((firstTick?.deltaX ?? 0) > 0, "最初の慣性 tick に移動量がある")
+}
+
+func testMomentumStopsOnMixedOrAbnormalTimeDomain() {
+    let configuration = MomentumConfiguration(
+        minimumStartVelocity: 10,
+        stopVelocity: 1,
+        decayPerSecond: 0.5,
+        frameInterval: 0.016
+    )
+    let uptime: TimeInterval = 12_345
+    let epoch: TimeInterval = 1_700_000_000
+    func command(timestamp: TimeInterval) -> GestureCommand {
+        GestureCommand(
+            kind: .drag,
+            phase: .ended,
+            direction: .right,
+            deltaX: 0,
+            deltaY: 0,
+            velocityX: 100,
+            velocityY: 0,
+            timestamp: timestamp
+        )
+    }
+
+    var uptimeToEpoch = MomentumEngine(configuration: configuration)
+    uptimeToEpoch.start(from: command(timestamp: uptime))
+    expect(uptimeToEpoch.tick(at: epoch) == nil, "uptime へ epoch tick を混ぜた慣性を投稿しない")
+    expect(uptimeToEpoch.state == .idle, "uptime へ epoch tick を混ぜた慣性を停止する")
+
+    var epochToUptime = MomentumEngine(configuration: configuration)
+    epochToUptime.start(from: command(timestamp: epoch))
+    expect(epochToUptime.tick(at: uptime) == nil, "epoch command へ uptime tick を混ぜた慣性を投稿しない")
+    expect(epochToUptime.state == .idle, "epoch command へ uptime tick を混ぜた慣性を停止する")
+
+    var excessiveGap = MomentumEngine(configuration: configuration)
+    excessiveGap.start(from: command(timestamp: uptime))
+    expect(excessiveGap.tick(at: uptime + 2) == nil, "異常に長い tick 間隔の慣性を投稿しない")
+    expect(excessiveGap.state == .idle, "異常に長い tick 間隔では慣性を停止する")
+}
+
+func testMomentumAllowsConfiguredLongFrameInterval() {
+    let configuration = MomentumConfiguration(
+        minimumStartVelocity: 10,
+        stopVelocity: 1,
+        decayPerSecond: 0.5,
+        frameInterval: 1.5
+    )
+    var engine = MomentumEngine(configuration: configuration)
+    engine.start(from: GestureCommand(
+        kind: .drag,
+        phase: .ended,
+        direction: .right,
+        deltaX: 0,
+        deltaY: 0,
+        velocityX: 100,
+        velocityY: 0,
+        timestamp: 12_345
+    ))
+
+    expect(engine.tick(at: 12_346.5)?.phase == .momentum, "設定済みの長い frameInterval は異常 gap と扱わない")
+}
+
 func testDeviceMatcherMatchesConfiguredDevice() {
     let device = DeviceIdentity(
         manufacturer: "Example",
@@ -2204,6 +2328,11 @@ testDragCancelsWhenOffAxisMovementExceedsRatio()
 testWheelGestureIsScopedToActivationButton()
 testMomentumDoesNotStartBelowMinimumVelocity()
 testMomentumDecaysAndEventuallyEnds()
+testMonotonicEventClockConvertsTimestampUnits()
+testMonotonicEventClockRejectsEpochForPosting()
+testMomentumFirstTickUsesUptimeDomain()
+testMomentumStopsOnMixedOrAbnormalTimeDomain()
+testMomentumAllowsConfiguredLongFrameInterval()
 testDeviceMatcherMatchesConfiguredDevice()
 testDeviceMatcherMatchesUsageWhenConfigured()
 testDeviceMatcherEvaluationReportsMatchedAndMismatchedConditions()

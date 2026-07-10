@@ -1,6 +1,8 @@
 import Foundation
 
 public struct MomentumEngine: Sendable {
+    private static let normalMaximumTickGap: TimeInterval = 1
+
     public private(set) var state: MomentumState = .idle
     private let configuration: MomentumConfiguration
 
@@ -33,7 +35,16 @@ public struct MomentumEngine: Sendable {
             return nil
         }
 
-        let elapsed = max(time - lastTime, configuration.frameInterval)
+        let maximumTickGap = max(Self.normalMaximumTickGap, configuration.frameInterval * 2)
+        guard let measuredElapsed = MonotonicEventClock.elapsed(
+            from: lastTime,
+            to: time,
+            maximum: maximumTickGap
+        ) else {
+            state = .idle
+            return nil
+        }
+        let elapsed = max(measuredElapsed, configuration.frameInterval)
         let decay = pow(configuration.decayPerSecond, elapsed)
         let nextVelocityX = velocityX * decay
         let nextVelocityY = velocityY * decay

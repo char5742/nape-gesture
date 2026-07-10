@@ -149,6 +149,12 @@ run_combined_success \
   sh scripts/check-provenance.sh
 
 run_combined_success \
+  "イベント時刻 Date epoch 混入ガード" \
+  "$provenance_dir/monotonic-event-time-guard.log" \
+  "CGEvent 入力、慣性、投稿経路に Date().timeIntervalSince1970 がないことを確認" \
+  sh -c "if git grep -n -F 'Date().timeIntervalSince1970' -- Sources/nape-gesture/CGEventUtilities.swift Sources/nape-gesture/NapeGestureDaemon.swift Sources/nape-gesture/EventPoster.swift Sources/nape-gesture/GenerateScrollCommand.swift Sources/nape-gesture/SystemBehaviorTestCommand.swift; then exit 1; fi"
+
+run_combined_success \
   "debug build" \
   "$build_dir/swift-build.log" \
   "swift build --scratch-path .build" \
@@ -339,11 +345,11 @@ for scenario in space-left space-right mission-control horizontal-scroll page-ba
   fi
 
   run_split_success \
-    "system-test $scenario analyze-log assert-system-scenario" \
+    "system-test $scenario analyze-log assert-system-scenario / current-uptime" \
     "$system_dir/system-$scenario-analysis.txt" \
     "$system_dir/system-$scenario-analysis.stderr.log" \
-    ".build/debug/nape-gesture analyze-log $system_dir/system-$scenario.jsonl --json --assert-system-scenario $scenario" \
-    .build/debug/nape-gesture analyze-log "$system_dir/system-$scenario.jsonl" --json --assert-system-scenario "$scenario"
+    ".build/debug/nape-gesture analyze-log $system_dir/system-$scenario.jsonl --json --assert-current-uptime --assert-system-scenario $scenario" \
+    .build/debug/nape-gesture analyze-log "$system_dir/system-$scenario.jsonl" --json --assert-current-uptime --assert-system-scenario "$scenario"
 done
 
 run_combined_success \
@@ -356,8 +362,8 @@ run_split_success \
   "system-test normal-after-release analyze-log assert-has-unmarked-click-drag-wheel" \
   "$system_dir/system-normal-after-release-analysis.json" \
   "$system_dir/system-normal-after-release-analysis.stderr.log" \
-  ".build/debug/nape-gesture analyze-log $system_dir/system-normal-after-release.jsonl --json --assert-system-scenario normal-after-release --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel" \
-  .build/debug/nape-gesture analyze-log "$system_dir/system-normal-after-release.jsonl" --json --assert-system-scenario normal-after-release --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel
+  ".build/debug/nape-gesture analyze-log $system_dir/system-normal-after-release.jsonl --json --assert-current-uptime --assert-system-scenario normal-after-release --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel" \
+  .build/debug/nape-gesture analyze-log "$system_dir/system-normal-after-release.jsonl" --json --assert-current-uptime --assert-system-scenario normal-after-release --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel
 
 run_combined_success \
   "system-test gesture-wheel-then-kill-switch dry-run JSON Lines" \
@@ -369,8 +375,8 @@ run_split_success \
   "system-test gesture-wheel-then-kill-switch analyze-log assert-gesture-before-kill-switch" \
   "$system_dir/system-gesture-wheel-then-kill-switch-analysis.json" \
   "$system_dir/system-gesture-wheel-then-kill-switch-analysis.stderr.log" \
-  ".build/debug/nape-gesture analyze-log $system_dir/system-gesture-wheel-then-kill-switch.jsonl --json --assert-system-scenario gesture-wheel-then-kill-switch --assert-kill-switch-shortcut --assert-gesture-before-kill-switch" \
-  .build/debug/nape-gesture analyze-log "$system_dir/system-gesture-wheel-then-kill-switch.jsonl" --json --assert-system-scenario gesture-wheel-then-kill-switch --assert-kill-switch-shortcut --assert-gesture-before-kill-switch
+  ".build/debug/nape-gesture analyze-log $system_dir/system-gesture-wheel-then-kill-switch.jsonl --json --assert-current-uptime --assert-system-scenario gesture-wheel-then-kill-switch --assert-kill-switch-shortcut --assert-gesture-before-kill-switch" \
+  .build/debug/nape-gesture analyze-log "$system_dir/system-gesture-wheel-then-kill-switch.jsonl" --json --assert-current-uptime --assert-system-scenario gesture-wheel-then-kill-switch --assert-kill-switch-shortcut --assert-gesture-before-kill-switch
 
 run_split_success \
   "generate-scroll space-right dry-run JSON Lines" \
@@ -380,11 +386,18 @@ run_split_success \
   .build/debug/nape-gesture generate-scroll --x 1200 --y 0 --steps 30 --mode space-right --phase auto --momentum-steps 8 --dry-run --log-json
 
 run_split_success \
-  "generate-scroll space-right analyze-log" \
+  "generate-scroll space-right analyze-log current-uptime" \
   "$system_dir/generated-space-right-analysis.txt" \
   "$system_dir/generated-space-right-analysis.stderr.log" \
-  ".build/debug/nape-gesture analyze-log $system_dir/generated-space-right.jsonl" \
-  .build/debug/nape-gesture analyze-log "$system_dir/generated-space-right.jsonl"
+  ".build/debug/nape-gesture analyze-log $system_dir/generated-space-right.jsonl --assert-current-uptime" \
+  .build/debug/nape-gesture analyze-log "$system_dir/generated-space-right.jsonl" --assert-current-uptime
+
+run_split_expected_failure \
+  "epoch timestamp analyze-log assert-current-uptime" \
+  "$fixtures_dir/epoch-timestamp-current-uptime.json" \
+  "$fixtures_dir/epoch-timestamp-current-uptime.stderr.log" \
+  ".build/debug/nape-gesture analyze-log Fixtures/epoch-timestamp-generated-scroll-log.jsonl --json --assert-current-uptime" \
+  .build/debug/nape-gesture analyze-log Fixtures/epoch-timestamp-generated-scroll-log.jsonl --json --assert-current-uptime
 
 run_split_success \
   "sample scroll compare-log" \
@@ -564,7 +577,7 @@ cat >> "$summary_file" <<EOF
 - 純正トラックパッドでの実操作ログ
 - TCC のアクセシビリティ / 入力監視許可操作
 - Spaces / Mission Control の画面挙動実測
-- Issue #10 の Safari / 対応アプリでのページ戻る、進む、ズーム、横スクロール画面挙動実測
+- Issue #10 の時刻修正後 Safari / 対応アプリでのページ戻る、進む、ズーム、横スクロール CGEvent log と computer-use 画面挙動再取得
 - \`run\`、実イベント投稿、target 実測、常駐 CPU、入力遅延
 - Developer ID 署名、公証、stapler、Gatekeeper 評価
 

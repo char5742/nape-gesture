@@ -41,6 +41,7 @@
 - ボタン解放後に必ず通常状態へ戻る
 - `began` / `changed` / `ended` / `cancelled` / `momentum` の意味が崩れていない
 - 方向ロック、加速度、キャンセル条件、慣性のテストが追加または更新されている
+- 実入力相当の起動後時刻から最初の慣性 tick が `.momentum` になり、epoch 混入、時刻逆行、異常な tick gap では投稿せず停止するテストがある
 
 ## Runtime / Event Tap 変更
 
@@ -57,6 +58,8 @@
 - `normal-after-release` dry-run を `analyze-log --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel` で確認し、未生成キーや activation button だけを通常入力通過証跡として扱っていない
 - runtime event 証跡を更新した場合、`status.json.status`、`blockerCode`、`preflight/`、権限済み時の `scenarios/` の関係が崩れていない
 - アクセシビリティ未許可時に安全に停止し、復旧導線を出す
+- `CGEvent.timestamp`、HID、`GestureCommand.timestamp`、慣性 tick、runtime performance が `MonotonicEventClock` の起動後単調時刻に統一され、イベント経路へ `Date().timeIntervalSince1970` を戻していない
+- wall clock が必要な JSON metadata は `wallClockUnixSeconds` など名前と単位を明記し、イベント `timestamp` と混用していない
 
 ## HID / Device 変更
 
@@ -71,8 +74,11 @@
 - 通常スクロールのフェーズは `scrollPhase`、慣性は `momentumPhase` に分離されている
 - `generate-scroll --dry-run --log-json` で比較可能な JSON Lines を出せる
 - `system-test run --dry-run --log-json` で生成予定イベントを保存し、`systemTestScenario` / `sequenceIndex` つきで `analyze-log --json --assert-system-scenario <name>` によるシナリオ別機械判定を通している
+- `generate-scroll` / `system-test` の dry-run と取得直後の実投稿 CGEvent log に `analyze-log --assert-current-uptime` を通し、epoch fixture は expected failure になっている
+- `EventPoster` と system-test の全 CGEvent 種別が投稿直前に現在 uptime 近傍の timestamp を設定し、範囲外時刻を clamp せず失敗させる
 - `Ctrl + ←/→` などのショートカット送信を最終解として前提化していない
 - Finder、Safari、Mission Control、Spaces で必要な実機検証が明記されている
+- PR #101 以前の Safari 診断を時刻修正後の証跡として流用せず、Issue #10 / #16 は CGEvent log と画面挙動を再取得待ちにしている
 
 ## UI / Doctor / 権限導線変更
 

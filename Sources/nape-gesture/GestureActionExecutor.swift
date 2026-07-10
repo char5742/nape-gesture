@@ -32,23 +32,23 @@ final class GestureActionExecutor {
             )
         case .missionControl:
             return postDiscrete(action: action, command: command) {
-                poster.postMissionControl()
+                poster.postMissionControl(timestamp: command.timestamp)
             }
         case .pageBack:
             return postDiscrete(action: action, command: command) {
-                poster.postPageBack()
+                poster.postPageBack(timestamp: command.timestamp)
             }
         case .pageForward:
             return postDiscrete(action: action, command: command) {
-                poster.postPageForward()
+                poster.postPageForward(timestamp: command.timestamp)
             }
         case .zoomIn:
             return postDiscrete(action: action, command: command) {
-                poster.postZoomIn()
+                poster.postZoomIn(timestamp: command.timestamp)
             }
         case .zoomOut:
             return postDiscrete(action: action, command: command) {
-                poster.postZoomOut()
+                poster.postZoomOut(timestamp: command.timestamp)
             }
         }
     }

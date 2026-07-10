@@ -374,8 +374,8 @@ run_dry_run_preflight() {
     "$title analyze-log" \
     "$analysis_json" \
     "$analysis_stderr" \
-    "$tool_path analyze-log $dry_run_jsonl --json --assert-system-scenario $scenario $*" \
-    "$tool_path" analyze-log "$dry_run_jsonl" --json --assert-system-scenario "$scenario" "$@"
+    "$tool_path analyze-log $dry_run_jsonl --json --assert-current-uptime --assert-system-scenario $scenario $*" \
+    "$tool_path" analyze-log "$dry_run_jsonl" --json --assert-current-uptime --assert-system-scenario "$scenario" "$@"
 }
 
 run_scenario_with_no_leaks() {

@@ -40,6 +40,7 @@
 | [ADR-0031](0031-reference-target-cursor-focus.md) | Reference Target App の無人証跡では capture view へカーソルを固定する | runtime event、Reference Target App、system-test、target log |
 | [ADR-0032](0032-reference-target-foreground-capture.md) | Reference Target App は foreground capture 経路を証跡化する | runtime event、Reference Target App、foreground capture、postToPid |
 | [ADR-0033](0033-kill-switch-pending-release-suppression.md) | キルスイッチ後も進行中ジェスチャーの release は抑制する | Issue #12、kill-switch、activation button、元入力抑制 |
+| [ADR-0037](0037-monotonic-event-time-domain.md) | CGEvent と慣性を起動後単調時刻へ統一する | Issue #7/#10/#14/#16/#102、CGEvent、慣性、生成イベント、runtime 性能 |
 
 ## 追加時の確認
 

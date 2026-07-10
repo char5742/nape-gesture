@@ -25,6 +25,7 @@ struct AnalyzeLogCommand {
         let assertHasUnmarkedClickDragWheel = options.contains("--assert-has-unmarked-click-drag-wheel")
         let assertKillSwitchShortcut = options.contains("--assert-kill-switch-shortcut")
         let assertGestureBeforeKillSwitch = options.contains("--assert-gesture-before-kill-switch")
+        let assertCurrentUptime = options.contains("--assert-current-uptime")
         let systemScenario = try Self.systemScenarioAssertion(in: options)
 
         if options.contains("--json") {
@@ -63,6 +64,24 @@ struct AnalyzeLogCommand {
         if assertGestureBeforeKillSwitch && !Self.hasGestureBeforeKillSwitch(records) {
             fflush(stdout)
             throw InputLogMissingGestureBeforeKillSwitchAssertionError(path: path)
+        }
+        if assertCurrentUptime {
+            let referenceTimestamp = MonotonicEventClock.nowTimestampNanoseconds
+            let mismatchedRecordCount = records.filter {
+                !MonotonicEventClock.isNear(
+                    timestampNanoseconds: $0.timestamp,
+                    referenceTimestampNanoseconds: referenceTimestamp
+                )
+            }.count
+            if records.isEmpty || mismatchedRecordCount > 0 {
+                fflush(stdout)
+                throw InputLogCurrentUptimeAssertionError(
+                    path: path,
+                    recordCount: records.count,
+                    mismatchedRecordCount: mismatchedRecordCount,
+                    referenceTimestampNanoseconds: referenceTimestamp
+                )
+            }
         }
         if let systemScenario {
             let failures = Self.systemScenarioFailures(for: systemScenario, records: records, analysis: analysis)
@@ -414,6 +433,17 @@ struct InputLogMissingGestureBeforeKillSwitchAssertionError: LocalizedError {
 
     var errorDescription: String? {
         "input log にキルスイッチ前の未生成ジェスチャー入力がありません。暴走中停止 dry-run の確認には `analyze-log \(path) --json --assert-kill-switch-shortcut --assert-gesture-before-kill-switch` を使ってください。"
+    }
+}
+
+struct InputLogCurrentUptimeAssertionError: LocalizedError {
+    var path: String
+    var recordCount: Int
+    var mismatchedRecordCount: Int
+    var referenceTimestampNanoseconds: UInt64
+
+    var errorDescription: String? {
+        "input log の timestamp が現在の起動後単調時刻から60秒以内ではありません。path=\(path) records=\(recordCount) mismatches=\(mismatchedRecordCount) currentUptimeNanoseconds=\(referenceTimestampNanoseconds)。Unix epoch 混入または古いログでないか確認してください。"
     }
 }
 

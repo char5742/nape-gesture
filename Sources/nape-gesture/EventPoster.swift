@@ -5,6 +5,8 @@ import Foundation
 import NapeGestureCore
 
 final class EventPoster {
+    private static let keyReleaseDelay: TimeInterval = 0.01
+
     private let source: CGEventSource?
 
     init() {
@@ -43,40 +45,62 @@ final class EventPoster {
         event.setIntegerValueField(.scrollWheelEventMomentumPhase, value: phases.momentum)
         event.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
 
-        event.timestamp = CGEventTimestamp(max(command.timestamp, 0) * 1_000_000_000)
+        guard CGEventUtilities.setMonotonicTimestamp(
+            secondsSinceStartup: command.timestamp,
+            on: event
+        ) else {
+            return nil
+        }
         return event
     }
 
     @discardableResult
-    func postMissionControl() -> EventPostResult {
-        postKeyShortcut(keyCode: CGKeyCode(kVK_UpArrow), flags: .maskControl)
+    func postMissionControl(timestamp: TimeInterval) -> EventPostResult {
+        postKeyShortcut(keyCode: CGKeyCode(kVK_UpArrow), flags: .maskControl, timestamp: timestamp)
     }
 
     @discardableResult
-    func postPageBack() -> EventPostResult {
-        postKeyShortcut(keyCode: CGKeyCode(kVK_LeftArrow), flags: .maskCommand)
+    func postPageBack(timestamp: TimeInterval) -> EventPostResult {
+        postKeyShortcut(keyCode: CGKeyCode(kVK_LeftArrow), flags: .maskCommand, timestamp: timestamp)
     }
 
     @discardableResult
-    func postPageForward() -> EventPostResult {
-        postKeyShortcut(keyCode: CGKeyCode(kVK_RightArrow), flags: .maskCommand)
+    func postPageForward(timestamp: TimeInterval) -> EventPostResult {
+        postKeyShortcut(keyCode: CGKeyCode(kVK_RightArrow), flags: .maskCommand, timestamp: timestamp)
     }
 
     @discardableResult
-    func postZoomIn() -> EventPostResult {
-        postKeyShortcut(keyCode: CGKeyCode(kVK_ANSI_Equal), flags: .maskCommand)
+    func postZoomIn(timestamp: TimeInterval) -> EventPostResult {
+        postKeyShortcut(keyCode: CGKeyCode(kVK_ANSI_Equal), flags: .maskCommand, timestamp: timestamp)
     }
 
     @discardableResult
-    func postZoomOut() -> EventPostResult {
-        postKeyShortcut(keyCode: CGKeyCode(kVK_ANSI_Minus), flags: .maskCommand)
+    func postZoomOut(timestamp: TimeInterval) -> EventPostResult {
+        postKeyShortcut(keyCode: CGKeyCode(kVK_ANSI_Minus), flags: .maskCommand, timestamp: timestamp)
     }
 
-    private func postKeyShortcut(keyCode: CGKeyCode, flags: CGEventFlags) -> EventPostResult {
-        let events = [
-            CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
-            CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
-        ].compactMap { $0 }
+    private func postKeyShortcut(
+        keyCode: CGKeyCode,
+        flags: CGEventFlags,
+        timestamp: TimeInterval
+    ) -> EventPostResult {
+        let eventSpecifications = [
+            (keyDown: true, timestamp: timestamp),
+            (keyDown: false, timestamp: timestamp + Self.keyReleaseDelay)
+        ]
+        let events = eventSpecifications.compactMap { specification -> CGEvent? in
+            guard let event = CGEvent(
+                keyboardEventSource: source,
+                virtualKey: keyCode,
+                keyDown: specification.keyDown
+            ), CGEventUtilities.setMonotonicTimestamp(
+                secondsSinceStartup: specification.timestamp,
+                on: event
+            ) else {
+                return nil
+            }
+            return event
+        }
 
         for event in events {
             CGEventUtilities.setGeneratedMarker(on: event)

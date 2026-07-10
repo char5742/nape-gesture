@@ -13,11 +13,15 @@ Mac Mouse Fix のコード、定数、状態遷移、係数は流用しません
 | メニューバー常駐 UI | 実装済み。AppKit `gui-smoke` で status item `NG`、状態、開始、緊急停止、停止、設定、権限導線の生成契約を検査する。SystemUIServer の AX name に出ない場合は `gui-smoke` を正とする | [docs/completion-checklist.md](docs/completion-checklist.md) |
 | 設定 UI | 実装済み。編集項目 catalog、JSON round-trip、computer-use による `.app` 設定表示と保存操作は確認済み。保存は設定ファイル更新までの証跡で、TCC 許可済み runtime と実イベントは completion matrix で管理する | [ADR-0021](docs/adr/0021-settings-ui-field-catalog.md)、[docs/completion-checklist.md](docs/completion-checklist.md) |
 | Runtime event | `.build/NapeGesture.app` の TCC 許可済み経路で成功。gesture-drag / gesture-wheel / kill-switch / gesture-wheel-then-kill-switch / normal-after-release を `scripts/collect-runtime-event-evidence.sh` で機械判定した | [ADR-0032](docs/adr/0032-reference-target-foreground-capture.md)、[ADR-0033](docs/adr/0033-kill-switch-pending-release-suppression.md) |
+| イベント時刻 | CGEvent 入力、HID、慣性、生成イベント、runtime 性能を起動後単調時刻へ統一。dry-run と実投稿ログは `analyze-log --assert-current-uptime` で epoch 混入を検査する | [ADR-0037](docs/adr/0037-monotonic-event-time-domain.md)、[docs/verification.md](docs/verification.md) |
 | 通常入力通過 | 機械証跡あり。ジェスチャーボタン未押下時と解放後の通常クリック、ドラッグ、ホイールを AppKit target log で確認する | [ADR-0016](docs/adr/0016-normal-input-kind-assertions.md) |
 | 権限導線 | 実装済み。GUI と `doctor` が TCC 権限付与対象を表示し、System Settings を開く | [ADR-0020](docs/adr/0020-doctor-tcc-permission-target.md)、[ADR-0025](docs/adr/0025-gui-permission-recovery-actions.md) |
 | runtime 性能測定 | tap callback から投稿直前/直後までを JSON Lines で保存し、p95 / p99 を判定できる | [docs/performance-baseline.md](docs/performance-baseline.md) |
 | 実機完成判定 | 一部は人間作業待ち。純正トラックパッド操作、Nape Pro 実機操作、公証は自動化できない最後の手段として扱う。TCC 許可済み runtime event は機械証跡取得済み | [docs/completion-checklist.md](docs/completion-checklist.md) |
 | 署名・公証済みリリース | 未完了。Developer ID 署名、公証、stapler / Gatekeeper 評価の証跡が必要 | [docs/release.md](docs/release.md) |
+
+PR #101 の Safari 診断は、修正前の Unix epoch timestamp で CGEvent を投稿した可能性を除外できません。
+ページ戻る / 進む、ズーム、縦横スクロールを含む Issue #10 / #16 の Safari 証跡は、ADR-0037 適用後の実行主体とログで再取得するまで完成証跡に採用しません。
 
 `need:human` はレビュー待ちや判断待ちではなく、人間が実際に作業しないと進められない TCC 操作、物理デバイス操作、証明書操作などにだけ使います。
 自動化できる検証は先に自動化し、人間作業は最後の手段に限定します。
@@ -177,6 +181,7 @@ swift run nape-gesture derive-parameters Fixtures/sample-tuning-trackpad-log.jso
 swift run nape-gesture generate-scroll --x 0 --y -480 --steps 24
 swift run nape-gesture generate-scroll --x 0 --y -480 --steps 24 --momentum-steps 12 --dry-run
 swift run nape-gesture generate-scroll --x 0 --y -480 --steps 24 --momentum-steps 12 --dry-run --log-json > generated-scroll.jsonl
+swift run nape-gesture analyze-log generated-scroll.jsonl --json --assert-current-uptime
 swift run nape-gesture generate-scroll --x 1200 --y 0 --steps 30 --mode space-right --phase auto --dry-run --json
 
 swift run nape-gesture system-test list
@@ -184,7 +189,7 @@ swift run nape-gesture system-test run --scenario space-left --target finder --d
 swift run nape-gesture system-test run --scenario space-left --target finder --dry-run --log-json --out system-space-left.jsonl
 swift run nape-gesture system-test run --scenario horizontal-scroll --dry-run --log-json --out system-horizontal-scroll.jsonl
 swift run nape-gesture system-test run --scenario normal-after-release --post-to-pid <Reference Target App PID>
-swift run nape-gesture analyze-log system-horizontal-scroll.jsonl --json
+swift run nape-gesture analyze-log system-horizontal-scroll.jsonl --json --assert-current-uptime --assert-system-scenario horizontal-scroll
 
 swift run nape-gesture benchmark --events 200000 --json
 swift run nape-gesture doctor --probe-hid --benchmark-events 50000 --json --assert-runtime-ready
