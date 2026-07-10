@@ -7,6 +7,11 @@ final class HIDInputMonitor {
     private let gate: SharedTargetDeviceGate
     private let matchedDevices: [DeviceIdentity]
     private var manager: IOHIDManager?
+    private var targetDeviceCache: [ObjectIdentifier: Bool] = [:]
+    private var isStopping = false
+
+    var onTargetDeviceRemoval: (() -> Void)?
+    var onAssociationAmbiguity: (() -> Void)?
 
     init(settings: NapeGestureSettings, gate: SharedTargetDeviceGate, matchedDevices: [DeviceIdentity] = []) {
         self.settings = settings
@@ -17,18 +22,27 @@ final class HIDInputMonitor {
     func start() throws {
         let manager = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
         self.manager = manager
+        isStopping = false
+        targetDeviceCache.removeAll()
 
         let deviceMatches = HIDDeviceMatch.exactMatches(for: matchedDevices)
         let matcherMatches = HIDDeviceMatch.exactMatches(for: settings.targetDevices)
         let exactMatches = deviceMatches.isEmpty ? matcherMatches : deviceMatches
-        if exactMatches.isEmpty {
-            IOHIDManagerSetDeviceMatchingMultiple(manager, HIDDeviceMatch.pointingMatches() as CFArray)
-        } else {
-            IOHIDManagerSetDeviceMatchingMultiple(manager, exactMatches as CFArray)
-        }
+        let monitoredMatches = HIDDeviceMatch.pointingMatches() + exactMatches
+        IOHIDManagerSetDeviceMatchingMultiple(manager, monitoredMatches as CFArray)
+        IOHIDManagerRegisterDeviceMatchingCallback(
+            manager,
+            hidDeviceMatchingCallback,
+            UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
+        )
         IOHIDManagerRegisterInputValueCallback(
             manager,
             hidInputValueCallback,
+            UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
+        )
+        IOHIDManagerRegisterDeviceRemovalCallback(
+            manager,
+            hidDeviceRemovalCallback,
             UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
         )
         IOHIDManagerScheduleWithRunLoop(manager, CFRunLoopGetCurrent(), CFRunLoopMode.commonModes.rawValue)
@@ -44,24 +58,25 @@ final class HIDInputMonitor {
             return
         }
 
+        isStopping = true
+        IOHIDManagerRegisterDeviceMatchingCallback(manager, nil, nil)
+        IOHIDManagerRegisterInputValueCallback(manager, nil, nil)
+        IOHIDManagerRegisterDeviceRemovalCallback(manager, nil, nil)
         IOHIDManagerUnscheduleFromRunLoop(manager, CFRunLoopGetCurrent(), CFRunLoopMode.commonModes.rawValue)
         IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone))
         self.manager = nil
+        targetDeviceCache.removeAll()
     }
 
     fileprivate func handle(value: IOHIDValue) {
         let element = IOHIDValueGetElement(value)
         let device = IOHIDElementGetDevice(element)
-        let identity = DeviceIdentity(hidDevice: device)
-
-        guard isTargetDevice(identity) else {
-            return
-        }
+        let isTargetDevice = isTargetDevice(device)
 
         let usagePage = Int(IOHIDElementGetUsagePage(element))
         let usage = Int(IOHIDElementGetUsage(element))
         let integerValue = IOHIDValueGetIntegerValue(value)
-        let time = ProcessInfo.processInfo.systemUptime
+        let time = HIDEventTimestamp.seconds(for: value)
 
         guard let activity = HIDTargetActivityMapper.activity(
             usagePage: usagePage,
@@ -71,14 +86,41 @@ final class HIDInputMonitor {
         ) else {
             return
         }
-        gate.record(activity)
+        let decision = gate.record(activity, isTargetDevice: isTargetDevice)
+        if decision.shouldCancelGesture {
+            onAssociationAmbiguity?()
+        }
     }
 
-    private func isTargetDevice(_ device: DeviceIdentity) -> Bool {
-        guard !settings.targetDevices.isEmpty else {
-            return true
+    fileprivate func handleRemoval(device: IOHIDDevice) {
+        let key = ObjectIdentifier(device)
+        let removedTargetDevice = targetDeviceCache[key] ?? isTargetDevice(device)
+        targetDeviceCache[key] = nil
+
+        guard !isStopping, removedTargetDevice else {
+            return
         }
-        return settings.targetDevices.contains { $0.matches(device) }
+        gate.reset()
+        onTargetDeviceRemoval?()
+    }
+
+    fileprivate func handleMatched(device: IOHIDDevice) {
+        _ = isTargetDevice(device)
+    }
+
+    private func isTargetDevice(_ device: IOHIDDevice) -> Bool {
+        let key = ObjectIdentifier(device)
+        if let cached = targetDeviceCache[key] {
+            return cached
+        }
+
+        let identity = DeviceIdentity(hidDevice: device)
+        let matchesKnownDevice = matchedDevices.contains { $0.stableID == identity.stableID }
+        let matchesSettings = settings.targetDevices.isEmpty
+            || settings.targetDevices.contains { $0.matches(identity) }
+        let result = matchesKnownDevice || matchesSettings
+        targetDeviceCache[key] = result
+        return result
     }
 }
 
@@ -89,4 +131,22 @@ private let hidInputValueCallback: IOHIDValueCallback = { context, _, _, value i
 
     let monitor = Unmanaged<HIDInputMonitor>.fromOpaque(context).takeUnretainedValue()
     monitor.handle(value: value)
+}
+
+private let hidDeviceMatchingCallback: IOHIDDeviceCallback = { context, _, _, device in
+    guard let context else {
+        return
+    }
+
+    let monitor = Unmanaged<HIDInputMonitor>.fromOpaque(context).takeUnretainedValue()
+    monitor.handleMatched(device: device)
+}
+
+private let hidDeviceRemovalCallback: IOHIDDeviceCallback = { context, _, _, device in
+    guard let context else {
+        return
+    }
+
+    let monitor = Unmanaged<HIDInputMonitor>.fromOpaque(context).takeUnretainedValue()
+    monitor.handleRemoval(device: device)
 }

@@ -110,7 +110,7 @@ extension HIDInputLogRecord {
         let hidDevice = IOHIDElementGetDevice(element)
 
         self.init(
-            time: ProcessInfo.processInfo.systemUptime,
+            time: HIDEventTimestamp.seconds(for: value),
             device: DeviceIdentity(hidDevice: hidDevice),
             usagePage: Int(IOHIDElementGetUsagePage(element)),
             usage: Int(IOHIDElementGetUsage(element)),

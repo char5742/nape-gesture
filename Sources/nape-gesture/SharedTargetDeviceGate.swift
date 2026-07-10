@@ -9,15 +9,25 @@ final class SharedTargetDeviceGate {
         state = TargetDeviceGateState(configuration: configuration)
     }
 
-    func record(_ activity: TargetDeviceActivity) {
+    func record(
+        _ activity: TargetDeviceActivity,
+        isTargetDevice: Bool = true
+    ) -> TargetDeviceGateRecordDecision {
         lock.lock()
-        state.record(activity)
+        let result = state.record(activity, isTargetDevice: isTargetDevice)
+        lock.unlock()
+        return result
+    }
+
+    func reset() {
+        lock.lock()
+        state.reset()
         lock.unlock()
     }
 
-    func shouldHandle(_ event: RawInputEvent) -> Bool {
+    func decision(for event: RawInputEvent) -> TargetDeviceGateDecision {
         lock.lock()
-        let result = state.shouldHandle(event)
+        let result = state.decision(for: event)
         lock.unlock()
         return result
     }

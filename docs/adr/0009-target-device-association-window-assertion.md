@@ -17,8 +17,9 @@ Issue #5 の対象デバイス紐づけでは、Nape Pro の HID 入力と event
 - 実機ログ取得後の採否は、`analyze-association --json --assert-valid-window --target-stable-id <ID>` の終了コードと `matches` の時刻差で行う。
 - completion evidence では、成功 fixture と期待失敗 fixture の両方を残し、判定が甘くならないことを確認する。
 - runtime の `TargetDeviceGate` は、対象デバイスの activation button が押下中でも、move / wheel を無条件には処理しない。直近の対象 HID pointer / wheel が `associationWindow` 内にある場合だけ処理する。
-- activation button の `buttonUp` は、対象 HID の buttonDown から生じた解放待ちを 1 回だけ消費して stuck 防止のため通す。これにより、対象デバイス release の event tap と HID release の到着順が前後しても通常状態へ戻れる。
+- activation button の `buttonUp` は、対象 HID buttonDown と関連付けて受理した event tap buttonDown だけが解放待ちを作る。対象 HID release 候補が先着した場合は 1 回だけ処理し、event tap release が先着した場合は通常通過と内部 cancel で stuck を防ぐ。
 - `cancel` は状態復旧のため常に処理し、activation button 以外の buttonDown / buttonUp は押下中でもジェスチャー処理へ渡さない。
+- runtime の target / non-target 同種候補比較、Mach timebase 変換、候補の 1 回消費、デバイス切断時 cancel は [ADR-0035](0035-runtime-target-input-disambiguation.md) を正とする。
 
 ## 影響
 

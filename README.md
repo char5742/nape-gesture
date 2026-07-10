@@ -208,8 +208,9 @@ swift run nape-gesture-core-tests
 デフォルトは `0.12` 秒です。
 短くすると対象外デバイスを巻き込みにくくなりますが、イベントタップ側の到達が遅い環境では Nape Pro 入力を取りこぼす可能性があります。
 長くすると取りこぼしに強くなる一方、別デバイス入力を誤って紐づけるリスクが上がります。
-ジェスチャーボタン押下中でも、対象 HID の直近 pointer / wheel がこの秒数内にない move / wheel はジェスチャー処理へ渡しません。
-ジェスチャーボタン解放は、HID と event tap の到着順が前後しても通常状態へ戻れるよう通します。
+runtime は対象と対象外の pointing device を同時に監視し、HID レポートの OS AbsoluteTime と event tap timestamp を同じ単調時刻基準で比較します。
+activation button、pointer、wheel は種別ごとに分離し、対象外 HID を観測した種別は `associationWindow` が満了するまで隔離します。隔離中は対象候補も通常入力として通し、対象候補は bounded queue から 1 回だけ消費します。
+ジェスチャーボタン解放は、受理済みの対象押下だけが解放待ちを作り、対象 HID 解放候補がある場合だけジェスチャー終了として処理します。HID 証拠より event tap 解放が先着した場合は通常入力として通し、内部状態をキャンセルします。対象デバイス切断時も進行中ジェスチャーと慣性をキャンセルします。
 
 `gesture.acceleration.isEnabled` は速度に応じた加速度倍率を有効化します。
 `thresholdVelocity` を超えた速度から倍率が上がり、`exponent` でカーブ、`maximumMultiplier` で最大倍率を調整します。

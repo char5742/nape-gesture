@@ -29,6 +29,12 @@ final class NapeGestureDaemon {
         actionExecutor = GestureActionExecutor(bindings: configuration.bindings)
         recognizer = GestureRecognizer(configuration: configuration)
         momentum = MomentumEngine(configuration: configuration.momentum)
+        hidInputMonitor?.onTargetDeviceRemoval = { [weak self] in
+            self?.handleTargetDeviceRemoval()
+        }
+        hidInputMonitor?.onAssociationAmbiguity = { [weak self] in
+            self?.handleAssociationAmbiguity()
+        }
     }
 
     deinit {
@@ -110,8 +116,17 @@ final class NapeGestureDaemon {
             return safetyDecision.shouldSuppressOriginalEvent ? nil : Unmanaged.passUnretained(event)
         }
 
-        if let targetGate, !targetGate.shouldHandle(input) {
-            return Unmanaged.passUnretained(event)
+        if let targetGate {
+            let gateDecision = targetGate.decision(for: input)
+            if gateDecision.shouldCancelGesture {
+                cancelGestureAndMomentum(
+                    at: input.time,
+                    logMessage: "対象外 HID との入力競合を検出したため、進行中のジェスチャーと慣性をキャンセルしました。"
+                )
+            }
+            if !gateDecision.shouldHandle {
+                return Unmanaged.passUnretained(event)
+            }
         }
 
         let decision = recognizer.handle(input)
@@ -239,6 +254,36 @@ final class NapeGestureDaemon {
             writeOperationalLog("キルスイッチによりジェスチャーを無効化しました。再開するには常駐UIの停止/開始、またはプロセス再起動を行ってください。")
         }
         return decision
+    }
+
+    private func handleTargetDeviceRemoval() {
+        cancelGestureAndMomentum(
+            at: ProcessInfo.processInfo.systemUptime,
+            logMessage: "対象デバイスの切断を検出したため、進行中のジェスチャーと慣性をキャンセルしました。"
+        )
+    }
+
+    private func handleAssociationAmbiguity() {
+        cancelGestureAndMomentum(
+            at: ProcessInfo.processInfo.systemUptime,
+            logMessage: "対象外 HID との入力競合を検出したため、進行中のジェスチャーと慣性をキャンセルしました。"
+        )
+    }
+
+    private func cancelGestureAndMomentum(at time: TimeInterval, logMessage: String) {
+        let hadActiveGesture = !recognizer.isIdle
+        let hadMomentum = momentumTimer != nil
+        guard hadActiveGesture || hadMomentum else {
+            return
+        }
+        cancelMomentum()
+
+        if hadActiveGesture {
+            let decision = recognizer.handle(.cancel(time: time))
+            handle(commands: decision.commands, allowsMomentumStart: false)
+        }
+
+        writeOperationalLog(logMessage)
     }
 
     private func writeOperationalLog(_ message: String) {

@@ -121,17 +121,26 @@ public enum InputAssociationAnalyzer {
             let targetCompatibleRecords = usageCompatibleRecords.filter { record in
                 targetStableID.map { record.device.stableID == $0 } ?? true
             }
-            let nearestUsageCompatibleHID = nearestHIDRecord(to: eventTime, in: usageCompatibleRecords)
-            let nearestTargetMismatchHID = nearestUsageCompatibleHID.flatMap { record -> HIDInputLogRecord? in
-                guard let targetStableID, record.device.stableID != targetStableID else {
-                    return nil
+            let nearestTargetMismatchHID = targetStableID.flatMap { targetStableID in
+                usageCompatibleRecords.last { record in
+                    record.device.stableID != targetStableID
+                        && isWithinAssociationWindow(
+                            recordTime: record.time,
+                            eventTime: eventTime,
+                            associationWindowSeconds: associationWindowSeconds
+                        )
                 }
-                return record
             }
 
-            guard let hid = nearestHIDRecord(to: eventTime, in: targetCompatibleRecords) else {
+            guard let hid = latestHIDRecord(atOrBefore: eventTime, in: targetCompatibleRecords) else {
                 let nearestIncompatibleHID = usageCompatibleRecords.isEmpty
-                    ? nearestHIDRecord(to: eventTime, in: sortedHIDRecords)
+                    ? sortedHIDRecords.last { record in
+                        isWithinAssociationWindow(
+                            recordTime: record.time,
+                            eventTime: eventTime,
+                            associationWindowSeconds: associationWindowSeconds
+                        )
+                    }
                     : nil
                 return InputAssociationEventMatch(
                     event: event,
@@ -140,13 +149,13 @@ public enum InputAssociationAnalyzer {
                     isWithinWindow: false,
                     expectedHIDUsages: expectedHIDUsages,
                     nearestIncompatibleHID: nearestIncompatibleHID,
-                    nearestIncompatibleTimeDifferenceSeconds: nearestIncompatibleHID.map { abs(eventTime - $0.time) },
+                    nearestIncompatibleTimeDifferenceSeconds: nearestIncompatibleHID.map { eventTime - $0.time },
                     nearestTargetMismatchHID: nearestTargetMismatchHID,
-                    nearestTargetMismatchTimeDifferenceSeconds: nearestTargetMismatchHID.map { abs(eventTime - $0.time) }
+                    nearestTargetMismatchTimeDifferenceSeconds: nearestTargetMismatchHID.map { eventTime - $0.time }
                 )
             }
 
-            let timeDifference = abs(eventTime - hid.time)
+            let timeDifference = eventTime - hid.time
             return InputAssociationEventMatch(
                 event: event,
                 hid: hid,
@@ -154,7 +163,7 @@ public enum InputAssociationAnalyzer {
                 isWithinWindow: timeDifference <= associationWindowSeconds,
                 expectedHIDUsages: expectedHIDUsages,
                 nearestTargetMismatchHID: nearestTargetMismatchHID,
-                nearestTargetMismatchTimeDifferenceSeconds: nearestTargetMismatchHID.map { abs(eventTime - $0.time) }
+                nearestTargetMismatchTimeDifferenceSeconds: nearestTargetMismatchHID.map { eventTime - $0.time }
             )
         }
 
@@ -201,7 +210,10 @@ public enum InputAssociationAnalyzer {
         return TimeInterval(timestamp)
     }
 
-    private static func nearestHIDRecord(to time: TimeInterval, in records: [HIDInputLogRecord]) -> HIDInputLogRecord? {
+    private static func latestHIDRecord(
+        atOrBefore time: TimeInterval,
+        in records: [HIDInputLogRecord]
+    ) -> HIDInputLogRecord? {
         var lowerBound = 0
         var upperBound = records.count
 
@@ -214,21 +226,16 @@ public enum InputAssociationAnalyzer {
             }
         }
 
-        let previous = lowerBound > 0 ? records[lowerBound - 1] : nil
-        let next = lowerBound < records.count ? records[lowerBound] : nil
+        return lowerBound > 0 ? records[lowerBound - 1] : nil
+    }
 
-        switch (previous, next) {
-        case let (previous?, next?):
-            let previousDistance = abs(time - previous.time)
-            let nextDistance = abs(next.time - time)
-            return previousDistance <= nextDistance ? previous : next
-        case let (previous?, nil):
-            return previous
-        case let (nil, next?):
-            return next
-        case (nil, nil):
-            return nil
-        }
+    private static func isWithinAssociationWindow(
+        recordTime: TimeInterval,
+        eventTime: TimeInterval,
+        associationWindowSeconds: TimeInterval
+    ) -> Bool {
+        let elapsed = eventTime - recordTime
+        return elapsed >= 0 && elapsed <= associationWindowSeconds
     }
 
     private static func isUsageCompatible(_ hid: HIDInputLogRecord, with event: InputLogRecord) -> Bool {

@@ -1235,11 +1235,41 @@ func testHIDTargetActivityMapperIgnoresUnsupportedAndZeroMovementUsages() {
     expect(unsupportedButton == nil, "HID Button usage 0 は対象 button として採用しない")
 }
 
+func testHIDTargetActivityMapperFeedsScopedGateCandidates() {
+    var gate = TargetDeviceGateState(
+        configuration: TargetDeviceGateConfiguration(
+            activationButton: .button4,
+            associationWindow: 0.1
+        )
+    )
+    let target = HIDTargetActivityMapper.activity(
+        usagePage: HIDTargetActivityMapper.genericDesktopUsagePage,
+        usage: HIDTargetActivityMapper.xUsage,
+        integerValue: 3,
+        time: 1
+    )
+    let nonTarget = HIDTargetActivityMapper.activity(
+        usagePage: HIDTargetActivityMapper.genericDesktopUsagePage,
+        usage: HIDTargetActivityMapper.xUsage,
+        integerValue: 7,
+        time: 1.01
+    )
+
+    if let target {
+        gate.record(target, isTargetDevice: true)
+    }
+    if let nonTarget {
+        gate.record(nonTarget, isTargetDevice: false)
+    }
+
+    expect(!gate.shouldHandle(.move(deltaX: 7, deltaY: 0, time: 1.011)), "mapper 出力も device scope を維持して対象外同種入力を拒否する")
+}
+
 func testInputAssociationAnalyzerMeasuresWindowDistribution() {
     let hidRecords = [
+        makeHIDRecord(time: 0.85),
         makeHIDRecord(time: 2.0),
-        makeHIDRecord(time: 2.2),
-        makeHIDRecord(time: 3.0, usagePage: 1, usage: 56)
+        makeHIDRecord(time: 2.0, usagePage: 1, usage: 56)
     ]
     let eventRecords = [
         makeInputLogRecord(timestamp: 1_500_000_000, typeName: "mouseMoved"),
@@ -1267,9 +1297,9 @@ func testInputAssociationAnalyzerMeasuresWindowDistribution() {
     expect(analysis.withinWindowCount == 1, "associationWindow 内の件数を数える")
     expect(analysis.outsideWindowCount == 2, "associationWindow 外の件数を数える")
     expect(!analysis.hasValidAssociationWindowEvidence, "window 外があれば有効な紐づけ証跡として扱わない")
-    expectApproximatelyEqual(analysis.maximumTimeDifferenceSeconds, 0.65, "最大時刻差秒を出す")
-    expectApproximatelyEqual(analysis.p95TimeDifferenceSeconds, 0.65, "p95 時刻差秒を出す")
-    expectApproximatelyEqual(analysis.p99TimeDifferenceSeconds, 0.65, "p99 時刻差秒を出す")
+    expectApproximatelyEqual(analysis.maximumTimeDifferenceSeconds, 0.65, "最大方向付き時刻差秒を出す")
+    expectApproximatelyEqual(analysis.p95TimeDifferenceSeconds, 0.65, "p95 方向付き時刻差秒を出す")
+    expectApproximatelyEqual(analysis.p99TimeDifferenceSeconds, 0.65, "p99 方向付き時刻差秒を出す")
     expect(analysis.suggestedAssociationWindowSeconds >= analysis.p99TimeDifferenceSeconds, "推奨 associationWindow は p99 以上にする")
 }
 
@@ -1317,7 +1347,7 @@ func testInputAssociationAnalyzerKeepsZeroValueHIDReleaseEvents() {
     expectApproximatelyEqual(analysis.matches.first?.timeDifferenceSeconds, 0.02, "release の時刻差秒を算出する")
 }
 
-func testInputAssociationAnalyzerUsesNearestHIDByAbsoluteTimeDifference() {
+func testInputAssociationAnalyzerRejectsHIDAfterEventTimestamp() {
     let hidRecords = [
         makeHIDRecord(time: 5.0)
     ]
@@ -1332,9 +1362,10 @@ func testInputAssociationAnalyzerUsesNearestHIDByAbsoluteTimeDifference() {
         targetStableID: sampleDeviceIdentity().stableID
     )
 
-    expect(analysis.hidCandidateEventCount == 1, "イベント時刻より後の近い HID も時刻差判定に使う")
-    expect(analysis.withinWindowCount == 1, "前後どちらの HID でも associationWindow 内を判定する")
-    expectApproximatelyEqual(analysis.matches.first?.timeDifferenceSeconds, 0.02, "HID とイベントタップの絶対時刻差を算出する")
+    expect(analysis.hidCandidateEventCount == 0, "イベント時刻より後の HID を候補にしない")
+    expect(analysis.missingHIDCandidateEventCount == 1, "未来の HID しかない event tap 入力は候補なしとして数える")
+    expect(analysis.withinWindowCount == 0, "未来の HID を associationWindow 内へ数えない")
+    expect(analysis.matches.first?.timeDifferenceSeconds == nil, "未来の HID との絶対値差を出さない")
 }
 
 func testInputAssociationAnalyzerRejectsIncompatibleHIDUsage() {
@@ -1452,6 +1483,25 @@ func testInputAssociationAnalyzerRejectsCloserNonTargetHIDDevice() {
     expect(!analysis.hasValidAssociationWindowEvidence, "対象外互換 HID がより近いログは有効な紐づけ証跡として扱わない")
 }
 
+func testInputAssociationAnalyzerRejectsNonTargetBeforeNewerTarget() {
+    let analysis = InputAssociationAnalyzer.analyze(
+        hidRecords: [
+            makeHIDRecord(time: 2.0, device: secondaryDeviceIdentity(), usagePage: 1, usage: 48),
+            makeHIDRecord(time: 2.01, device: sampleDeviceIdentity(), usagePage: 1, usage: 48)
+        ],
+        eventTapRecords: [
+            makeInputLogRecord(timestamp: 2_020_000_000, typeName: "mouseMoved")
+        ],
+        associationWindowSeconds: 0.12,
+        targetStableID: sampleDeviceIdentity().stableID
+    )
+
+    expect(analysis.hidCandidateEventCount == 1, "新しい対象 HID は候補として保持する")
+    expect(analysis.withinWindowCount == 1, "対象 HID 自体は window 内として計測する")
+    expect(analysis.targetHIDDeviceMismatchEventCount == 1, "対象より前でも window 内の対象外同種 HID を quarantine 根拠として検出する")
+    expect(!analysis.hasValidAssociationWindowEvidence, "window 内に対象外同種 HID があれば対象の方が新しくても有効証跡にしない")
+}
+
 func testInputAssociationAnalyzerAcceptsSecondAndNanosecondTimestamps() {
     expectApproximatelyEqual(
         InputAssociationAnalyzer.timestampSeconds(fromEventTimestamp: 42),
@@ -1463,6 +1513,16 @@ func testInputAssociationAnalyzerAcceptsSecondAndNanosecondTimestamps() {
         42.5,
         "大きい timestamp は nanoseconds として秒へ変換する"
     )
+}
+
+func testMachAbsoluteTimeConverterUsesTimebaseRatio() {
+    let seconds = MachAbsoluteTimeConverter.seconds(
+        ticks: 24_000_000,
+        numerator: 125,
+        denominator: 3
+    )
+
+    expectApproximatelyEqual(seconds, 1, "Mach absolute time を timebase 比率で秒へ変換する")
 }
 
 func testScrollGenerationPlannerAutoPhases() {
@@ -1564,7 +1624,11 @@ func testTargetDeviceGateOnlyHandlesRecentTargetActivity() {
 
     gate.record(.pointer(deltaX: 1, deltaY: 0, time: 2))
     let targetDown = RawInputEvent.buttonDown(button: .button4, time: 2.05)
-    expect(gate.shouldHandle(targetDown), "対象デバイスの直近入力に続くジェスチャーボタンは処理する")
+    expect(!gate.shouldHandle(targetDown), "対象 pointer はジェスチャーボタン押下の根拠にしない")
+
+    gate.record(.buttonDown(button: .button4, time: 2.06))
+    expect(gate.shouldHandle(.buttonDown(button: .button4, time: 2.07)), "対象デバイスの同じボタン押下に続くジェスチャーボタンは処理する")
+    expect(!gate.shouldHandle(.buttonDown(button: .button4, time: 2.08)), "対象 HID ボタン押下は event tap ボタン押下へ一度だけ関連付ける")
 
     let staleMove = RawInputEvent.move(deltaX: 4, deltaY: 0, time: 3)
     expect(!gate.shouldHandle(staleMove), "対象デバイス入力が古い移動は処理しない")
@@ -1579,6 +1643,7 @@ func testTargetDeviceGateRequiresRecentTargetActivityWhileActivationButtonIsDown
     )
 
     gate.record(.buttonDown(button: .button4, time: 1))
+    expect(gate.shouldHandle(.buttonDown(button: .button4, time: 1.01)), "対象デバイスのジェスチャーボタン押下を処理する")
     expect(!gate.shouldHandle(.move(deltaX: 5, deltaY: 0, time: 1.03)), "対象デバイスのボタン押下だけでは、紐づけ秒内でも移動を処理しない")
     expect(!gate.shouldHandle(.wheel(deltaX: 0, deltaY: -3, time: 1.04)), "対象デバイスのボタン押下だけでは、紐づけ秒内でもホイールを処理しない")
     expect(!gate.shouldHandle(.move(deltaX: 5, deltaY: 0, time: 10)), "対象デバイスのジェスチャーボタン押下中でも直近の対象 HID 活動がない移動は処理しない")
@@ -1590,7 +1655,8 @@ func testTargetDeviceGateRequiresRecentTargetActivityWhileActivationButtonIsDown
     gate.record(.wheel(deltaX: 0, deltaY: -3, time: 10.05))
     expect(gate.shouldHandle(.wheel(deltaX: 0, deltaY: -3, time: 10.08)), "対象デバイスの直近 wheel に続くホイールは処理する")
 
-    expect(gate.shouldHandle(.buttonUp(button: .button4, time: 20)), "対象デバイスのジェスチャーボタンが active な間は、stuck 防止のため解放を通す")
+    gate.record(.buttonUp(button: .button4, time: 19.99))
+    expect(gate.shouldHandle(.buttonUp(button: .button4, time: 20)), "対象 HID 解放候補に続く event tap 解放を処理する")
     gate.record(.buttonUp(button: .button4, time: 20.01))
     expect(!gate.shouldHandle(.buttonUp(button: .button4, time: 20.02)), "処理済みのジェスチャーボタン解放は、後続の HID 解放で再び待機状態にしない")
     expect(!gate.shouldHandle(.move(deltaX: 5, deltaY: 0, time: 21)), "ボタン解放後しばらく経った移動は処理しない")
@@ -1607,13 +1673,138 @@ func testTargetDeviceGateConsumesActivationReleaseOnceAcrossHIDOrdering() {
     gate.record(.buttonDown(button: .button4, time: 1))
     expect(gate.shouldHandle(.buttonDown(button: .button4, time: 1.01)), "対象デバイスのジェスチャーボタン押下を処理する")
     gate.record(.buttonUp(button: .button4, time: 1.02))
-    expect(gate.shouldHandle(.buttonUp(button: .button4, time: 2)), "HID 解放が先に届いても、event tap 解放を一度だけ通して stuck を防ぐ")
-    expect(!gate.shouldHandle(.buttonUp(button: .button4, time: 2.01)), "消費済みの解放待ちは、次のジェスチャーボタン解放へ持ち越さない")
+    expect(gate.shouldHandle(.buttonUp(button: .button4, time: 1.03)), "HID 解放が先に届いた window 内の event tap 解放を一度だけ処理する")
+    expect(!gate.shouldHandle(.buttonUp(button: .button4, time: 1.04)), "消費済みの解放待ちは、次のジェスチャーボタン解放へ持ち越さない")
 
     gate.record(.buttonDown(button: .button4, time: 3))
-    expect(gate.shouldHandle(.buttonUp(button: .button4, time: 3.02)), "event tap 解放が HID 解放より先に届いても処理する")
+    expect(gate.shouldHandle(.buttonDown(button: .button4, time: 3.01)), "次の対象ジェスチャーボタン押下を処理する")
+    let earlyRelease = gate.decision(for: .buttonUp(button: .button4, time: 3.02))
+    expect(!earlyRelease.shouldHandle, "HID 証拠より先着した event tap 解放は対象外入力を守るため通常入力として通す")
+    expect(earlyRelease.shouldCancelGesture, "先着 event tap 解放は内部 gesture cancel で stuck を防ぐ")
+    expect(!gate.isWaitingForActivationButtonRelease, "先着 event tap 解放後は release 待ちを解除する")
     gate.record(.buttonUp(button: .button4, time: 3.03))
-    expect(!gate.shouldHandle(.buttonUp(button: .button4, time: 4)), "event tap 解放を先に処理済みなら、後続の HID 解放で再び待機状態にしない")
+    expect(!gate.shouldHandle(.buttonUp(button: .button4, time: 3.04)), "先着 event tap 解放で cancel 済みなら、後続 HID 解放を再接続しない")
+
+    gate.record(.buttonUp(button: .button4, time: 5))
+    expect(!gate.shouldHandle(.buttonUp(button: .button4, time: 5.01)), "受理済みの event tap 押下がない孤立 HID 解放は、将来の解放待ちを作らない")
+}
+
+func testTargetDeviceGateKeepsAssociationKindsSeparate() {
+    var gate = TargetDeviceGateState(
+        configuration: TargetDeviceGateConfiguration(
+            activationButton: .button4,
+            associationWindow: 0.1
+        )
+    )
+
+    gate.record(.pointer(deltaX: 4, deltaY: 0, time: 1))
+    expect(gate.shouldHandle(.move(deltaX: 4, deltaY: 0, time: 1.01)), "対象 pointer に続く move を処理する")
+    expect(!gate.shouldHandle(.move(deltaX: 4, deltaY: 0, time: 1.015)), "対象 pointer 候補を複数の event tap move へ再利用しない")
+    expect(!gate.shouldHandle(.wheel(deltaX: 0, deltaY: -1, time: 1.02)), "対象 pointer で別デバイス wheel を許可しない")
+    expect(!gate.shouldHandle(.buttonDown(button: .button4, time: 1.03)), "対象 pointer で別デバイス activation button を許可しない")
+
+    gate.record(.wheel(deltaX: 0, deltaY: -1, time: 2))
+    expect(gate.shouldHandle(.wheel(deltaX: 0, deltaY: -1, time: 2.01)), "対象 wheel に続く wheel を処理する")
+    expect(!gate.shouldHandle(.wheel(deltaX: 0, deltaY: -1, time: 2.015)), "対象 wheel 候補を複数の event tap wheel へ再利用しない")
+    expect(!gate.shouldHandle(.move(deltaX: 4, deltaY: 0, time: 2.02)), "対象 wheel で別デバイス move を許可しない")
+    expect(!gate.shouldHandle(.buttonDown(button: .button4, time: 2.03)), "対象 wheel で別デバイス activation button を許可しない")
+
+    gate.record(.buttonDown(button: .left, time: 3))
+    expect(!gate.shouldHandle(.buttonDown(button: .button4, time: 3.01)), "対象の別ボタン押下で activation button を許可しない")
+}
+
+func testTargetDeviceGateRejectsAmbiguousSameKindActivity() {
+    var gate = TargetDeviceGateState(
+        configuration: TargetDeviceGateConfiguration(
+            activationButton: .button4,
+            associationWindow: 0.1
+        )
+    )
+
+    gate.record(.pointer(deltaX: 4, deltaY: 0, time: 1), isTargetDevice: true)
+    let nonTargetConflict = gate.record(.pointer(deltaX: 7, deltaY: 0, time: 1.01), isTargetDevice: false)
+    expect(nonTargetConflict.shouldCancelGesture, "対象外同種 HID は進行中の慣性も停止できる cancel 要求を返す")
+    expect(!gate.shouldHandle(.move(deltaX: 7, deltaY: 0, time: 1.011)), "対象外 pointer が近い同種競合は通常 move として通す")
+
+    gate.record(.pointer(deltaX: 7, deltaY: 0, time: 2), isTargetDevice: false)
+    let quarantinedTarget = gate.record(.pointer(deltaX: 4, deltaY: 0, time: 2.01), isTargetDevice: true)
+    expect(quarantinedTarget.shouldCancelGesture, "quarantine 中の対象 HID も進行中出力の cancel 要求を返す")
+    expect(!gate.shouldHandle(.move(deltaX: 4, deltaY: 0, time: 2.011)), "対象外 pointer の quarantine 中は近い対象 pointer も通常入力として通す")
+    gate.record(.pointer(deltaX: 4, deltaY: 0, time: 2.11), isTargetDevice: true)
+    expect(gate.shouldHandle(.move(deltaX: 4, deltaY: 0, time: 2.111)), "quarantine 満了後の対象 pointer は処理する")
+
+    gate.record(.wheel(deltaX: 0, deltaY: -1, time: 3), isTargetDevice: true)
+    gate.record(.wheel(deltaX: 0, deltaY: -2, time: 3), isTargetDevice: false)
+    expect(!gate.shouldHandle(.wheel(deltaX: 0, deltaY: -1, time: 3.01)), "同距離の target / non-target wheel は曖昧として通常入力へ通す")
+
+    gate.record(.buttonDown(button: .button4, time: 4), isTargetDevice: true)
+    gate.record(.buttonDown(button: .button4, time: 4.01), isTargetDevice: false)
+    expect(!gate.shouldHandle(.buttonDown(button: .button4, time: 4.011)), "対象外 activation button が近い競合ではジェスチャーを開始しない")
+
+    gate.record(.buttonDown(button: .button4, time: 5), isTargetDevice: false)
+    gate.record(.buttonDown(button: .button4, time: 5.01), isTargetDevice: true)
+    expect(!gate.shouldHandle(.buttonDown(button: .button4, time: 5.011)), "対象外 activation button の quarantine 中はジェスチャーを開始しない")
+
+    gate.record(.buttonDown(button: .button4, time: 5.11), isTargetDevice: true)
+    expect(gate.shouldHandle(.buttonDown(button: .button4, time: 5.111)), "quarantine 満了後の対象 activation button でジェスチャーを開始する")
+
+    let ambiguity = gate.record(.buttonUp(button: .button4, time: 5.12), isTargetDevice: false)
+    expect(ambiguity.shouldCancelGesture, "対象ジェスチャー中の対象外同種 HID は即時 cancel を要求する")
+    expect(!gate.isWaitingForActivationButtonRelease, "対象外同種 HID の競合後は release 待ちを解除する")
+    expect(!gate.shouldHandle(.buttonUp(button: .button4, time: 5.121)), "競合後の対象外 activation button 解放は通常入力として通す")
+
+    gate.record(.buttonUp(button: .button4, time: 5.13), isTargetDevice: true)
+    expect(!gate.shouldHandle(.buttonUp(button: .button4, time: 5.131)), "cancel 済みジェスチャーへ後続の対象解放を再接続しない")
+
+    gate.record(.buttonDown(button: .button4, time: 6), isTargetDevice: true)
+    expect(gate.shouldHandle(.buttonDown(button: .button4, time: 6.01)), "非 activation ボタン競合テスト前に対象ジェスチャーを開始する")
+    let otherButtonConflict = gate.record(.buttonDown(button: .left, time: 6.02), isTargetDevice: false)
+    expect(otherButtonConflict.shouldCancelGesture, "対象外の非 activation ボタンも進行中ジェスチャーと慣性の cancel を要求する")
+    expect(!gate.isWaitingForActivationButtonRelease, "対象外の非 activation ボタン競合後は release 待ちを解除する")
+}
+
+func testTargetDeviceGateUsesDirectionalTimestampsAndBoundedCandidates() {
+    var gate = TargetDeviceGateState(
+        configuration: TargetDeviceGateConfiguration(
+            activationButton: .button4,
+            associationWindow: 0.1
+        )
+    )
+
+    gate.record(.pointer(deltaX: 1, deltaY: 0, time: 10))
+    expect(!gate.shouldHandle(.move(deltaX: 1, deltaY: 0, time: 9.99)), "HID より前の timestamp を abs 差だけで対象 move にしない")
+    expect(gate.shouldHandle(.move(deltaX: 1, deltaY: 0, time: 10.01)), "早着 event で未消費の対象候補は後続 event に関連付ける")
+
+    gate.record(.pointer(deltaX: 1, deltaY: 0, time: 11))
+    gate.record(.pointer(deltaX: 0, deltaY: 1, time: 11))
+    expect(gate.shouldHandle(.move(deltaX: 1, deltaY: 1, time: 11.01)), "同じ HID report timestamp の X / Y を一つの候補 cohort として扱う")
+    expect(!gate.shouldHandle(.move(deltaX: 1, deltaY: 1, time: 11.02)), "同一 report cohort を二つ目の event tap move へ再利用しない")
+
+    for index in 0...32 {
+        gate.record(.pointer(deltaX: 1, deltaY: 0, time: 20 + Double(index) * 0.001))
+    }
+    expect(!gate.shouldHandle(.move(deltaX: 1, deltaY: 0, time: 20.04)), "未消費候補 overflow は曖昧入力として fail-open にする")
+    gate.record(.pointer(deltaX: 1, deltaY: 0, time: 20.14))
+    expect(gate.shouldHandle(.move(deltaX: 1, deltaY: 0, time: 20.141)), "overflow quarantine 満了後は新しい対象候補を処理する")
+}
+
+func testTargetDeviceGateCancelClearsAssociationState() {
+    var gate = TargetDeviceGateState(
+        configuration: TargetDeviceGateConfiguration(
+            activationButton: .button4,
+            associationWindow: 0.1
+        )
+    )
+
+    gate.record(.buttonDown(button: .button4, time: 1))
+    expect(gate.shouldHandle(.buttonDown(button: .button4, time: 1.01)), "cancel 前の対象ボタン押下を処理する")
+    gate.record(.pointer(deltaX: 3, deltaY: 0, time: 1.02))
+
+    expect(gate.shouldHandle(.cancel(time: 1.03)), "cancel を状態復旧として処理する")
+    expect(gate.activeButtons.isEmpty, "cancel で対象 HID の押下状態を消去する")
+    expect(!gate.isWaitingForActivationButtonRelease, "cancel で event tap 解放待ちを消去する")
+    expect(!gate.shouldHandle(.buttonUp(button: .button4, time: 1.04)), "cancel 後の activation button 解放をジェスチャーへ渡さない")
+    expect(!gate.shouldHandle(.move(deltaX: 3, deltaY: 0, time: 1.05)), "cancel 前の対象 pointer を後続 move へ持ち越さない")
 }
 
 func testTargetDeviceGateKeepsCancelButRejectsNonActivationButtonsWhileActive() {
@@ -1644,7 +1835,7 @@ func testTargetDeviceGateUsesAssociationWindowFromSettings() {
     let configuration = TargetDeviceGateConfiguration(settings: settings)
     var gate = TargetDeviceGateState(configuration: configuration)
 
-    gate.record(.pointer(deltaX: 1, deltaY: 0, time: 2))
+    gate.record(.buttonDown(button: .button5, time: 2))
 
     expect(configuration.activationButton == .button5, "設定のジェスチャーボタンを gate に反映する")
     expect(configuration.associationWindow == 0.04, "設定の対象入力紐づけ秒を gate に反映する")
@@ -2354,23 +2545,30 @@ testHIDInputLogAnalyzerGroupsByDeviceAndUsage()
 testHIDTargetActivityMapperMapsButtonPressAndRelease()
 testHIDTargetActivityMapperMapsPointerAndWheel()
 testHIDTargetActivityMapperIgnoresUnsupportedAndZeroMovementUsages()
+testHIDTargetActivityMapperFeedsScopedGateCandidates()
 testInputAssociationAnalyzerMeasuresWindowDistribution()
 testInputAssociationAnalyzerCountsUnmatchedWhenHIDLogIsEmpty()
 testInputAssociationAnalyzerKeepsZeroValueHIDReleaseEvents()
-testInputAssociationAnalyzerUsesNearestHIDByAbsoluteTimeDifference()
+testInputAssociationAnalyzerRejectsHIDAfterEventTimestamp()
 testInputAssociationAnalyzerRejectsIncompatibleHIDUsage()
 testInputAssociationAnalyzerRejectsRuntimeUnsupportedACPan()
 testInputAssociationAnalyzerRejectsButtonUsageMismatch()
 testInputAssociationAnalyzerAcceptsCanonicalButtonUsageMapping()
 testInputAssociationAnalyzerRejectsSingleNonTargetHIDDevice()
 testInputAssociationAnalyzerRejectsCloserNonTargetHIDDevice()
+testInputAssociationAnalyzerRejectsNonTargetBeforeNewerTarget()
 testInputAssociationAnalyzerAcceptsSecondAndNanosecondTimestamps()
+testMachAbsoluteTimeConverterUsesTimebaseRatio()
 testScrollGenerationPlannerAutoPhases()
 testScrollGenerationPlannerPhaseOverrideAndMomentum()
 testScrollEventPhaseEncoderSeparatesScrollAndMomentumPhases()
 testTargetDeviceGateOnlyHandlesRecentTargetActivity()
 testTargetDeviceGateRequiresRecentTargetActivityWhileActivationButtonIsDown()
 testTargetDeviceGateConsumesActivationReleaseOnceAcrossHIDOrdering()
+testTargetDeviceGateKeepsAssociationKindsSeparate()
+testTargetDeviceGateRejectsAmbiguousSameKindActivity()
+testTargetDeviceGateUsesDirectionalTimestampsAndBoundedCandidates()
+testTargetDeviceGateCancelClearsAssociationState()
 testTargetDeviceGateKeepsCancelButRejectsNonActivationButtonsWhileActive()
 testTargetDeviceGateUsesAssociationWindowFromSettings()
 testTargetDeviceGatePassesThroughNonTargetClickDragAndWheel()

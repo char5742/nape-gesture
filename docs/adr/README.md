@@ -41,6 +41,7 @@
 | [ADR-0032](0032-reference-target-foreground-capture.md) | Reference Target App は foreground capture 経路を証跡化する | runtime event、Reference Target App、foreground capture、postToPid |
 | [ADR-0033](0033-kill-switch-pending-release-suppression.md) | キルスイッチ後も進行中ジェスチャーの release は抑制する | Issue #12、kill-switch、activation button、元入力抑制 |
 | [ADR-0034](0034-hid-target-activity-mapper.md) | HID usage から対象デバイス活動への変換を純粋ロジックに分離する | Issue #4、Issue #5、HID、TargetDeviceGate |
+| [ADR-0035](0035-runtime-target-input-disambiguation.md) | Runtime で対象・対象外 HID の同種入力を識別する | Issue #5、HID、event tap、通常入力通過、デバイス切断 |
 
 ## 追加時の確認
 
