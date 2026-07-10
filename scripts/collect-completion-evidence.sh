@@ -154,6 +154,8 @@ check_sample_cpu_sleep_smoke_json() {
   resolved_path=$(/usr/bin/plutil -extract resolvedExecutablePath raw -o - "$json_path")
   report_start_token=$(/usr/bin/plutil -extract processStartToken raw -o - "$json_path")
   first_sample_start_token=$(/usr/bin/plutil -extract samples.0.processStartToken raw -o - "$json_path")
+  report_pidversion=$(/usr/bin/plutil -extract processIDVersion raw -o - "$json_path")
+  first_sample_pidversion=$(/usr/bin/plutil -extract samples.0.processIDVersion raw -o - "$json_path")
   sample_count=$(/usr/bin/plutil -extract sampleCount raw -o - "$json_path")
   average_cpu=$(/usr/bin/plutil -extract averagePercentOfOneCore raw -o - "$json_path")
 
@@ -164,6 +166,8 @@ check_sample_cpu_sleep_smoke_json() {
     [ "$(/usr/bin/plutil -extract executableIdentityMatched raw -o - "$json_path")" = "true" ] &&
     [ "$(/usr/bin/plutil -extract processIdentityStable raw -o - "$json_path")" = "true" ] &&
     [ "$report_start_token" = "$first_sample_start_token" ] &&
+    [ -n "$report_pidversion" ] &&
+    [ "$report_pidversion" = "$first_sample_pidversion" ] &&
     [ "$(/usr/bin/plutil -extract samples.0.resolvedExecutablePath raw -o - "$json_path")" = "$expected_path" ] &&
     [ "$(/usr/bin/plutil -extract samples.0.executableIdentityMatched raw -o - "$json_path")" = "true" ] &&
     [ "$sample_count" -gt 0 ] &&
@@ -203,7 +207,7 @@ run_combined_success \
   .build/debug/nape-gesture-core-tests
 
 run_combined_success \
-  "sample-cpu 実行主体同一性テスト" \
+  "sample-cpu PID 境界・実行主体同一性テスト" \
   "$build_dir/sample-cpu-identity-tests.log" \
   "sh scripts/test-sample-cpu.sh" \
   sh scripts/test-sample-cpu.sh
@@ -375,7 +379,7 @@ run_split_success \
 run_combined_success \
   "sample-cpu JSON field check" \
   "$doctor_dir/sample-cpu-json-field-check.log" \
-  "plutil で schemaVersion / processCpuSampling / averagePercentOfOneCore / expectedExecutablePath / resolvedExecutablePath / executableIdentityMatched / processStartToken / processIdentityStable / baseline を検査" \
+  "plutil で schemaVersion / processCpuSampling / averagePercentOfOneCore / expectedExecutablePath / resolvedExecutablePath / executableIdentityMatched / processStartToken / processIDVersion / processIdentityStable / baseline を検査" \
   check_sample_cpu_sleep_smoke_json "$doctor_dir/sample-cpu-idle-smoke.json"
 
 run_combined_success \

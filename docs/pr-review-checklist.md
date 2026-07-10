@@ -33,8 +33,9 @@
 - runtime 性能ログを AppKit 受信や画面反映の証跡として扱っていない
 - 常駐 CPU 使用率を完了扱いにする場合、日常利用と同じ executable を直接起動した `$!` と絶対パスを `sample-cpu --pid ... --expected-executable ... --json --assert-baseline` に渡した結果が保存されている。GUI runtime は `.build/NapeGesture.app/Contents/MacOS/nape-gesture` 自身である
 - 常駐 CPU の PID 確定に、同名別プロセスを選び得る `pgrep`、launcher の PID になり得る `open` / `swift run` を使っていない
-- `sample-cpu` の `expectedExecutablePath` と `resolvedExecutablePath` が一致し、`executableIdentityMatched` と `processIdentityStable` と `baseline.passed` が `true`、report と各 sample の `processStartToken` が同じである
-- 正しい `/bin/sleep`、誤った expected executable、sleep を待つ shell wrapper、途中 `exec`、identity JSON fields の回帰テストが通っている
+- `sample-cpu` の `expectedExecutablePath` と `resolvedExecutablePath` が一致し、`executableIdentityMatched` と `processIdentityStable` と `baseline.passed` が `true`、report と各 sample の `processStartToken` と `processIDVersion` が同じである。`schemaVersion: 1` と既存キーも維持されている
+- audit token の PID 一致を検証し、取得した Mach task name port を全経路で deallocate し、取得不能を fail closed にしている。libbsm のリンクは `nape-gesture` executable target だけである
+- 正しい `/bin/sleep`、誤った expected executable、sleep を待つ shell wrapper、path が変わる `/bin/sh` の途中 `exec`、同一 `/bin/bash` path の反復 `exec`、`2147483648` の PID 上限超過、identity JSON fields の回帰テストが通っている
 - completion evidence の短時間 `sample-cpu` smoke を、日常利用時の常駐 CPU 完了証跡として扱っていない
 - 閾値超過時に調整した設定値や生成パラメータが、ログと benchmark の再測定で確認されている
 

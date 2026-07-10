@@ -21,7 +21,8 @@ let package = Package(
                 .linkedFramework("ApplicationServices"),
                 .linkedFramework("AppKit"),
                 .linkedFramework("Carbon"),
-                .linkedFramework("IOKit")
+                .linkedFramework("IOKit"),
+                .linkedLibrary("bsm")
             ]
         ),
         .executableTarget(

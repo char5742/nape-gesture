@@ -10,6 +10,8 @@ case "$tool_path" in
   /*) ;;
   *) tool_path="$PWD/$tool_path" ;;
 esac
+script_directory=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+self_exec_fixture="$script_directory/fixtures/sample-cpu-self-exec.sh"
 
 if [ ! -x "$tool_path" ]; then
   printf '%s\n' "sample-cpu テスト対象が見つからないか実行できません: $tool_path" >&2
@@ -63,6 +65,26 @@ json_value() {
 trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
 
+if [ ! -r "$self_exec_fixture" ]; then
+  fail "同一 path exec fixture を読み取れません: $self_exec_fixture"
+fi
+
+if "$tool_path" sample-cpu \
+  --pid 2147483648 \
+  --expected-executable /bin/sleep \
+  --duration 0.1 \
+  --interval 0.1 \
+  --json \
+  > "$temporary_directory/pid-overflow.stdout.log" \
+  2> "$temporary_directory/pid-overflow.stderr.log"; then
+  fail "pid_t の正範囲を超える --pid が合格しました"
+fi
+grep -Fq -- '--pid の値が不正です: 2147483648' "$temporary_directory/pid-overflow.stderr.log" \
+  || fail "pid_t 上限超過が日本語の invalidValue になっていません"
+if grep -Fq 'Fatal error' "$temporary_directory/pid-overflow.stderr.log"; then
+  fail "pid_t 上限超過で Fatal error が発生しました"
+fi
+
 /bin/sleep 5 &
 correct_pid=$!
 remember_child "$correct_pid"
@@ -106,11 +128,18 @@ stop_child "$correct_pid"
   || fail "正しい /bin/sleep の baseline.passed が true ではありません"
 [ "$(json_value "$temporary_directory/correct.json" sampleCount)" -gt 0 ] \
   || fail "正しい /bin/sleep の CPU sample がありません"
+[ "$(json_value "$temporary_directory/correct.json" schemaVersion)" = "1" ] \
+  || fail "sample-cpu の schemaVersion: 1 が維持されていません"
 correct_start_token=$(json_value "$temporary_directory/correct.json" processStartToken)
 [ -n "$correct_start_token" ] \
   || fail "processStartToken が JSON にありません"
 [ "$correct_start_token" = "$(json_value "$temporary_directory/correct.json" samples.0.processStartToken)" ] \
   || fail "report と sample の processStartToken が一致しません"
+correct_pidversion=$(json_value "$temporary_directory/correct.json" processIDVersion)
+[ -n "$correct_pidversion" ] \
+  || fail "processIDVersion が JSON にありません"
+[ "$correct_pidversion" = "$(json_value "$temporary_directory/correct.json" samples.0.processIDVersion)" ] \
+  || fail "report と sample の processIDVersion が一致しません"
 
 /bin/sleep 5 &
 wrong_expected_pid=$!
@@ -231,7 +260,60 @@ stop_child "$identity_change_pid"
   || fail "途中 exec 後の resolvedExecutablePath が /bin/sleep ではありません"
 [ "$(json_value "$temporary_directory/identity-change.json" baseline.passed)" = "false" ] \
   || fail "途中 exec の baseline.passed が false ではありません"
-grep -Fq '実行ファイルが変化しました' "$temporary_directory/identity-change.stderr.log" \
-  || fail "途中 exec のエラー理由が不明確です"
+grep -Fq 'pidversion が変化しました' "$temporary_directory/identity-change.stderr.log" \
+  || fail "path が変わる途中 exec のエラー理由が pidversion を示していません"
 
-printf '%s\n' "sample-cpu 実行主体同一性テスト: 合格"
+same_path_ready="$temporary_directory/same-path-exec.ready"
+same_path_trigger="$temporary_directory/same-path-exec.trigger"
+NAPE_SAMPLE_CPU_SELF_EXEC_COUNT=0 /bin/bash "$self_exec_fixture" \
+  "$same_path_ready" "$same_path_trigger" \
+  > "$temporary_directory/same-path-exec-process.stdout.log" \
+  2> "$temporary_directory/same-path-exec-process.stderr.log" &
+same_path_pid=$!
+remember_child "$same_path_pid"
+
+ready_attempt=0
+while [ ! -f "$same_path_ready" ]; do
+  ready_attempt=$((ready_attempt + 1))
+  if [ "$ready_attempt" -ge 100 ]; then
+    fail "同一 path exec fixture が準備完了になりません"
+  fi
+  /bin/sleep 0.01
+done
+
+/bin/sh -c '/bin/sleep 0.5; : > "$1"' sh "$same_path_trigger" &
+same_path_trigger_pid=$!
+remember_child "$same_path_trigger_pid"
+"$tool_path" sample-cpu \
+  --pid "$same_path_pid" \
+  --expected-executable /bin/bash \
+  --duration 2 \
+  --interval 0.2 \
+  --mode idle \
+  --json \
+  --assert-baseline \
+  > "$temporary_directory/same-path-exec.json" \
+  2> "$temporary_directory/same-path-exec.stderr.log"
+same_path_status=$?
+wait "$same_path_trigger_pid" 2>/dev/null || true
+forget_child "$same_path_trigger_pid"
+if [ "$same_path_status" -eq 0 ]; then
+  fail "同一 executable path へ exec した PID が同じ実行主体として合格しました"
+fi
+stop_child "$same_path_pid"
+
+same_path_expected=$(json_value "$temporary_directory/same-path-exec.json" expectedExecutablePath)
+[ "$same_path_expected" = "$(json_value "$temporary_directory/same-path-exec.json" resolvedExecutablePath)" ] \
+  || fail "同一 path exec テストで executable path が変化しました"
+[ "$(json_value "$temporary_directory/same-path-exec.json" executableIdentityMatched)" = "false" ] \
+  || fail "同一 path exec の executableIdentityMatched が false ではありません"
+[ "$(json_value "$temporary_directory/same-path-exec.json" processIdentityStable)" = "false" ] \
+  || fail "同一 path exec の processIdentityStable が false ではありません"
+[ "$(json_value "$temporary_directory/same-path-exec.json" baseline.passed)" = "false" ] \
+  || fail "同一 path exec の baseline.passed が false ではありません"
+[ "$(json_value "$temporary_directory/same-path-exec.json" sampleCount)" -gt 0 ] \
+  || fail "同一 path exec 前の有効な CPU sample がありません"
+grep -Fq 'pidversion が変化しました' "$temporary_directory/same-path-exec.stderr.log" \
+  || fail "同一 path exec のエラー理由が pidversion を示していません"
+
+printf '%s\n' "sample-cpu PID 境界・実行主体同一性テスト: 合格"

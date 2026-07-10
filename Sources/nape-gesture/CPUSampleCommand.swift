@@ -9,7 +9,7 @@ struct CPUSampleCommand {
     }
 
     func run() throws {
-        let pid = try intValue("--pid")
+        let pid = try pidValue("--pid")
         let expectedExecutablePath = try SettingsStore.requiredValue(
             for: "--expected-executable",
             in: options
@@ -46,9 +46,9 @@ struct CPUSampleCommand {
         }
     }
 
-    private func intValue(_ name: String) throws -> Int {
+    private func pidValue(_ name: String) throws -> pid_t {
         let raw = try SettingsStore.requiredValue(for: name, in: options)
-        guard let value = Int(raw), value > 0 else {
+        guard let value = pid_t(raw), value > 0 else {
             throw ToolError.invalidValue(name, raw)
         }
         return value
@@ -116,7 +116,7 @@ private enum CPUSampleMode: String, Encodable {
 
 private enum CPUSampler {
     static func sample(
-        pid: Int,
+        pid: pid_t,
         expectedExecutablePath rawExpectedExecutablePath: String,
         duration: TimeInterval,
         interval: TimeInterval,
@@ -206,6 +206,7 @@ private enum CPUSampler {
                     cpuPercentOfOneCore: cpu,
                     resolvedExecutablePath: identityAfterSample.resolvedExecutablePath,
                     processStartToken: identityAfterSample.processStartToken,
+                    processIDVersion: identityAfterSample.processIDVersion,
                     executableIdentityMatched: true
                 )
             )
@@ -243,6 +244,7 @@ private enum CPUSampler {
             resolvedExecutablePath: resolvedExecutablePath,
             executableIdentityMatched: executableIdentityMatched,
             processStartToken: initialIdentity.processStartToken,
+            processIDVersion: initialIdentity.processIDVersion,
             processIdentityStable: processIdentityStable,
             requestedDurationSeconds: duration,
             sampleIntervalSeconds: interval,
@@ -279,7 +281,7 @@ private enum CPUSampler {
     }
 
     private static func inspectIdentity(
-        pid: Int,
+        pid: pid_t,
         expectedExecutablePath: String,
         initialIdentity: ProcessIdentitySnapshot,
         sampleNumber: Int,
@@ -321,7 +323,7 @@ private enum CPUSampler {
     }
 
     private static func identityChangeDescription(
-        pid: Int,
+        pid: pid_t,
         sampleNumber: Int,
         phase: String,
         expectedExecutablePath: String,
@@ -331,10 +333,13 @@ private enum CPUSampler {
         if observedIdentity.processStartToken != initialIdentity.processStartToken {
             return "sample \(sampleNumber) \(phase)に PID \(pid) の開始トークンが変化しました。PID 再利用の可能性があるため証跡として採用できません。initial=\(initialIdentity.processStartToken), observed=\(observedIdentity.processStartToken)"
         }
-        return "sample \(sampleNumber) \(phase)に PID \(pid) の実行ファイルが変化しました。expected=\(expectedExecutablePath), resolved=\(observedIdentity.resolvedExecutablePath)"
+        if observedIdentity.processIDVersion != initialIdentity.processIDVersion {
+            return "sample \(sampleNumber) \(phase)に PID \(pid) の pidversion が変化しました。同一 PID で exec または posix_spawn が発生したため証跡として採用できません。initial=\(initialIdentity.processIDVersion), observed=\(observedIdentity.processIDVersion)"
+        }
+        return "sample \(sampleNumber) \(phase)に PID \(pid) の実行ファイルパスが変化しました。expected=\(expectedExecutablePath), resolved=\(observedIdentity.resolvedExecutablePath)"
     }
 
-    private static func cpuPercent(pid: Int) throws -> Double? {
+    private static func cpuPercent(pid: pid_t) throws -> Double? {
         let output = try runPS(pid: pid, column: "%cpu=")
         let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
@@ -346,7 +351,7 @@ private enum CPUSampler {
         return value
     }
 
-    private static func processCommand(pid: Int) throws -> String {
+    private static func processCommand(pid: pid_t) throws -> String {
         let output = try runPS(pid: pid, column: "comm=")
         let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
@@ -355,7 +360,7 @@ private enum CPUSampler {
         return trimmed
     }
 
-    private static func runPS(pid: Int, column: String) throws -> String {
+    private static func runPS(pid: pid_t, column: String) throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/ps")
         process.arguments = ["-p", String(pid), "-o", column]
@@ -381,6 +386,12 @@ private enum CPUSampler {
 private struct ProcessIdentitySnapshot: Equatable {
     let resolvedExecutablePath: String
     let processStartToken: String
+    let processIDVersion: Int32
+}
+
+private struct ProcessAuditIdentity: Equatable {
+    let pid: pid_t
+    let processIDVersion: Int32
 }
 
 private enum ProcessIdentityResolver {
@@ -403,64 +414,156 @@ private enum ProcessIdentityResolver {
         return path
     }
 
-    static func snapshot(pid: Int) throws -> ProcessIdentitySnapshot {
+    static func snapshot(pid: pid_t) throws -> ProcessIdentitySnapshot {
+        let auditIdentityBeforePath = try processAuditIdentity(pid: pid)
         let startTokenBeforePath = try processStartToken(pid: pid)
         let executablePath = try resolvedExecutablePath(pid: pid)
         let startTokenAfterPath = try processStartToken(pid: pid)
+        let auditIdentityAfterPath = try processAuditIdentity(pid: pid)
 
         guard startTokenBeforePath == startTokenAfterPath else {
-            throw ProcessIdentityInspectionError.changedDuringInspection(
+            throw ProcessIdentityInspectionError.startTokenChangedDuringInspection(
                 pid: pid,
                 initialToken: startTokenBeforePath,
                 observedToken: startTokenAfterPath
             )
         }
+        guard auditIdentityBeforePath.processIDVersion == auditIdentityAfterPath.processIDVersion else {
+            throw ProcessIdentityInspectionError.processIDVersionChangedDuringInspection(
+                pid: pid,
+                initialVersion: auditIdentityBeforePath.processIDVersion,
+                observedVersion: auditIdentityAfterPath.processIDVersion
+            )
+        }
 
         return ProcessIdentitySnapshot(
             resolvedExecutablePath: executablePath,
-            processStartToken: startTokenAfterPath
+            processStartToken: startTokenAfterPath,
+            processIDVersion: auditIdentityAfterPath.processIDVersion
         )
     }
 
-    static func processIsAlive(pid: Int) -> Bool {
+    static func processIsAlive(pid: pid_t) -> Bool {
         errno = 0
-        if kill(Int32(pid), 0) == 0 {
+        if kill(pid, 0) == 0 {
             return true
         }
         return errno == EPERM
     }
 
-    private static func resolvedExecutablePath(pid: Int) throws -> String {
+    private static func processAuditIdentity(pid: pid_t) throws -> ProcessAuditIdentity {
+        let selfTask = mach_task_self_
+        var taskPort: mach_port_name_t = 0
+        let taskNameResult = task_name_for_pid(selfTask, pid, &taskPort)
+        defer {
+            if taskPort != 0 {
+                _ = mach_port_deallocate(selfTask, taskPort)
+            }
+        }
+
+        guard taskNameResult == KERN_SUCCESS else {
+            throw ProcessIdentityInspectionError.unavailable(
+                pid: pid,
+                operation: "audit token 用 task port 取得",
+                detail: machErrorDetail(taskNameResult)
+            )
+        }
+        guard taskPort != 0 else {
+            throw ProcessIdentityInspectionError.unavailable(
+                pid: pid,
+                operation: "audit token 用 task port 取得",
+                detail: "MACH_PORT_NULL が返されました"
+            )
+        }
+
+        var auditToken = audit_token_t()
+        let expectedCount = mach_msg_type_number_t(
+            MemoryLayout<audit_token_t>.size / MemoryLayout<natural_t>.size
+        )
+        var count = expectedCount
+        let taskInfoResult = withUnsafeMutablePointer(to: &auditToken) { pointer in
+            pointer.withMemoryRebound(to: integer_t.self, capacity: Int(expectedCount)) { infoPointer in
+                task_info(
+                    taskPort,
+                    task_flavor_t(TASK_AUDIT_TOKEN),
+                    infoPointer,
+                    &count
+                )
+            }
+        }
+        guard taskInfoResult == KERN_SUCCESS else {
+            throw ProcessIdentityInspectionError.unavailable(
+                pid: pid,
+                operation: "audit token 取得",
+                detail: machErrorDetail(taskInfoResult)
+            )
+        }
+        guard count == expectedCount else {
+            throw ProcessIdentityInspectionError.unavailable(
+                pid: pid,
+                operation: "audit token 取得",
+                detail: "返却要素数が不正です: expected=\(expectedCount), actual=\(count)"
+            )
+        }
+
+        let observedPID = audit_token_to_pid(auditToken)
+        guard observedPID == pid else {
+            throw ProcessIdentityInspectionError.auditTokenPIDMismatch(
+                requestedPID: pid,
+                observedPID: observedPID
+            )
+        }
+        return ProcessAuditIdentity(
+            pid: observedPID,
+            processIDVersion: audit_token_to_pidversion(auditToken)
+        )
+    }
+
+    private static func resolvedExecutablePath(pid: pid_t) throws -> String {
         var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN) * 4)
         errno = 0
-        let result = proc_pidpath(Int32(pid), &buffer, UInt32(buffer.count))
+        let result = proc_pidpath(pid, &buffer, UInt32(buffer.count))
         let errorCode = errno
         guard result > 0 else {
             throw ProcessIdentityInspectionError.unavailable(
                 pid: pid,
                 operation: "実行ファイルパス取得",
-                errorCode: errorCode
+                detail: posixErrorDetail(errorCode)
             )
         }
         return canonicalPath(String(cString: buffer))
     }
 
-    private static func processStartToken(pid: Int) throws -> String {
+    private static func processStartToken(pid: pid_t) throws -> String {
         var info = proc_bsdinfo()
         let expectedSize = Int32(MemoryLayout<proc_bsdinfo>.size)
         errno = 0
         let result = withUnsafeMutablePointer(to: &info) { pointer in
-            proc_pidinfo(Int32(pid), PROC_PIDTBSDINFO, 0, pointer, expectedSize)
+            proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, pointer, expectedSize)
         }
         let errorCode = errno
-        guard result == expectedSize, info.pbi_pid == UInt32(pid) else {
+        guard result == expectedSize, info.pbi_pid == UInt32(bitPattern: pid) else {
             throw ProcessIdentityInspectionError.unavailable(
                 pid: pid,
                 operation: "開始時刻取得",
-                errorCode: errorCode
+                detail: posixErrorDetail(errorCode)
             )
         }
         return "pid=\(pid);start=\(info.pbi_start_tvsec).\(info.pbi_start_tvusec)"
+    }
+
+    private static func posixErrorDetail(_ errorCode: Int32) -> String {
+        guard errorCode != 0 else {
+            return "errno を取得できませんでした"
+        }
+        return "\(String(cString: strerror(errorCode))) (errno=\(errorCode))"
+    }
+
+    private static func machErrorDetail(_ result: kern_return_t) -> String {
+        guard let message = mach_error_string(result) else {
+            return "kern_return=\(result)"
+        }
+        return "\(String(cString: message)) (kern_return=\(result))"
     }
 
     private static func canonicalPath(_ rawPath: String) -> String {
@@ -477,21 +580,21 @@ private enum ProcessIdentityResolver {
 }
 
 private enum ProcessIdentityInspectionError: LocalizedError {
-    case unavailable(pid: Int, operation: String, errorCode: Int32)
-    case changedDuringInspection(pid: Int, initialToken: String, observedToken: String)
+    case unavailable(pid: pid_t, operation: String, detail: String)
+    case auditTokenPIDMismatch(requestedPID: pid_t, observedPID: pid_t)
+    case startTokenChangedDuringInspection(pid: pid_t, initialToken: String, observedToken: String)
+    case processIDVersionChangedDuringInspection(pid: pid_t, initialVersion: Int32, observedVersion: Int32)
 
     var errorDescription: String? {
         switch self {
-        case let .unavailable(pid, operation, errorCode):
-            let detail: String
-            if errorCode == 0 {
-                detail = "errno を取得できませんでした"
-            } else {
-                detail = "\(String(cString: strerror(errorCode))) (errno=\(errorCode))"
-            }
+        case let .unavailable(pid, operation, detail):
             return "PID \(pid) の \(operation)に失敗しました: \(detail)"
-        case let .changedDuringInspection(pid, initialToken, observedToken):
+        case let .auditTokenPIDMismatch(requestedPID, observedPID):
+            return "PID \(requestedPID) の audit token が別 PID を示しました。observed=\(observedPID)"
+        case let .startTokenChangedDuringInspection(pid, initialToken, observedToken):
             return "PID \(pid) の同一性確認中に開始トークンが変化しました。initial=\(initialToken), observed=\(observedToken)"
+        case let .processIDVersionChangedDuringInspection(pid, initialVersion, observedVersion):
+            return "PID \(pid) の同一性確認中に pidversion が変化しました。exec または posix_spawn が発生しました。initial=\(initialVersion), observed=\(observedVersion)"
         }
     }
 }
@@ -501,12 +604,13 @@ private struct CPUSampleReport: Encodable {
     let measurementKind: String
     let measurementScope: String
     let includesEventTapAndPosting: Bool
-    let pid: Int
+    let pid: pid_t
     let processCommand: String
     let expectedExecutablePath: String
     let resolvedExecutablePath: String
     let executableIdentityMatched: Bool
     let processStartToken: String
+    let processIDVersion: Int32
     let processIdentityStable: Bool
     let requestedDurationSeconds: Double
     let sampleIntervalSeconds: Double
@@ -524,6 +628,7 @@ private struct CPUSample: Encodable {
     let cpuPercentOfOneCore: Double
     let resolvedExecutablePath: String
     let processStartToken: String
+    let processIDVersion: Int32
     let executableIdentityMatched: Bool
 }
 
@@ -549,6 +654,7 @@ private enum CPUSampleFormatter {
         解決実行ファイル: \(report.resolvedExecutablePath)
         実行ファイル一致: \(report.executableIdentityMatched ? "はい" : "いいえ")
         開始トークン: \(report.processStartToken)
+        pidversion: \(report.processIDVersion)
         実行主体固定: \(report.processIdentityStable ? "はい" : "いいえ")
         サンプル数: \(report.sampleCount)
         要求 duration: \(formatSeconds(report.requestedDurationSeconds)) 秒

@@ -28,9 +28,10 @@ jobs:
       - name: Run core tests
         run: .build/debug/nape-gesture-core-tests
 
-      - name: CPU サンプリング実行主体テスト
+      - name: CPU サンプリング PID 境界・実行主体テスト
         run: |
           sh -n scripts/test-sample-cpu.sh
+          /bin/bash -n scripts/fixtures/sample-cpu-self-exec.sh
           sh -n scripts/collect-completion-evidence.sh
           sh scripts/test-sample-cpu.sh
 

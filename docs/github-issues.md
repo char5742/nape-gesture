@@ -343,7 +343,7 @@ Labels: `area:runtime`, `area:verification`, `type:qa`, `priority:p1`, `parallel
 
 - 純粋ロジックの `benchmark` 結果を保存する
 - イベントタップから生成投稿までの測定方針がある
-- `sample-cpu --expected-executable <path> --json --assert-baseline` で実行主体同一性と idle / active / recovery の CPU 使用率を終了コード判定できる
+- `sample-cpu --expected-executable <path> --json --assert-baseline` で開始トークン、実行ファイルパス、audit token の `(pid, pidversion)` による実行主体同一性と idle / active / recovery の CPU 使用率を終了コード判定できる
 - 連続操作中の CPU 使用率を、日常利用と同じ executable を直接起動して得た PID で測定する手順がある
 - 閾値を超えた場合に調整する項目が明記されている
 - ベンチマーク結果を PR レビューで確認する基準がある
