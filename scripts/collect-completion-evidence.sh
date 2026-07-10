@@ -161,6 +161,12 @@ run_combined_success \
   .build/debug/nape-gesture-core-tests
 
 run_combined_success \
+  "Safari scroll probe contract" \
+  "$build_dir/safari-scroll-probe-contract.log" \
+  "python3 scripts/check-safari-scroll-probe-contract.py" \
+  python3 scripts/check-safari-scroll-probe-contract.py
+
+run_combined_success \
   "CGEvent scroll probe typecheck" \
   "$build_dir/probe-cgevent-scroll-delivery-typecheck.log" \
   "swiftc -typecheck scripts/probe-cgevent-scroll-delivery.swift" \

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ja">
+<html lang="ja" data-probe-scenario="frame" data-probe-schema-version="1">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AX accessible frame</title>
@@ -8,8 +8,9 @@
   body { margin: 0; min-height: 1800px; font: 16px system-ui, sans-serif; color: #161616; background: #fff; }
   .row { min-height: 90px; padding: 12px; border-bottom: 1px solid #8fa0b8; }
 </style>
+<output id="status" hidden>{"schemaVersion":1,"scenario":"frame","ready":true,"scroll":{"x":0,"y":0},"wheel":{"count":0,"target":"none"}}</output>
 <main id="frame-content"></main>
-<script>
+<script data-probe-interface="napeGestureScrollProbe">
   history.scrollRestoration = 'manual';
   let wheelCount = 0;
   let wheelTarget = 'none';
@@ -22,8 +23,30 @@
     document.querySelector('#frame-content').append(row);
   }
 
+  function snapshot() {
+    return {
+      schemaVersion: 1,
+      scenario: 'frame',
+      ready: true,
+      scroll: { x: Math.round(scrollX), y: Math.round(scrollY) },
+      wheel: { count: wheelCount, target: wheelTarget }
+    };
+  }
+
   function report() {
-    parent.postMessage({ type: 'frame-state', scrollY, wheelCount, wheelTarget }, location.origin);
+    const value = snapshot();
+    const status = document.querySelector('#status');
+    status.textContent = JSON.stringify(value);
+    status.dataset.probeState = status.textContent;
+    document.documentElement.dataset.probeReady = String(value.ready);
+    parent.postMessage({ type: 'frame-state', state: value }, location.origin);
+  }
+
+  function reset() {
+    scrollTo(0, 0);
+    wheelCount = 0;
+    wheelTarget = 'none';
+    report();
   }
 
   addEventListener('scroll', report);
@@ -34,14 +57,15 @@
   }, { capture: true });
   addEventListener('message', event => {
     if (event.origin !== location.origin || event.data?.type !== 'reset') return;
-    scrollTo(0, 0);
-    wheelCount = 0;
-    wheelTarget = 'none';
-    report();
+    reset();
   });
-  addEventListener('pageshow', () => {
-    scrollTo(0, 0);
-    report();
+  addEventListener('pageshow', reset);
+  window.napeGestureScrollProbe = Object.freeze({
+    schemaVersion: 1,
+    scenario: 'frame',
+    snapshot,
+    reset
   });
+  report();
 </script>
 </html>

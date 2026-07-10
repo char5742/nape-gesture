@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ja">
+<html lang="ja" data-probe-scenario="nested" data-probe-schema-version="1">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Nape Gesture nested scroll probe</title>
@@ -10,24 +10,25 @@
   #toolbar { position: sticky; top: 0; z-index: 10; padding: 12px 16px; background: #fff; border-bottom: 1px solid #707070; }
   #status { display: block; margin-bottom: 8px; font: 14px ui-monospace, monospace; overflow-wrap: anywhere; }
   button { min-height: 34px; padding: 4px 12px; border: 1px solid #444; border-radius: 4px; background: #fff; color: #111; }
-  .probes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; max-width: 1200px; padding: 24px; }
+  .probes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; max-width: 1600px; padding: 24px; }
   section { min-width: 0; }
   h1 { margin: 0 0 12px; font-size: 18px; }
   .scroll-target { width: 100%; height: 340px; overflow: auto; border: 4px solid #111; background: #fff; }
-  #generic-content, .frame-content { min-height: 1800px; padding: 20px; }
+  #generic-content, #article-content { min-height: 1800px; padding: 20px; }
+  #article { min-height: 1800px; border: 4px solid #111; background: #fff; }
   .row { min-height: 90px; padding: 12px; border-bottom: 1px solid #b8bec8; }
   iframe { display: block; width: 100%; height: 340px; border: 4px solid #111; background: #fff; }
   .outer-spacer { height: 1200px; border-top: 1px solid #707070; }
-  @media (max-width: 800px) { .probes { grid-template-columns: 1fr; } }
+  @media (max-width: 600px) { .probes { grid-template-columns: 1fr; } }
 </style>
 <div id="toolbar">
-  <output id="status">outer=0 inner=0 innerWheel=0 innerTarget=none frame=0 frameWheel=0 frameTarget=none</output>
+  <output id="status">{"schemaVersion":1,"scenario":"nested","ready":false,"outer":{"x":0,"y":0,"wheel":{"count":0,"target":"none"}},"inner":{"x":0,"y":0,"wheel":{"count":0,"target":"none"}},"frame":{"x":0,"y":0,"wheel":{"count":0,"target":"none"}}}</output>
   <button id="reset" type="button">状態をリセット</button>
 </div>
 <main class="probes">
   <section>
     <h1>Generic overflow region</h1>
-    <div id="inner" class="scroll-target" role="region" aria-label="Generic overflow region" tabindex="0">
+    <div id="inner" class="scroll-target" tabindex="0">
       <div id="generic-content"></div>
     </div>
   </section>
@@ -35,14 +36,30 @@
     <h1>AX accessible frame</h1>
     <iframe id="frame" title="AX accessible frame" src="frame.html"></iframe>
   </section>
+  <section>
+    <h1>Long article without nested scrolling</h1>
+    <article id="article" tabindex="0">
+      <div id="article-content"></div>
+    </article>
+  </section>
 </main>
 <div class="outer-spacer"></div>
-<script>
+<script data-probe-interface="napeGestureScrollProbe">
   history.scrollRestoration = 'manual';
   const status = document.querySelector('#status');
   const inner = document.querySelector('#inner');
   const frame = document.querySelector('#frame');
-  const state = { innerWheel: 0, innerTarget: 'none', frameY: 0, frameWheel: 0, frameTarget: 'none' };
+  const state = {
+    outerWheel: 0,
+    outerTarget: 'none',
+    innerWheel: 0,
+    innerTarget: 'none',
+    frameReady: false,
+    frameX: 0,
+    frameY: 0,
+    frameWheel: 0,
+    frameTarget: 'none'
+  };
 
   function addRows(container, prefix) {
     for (let index = 1; index <= 20; index += 1) {
@@ -54,17 +71,45 @@
     }
   }
 
+  function snapshot() {
+    return {
+      schemaVersion: 1,
+      scenario: 'nested',
+      ready: state.frameReady,
+      outer: {
+        x: Math.round(scrollX),
+        y: Math.round(scrollY),
+        wheel: { count: state.outerWheel, target: state.outerTarget }
+      },
+      inner: {
+        x: Math.round(inner.scrollLeft),
+        y: Math.round(inner.scrollTop),
+        wheel: { count: state.innerWheel, target: state.innerTarget }
+      },
+      frame: {
+        x: Math.round(state.frameX),
+        y: Math.round(state.frameY),
+        wheel: { count: state.frameWheel, target: state.frameTarget }
+      }
+    };
+  }
+
   function render() {
-    status.textContent = `outer=${Math.round(scrollY)} inner=${Math.round(inner.scrollTop)} `
-      + `innerWheel=${state.innerWheel} innerTarget=${state.innerTarget} `
-      + `frame=${Math.round(state.frameY)} frameWheel=${state.frameWheel} frameTarget=${state.frameTarget}`;
+    const value = snapshot();
+    status.textContent = JSON.stringify(value);
+    status.dataset.probeState = status.textContent;
+    document.documentElement.dataset.probeReady = String(value.ready);
   }
 
   function reset() {
     scrollTo(0, 0);
     inner.scrollTop = 0;
+    state.outerWheel = 0;
+    state.outerTarget = 'none';
     state.innerWheel = 0;
     state.innerTarget = 'none';
+    state.frameReady = false;
+    state.frameX = 0;
     state.frameY = 0;
     state.frameWheel = 0;
     state.frameTarget = 'none';
@@ -73,7 +118,14 @@
   }
 
   addRows(document.querySelector('#generic-content'), 'generic');
+  addRows(document.querySelector('#article-content'), 'article');
   addEventListener('scroll', render);
+  addEventListener('wheel', event => {
+    if (inner.contains(event.target)) return;
+    state.outerWheel += 1;
+    state.outerTarget = event.target.id || event.target.tagName;
+    render();
+  }, { capture: true });
   inner.addEventListener('scroll', render);
   inner.addEventListener('wheel', event => {
     state.innerWheel += 1;
@@ -82,13 +134,23 @@
   }, { capture: true });
   addEventListener('message', event => {
     if (event.source !== frame.contentWindow || event.data?.type !== 'frame-state') return;
-    state.frameY = event.data.scrollY;
-    state.frameWheel = event.data.wheelCount;
-    state.frameTarget = event.data.wheelTarget;
+    const frameState = event.data.state;
+    if (frameState?.schemaVersion !== 1 || frameState?.scenario !== 'frame') return;
+    state.frameReady = frameState.ready === true;
+    state.frameX = frameState.scroll.x;
+    state.frameY = frameState.scroll.y;
+    state.frameWheel = frameState.wheel.count;
+    state.frameTarget = frameState.wheel.target;
     render();
   });
   document.querySelector('#reset').addEventListener('click', reset);
   addEventListener('pageshow', reset);
+  window.napeGestureScrollProbe = Object.freeze({
+    schemaVersion: 1,
+    scenario: 'nested',
+    snapshot,
+    reset
+  });
   render();
 </script>
 </html>

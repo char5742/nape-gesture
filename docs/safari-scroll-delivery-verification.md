@@ -2,10 +2,10 @@
 
 ## 目的
 
-Safari の top-level page、generic `overflow:auto`、Accessibility が scrollbar を公開する nested frame を分けて比較する。
-AX scrollbar の値設定を通常 wheel event と同一視せず、outer 誤配送、nested 選択、wheel handler、端到達を別々に記録する。
+Safari の top-level page、unlabeled generic `overflow:auto`、縦 scrollbar だけを持つ nested frame、通常の長い article を分けて比較する。
+AX scrollbar の値設定を通常 wheel event と同一視せず、outer / inner / frame の移動と wheel count / target を別々に記録する。
 
-## 検証ページ
+## fixture と状態契約
 
 repo root で次を実行する。
 
@@ -13,43 +13,90 @@ repo root で次を実行する。
 python3 -m http.server 8765 --bind 127.0.0.1 --directory docs/fixtures/safari-scroll-probe
 ```
 
-- `http://127.0.0.1:8765/nested.html`: generic overflow と AX scrollbar を公開する same-origin frame
+- `http://127.0.0.1:8765/nested.html`: unlabeled generic overflow、縦のみ frame、通常の長い article
 - `http://127.0.0.1:8765/top-level.html`: top-level の縦横 scrollbar
+- `docs/fixtures/safari-scroll-probe/contract.json`: fixture、状態 path、操作別の比較条件
 
-各試行前に `状態をリセット` を押す。
+各ページの `#status` は JSON であり、同じ値を `window.napeGestureScrollProbe.snapshot()` から取得できる。
+`reset()` 後、nested fixture は frame の初期状態を受信すると `ready=true` になる。
+outer / inner / frame の座標と wheel count / target を文字列解析せず比較できる。
+
+静的 contract は completion に含める。
+
+```sh
+python3 scripts/check-safari-scroll-probe-contract.py
+```
+
+この検査は schema version、fixture ID、初期 JSON、状態 path、pointer element、比較条件を照合する。
+generic overflow の `#inner` に `role` / `aria-label` がないことも固定し、`AXDescription` がある場合だけ成立する fixture に戻さない。
+
+## 実行条件
+
+各試行前に `状態をリセット` を押し、JSON の `ready=true` と全座標・count が 0 であることを確認する。
 実行主体は `doctor --json` で `runtimeIdentity.isAppBundle: true` と `tccStatus.accessibility.status: granted` を確認した `.build/NapeGesture.app/Contents/MacOS/nape-gesture` を使う。
 Safari PID は `pgrep -x Safari`、実ポインタ位置は `swift -e 'import CoreGraphics; print(CGEvent(source: nil)?.location ?? .zero)'` で確認する。
 
-## 比較手順
-
-generic overflow または frame 内へポインタを置き、次を実行する。
+基本コマンドは次のとおり。
 
 ```sh
 .build/NapeGesture.app/Contents/MacOS/nape-gesture \
-  generate-scroll --y 800 --steps 16 --mode free \
+  generate-scroll --x <X> --y <Y> --steps 16 --mode free \
   --ax-delivery sync --post-to-pid <Safari PID>
 ```
 
-同じ位置で Computer Use の通常 scroll を 1〜2 page 実行し、status と AX scrollbar value を読む。
-top-level は `top-level.html` の `Top-level scroll target` 上で縦、固定 status 上で縦横を実行する。
+## 機械比較 matrix
 
-## 2026-07-10 の結果
+`before` と `after` の snapshot を取り、`contract.json` の comparison を適用する。
+`unchanged` は完全一致、`increased` は `after > before` とする。
+
+| 対象 | 操作 | 必須条件 |
+| --- | --- | --- |
+| generic overflow | `--x 1 --y 800` | outer / inner / frame は不変、wheel count も不変。曖昧な target から outer へ配送しない |
+| generic overflow | Computer Use の通常 wheel | `inner.y` と `inner.wheel.count` だけが増える |
+| 縦のみ frame | `--x 1 --y 800` | `frame.y` だけが増え、微小な未対応横軸は捨てる。outer へ fallback しない |
+| 長い article | `--y 800` | `outer.y` だけが増える。viewport より長い content group を nested scroller と誤認しない |
+| top-level | `--x 1600 --y 800` | `outer.x` / `outer.y` が増える。`AXWebArea` 自身の scrollbar 属性でも成立する |
+
+normalized AX value と CSS pixel は同じ単位ではないため、生成量の一致は成功条件にしない。
+AX scrollbar set は JavaScript `wheel` handler を発火しないため、生成操作では wheel count が不変であることを期待する。
+
+## selector / delivery の成立条件
+
+- application-scoped root hit-test から ancestor を上昇し、最初の `AXWebArea` に対応する最も近い明示 scroll container を選ぶ。
+- `AXWebArea` 自身が scrollbar 属性を公開する場合も target 候補にする。
+- generic container の判定は `AXDescription` を使わない。必要な全 direct children の frame を deadline 内で確認する。
+- child clipping が要求軸にある場合だけ ambiguous とする。通常の長い article/content group の大きさだけでは ambiguous にしない。
+- generic container の frame、children、いずれかの child frame を取得できない場合は情報不足として `blocked` にする。
+- 最も近い container が要求軸の一部だけを公開する場合、利用可能な軸だけを同じ target へ配送する。利用可能軸が 0 の場合は `blocked` にする。
+- 選択済み target の未対応軸は outer target や CGEvent へ流さず、そのイベントでは捨てる。
+- `blocked`、端到達の `noChange`、AX 適用済み、部分適用済みは CGEvent fallback を抑止する。
+- root hit-test の初回が `kAXErrorCannotComplete` の場合は、探索 deadline 内で1回だけ再試行する。2回とも扱えない場合、または ancestor を `AXApplication` まで完全走査して非 Web と判定した `notHandled` だけが CGEvent fallback を許可する。
+
+## 既存の比較証跡
+
+2026-07-10 の commit `2e66e9f9f8f732e15755632455b9cc038531812b` では、次を確認した。
 
 | 対象 | 操作 | 結果 |
 | --- | --- | --- |
 | review 元ページの generic overflow | 修正前 `generate-scroll` | `outer=508 inner=0 wheel=0` |
 | review 元ページの generic overflow | Computer Use | `outer=0 inner=1488 wheel=1 target=content` |
-| repo generic overflow | 修正後 `generate-scroll` | `outer=0 inner=0 innerWheel=0 frame=0`。outer へ誤配送せず fail closed |
+| repo generic overflow | `2e66e9f` の `generate-scroll` | `outer=0 inner=0 innerWheel=0 frame=0` |
 | repo generic overflow | Computer Use 2 page | `outer=0 inner=682 innerWheel=1 innerTarget=generic-2` |
-| repo AX accessible frame | 修正後 `generate-scroll` | `outer=0 inner=0 frame=367 frameWheel=0`。nested frame だけを更新 |
+| repo AX accessible frame | `2e66e9f` の `generate-scroll` | `outer=0 inner=0 frame=367 frameWheel=0` |
 | repo AX accessible frame | Computer Use 1 page | `outer=0 inner=0 frame=332 frameWheel=1 frameTarget=frame-6` |
-| repo AX accessible frame の下端 | `frame scrollbar=1` の後に正方向 `generate-scroll` | `outer=0 frame scrollbar=1` のまま。empty update で outer fallback しない |
-| repo top-level | `--x 1600 --y 800 --steps 16 --mode free` | `scrollX=679 scrollY=304 wheel=0` |
-| repo top-level content | `--y 800 --steps 16 --mode free` | `scrollX=0 scrollY=608 wheel=0` |
-| 既存 top-level 横ページ | `--x 1600 --steps 16 --mode horizontal` | `scrollX=0 -> 1438` |
+| repo top-level | `--x 1600 --y 800` | `scrollX=679 scrollY=304 wheel=0` |
 
-normalized AX value と CSS pixel は同じ単位ではないため、生成量の一致は成功条件にしない。
-比較条件は「選択された container だけが動くこと」「outer を誤って動かさないこと」「wheel handler の有無」である。
+同日の今回変更後に、権限付与済み `.build/NapeGesture.app`、Safari PID 固定、sync、各1 stepで再検証した。
+
+| 対象 | 操作 | JSON before / after |
+| --- | --- | --- |
+| unlabeled generic overflow | `--x 1 --y 800` | outer / inner / frame / wheel が全て 0 のまま |
+| 縦のみ frame | `--x 1 --y 800` | `frame.y: 0 -> 367`、outer / inner / frame.x / wheel は 0 のまま |
+| 長い article | `--y 800` | `outer.y: 0 -> 674`、inner / frame / wheel は 0 のまま |
+| top-level | `--x 1600 --y 800` | `outer.x: 0 -> 1358`、`outer.y: 0 -> 608`、wheel は 0 のまま |
+
+root hit-test の cold `kAXErrorCannotComplete` は同一プロセス内の2回目で成功することも確認した。
+core regression、fixture contract、Safari runtime は別証跡として扱い、Issue #102 取り込み後の最終再取得を省略しない。
 
 ## CGEvent 限定実験
 
@@ -59,27 +106,11 @@ generic overflow 上で、各試行前に reset して次を使う。
 swift scripts/probe-cgevent-scroll-delivery.swift <variant> <Safari PID>
 ```
 
-| variant 群 | 結果 |
-| --- | --- |
-| `pid-hid-full-marked` / `pid-hid-full-unmarked` / `pid-combined-full-unmarked` | `outer=0 inner=0 wheel=0` |
-| `hidtap-hid-full-marked` / `hidtap-hid-full-unmarked` / `hidtap-combined-full-unmarked` | `outer=0 inner=0 wheel=1 target=content` |
-| `sessiontap-combined-full-unmarked` | `outer=0 inner=0 wheel=1 target=content` |
-| `annotatedtap-combined-full-unmarked` | `outer=0 inner=0 wheel=0` |
-| `hidtap-hid-minimal-unmarked` / `hidtap-hid-line-unmarked` | `outer=0 inner=0 wheel=1 target=content` |
-
-HID / session tap は JavaScript `wheel` handler まで到達したが、default scroll は全 variant で発生しなかった。
-この branch では製品経路へ採用しない。tap 投稿は `--post-to-pid` の診断対象固定を保証できず、AX 値設定と重ねると Web 側の `preventDefault()` を外部から判定できないため、handler が止めた scroll を強制する可能性がある。
-
-## 成立範囲と残り
-
-- application-scoped hit-test から ancestor を上昇し、最も近い `AXScrollArea` と要求軸の scrollbar を選ぶ。
-- 近い container が要求軸を公開しない場合は outer へ昇格しない。
-- AX tree に named region の子 clipping または outer viewport より大きい内側 group が見えるが scrollbar がない場合は、outer AX set を行わず CGEvent fallback へ閉じる。
-- success cache は PID / window / point に加えて、毎 step の hit-test で再解決した container identity を含む。同一点でも target identity が変われば再利用しない。
-- 下端・右端で normalized value が変わらない状態は target 解決済みとして扱い、CGEvent を重ねない。lookup failure は処理済みにしない。
-- AX scrollbar set は `wheel` handler を発火しない。generic overflow の container 境界と曖昧さの手掛かりが AX tree から全て省略されると、公開 AX API だけでは nested の存在自体を判定できず、outer 誤配送を完全には排除できない。現 selector は named region の子 clipping または oversized group を識別できる場合に fail closed とするが、通常 wheel と同等の nested routing / `preventDefault()` semantics は未成立の製品要件として残る。
+2026-07-10 の比較では、PID 直接投稿は marker / source にかかわらず `wheel=0`、HID / session tap は `wheel=1` だが `inner=0 / outer=0`、annotated tap は `wheel=0` だった。
+HID / session tap と AX set の併用は採用しない。Web 側の `preventDefault()` を外部から判定できず、handler が止めた scroll を AX set が強制する可能性があるためである。
 
 ## 最終再取得条件
 
-Issue #102 で修正中の時刻ドメイン変更はこの branch に重複実装しない。
-この文書の Safari 値は target 選択修正の比較証跡であり、PR #101 の最終 runtime / Safari 証跡は Issue #102 の変更を取り込んだ head で再取得する。
+Issue #102 で修正中の時刻 domain、`EventPoster` の timestamp / key API はこの branch で変更しない。
+PR #101 の最終 Safari / runtime 証跡は Issue #102 の変更を取り込んだ head で再取得する。
+その際は `contract.json` の5 assertion、通常 async、PID 固定 sync、端到達、runtime performance completion を同じ commit で保存する。

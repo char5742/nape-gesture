@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 1,
+  "interfaceName": "napeGestureScrollProbe",
+  "statusElementId": "status",
+  "fixtures": [
+    {
+      "scenario": "top-level",
+      "path": "top-level.html",
+      "requiredElementIds": [
+        "status",
+        "reset",
+        "top-content"
+      ],
+      "statePaths": [
+        "ready",
+        "outer.x",
+        "outer.y",
+        "outer.wheel.count",
+        "outer.wheel.target",
+        "inner",
+        "frame"
+      ]
+    },
+    {
+      "scenario": "nested",
+      "path": "nested.html",
+      "requiredElementIds": [
+        "status",
+        "reset",
+        "inner",
+        "generic-content",
+        "frame",
+        "article",
+        "article-content"
+      ],
+      "forbiddenAttributesByElementId": {
+        "inner": [
+          "aria-label",
+          "role"
+        ]
+      },
+      "statePaths": [
+        "ready",
+        "outer.x",
+        "outer.y",
+        "outer.wheel.count",
+        "outer.wheel.target",
+        "inner.x",
+        "inner.y",
+        "inner.wheel.count",
+        "inner.wheel.target",
+        "frame.x",
+        "frame.y",
+        "frame.wheel.count",
+        "frame.wheel.target"
+      ]
+    },
+    {
+      "scenario": "frame",
+      "path": "frame.html",
+      "requiredElementIds": [
+        "status",
+        "frame-content"
+      ],
+      "statePaths": [
+        "ready",
+        "scroll.x",
+        "scroll.y",
+        "wheel.count",
+        "wheel.target"
+      ]
+    }
+  ],
+  "assertions": [
+    {
+      "id": "generic-generated-fail-closed",
+      "fixture": "nested",
+      "pointerElementId": "inner",
+      "operation": "generate-scroll --x 1 --y 800 --mode free",
+      "expect": {
+        "outer.x": "unchanged",
+        "outer.y": "unchanged",
+        "inner.x": "unchanged",
+        "inner.y": "unchanged",
+        "inner.wheel.count": "unchanged",
+        "frame.x": "unchanged",
+        "frame.y": "unchanged"
+      }
+    },
+    {
+      "id": "generic-native-wheel",
+      "fixture": "nested",
+      "pointerElementId": "inner",
+      "operation": "native-wheel",
+      "expect": {
+        "outer.y": "unchanged",
+        "inner.y": "increased",
+        "inner.wheel.count": "increased"
+      }
+    },
+    {
+      "id": "vertical-frame-with-minor-horizontal-delta",
+      "fixture": "nested",
+      "pointerElementId": "frame",
+      "operation": "generate-scroll --x 1 --y 800 --mode free",
+      "expect": {
+        "outer.x": "unchanged",
+        "outer.y": "unchanged",
+        "inner.x": "unchanged",
+        "inner.y": "unchanged",
+        "frame.x": "unchanged",
+        "frame.y": "increased",
+        "frame.wheel.count": "unchanged"
+      }
+    },
+    {
+      "id": "long-article-uses-outer-target",
+      "fixture": "nested",
+      "pointerElementId": "article",
+      "operation": "generate-scroll --y 800 --mode free",
+      "expect": {
+        "outer.y": "increased",
+        "outer.wheel.count": "unchanged",
+        "inner.y": "unchanged",
+        "frame.y": "unchanged"
+      }
+    },
+    {
+      "id": "top-level-web-area-scrollbars",
+      "fixture": "top-level",
+      "pointerElementId": "top-content",
+      "operation": "generate-scroll --x 1600 --y 800 --mode free",
+      "expect": {
+        "outer.x": "increased",
+        "outer.y": "increased",
+        "outer.wheel.count": "unchanged"
+      }
+    }
+  ]
+}

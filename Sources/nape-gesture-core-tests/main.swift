@@ -1480,123 +1480,202 @@ func testScrollEventPhaseEncoderSeparatesScrollAndMomentumPhases() {
 
 func testAXScrollTargetSelectorPrefersNearestNestedContainer() {
     let nodes = [
-        AXScrollTargetNode(role: "AXStaticText", frame: AXScrollTargetFrame(width: 80, height: 20)),
-        AXScrollTargetNode(role: "AXWebArea", frame: AXScrollTargetFrame(width: 500, height: 1_500)),
+        AXScrollTargetNode(role: "AXStaticText"),
+        AXScrollTargetNode(role: "AXWebArea"),
         AXScrollTargetNode(
             role: "AXScrollArea",
-            frame: AXScrollTargetFrame(width: 500, height: 300),
             scrollbarAxes: [.vertical]
         ),
-        AXScrollTargetNode(role: "AXWebArea", frame: AXScrollTargetFrame(width: 1_000, height: 2_500)),
+        AXScrollTargetNode(role: "AXWebArea"),
         AXScrollTargetNode(
             role: "AXScrollArea",
-            frame: AXScrollTargetFrame(width: 1_000, height: 700),
             scrollbarAxes: [.vertical]
         )
     ]
 
     expect(
-        AXScrollTargetSelector.select(nodes: nodes, requestedAxes: [.vertical]) == .target(nodeIndex: 2),
+        AXScrollTargetSelector.select(nodes: nodes, requestedAxes: [.vertical])
+            == .target(nodeIndex: 2, axes: [.vertical]),
         "nested WebArea の最も近い AXScrollArea を outer より優先する"
     )
 }
 
-func testAXScrollTargetSelectorDoesNotPromoteMissingNestedAxisToOuter() {
+func testAXScrollTargetSelectorDeliversAvailableNestedAxesWithoutOuterPromotion() {
     let nodes = [
-        AXScrollTargetNode(role: "AXWebArea", frame: AXScrollTargetFrame(width: 500, height: 1_500)),
+        AXScrollTargetNode(role: "AXWebArea"),
         AXScrollTargetNode(
             role: "AXScrollArea",
-            frame: AXScrollTargetFrame(width: 500, height: 300),
             scrollbarAxes: [.vertical]
         ),
-        AXScrollTargetNode(role: "AXWebArea", frame: AXScrollTargetFrame(width: 2_000, height: 2_500)),
+        AXScrollTargetNode(role: "AXWebArea"),
         AXScrollTargetNode(
             role: "AXScrollArea",
-            frame: AXScrollTargetFrame(width: 1_000, height: 700),
             scrollbarAxes: [.horizontal, .vertical]
         )
     ]
 
     expect(
         AXScrollTargetSelector.select(nodes: nodes, requestedAxes: [.horizontal, .vertical])
+            == .target(nodeIndex: 1, axes: [.vertical]),
+        "微小な横成分が混じっても nested container の対応する縦軸を配送対象にする"
+    )
+    expect(
+        AXScrollTargetSelector.select(nodes: nodes, requestedAxes: [.horizontal])
             == .blocked(.nearestContainerMissingScrollbars),
-        "nested container が要求軸を欠く場合は outer へ昇格しない"
+        "nested container の利用可能軸が 0 の場合は outer へ昇格しない"
     )
 }
 
-func testAXScrollTargetSelectorFailsClosedForAmbiguousNestedContent() {
-    let explicitRegionNodes = [
-        AXScrollTargetNode(role: "AXGroup", frame: AXScrollTargetFrame(width: 536, height: 136)),
+func testAXScrollClippingInspectorChecksEveryChild() {
+    let evidence = AXScrollClippingInspector.inspect(
+        containerFrame: AXScrollTargetFrame(x: 100, y: 100, width: 500, height: 300),
+        childFrames: [
+            AXScrollTargetFrame(x: 120, y: 120, width: 100, height: 30),
+            AXScrollTargetFrame(x: 120, y: 120, width: 100, height: 900),
+            AXScrollTargetFrame(x: 120, y: 200, width: 100, height: 30)
+        ],
+        requestedAxes: [.horizontal, .vertical]
+    )
+
+    expect(
+        evidence == .inspected(clippedAxes: [.vertical]),
+        "先頭・末尾だけでなく途中の child にある縦 clipping も検出する"
+    )
+}
+
+func testAXScrollTargetSelectorFailsClosedForUnlabeledGenericOverflow() {
+    let nodes = [
         AXScrollTargetNode(
             role: "AXGroup",
-            frame: AXScrollTargetFrame(width: 608, height: 511),
-            clippedDescendantAxes: [.vertical]
+            clippingEvidence: .inspected(clippedAxes: [.vertical])
         ),
-        AXScrollTargetNode(role: "AXWebArea", frame: AXScrollTargetFrame(width: 1_000, height: 2_500)),
+        AXScrollTargetNode(role: "AXWebArea"),
         AXScrollTargetNode(
             role: "AXScrollArea",
-            frame: AXScrollTargetFrame(width: 1_000, height: 700),
-            scrollbarAxes: [.vertical]
-        )
-    ]
-    let omittedRegionNodes = [
-        AXScrollTargetNode(role: "AXGroup", frame: AXScrollTargetFrame(width: 600, height: 1_500)),
-        AXScrollTargetNode(role: "AXWebArea", frame: AXScrollTargetFrame(width: 1_000, height: 2_500)),
-        AXScrollTargetNode(
-            role: "AXScrollArea",
-            frame: AXScrollTargetFrame(width: 1_000, height: 700),
             scrollbarAxes: [.vertical]
         )
     ]
 
     expect(
-        AXScrollTargetSelector.select(nodes: explicitRegionNodes, requestedAxes: [.vertical])
+        AXScrollTargetSelector.select(nodes: nodes, requestedAxes: [.vertical])
             == .blocked(.ambiguousDescendant),
-        "内側 group が AX child を clip する場合は outer を選ばない"
-    )
-    expect(
-        AXScrollTargetSelector.select(nodes: omittedRegionNodes, requestedAxes: [.vertical])
-            == .blocked(.ambiguousDescendant),
-        "AX tree から内側境界が省略されても大きな内側 group 上では outer を選ばない"
+        "ラベルの有無に依存せず generic group の child clipping で outer を抑止する"
     )
 }
 
-func testAXScrollTargetSelectorKeepsTopLevelScroll() {
-    let nodes = [
-        AXScrollTargetNode(role: "AXStaticText", frame: AXScrollTargetFrame(width: 120, height: 20)),
-        AXScrollTargetNode(role: "AXGroup", frame: AXScrollTargetFrame(width: 2_000, height: 2_500)),
-        AXScrollTargetNode(role: "AXWebArea", frame: AXScrollTargetFrame(width: 2_000, height: 2_500)),
+func testAXScrollTargetSelectorFailsClosedWhenClippingInformationIsUnavailable() {
+    let unavailableEvidence = [
+        AXScrollClippingInspector.inspect(
+            containerFrame: nil,
+            childFrames: [],
+            requestedAxes: [.vertical]
+        ),
+        AXScrollClippingInspector.inspect(
+            containerFrame: AXScrollTargetFrame(width: 500, height: 300),
+            childFrames: nil,
+            requestedAxes: [.vertical]
+        ),
+        AXScrollClippingInspector.inspect(
+            containerFrame: AXScrollTargetFrame(width: 500, height: 300),
+            childFrames: [nil],
+            requestedAxes: [.vertical]
+        ),
+        AXScrollClippingInspector.inspect(
+            containerFrame: AXScrollTargetFrame(x: .nan, y: 0, width: 500, height: 300),
+            childFrames: [],
+            requestedAxes: [.vertical]
+        ),
+        AXScrollClippingInspector.inspect(
+            containerFrame: AXScrollTargetFrame(width: 500, height: 300),
+            childFrames: [AXScrollTargetFrame(width: 100, height: -1)],
+            requestedAxes: [.vertical]
+        )
+    ]
+    let unavailableNodes = [
+        AXScrollTargetNode(role: "AXGroup", clippingEvidence: .unavailable),
+        AXScrollTargetNode(role: "AXWebArea"),
         AXScrollTargetNode(
             role: "AXScrollArea",
-            frame: AXScrollTargetFrame(width: 1_000, height: 700),
+            scrollbarAxes: [.vertical]
+        )
+    ]
+    let uninspectedNodes = [
+        AXScrollTargetNode(role: "AXGroup"),
+        AXScrollTargetNode(role: "AXWebArea"),
+        AXScrollTargetNode(role: "AXScrollArea", scrollbarAxes: [.vertical])
+    ]
+
+    expect(unavailableEvidence.allSatisfy { $0 == .unavailable }, "frame・children・child frame の欠落や非有限・負のframeを取得不能として区別する")
+    expect(
+        AXScrollTargetSelector.select(nodes: unavailableNodes, requestedAxes: [.vertical])
+            == .blocked(.descendantInformationUnavailable),
+        "generic group の frame または children を取得できない場合は outer を選ばない"
+    )
+    expect(
+        AXScrollTargetSelector.select(nodes: uninspectedNodes, requestedAxes: [.vertical])
+            == .blocked(.descendantInformationUnavailable),
+        "generic group を未検査のまま outer 選択へ流さない"
+    )
+}
+
+func testAXScrollTargetSelectorDoesNotTreatLongArticleAsNestedScroller() {
+    let articleEvidence = AXScrollClippingInspector.inspect(
+        containerFrame: AXScrollTargetFrame(x: 20, y: 100, width: 700, height: 1_800),
+        childFrames: [
+            AXScrollTargetFrame(x: 40, y: 120, width: 660, height: 600),
+            AXScrollTargetFrame(x: 40, y: 740, width: 660, height: 600),
+            AXScrollTargetFrame(x: 40, y: 1_360, width: 660, height: 500)
+        ],
+        requestedAxes: [.vertical]
+    )
+    let nodes = [
+        AXScrollTargetNode(role: "AXStaticText"),
+        AXScrollTargetNode(role: "AXGroup", clippingEvidence: articleEvidence),
+        AXScrollTargetNode(role: "AXWebArea"),
+        AXScrollTargetNode(
+            role: "AXScrollArea",
             scrollbarAxes: [.horizontal, .vertical]
         )
     ]
 
     expect(
-        AXScrollTargetSelector.select(nodes: nodes, requestedAxes: [.vertical]) == .target(nodeIndex: 3),
-        "document 全体と同じ extent の top-level content では縦 scrollbar を維持する"
+        articleEvidence == .inspected(clippedAxes: []),
+        "viewport より長くても children が領域内に収まる article は clipping 証拠を持たない"
     )
     expect(
-        AXScrollTargetSelector.select(nodes: nodes, requestedAxes: [.horizontal]) == .target(nodeIndex: 3),
-        "document 全体と同じ extent の top-level content では横 scrollbar を維持する"
+        AXScrollTargetSelector.select(nodes: nodes, requestedAxes: [.vertical])
+            == .target(nodeIndex: 3, axes: [.vertical]),
+        "長い article/content group の大きさだけで nested scroller と誤認しない"
+    )
+}
+
+func testAXScrollTargetSelectorUsesWebAreaScrollbars() {
+    let nodes = [
+        AXScrollTargetNode(role: "AXStaticText"),
+        AXScrollTargetNode(role: "AXWebArea", scrollbarAxes: [.horizontal, .vertical]),
+        AXScrollTargetNode(role: "AXScrollArea", scrollbarAxes: [.horizontal, .vertical])
+    ]
+
+    expect(
+        AXScrollTargetSelector.select(nodes: nodes, requestedAxes: [.horizontal, .vertical])
+            == .target(nodeIndex: 1, axes: [.horizontal, .vertical]),
+        "AXWebArea 自身が公開する scrollbar 属性を target 候補にする"
     )
 }
 
 func testAXScrollTargetSelectorDoesNotTreatLookupEarlyReturnAsSuccess() {
     let nestedWithoutContainer = [
-        AXScrollTargetNode(role: "AXWebArea", frame: AXScrollTargetFrame(width: 500, height: 1_500)),
-        AXScrollTargetNode(role: "AXGroup", frame: AXScrollTargetFrame(width: 500, height: 300)),
-        AXScrollTargetNode(role: "AXWebArea", frame: AXScrollTargetFrame(width: 2_000, height: 2_500)),
+        AXScrollTargetNode(role: "AXWebArea"),
+        AXScrollTargetNode(role: "AXGroup", clippingEvidence: .inspected(clippedAxes: [])),
+        AXScrollTargetNode(role: "AXWebArea"),
         AXScrollTargetNode(
             role: "AXScrollArea",
-            frame: AXScrollTargetFrame(width: 1_000, height: 700),
             scrollbarAxes: [.vertical]
         )
     ]
     let nonWeb = [
-        AXScrollTargetNode(role: "AXButton", frame: AXScrollTargetFrame(width: 80, height: 30)),
-        AXScrollTargetNode(role: "AXWindow", frame: AXScrollTargetFrame(width: 1_000, height: 700))
+        AXScrollTargetNode(role: "AXButton"),
+        AXScrollTargetNode(role: "AXWindow")
     ]
 
     expect(
@@ -1608,6 +1687,18 @@ func testAXScrollTargetSelectorDoesNotTreatLookupEarlyReturnAsSuccess() {
         AXScrollTargetSelector.select(nodes: nonWeb, requestedAxes: [.vertical]) == .notFound,
         "WebArea lookup がない early return は target 解決済みとしない"
     )
+}
+
+func testAXScrollDeliveryOutcomeAllowsFallbackOnlyWhenNotHandled() {
+    expect(AXScrollDeliveryOutcome.notHandled.shouldPostCGEventFallback, "AX root hit-test 不能など notHandled だけ CGEvent fallback を許可する")
+    expect(!AXScrollDeliveryOutcome.blocked.shouldPostCGEventFallback, "positive blocked は CGEvent fallback を抑止する")
+    expect(!AXScrollDeliveryOutcome.applied.shouldPostCGEventFallback, "AX 適用後は CGEvent を重ねない")
+    expect(!AXScrollDeliveryOutcome.noChange.shouldPostCGEventFallback, "端到達の noChange に CGEvent を重ねない")
+    expect(!AXScrollDeliveryOutcome.partiallyApplied.shouldPostCGEventFallback, "部分適用後は CGEvent を重ねない")
+    expect(AXScrollDeliveryOutcome.applied.deliveredActionCount == 1, "AX適用を実配送1件として記録する")
+    expect(AXScrollDeliveryOutcome.partiallyApplied.deliveredActionCount == 1, "rollback不能の部分適用を実配送ありとして記録する")
+    expect(AXScrollDeliveryOutcome.noChange.deliveredActionCount == 0, "端到達を生成イベントとして過大報告しない")
+    expect(AXScrollDeliveryOutcome.blocked.deliveredActionCount == 0, "blockedを生成イベント成功として過大報告しない")
 }
 
 func testAXScrollValuePlannerDistinguishesBoundaryAndLookupFailure() {
@@ -2486,10 +2577,14 @@ testScrollGenerationPlannerAutoPhases()
 testScrollGenerationPlannerPhaseOverrideAndMomentum()
 testScrollEventPhaseEncoderSeparatesScrollAndMomentumPhases()
 testAXScrollTargetSelectorPrefersNearestNestedContainer()
-testAXScrollTargetSelectorDoesNotPromoteMissingNestedAxisToOuter()
-testAXScrollTargetSelectorFailsClosedForAmbiguousNestedContent()
-testAXScrollTargetSelectorKeepsTopLevelScroll()
+testAXScrollTargetSelectorDeliversAvailableNestedAxesWithoutOuterPromotion()
+testAXScrollClippingInspectorChecksEveryChild()
+testAXScrollTargetSelectorFailsClosedForUnlabeledGenericOverflow()
+testAXScrollTargetSelectorFailsClosedWhenClippingInformationIsUnavailable()
+testAXScrollTargetSelectorDoesNotTreatLongArticleAsNestedScroller()
+testAXScrollTargetSelectorUsesWebAreaScrollbars()
 testAXScrollTargetSelectorDoesNotTreatLookupEarlyReturnAsSuccess()
+testAXScrollDeliveryOutcomeAllowsFallbackOnlyWhenNotHandled()
 testAXScrollValuePlannerDistinguishesBoundaryAndLookupFailure()
 testAXScrollTargetCacheKeyIncludesResolvedTargetIdentity()
 testTargetDeviceGateOnlyHandlesRecentTargetActivity()
