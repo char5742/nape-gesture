@@ -31,7 +31,7 @@ enum CGEventUtilities {
     }
 
     static func rawInput(from type: CGEventType, event: CGEvent) -> RawInputEvent? {
-        let timestamp = Double(event.timestamp) / 1_000_000_000.0
+        let timestamp = MonotonicEventClock.seconds(fromTimestampNanoseconds: event.timestamp)
 
         switch type {
         case .otherMouseDown:
@@ -59,6 +59,16 @@ enum CGEventUtilities {
 
     static func setGeneratedMarker(on event: CGEvent) {
         event.setIntegerValueField(.eventSourceUserData, value: generatedEventMarker)
+    }
+
+    static func setMonotonicTimestamp(secondsSinceStartup: TimeInterval, on event: CGEvent) -> Bool {
+        guard let timestamp = MonotonicEventClock.validatedTimestampNanosecondsForPosting(
+            fromSecondsSinceStartup: secondsSinceStartup
+        ) else {
+            return false
+        }
+        event.timestamp = CGEventTimestamp(timestamp)
+        return true
     }
 
     static func phaseValue(for phase: GesturePhase) -> Int64 {

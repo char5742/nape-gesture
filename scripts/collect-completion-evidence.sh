@@ -149,6 +149,12 @@ run_combined_success \
   sh scripts/check-provenance.sh
 
 run_combined_success \
+  "イベント時刻 Date epoch 混入ガード" \
+  "$provenance_dir/monotonic-event-time-guard.log" \
+  "CGEvent 入力、慣性、投稿経路に Date().timeIntervalSince1970 がないことを確認" \
+  sh -c "if git grep -n -F 'Date().timeIntervalSince1970' -- Sources/nape-gesture/CGEventUtilities.swift Sources/nape-gesture/NapeGestureDaemon.swift Sources/nape-gesture/EventPoster.swift Sources/nape-gesture/GenerateScrollCommand.swift Sources/nape-gesture/SystemBehaviorTestCommand.swift; then exit 1; fi"
+
+run_combined_success \
   "debug build" \
   "$build_dir/swift-build.log" \
   "swift build --scratch-path .build" \
@@ -351,12 +357,56 @@ for scenario in space-left space-right mission-control horizontal-scroll page-ba
   fi
 
   run_split_success \
-    "system-test $scenario analyze-log assert-system-scenario" \
+    "system-test $scenario analyze-log assert-system-scenario / current-uptime" \
     "$system_dir/system-$scenario-analysis.txt" \
     "$system_dir/system-$scenario-analysis.stderr.log" \
-    ".build/debug/nape-gesture analyze-log $system_dir/system-$scenario.jsonl --json --assert-system-scenario $scenario" \
-    .build/debug/nape-gesture analyze-log "$system_dir/system-$scenario.jsonl" --json --assert-system-scenario "$scenario"
+    ".build/debug/nape-gesture analyze-log $system_dir/system-$scenario.jsonl --json --assert-current-uptime --assert-system-scenario $scenario" \
+    .build/debug/nape-gesture analyze-log "$system_dir/system-$scenario.jsonl" --json --assert-current-uptime --assert-system-scenario "$scenario"
 done
+
+run_split_expected_failure \
+  "system-test steps 上限超過" \
+  "$system_dir/system-steps-overflow.stdout.log" \
+  "$system_dir/system-steps-overflow.stderr.log" \
+  ".build/debug/nape-gesture system-test run --scenario horizontal-scroll --steps 257 --dry-run --log-json" \
+  .build/debug/nape-gesture system-test run --scenario horizontal-scroll --steps 257 --dry-run --log-json
+
+run_combined_success \
+  "system-test steps 上限超過の部分出力禁止" \
+  "$system_dir/system-steps-overflow-assertion.log" \
+  "steps上限超過時のstdoutが空であることを確認" \
+  sh -c 'test ! -s "$1" && grep -Fq "最大値は 256" "$2"' \
+  sh "$system_dir/system-steps-overflow.stdout.log" "$system_dir/system-steps-overflow.stderr.log"
+
+run_split_expected_failure \
+  "system-test 系列時間上限超過" \
+  "$system_dir/system-duration-overflow.stdout.log" \
+  "$system_dir/system-duration-overflow.stderr.log" \
+  ".build/debug/nape-gesture system-test run --scenario horizontal-scroll --steps 3 --interval 20 --dry-run --log-json" \
+  .build/debug/nape-gesture system-test run --scenario horizontal-scroll --steps 3 --interval 20 --dry-run --log-json
+
+run_combined_success \
+  "system-test 系列時間上限超過の部分出力禁止" \
+  "$system_dir/system-duration-overflow-assertion.log" \
+  "系列時間上限超過時のstdoutが空であることを確認" \
+  sh -c 'test ! -s "$1" && grep -Fq "イベント列の最大時間は 30.0 秒" "$2"' \
+  sh "$system_dir/system-duration-overflow.stdout.log" "$system_dir/system-duration-overflow.stderr.log"
+
+system_atomic_output="$system_dir/system-derived-overflow-preserve.jsonl"
+printf '%s\n' "existing-system-test-log" > "$system_atomic_output"
+run_split_expected_failure \
+  "system-test 派生速度 overflow" \
+  "$system_dir/system-derived-overflow.stdout.log" \
+  "$system_dir/system-derived-overflow.stderr.log" \
+  ".build/debug/nape-gesture system-test run --scenario horizontal-scroll --amount 1e308 --steps 1 --interval 0.001 --dry-run --log-json --out $system_atomic_output" \
+  .build/debug/nape-gesture system-test run --scenario horizontal-scroll --amount 1e308 --steps 1 --interval 0.001 --dry-run --log-json --out "$system_atomic_output"
+
+run_combined_success \
+  "system-test 派生値失敗の出力原子性" \
+  "$system_dir/system-derived-overflow-assertion.log" \
+  "派生速度overflow時のstdoutが空で既存出力が不変であることを確認" \
+  sh -c 'test ! -s "$1" && grep -Fq "派生したスクロール量または速度が有限値ではありません" "$2" && test "$(cat "$3")" = "existing-system-test-log"' \
+  sh "$system_dir/system-derived-overflow.stdout.log" "$system_dir/system-derived-overflow.stderr.log" "$system_atomic_output"
 
 run_combined_success \
   "system-test normal-after-release dry-run JSON Lines" \
@@ -368,8 +418,8 @@ run_split_success \
   "system-test normal-after-release analyze-log assert-has-unmarked-click-drag-wheel" \
   "$system_dir/system-normal-after-release-analysis.json" \
   "$system_dir/system-normal-after-release-analysis.stderr.log" \
-  ".build/debug/nape-gesture analyze-log $system_dir/system-normal-after-release.jsonl --json --assert-system-scenario normal-after-release --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel" \
-  .build/debug/nape-gesture analyze-log "$system_dir/system-normal-after-release.jsonl" --json --assert-system-scenario normal-after-release --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel
+  ".build/debug/nape-gesture analyze-log $system_dir/system-normal-after-release.jsonl --json --assert-current-uptime --assert-system-scenario normal-after-release --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel" \
+  .build/debug/nape-gesture analyze-log "$system_dir/system-normal-after-release.jsonl" --json --assert-current-uptime --assert-system-scenario normal-after-release --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel
 
 run_combined_success \
   "system-test gesture-wheel-then-kill-switch dry-run JSON Lines" \
@@ -381,8 +431,8 @@ run_split_success \
   "system-test gesture-wheel-then-kill-switch analyze-log assert-gesture-before-kill-switch" \
   "$system_dir/system-gesture-wheel-then-kill-switch-analysis.json" \
   "$system_dir/system-gesture-wheel-then-kill-switch-analysis.stderr.log" \
-  ".build/debug/nape-gesture analyze-log $system_dir/system-gesture-wheel-then-kill-switch.jsonl --json --assert-system-scenario gesture-wheel-then-kill-switch --assert-kill-switch-shortcut --assert-gesture-before-kill-switch" \
-  .build/debug/nape-gesture analyze-log "$system_dir/system-gesture-wheel-then-kill-switch.jsonl" --json --assert-system-scenario gesture-wheel-then-kill-switch --assert-kill-switch-shortcut --assert-gesture-before-kill-switch
+  ".build/debug/nape-gesture analyze-log $system_dir/system-gesture-wheel-then-kill-switch.jsonl --json --assert-current-uptime --assert-system-scenario gesture-wheel-then-kill-switch --assert-kill-switch-shortcut --assert-gesture-before-kill-switch" \
+  .build/debug/nape-gesture analyze-log "$system_dir/system-gesture-wheel-then-kill-switch.jsonl" --json --assert-current-uptime --assert-system-scenario gesture-wheel-then-kill-switch --assert-kill-switch-shortcut --assert-gesture-before-kill-switch
 
 run_split_success \
   "generate-scroll space-right dry-run JSON Lines" \
@@ -392,11 +442,46 @@ run_split_success \
   .build/debug/nape-gesture generate-scroll --x 1200 --y 0 --steps 30 --mode space-right --phase auto --momentum-steps 8 --dry-run --log-json
 
 run_split_success \
-  "generate-scroll space-right analyze-log" \
+  "generate-scroll space-right analyze-log current-uptime" \
   "$system_dir/generated-space-right-analysis.txt" \
   "$system_dir/generated-space-right-analysis.stderr.log" \
-  ".build/debug/nape-gesture analyze-log $system_dir/generated-space-right.jsonl" \
-  .build/debug/nape-gesture analyze-log "$system_dir/generated-space-right.jsonl"
+  ".build/debug/nape-gesture analyze-log $system_dir/generated-space-right.jsonl --assert-current-uptime" \
+  .build/debug/nape-gesture analyze-log "$system_dir/generated-space-right.jsonl" --assert-current-uptime
+
+run_split_expected_failure \
+  "generate-scroll 派生値 overflow" \
+  "$system_dir/generated-overflow.jsonl" \
+  "$system_dir/generated-overflow.stderr.log" \
+  ".build/debug/nape-gesture generate-scroll --x 1e308 --steps 1 --momentum-steps 1 --momentum-scale 2 --dry-run --log-json" \
+  .build/debug/nape-gesture generate-scroll --x 1e308 --steps 1 --momentum-steps 1 --momentum-scale 2 --dry-run --log-json
+
+run_combined_success \
+  "generate-scroll overflow の部分出力禁止" \
+  "$system_dir/generated-overflow-assertion.log" \
+  "overflow時のstdoutが空でstderrに派生イベント失敗理由があることを確認" \
+  sh -c 'test ! -s "$1" && grep -Fq "派生イベントが有限値ではない" "$2"' \
+  sh "$system_dir/generated-overflow.jsonl" "$system_dir/generated-overflow.stderr.log"
+
+run_split_expected_failure \
+  "generate-scroll 後続timestamp変換不能" \
+  "$system_dir/generated-unconvertible-timestamp.jsonl" \
+  "$system_dir/generated-unconvertible-timestamp.stderr.log" \
+  ".build/debug/nape-gesture generate-scroll --x 1 --steps 2 --interval 1e308 --dry-run --log-json" \
+  .build/debug/nape-gesture generate-scroll --x 1 --steps 2 --interval 1e308 --dry-run --log-json
+
+run_combined_success \
+  "generate-scroll timestamp失敗の部分出力禁止" \
+  "$system_dir/generated-unconvertible-timestamp-assertion.log" \
+  "後続timestamp変換不能時のstdoutが空であることを確認" \
+  sh -c 'test ! -s "$1" && grep -Fq "timestampを起動後nanosecondsへ変換できない" "$2"' \
+  sh "$system_dir/generated-unconvertible-timestamp.jsonl" "$system_dir/generated-unconvertible-timestamp.stderr.log"
+
+run_split_expected_failure \
+  "epoch timestamp analyze-log assert-current-uptime" \
+  "$fixtures_dir/epoch-timestamp-current-uptime.json" \
+  "$fixtures_dir/epoch-timestamp-current-uptime.stderr.log" \
+  ".build/debug/nape-gesture analyze-log Fixtures/epoch-timestamp-generated-scroll-log.jsonl --json --assert-current-uptime" \
+  .build/debug/nape-gesture analyze-log Fixtures/epoch-timestamp-generated-scroll-log.jsonl --json --assert-current-uptime
 
 run_combined_success \
   "generate-scroll CLI expected failure" \
@@ -582,7 +667,7 @@ cat >> "$summary_file" <<EOF
 - 純正トラックパッドでの実操作ログ
 - TCC のアクセシビリティ / 入力監視許可操作
 - Spaces / Mission Control の画面挙動実測
-- Issue #10 の Safari / 対応アプリでのページ戻る、進む、ズーム、横スクロール画面挙動実測
+- Issue #10 の時刻修正後 Safari / 対応アプリでのページ戻る、進む、ズーム、横スクロール CGEvent log と computer-use 画面挙動再取得
 - \`run\`、実イベント投稿、target 実測、常駐 CPU、入力遅延
 - Developer ID 署名、公証、stapler、Gatekeeper 評価
 

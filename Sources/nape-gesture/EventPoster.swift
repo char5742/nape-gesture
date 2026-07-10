@@ -225,18 +225,25 @@ final class EventPoster {
             )
         }
 
-        event.timestamp = CGEventTimestamp(max(command.timestamp, 0) * 1_000_000_000)
+        guard CGEventUtilities.setMonotonicTimestamp(
+            secondsSinceStartup: command.timestamp,
+            on: event
+        ) else {
+            return nil
+        }
         return ScrollEventContext(event: event, targetUnderPointer: targetUnderPointer)
     }
 
     @discardableResult
     func postMissionControl(
+        timestamp: TimeInterval,
         delivery: AXScrollDelivery = .synchronous,
         completion: EventDeliveryCompletionHandler? = nil
     ) -> EventPostResult {
         postKeyShortcut(
             keyCode: CGKeyCode(kVK_UpArrow),
             flags: .maskControl,
+            timestamp: timestamp,
             delivery: delivery,
             completion: completion
         )
@@ -244,12 +251,14 @@ final class EventPoster {
 
     @discardableResult
     func postPageBack(
+        timestamp: TimeInterval,
         delivery: AXScrollDelivery = .synchronous,
         completion: EventDeliveryCompletionHandler? = nil
     ) -> EventPostResult {
         postKeyShortcut(
             keyCode: CGKeyCode(kVK_ANSI_LeftBracket),
             flags: .maskCommand,
+            timestamp: timestamp,
             delivery: delivery,
             completion: completion
         )
@@ -257,12 +266,14 @@ final class EventPoster {
 
     @discardableResult
     func postPageForward(
+        timestamp: TimeInterval,
         delivery: AXScrollDelivery = .synchronous,
         completion: EventDeliveryCompletionHandler? = nil
     ) -> EventPostResult {
         postKeyShortcut(
             keyCode: CGKeyCode(kVK_ANSI_RightBracket),
             flags: .maskCommand,
+            timestamp: timestamp,
             delivery: delivery,
             completion: completion
         )
@@ -270,12 +281,14 @@ final class EventPoster {
 
     @discardableResult
     func postZoomIn(
+        timestamp: TimeInterval,
         delivery: AXScrollDelivery = .synchronous,
         completion: EventDeliveryCompletionHandler? = nil
     ) -> EventPostResult {
         postKeyShortcut(
             keyCode: CGKeyCode(kVK_ANSI_Equal),
             flags: [.maskCommand, .maskShift],
+            timestamp: timestamp,
             delivery: delivery,
             completion: completion
         )
@@ -283,12 +296,14 @@ final class EventPoster {
 
     @discardableResult
     func postZoomOut(
+        timestamp: TimeInterval,
         delivery: AXScrollDelivery = .synchronous,
         completion: EventDeliveryCompletionHandler? = nil
     ) -> EventPostResult {
         postKeyShortcut(
             keyCode: CGKeyCode(kVK_ANSI_Minus),
             flags: .maskCommand,
+            timestamp: timestamp,
             delivery: delivery,
             completion: completion
         )
@@ -297,24 +312,36 @@ final class EventPoster {
     private func postKeyShortcut(
         keyCode: CGKeyCode,
         flags: CGEventFlags,
+        timestamp: TimeInterval,
         delivery: AXScrollDelivery,
         completion: EventDeliveryCompletionHandler?
     ) -> EventPostResult {
         let sequence = ShortcutEventSequence.keyEvents(keyCode: keyCode, flags: flags)
-        let rawEvents = sequence.map { shortcutEvent in
-            makeKeyEvent(
+        guard let eventTimestamps = MonotonicEventClock.validatedTimestampSequenceNanosecondsForPosting(
+            fromSecondsSinceStartup: sequence.map { _ in timestamp }
+        ) else {
+            return EventPostResult(
+                generatedEventCount: 0,
+                failedEventCreationCount: sequence.count
+            )
+        }
+
+        var events: [CGEvent] = []
+        events.reserveCapacity(sequence.count)
+        for (shortcutEvent, eventTimestamp) in zip(sequence, eventTimestamps) {
+            guard let event = makeKeyEvent(
                 keyCode: shortcutEvent.keyCode,
                 keyDown: shortcutEvent.isKeyDown,
                 flags: shortcutEvent.flags
-            )
+            ) else {
+                return EventPostResult(
+                    generatedEventCount: 0,
+                    failedEventCreationCount: sequence.count - events.count
+                )
+            }
+            event.timestamp = CGEventTimestamp(eventTimestamp)
+            events.append(event)
         }
-        guard rawEvents.allSatisfy({ $0 != nil }) else {
-            return EventPostResult(
-                generatedEventCount: 0,
-                failedEventCreationCount: rawEvents.filter { $0 == nil }.count
-            )
-        }
-        let events = rawEvents.compactMap { $0 }
         events.forEach(CGEventUtilities.setGeneratedMarker)
 
         switch delivery {
@@ -341,16 +368,17 @@ final class EventPoster {
 
         return EventPostResult(
             generatedEventCount: events.count,
-            failedEventCreationCount: rawEvents.count - events.count,
+            failedEventCreationCount: 0,
             deliveryDeferred: delivery == .asynchronous
         )
     }
 
     private func postKeyEvents(_ events: [CGEvent]) {
         for (index, event) in events.enumerated() {
+            event.timestamp = CGEventTimestamp(MonotonicEventClock.nowTimestampNanoseconds)
             event.post(tap: .cgSessionEventTap)
             if index < events.count - 1 {
-                Thread.sleep(forTimeInterval: 0.002)
+                Thread.sleep(forTimeInterval: ShortcutEventSequence.interEventDelay)
             }
         }
     }
@@ -377,7 +405,7 @@ final class EventPoster {
     }
 
     private func monotonicNanoseconds() -> UInt64 {
-        DispatchTime.now().uptimeNanoseconds
+        MonotonicEventClock.nowTimestampNanoseconds
     }
 
     private func postTap(for mode: ScrollPostMode) -> CGEventTapLocation {

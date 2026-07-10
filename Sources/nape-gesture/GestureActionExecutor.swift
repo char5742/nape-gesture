@@ -60,23 +60,43 @@ final class GestureActionExecutor {
             )
         case .missionControl:
             return postDiscrete(action: action, command: command) {
-                poster.postMissionControl(delivery: .asynchronous, completion: eventCompletion)
+                poster.postMissionControl(
+                    timestamp: command.timestamp,
+                    delivery: .asynchronous,
+                    completion: eventCompletion
+                )
             }
         case .pageBack:
             return postDiscrete(action: action, command: command) {
-                poster.postPageBack(delivery: .asynchronous, completion: eventCompletion)
+                poster.postPageBack(
+                    timestamp: command.timestamp,
+                    delivery: .asynchronous,
+                    completion: eventCompletion
+                )
             }
         case .pageForward:
             return postDiscrete(action: action, command: command) {
-                poster.postPageForward(delivery: .asynchronous, completion: eventCompletion)
+                poster.postPageForward(
+                    timestamp: command.timestamp,
+                    delivery: .asynchronous,
+                    completion: eventCompletion
+                )
             }
         case .zoomIn:
             return postDiscrete(action: action, command: command) {
-                poster.postZoomIn(delivery: .asynchronous, completion: eventCompletion)
+                poster.postZoomIn(
+                    timestamp: command.timestamp,
+                    delivery: .asynchronous,
+                    completion: eventCompletion
+                )
             }
         case .zoomOut:
             return postDiscrete(action: action, command: command) {
-                poster.postZoomOut(delivery: .asynchronous, completion: eventCompletion)
+                poster.postZoomOut(
+                    timestamp: command.timestamp,
+                    delivery: .asynchronous,
+                    completion: eventCompletion
+                )
             }
         }
     }

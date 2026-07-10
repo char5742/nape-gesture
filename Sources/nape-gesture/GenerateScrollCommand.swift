@@ -1,5 +1,7 @@
-import CoreGraphics
 import Foundation
+
+#if !GENERATE_SCROLL_POST_RESULT_TESTING
+import CoreGraphics
 import NapeGestureCore
 
 struct GenerateScrollCommand {
@@ -29,36 +31,52 @@ struct GenerateScrollCommand {
         guard steps > 0 else {
             throw ToolError.invalidValue("--steps", String(steps))
         }
-        guard interval > 0 else {
+        guard interval.isFinite, interval > 0 else {
             throw ToolError.invalidValue("--interval", String(interval))
         }
         guard momentumSteps >= 0 else {
             throw ToolError.invalidValue("--momentum-steps", String(momentumSteps))
         }
-        guard (0...1).contains(momentumDecay) else {
+        guard momentumDecay.isFinite, (0...1).contains(momentumDecay) else {
             throw ToolError.invalidValue("--momentum-decay", String(momentumDecay))
         }
-        guard momentumScale >= 0 else {
+        guard momentumScale.isFinite, momentumScale >= 0 else {
             throw ToolError.invalidValue("--momentum-scale", String(momentumScale))
         }
+        guard deltaX.isFinite else {
+            throw ToolError.invalidValue("--x", String(deltaX))
+        }
+        guard deltaY.isFinite else {
+            throw ToolError.invalidValue("--y", String(deltaY))
+        }
 
-        let commands = ScrollGenerationPlanner.makeCommands(
-            deltaX: deltaX,
-            deltaY: deltaY,
-            steps: steps,
-            interval: interval,
-            phaseOverride: phaseOverride,
-            momentumSteps: momentumSteps,
-            momentumDecay: momentumDecay,
-            momentumScale: momentumScale,
-            startTime: Date().timeIntervalSince1970
-        )
+        let makeCommands: (TimeInterval) throws -> [GestureCommand] = { startTime in
+            let commands = ScrollGenerationPlanner.makeCommands(
+                deltaX: deltaX,
+                deltaY: deltaY,
+                steps: steps,
+                interval: interval,
+                phaseOverride: phaseOverride,
+                momentumSteps: momentumSteps,
+                momentumDecay: momentumDecay,
+                momentumScale: momentumScale,
+                startTime: startTime
+            )
+            guard !commands.isEmpty else {
+                throw ToolError.invalidValue(
+                    "generate-scroll",
+                    "派生イベントが有限値ではない、timestampを起動後nanosecondsへ変換できない、または生成上限 \(ScrollGenerationPlanner.maximumCommandCount) 件を超えています。"
+                )
+            }
+            return commands
+        }
 
         if isDryRun {
+            let commands = try makeCommands(MonotonicEventClock.nowSeconds)
             if outputLogJSON {
-                printInputLog(commands, mode: mode)
+                try printInputLog(commands, mode: mode)
             } else {
-                printPlan(commands, mode: mode)
+                try printPlan(commands, mode: mode)
             }
             return
         }
@@ -68,19 +86,113 @@ struct GenerateScrollCommand {
         }
 
         try AccessibilityPermission.ensurePrompted()
+        let commands = try makeCommands(MonotonicEventClock.nowSeconds)
         let poster = EventPoster()
+
+        switch axDelivery {
+        case .synchronous:
+            try postSynchronously(
+                commands,
+                poster: poster,
+                mode: mode,
+                targetProcessID: targetProcessID,
+                interval: interval
+            )
+        case .asynchronous:
+            try postAsynchronously(
+                commands,
+                poster: poster,
+                mode: mode,
+                targetProcessID: targetProcessID,
+                interval: interval
+            )
+        }
+    }
+
+    private func postSynchronously(
+        _ commands: [GestureCommand],
+        poster: EventPoster,
+        mode: ScrollPostMode,
+        targetProcessID: pid_t?,
+        interval: TimeInterval
+    ) throws {
         for (index, command) in commands.enumerated() {
-            poster.postScroll(
+            let result = poster.postScroll(
                 command: command,
                 mode: mode,
-                axDelivery: axDelivery,
+                axDelivery: .synchronous,
                 targetProcessOverride: targetProcessID
             )
+            let snapshot = GenerateScrollPostResultSnapshot(result)
+            if let failure = snapshot.completedFailureDescription {
+                throw postingError(["\(index + 1)件目: \(failure)"])
+            }
             if index < commands.count - 1 {
                 Thread.sleep(forTimeInterval: interval)
             }
         }
+    }
+
+    private func postAsynchronously(
+        _ commands: [GestureCommand],
+        poster: EventPoster,
+        mode: ScrollPostMode,
+        targetProcessID: pid_t?,
+        interval: TimeInterval
+    ) throws {
+        let collector = GenerateScrollPostCompletionCollector()
+        var expectedCompletionIndexes: Set<Int> = []
+        var failures: [String] = []
+        var submittedCommandCount = 0
+
+        for (index, command) in commands.enumerated() {
+            let result = poster.postScroll(
+                command: command,
+                mode: mode,
+                axDelivery: .asynchronous,
+                targetProcessOverride: targetProcessID
+            ) { completion in
+                collector.recordCompletion(
+                    index: index,
+                    result: GenerateScrollPostResultSnapshot(completion.postResult)
+                )
+            }
+            let snapshot = GenerateScrollPostResultSnapshot(result)
+            submittedCommandCount += 1
+
+            if snapshot.deliveryDeferred {
+                expectedCompletionIndexes.insert(index)
+                if let failure = snapshot.submissionFailureDescription {
+                    failures.append("\(index + 1)件目: deferred受付結果が不正です: \(failure)")
+                }
+            } else if let failure = snapshot.completedFailureDescription {
+                failures.append("\(index + 1)件目: 非deferred投稿が失敗しました: \(failure)")
+            }
+            if !failures.isEmpty {
+                break
+            }
+            if index < commands.count - 1 {
+                Thread.sleep(forTimeInterval: interval)
+            }
+        }
+
         poster.waitForPendingAXScroll()
+
+        failures.append(contentsOf: collector.validationFailures(
+            expectedCommandIndexes: expectedCompletionIndexes
+        ))
+        if submittedCommandCount != commands.count {
+            failures.append(
+                "投稿失敗後に未投稿のコマンドがあります: submitted=\(submittedCommandCount) planned=\(commands.count)"
+            )
+        }
+        guard failures.isEmpty else {
+            throw postingError(failures)
+        }
+    }
+
+    private func postingError(_ failures: [String]) -> ToolError {
+        ToolError.invalidValue("generate-scroll posting", failures.joined(separator: "; "))
     }
 
     private func validateOptions() throws {
@@ -209,7 +321,7 @@ struct GenerateScrollCommand {
         return pid_t(value)
     }
 
-    private func printPlan(_ commands: [GestureCommand], mode: ScrollPostMode) {
+    private func printPlan(_ commands: [GestureCommand], mode: ScrollPostMode) throws {
         let preview = commands.enumerated().map { index, command in
             let posted = mode.deltas(for: command)
             return ScrollCommandPreview(
@@ -229,9 +341,8 @@ struct GenerateScrollCommand {
         if options.contains("--json") {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            if let data = try? encoder.encode(preview) {
-                print(String(decoding: data, as: UTF8.self))
-            }
+            let data = try encoder.encode(preview)
+            print(String(decoding: data, as: UTF8.self))
             return
         }
 
@@ -245,15 +356,22 @@ struct GenerateScrollCommand {
         }
     }
 
-    private func printInputLog(_ commands: [GestureCommand], mode: ScrollPostMode) {
+    private func printInputLog(_ commands: [GestureCommand], mode: ScrollPostMode) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
+        var lines: [String] = []
+        lines.reserveCapacity(commands.count)
 
         for command in commands {
+            guard let timestamp = MonotonicEventClock.timestampNanoseconds(
+                fromSecondsSinceStartup: command.timestamp
+            ) else {
+                throw ToolError.invalidValue("timestamp", String(command.timestamp))
+            }
             let posted = mode.deltas(for: command)
             let phases = CGEventUtilities.phaseValues(for: command)
             let record = InputLogRecord(
-                timestamp: UInt64(max(command.timestamp, 0) * 1_000_000_000),
+                timestamp: timestamp,
                 typeName: "scrollWheel",
                 typeRaw: Int(CGEventType.scrollWheel.rawValue),
                 generatedByNapeGesture: true,
@@ -270,9 +388,11 @@ struct GenerateScrollCommand {
                 keyCode: 0,
                 flags: 0
             )
-            if let data = try? encoder.encode(record) {
-                print(String(decoding: data, as: UTF8.self))
-            }
+            let data = try encoder.encode(record)
+            lines.append(String(decoding: data, as: UTF8.self))
+        }
+        if !lines.isEmpty {
+            print(lines.joined(separator: "\n"))
         }
     }
 
@@ -300,3 +420,90 @@ private struct ScrollCommandPreview: Codable {
     var velocityY: Double
     var timestamp: TimeInterval
 }
+#endif
+
+struct GenerateScrollPostResultSnapshot: Equatable {
+    var generatedEventCount: Int
+    var failedEventCreationCount: Int
+    var deliveryDeferred: Bool
+
+    var submissionFailureDescription: String? {
+        if failedEventCreationCount != 0 {
+            return "イベント作成失敗数が0ではありません: \(failedEventCreationCount)"
+        }
+        if generatedEventCount <= 0 {
+            return "deferred受付時の生成イベント数が1以上ではありません: \(generatedEventCount)"
+        }
+        return nil
+    }
+
+    var completedFailureDescription: String? {
+        if deliveryDeferred {
+            return "配送完了結果が deferred のままです"
+        }
+        if failedEventCreationCount != 0 {
+            return "イベント作成失敗数が0ではありません: \(failedEventCreationCount)"
+        }
+        if generatedEventCount < 0 {
+            return "生成イベント数が負数です: \(generatedEventCount)"
+        }
+        return nil
+    }
+}
+
+final class GenerateScrollPostCompletionCollector {
+    private let lock = NSLock()
+    private var completions: [Int: [GenerateScrollPostResultSnapshot]] = [:]
+
+    func recordCompletion(index: Int, result: GenerateScrollPostResultSnapshot) {
+        lock.lock()
+        completions[index, default: []].append(result)
+        lock.unlock()
+    }
+
+    func validationFailures(expectedCommandIndexes: Set<Int>) -> [String] {
+        lock.lock()
+        let completions = self.completions
+        lock.unlock()
+
+        var failures: [String] = []
+        for index in expectedCommandIndexes.sorted() {
+            let position = index + 1
+            let completionResults = completions[index] ?? []
+            if completionResults.isEmpty {
+                failures.append("\(position)件目: async completion がありません")
+            } else if completionResults.count > 1 {
+                failures.append("\(position)件目: async completion が重複しています: \(completionResults.count)件")
+            } else if let failure = completionResults[0].completedFailureDescription {
+                failures.append("\(position)件目: async completion が失敗しました: \(failure)")
+            }
+        }
+
+        let unexpectedIndexes = Set(completions.keys)
+            .subtracting(expectedCommandIndexes)
+            .sorted()
+        for index in unexpectedIndexes {
+            let completionCount = completions[index]?.count ?? 0
+            if index >= 0 {
+                failures.append(
+                    "\(index + 1)件目: 非deferred投稿に completion があります: \(completionCount)件"
+                )
+            } else {
+                failures.append("範囲外の completion があります: index=\(index)")
+            }
+        }
+        return failures
+    }
+}
+
+#if !GENERATE_SCROLL_POST_RESULT_TESTING
+private extension GenerateScrollPostResultSnapshot {
+    init(_ result: EventPostResult) {
+        self.init(
+            generatedEventCount: result.generatedEventCount,
+            failedEventCreationCount: result.failedEventCreationCount,
+            deliveryDeferred: result.deliveryDeferred
+        )
+    }
+}
+#endif

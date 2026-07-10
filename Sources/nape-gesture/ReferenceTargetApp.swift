@@ -152,7 +152,7 @@ final class ReferenceTargetApp: NSObject, NSApplicationDelegate, ReferenceTarget
         var data = try encoder.encode(ReferenceTargetReadyRecord(
             ready: true,
             pid: ProcessInfo.processInfo.processIdentifier,
-            timestamp: Date().timeIntervalSince1970,
+            wallClockUnixSeconds: Date().timeIntervalSince1970,
             outputPath: configuration.outputPath,
             focus: focusRecord,
             diagnostics: makeReadyDiagnostics()
@@ -458,7 +458,7 @@ private struct ReferenceTargetConfiguration {
 private struct ReferenceTargetReadyRecord: Codable, Equatable {
     var ready: Bool
     var pid: Int32
-    var timestamp: TimeInterval
+    var wallClockUnixSeconds: TimeInterval
     var outputPath: String?
     var focus: ReferenceTargetFocusRecord?
     var diagnostics: ReferenceTargetDiagnosticsRecord?

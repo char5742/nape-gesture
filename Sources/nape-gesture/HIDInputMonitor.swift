@@ -61,7 +61,7 @@ final class HIDInputMonitor {
         let usagePage = Int(IOHIDElementGetUsagePage(element))
         let usage = Int(IOHIDElementGetUsage(element))
         let integerValue = IOHIDValueGetIntegerValue(value)
-        let time = ProcessInfo.processInfo.systemUptime
+        let time = MonotonicEventClock.nowSeconds
 
         if usagePage == kHIDPage_Button, let button = MouseButton(hidButtonUsage: usage) {
             if integerValue != 0 {

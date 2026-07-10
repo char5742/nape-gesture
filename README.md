@@ -13,12 +13,16 @@ Mac Mouse Fix のコード、定数、状態遷移、係数は流用しません
 | メニューバー常駐 UI | 実装済み。AppKit `gui-smoke` で status item `NG`、状態、開始、緊急停止、停止、設定、権限導線の生成契約を検査する。SystemUIServer の AX name に出ない場合は `gui-smoke` を正とする | [docs/completion-checklist.md](docs/completion-checklist.md) |
 | 設定 UI | 実装済み。編集項目 catalog、JSON round-trip、computer-use による `.app` 設定表示と保存操作は確認済み。保存は設定ファイル更新までの証跡で、TCC 許可済み runtime と実イベントは completion matrix で管理する | [ADR-0021](docs/adr/0021-settings-ui-field-catalog.md)、[docs/completion-checklist.md](docs/completion-checklist.md) |
 | Runtime event | `.build/NapeGesture.app` の TCC 許可済み経路で成功。gesture-drag / gesture-wheel / kill-switch / gesture-wheel-then-kill-switch / normal-after-release を `scripts/collect-runtime-event-evidence.sh` で機械判定した | [ADR-0032](docs/adr/0032-reference-target-foreground-capture.md)、[ADR-0033](docs/adr/0033-kill-switch-pending-release-suppression.md) |
-| Safari 操作 | 権限付与済み `.app` の通常経路で、ページ戻る / 進む、ズーム、縦横スクロールの実動作を確認済み。自動化ホスト下の診断 override は通常 runtime と分離している | [ADR-0035](docs/adr/0035-browser-discrete-shortcut-posting.md)、[ADR-0036](docs/adr/0036-scroll-event-target-process-routing.md) |
+| Safari 操作 | 一部完了。時刻修正前の `.app` でページ戻る / 進む、ズーム、縦横スクロールの比較確認はあるが、完成証跡には採用しない。ADR-0037 統合 commit で再取得する | [ADR-0035](docs/adr/0035-browser-discrete-shortcut-posting.md)、[ADR-0036](docs/adr/0036-scroll-event-target-process-routing.md)、[ADR-0037](docs/adr/0037-monotonic-event-time-domain.md) |
+| イベント時刻 | CGEvent 入力、HID、慣性、生成イベント、runtime 性能を起動後単調時刻へ統一。dry-run と実投稿ログは `analyze-log --assert-current-uptime` で epoch 混入を検査する | [ADR-0037](docs/adr/0037-monotonic-event-time-domain.md)、[docs/verification.md](docs/verification.md) |
 | 通常入力通過 | 機械証跡あり。ジェスチャーボタン未押下時と解放後の通常クリック、ドラッグ、ホイールを AppKit target log で確認する | [ADR-0016](docs/adr/0016-normal-input-kind-assertions.md) |
 | 権限導線 | 実装済み。GUI と `doctor` が TCC 権限付与対象を表示し、System Settings を開く | [ADR-0020](docs/adr/0020-doctor-tcc-permission-target.md)、[ADR-0025](docs/adr/0025-gui-permission-recovery-actions.md) |
 | runtime 性能測定 | tap callback から serial queue 内の実配送直前/直後までを JSON Lines schema 2 で保存する。provisional / completion を command ID で解決し、completion のない deferred record は不合格にする | [docs/performance-baseline.md](docs/performance-baseline.md) |
 | 実機完成判定 | 一部は人間作業待ち。純正トラックパッド操作、Nape Pro 実機操作、公証は自動化できない最後の手段として扱う。TCC 許可済み runtime event は機械証跡取得済み | [docs/completion-checklist.md](docs/completion-checklist.md) |
 | 署名・公証済みリリース | 未完了。Developer ID 署名、公証、stapler / Gatekeeper 評価の証跡が必要 | [docs/release.md](docs/release.md) |
+
+PR #101 の Safari 診断は、修正前の Unix epoch timestamp で CGEvent を投稿した可能性を除外できません。
+ページ戻る / 進む、ズーム、縦横スクロールを含む Issue #10 / #16 の Safari 証跡は、ADR-0037 適用後の実行主体とログで再取得するまで完成証跡に採用しません。
 
 `need:human` はレビュー待ちや判断待ちではなく、人間が実際に作業しないと進められない TCC 操作、物理デバイス操作、証明書操作などにだけ使います。
 自動化できる検証は先に自動化し、人間作業は最後の手段に限定します。
@@ -144,8 +148,9 @@ swift run nape-gesture init-config --vendor-id <ID> --product-id <ID> --usage-pa
 `generate-scroll --post-to-pid` は Codex などの自動化ホスト window がポインタ位置を覆う場合の画面証跡診断専用です。値欠落、重複、未知 option、余分な positional argument は実イベント投稿前に拒否します。通常 runtime は引き続きポインタ直下の通常 window owner を対象にします。
 完成証跡は配送経路ごとに分けます。Spaces は `.cghidEventTap`、通常アプリ内スクロールはポインタ直下 PID への CGEvent / AX Web fallback、Reference Target App の受信は `analyze-target-log --assert-has-foreground-capture` を使います。Web content の AX fallback は `AXDescription` に依存せず、hit element から最も近い scroll container と direct child clipping を調べます。縦だけなど利用可能な軸は同じ nested target へ配送し、未対応軸を outer へ流しません。frame / children 情報不足や ambiguous target は blocked として CGEvent fallback を抑止します。
 非同期 runtime 性能ログは enqueue 時の仮件数ではなく queue 内の実結果で確定し、AX適用は1件、blocked / 端到達の noChange は0件として記録します。
-AX scrollbar set は Web の `wheel` handler を発火せず、公開 AX tree が generic overflow の境界を省略する場合は通常 wheel と同じ nested routing を保証できません。成立範囲、Computer Use 比較、再現 fixture は [Safari scroll 配送比較](docs/safari-scroll-delivery-verification.md) を参照してください。この項目は一部完了であり、Issue #102 取り込み後の最終 Safari 証跡再取得が必要です。
+AX scrollbar set は Web の `wheel` handler を発火せず、公開 AX tree が generic overflow の境界を省略する場合は通常 wheel と同じ nested routing を保証できません。成立範囲、Computer Use 比較、再現 fixture は [Safari scroll 配送比較](docs/safari-scroll-delivery-verification.md) を参照してください。Issue #102 の単調時刻修正は統合済みですが、統合 commit と TCC 許可済み `.app` identity を固定し、contract の5 assertion、通常 async、PID 固定 sync、端到達、Computer Use の通常 wheel、生成 CGEvent log の current uptime、runtime performance completion を再取得するまで一部完了です。
 `system-test run --scenario kill-switch` は未マークの `Control + Option + Command + G` を interval 付きの `keyDown` / `keyUp` として投稿し、daemon 停止ログと target log 漏れなしを確認します。
+`system-test run` は最大256 step、系列全体30秒以内に制限し、派生 delta、速度、全 timestamp、全 CGEvent を1件目の投稿前に検証します。`--dry-run --log-json` は全レコードの encode 成功後だけ stdout または `--out` を更新し、失敗時に部分ログを残しません。
 
 <details>
 <summary>CLI 例を開く</summary>
@@ -181,6 +186,7 @@ swift run nape-gesture derive-parameters Fixtures/sample-tuning-trackpad-log.jso
 swift run nape-gesture generate-scroll --x 0 --y -480 --steps 24
 swift run nape-gesture generate-scroll --x 0 --y -480 --steps 24 --momentum-steps 12 --dry-run
 swift run nape-gesture generate-scroll --x 0 --y -480 --steps 24 --momentum-steps 12 --dry-run --log-json > generated-scroll.jsonl
+swift run nape-gesture analyze-log generated-scroll.jsonl --json --assert-current-uptime
 swift run nape-gesture generate-scroll --x 1200 --y 0 --steps 30 --mode space-right --phase auto --dry-run --json
 
 swift run nape-gesture system-test list
@@ -188,7 +194,7 @@ swift run nape-gesture system-test run --scenario space-left --target finder --d
 swift run nape-gesture system-test run --scenario space-left --target finder --dry-run --log-json --out system-space-left.jsonl
 swift run nape-gesture system-test run --scenario horizontal-scroll --dry-run --log-json --out system-horizontal-scroll.jsonl
 swift run nape-gesture system-test run --scenario normal-after-release --post-to-pid <Reference Target App PID>
-swift run nape-gesture analyze-log system-horizontal-scroll.jsonl --json
+swift run nape-gesture analyze-log system-horizontal-scroll.jsonl --json --assert-current-uptime --assert-system-scenario horizontal-scroll
 
 swift run nape-gesture benchmark --events 200000 --json
 swift run nape-gesture doctor --probe-hid --benchmark-events 50000 --json --assert-runtime-ready
@@ -200,6 +206,8 @@ swift run nape-gesture bundle-app --out .build/NapeGesture.app --replace
 swift run nape-gesture verify-bundle .build/NapeGesture.app
 swift run nape-gesture-core-tests
 ```
+
+`generate-scroll` は入力値だけでなく、分割後のdelta、速度、momentum、timestampが有限かつ起動後nanosecondsへ変換可能であることを投稿・出力前に検証します。派生値がoverflowする計画、変換不能な後続timestamp、10万件を超える計画は、JSON Linesを途中まで出力せず非ゼロ終了します。
 
 </details>
 

@@ -473,6 +473,145 @@ func testMomentumDecaysAndEventuallyEnds() {
     expect(engine.state == .idle, "慣性終了後は idle に戻る")
 }
 
+func testMonotonicEventClockConvertsTimestampUnits() {
+    let timestamp: UInt64 = 12_345_678_901
+    let seconds = MonotonicEventClock.seconds(fromTimestampNanoseconds: timestamp)
+    let roundTripped = MonotonicEventClock.timestampNanoseconds(fromSecondsSinceStartup: seconds)
+
+    expectApproximatelyEqual(seconds, 12.345678901, "起動後ナノ秒を起動後秒へ変換する")
+    expect(roundTripped.map { abs(Int64($0) - Int64(timestamp)) <= 1 } == true, "起動後秒をナノ秒へ戻せる")
+    expect(
+        MonotonicEventClock.timestampNanoseconds(fromSecondsSinceStartup: -1) == nil,
+        "負の時刻は CGEvent timestamp 候補にしない"
+    )
+    expect(
+        MonotonicEventClock.timestampNanoseconds(fromSecondsSinceStartup: .infinity) == nil,
+        "非有限時刻は CGEvent timestamp 候補にしない"
+    )
+}
+
+func testMonotonicEventClockRejectsEpochForPosting() {
+    let uptimeSeconds: TimeInterval = 12_345
+    let uptimeNanoseconds: UInt64 = 12_345_000_000_000
+
+    expect(
+        MonotonicEventClock.validatedTimestampNanosecondsForPosting(
+            fromSecondsSinceStartup: uptimeSeconds,
+            referenceTimestampNanoseconds: uptimeNanoseconds
+        ) == uptimeNanoseconds,
+        "現在 uptime 近傍の timestamp を投稿可能にする"
+    )
+    expect(
+        MonotonicEventClock.validatedTimestampNanosecondsForPosting(
+            fromSecondsSinceStartup: 1_700_000_000,
+            referenceTimestampNanoseconds: uptimeNanoseconds
+        ) == nil,
+        "Unix epoch 秒を uptime timestamp として投稿しない"
+    )
+
+    expect(
+        MonotonicEventClock.validatedTimestampSequenceNanosecondsForPosting(
+            fromSecondsSinceStartup: [uptimeSeconds, uptimeSeconds],
+            referenceTimestampNanoseconds: uptimeNanoseconds
+        )?.count == 2,
+        "shortcut の入力時刻を同じreferenceで一括検証する"
+    )
+    expect(
+        MonotonicEventClock.validatedTimestampSequenceNanosecondsForPosting(
+            fromSecondsSinceStartup: [uptimeSeconds, uptimeSeconds + 61],
+            referenceTimestampNanoseconds: uptimeNanoseconds
+        ) == nil,
+        "shortcut の一方が範囲外ならsequence全体を拒否する"
+    )
+}
+
+func testMomentumFirstTickUsesUptimeDomain() {
+    let configuration = MomentumConfiguration(
+        minimumStartVelocity: 10,
+        stopVelocity: 1,
+        decayPerSecond: 0.5,
+        frameInterval: 0.016
+    )
+    var engine = MomentumEngine(configuration: configuration)
+    let inputUptime = MonotonicEventClock.seconds(fromTimestampNanoseconds: 12_345_000_000_000)
+    engine.start(from: GestureCommand(
+        kind: .drag,
+        phase: .ended,
+        direction: .right,
+        deltaX: 0,
+        deltaY: 0,
+        velocityX: 100,
+        velocityY: 0,
+        timestamp: inputUptime
+    ))
+
+    let firstTick = engine.tick(at: inputUptime + configuration.frameInterval)
+
+    expect(firstTick?.kind == .momentum, "実入力相当 uptime から最初の慣性コマンドを出す")
+    expect(firstTick?.phase == .momentum, "実入力相当 uptime の最初の tick は momentum になる")
+    expect((firstTick?.deltaX ?? 0) > 0, "最初の慣性 tick に移動量がある")
+}
+
+func testMomentumStopsOnMixedOrAbnormalTimeDomain() {
+    let configuration = MomentumConfiguration(
+        minimumStartVelocity: 10,
+        stopVelocity: 1,
+        decayPerSecond: 0.5,
+        frameInterval: 0.016
+    )
+    let uptime: TimeInterval = 12_345
+    let epoch: TimeInterval = 1_700_000_000
+    func command(timestamp: TimeInterval) -> GestureCommand {
+        GestureCommand(
+            kind: .drag,
+            phase: .ended,
+            direction: .right,
+            deltaX: 0,
+            deltaY: 0,
+            velocityX: 100,
+            velocityY: 0,
+            timestamp: timestamp
+        )
+    }
+
+    var uptimeToEpoch = MomentumEngine(configuration: configuration)
+    uptimeToEpoch.start(from: command(timestamp: uptime))
+    expect(uptimeToEpoch.tick(at: epoch) == nil, "uptime へ epoch tick を混ぜた慣性を投稿しない")
+    expect(uptimeToEpoch.state == .idle, "uptime へ epoch tick を混ぜた慣性を停止する")
+
+    var epochToUptime = MomentumEngine(configuration: configuration)
+    epochToUptime.start(from: command(timestamp: epoch))
+    expect(epochToUptime.tick(at: uptime) == nil, "epoch command へ uptime tick を混ぜた慣性を投稿しない")
+    expect(epochToUptime.state == .idle, "epoch command へ uptime tick を混ぜた慣性を停止する")
+
+    var excessiveGap = MomentumEngine(configuration: configuration)
+    excessiveGap.start(from: command(timestamp: uptime))
+    expect(excessiveGap.tick(at: uptime + 2) == nil, "異常に長い tick 間隔の慣性を投稿しない")
+    expect(excessiveGap.state == .idle, "異常に長い tick 間隔では慣性を停止する")
+}
+
+func testMomentumAllowsConfiguredLongFrameInterval() {
+    let configuration = MomentumConfiguration(
+        minimumStartVelocity: 10,
+        stopVelocity: 1,
+        decayPerSecond: 0.5,
+        frameInterval: 1.5
+    )
+    var engine = MomentumEngine(configuration: configuration)
+    engine.start(from: GestureCommand(
+        kind: .drag,
+        phase: .ended,
+        direction: .right,
+        deltaX: 0,
+        deltaY: 0,
+        velocityX: 100,
+        velocityY: 0,
+        timestamp: 12_345
+    ))
+
+    expect(engine.tick(at: 12_346.5)?.phase == .momentum, "設定済みの長い frameInterval は異常 gap と扱わない")
+}
+
 func testDeviceMatcherMatchesConfiguredDevice() {
     let device = DeviceIdentity(
         manufacturer: "Example",
@@ -1379,11 +1518,11 @@ func testInputAssociationAnalyzerRejectsCloserNonTargetHIDDevice() {
     expect(!analysis.hasValidAssociationWindowEvidence, "対象外互換 HID がより近いログは有効な紐づけ証跡として扱わない")
 }
 
-func testInputAssociationAnalyzerAcceptsSecondAndNanosecondTimestamps() {
+func testInputAssociationAnalyzerAlwaysTreatsEventTimestampsAsNanoseconds() {
     expectApproximatelyEqual(
         InputAssociationAnalyzer.timestampSeconds(fromEventTimestamp: 42),
-        42,
-        "小さい timestamp は秒値として扱う"
+        0.000000042,
+        "起動直後の小さいevent timestampもナノ秒として扱う"
     )
     expectApproximatelyEqual(
         InputAssociationAnalyzer.timestampSeconds(fromEventTimestamp: 42_500_000_000),
@@ -1430,6 +1569,51 @@ func testScrollGenerationPlannerPhaseOverrideAndMomentum() {
     expect(commands[2].deltaX == 20, "最初の慣性量はステップ量を基準にする")
     expect(commands[3].deltaX == 10, "慣性量を decay で減衰する")
     expect(commands[4].phase == .ended, "慣性列の最後に ended を追加する")
+}
+
+func testScrollGenerationPlannerRejectsNonFiniteDerivedValuesAndOversizedPlans() {
+    expect(
+        ScrollGenerationPlanner.makeCommands(
+            deltaX: 1e308,
+            deltaY: 0,
+            steps: 1,
+            interval: 0.008,
+            phaseOverride: nil,
+            momentumSteps: 1,
+            momentumDecay: 0.85,
+            momentumScale: 2,
+            startTime: 1
+        ).isEmpty,
+        "有限入力からoverflowするmomentumを部分生成しない"
+    )
+    expect(
+        ScrollGenerationPlanner.makeCommands(
+            deltaX: 1,
+            deltaY: 0,
+            steps: ScrollGenerationPlanner.maximumCommandCount,
+            interval: 0.008,
+            phaseOverride: nil,
+            momentumSteps: 1,
+            momentumDecay: 0.85,
+            momentumScale: 1,
+            startTime: 1
+        ).isEmpty,
+        "生成上限を超える計画を確保しない"
+    )
+    expect(
+        ScrollGenerationPlanner.makeCommands(
+            deltaX: 1,
+            deltaY: 0,
+            steps: 2,
+            interval: 1e308,
+            phaseOverride: nil,
+            momentumSteps: 0,
+            momentumDecay: 0.85,
+            momentumScale: 1,
+            startTime: 1
+        ).isEmpty,
+        "有限でも起動後nanosecondsへ変換不能な後続timestampを部分生成しない"
+    )
 }
 
 func testScrollEventPhaseEncoderSeparatesScrollAndMomentumPhases() {
@@ -2538,6 +2722,11 @@ testDragCancelsWhenOffAxisMovementExceedsRatio()
 testWheelGestureIsScopedToActivationButton()
 testMomentumDoesNotStartBelowMinimumVelocity()
 testMomentumDecaysAndEventuallyEnds()
+testMonotonicEventClockConvertsTimestampUnits()
+testMonotonicEventClockRejectsEpochForPosting()
+testMomentumFirstTickUsesUptimeDomain()
+testMomentumStopsOnMixedOrAbnormalTimeDomain()
+testMomentumAllowsConfiguredLongFrameInterval()
 testDeviceMatcherMatchesConfiguredDevice()
 testDeviceMatcherMatchesUsageWhenConfigured()
 testDeviceMatcherEvaluationReportsMatchedAndMismatchedConditions()
@@ -2572,9 +2761,10 @@ testInputAssociationAnalyzerRejectsButtonUsageMismatch()
 testInputAssociationAnalyzerAcceptsCanonicalButtonUsageMapping()
 testInputAssociationAnalyzerRejectsSingleNonTargetHIDDevice()
 testInputAssociationAnalyzerRejectsCloserNonTargetHIDDevice()
-testInputAssociationAnalyzerAcceptsSecondAndNanosecondTimestamps()
+testInputAssociationAnalyzerAlwaysTreatsEventTimestampsAsNanoseconds()
 testScrollGenerationPlannerAutoPhases()
 testScrollGenerationPlannerPhaseOverrideAndMomentum()
+testScrollGenerationPlannerRejectsNonFiniteDerivedValuesAndOversizedPlans()
 testScrollEventPhaseEncoderSeparatesScrollAndMomentumPhases()
 testAXScrollTargetSelectorPrefersNearestNestedContainer()
 testAXScrollTargetSelectorDeliversAvailableNestedAxesWithoutOuterPromotion()

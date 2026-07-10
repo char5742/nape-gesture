@@ -2,6 +2,8 @@ import Carbon.HIToolbox
 import CoreGraphics
 
 enum ShortcutEventSequence {
+    static let interEventDelay: TimeInterval = 0.002
+
     static func keyEvents(keyCode: CGKeyCode, flags: CGEventFlags) -> [ShortcutKeyEvent] {
         let modifiers = shortcutModifiers(for: flags)
         var events: [ShortcutKeyEvent] = []

@@ -42,6 +42,7 @@
 - ボタン解放後に必ず通常状態へ戻る
 - `began` / `changed` / `ended` / `cancelled` / `momentum` の意味が崩れていない
 - 方向ロック、加速度、キャンセル条件、慣性のテストが追加または更新されている
+- 実入力相当の起動後時刻から最初の慣性 tick が `.momentum` になり、epoch 混入、時刻逆行、異常な tick gap では投稿せず停止するテストがある
 
 ## Runtime / Event Tap 変更
 
@@ -58,6 +59,8 @@
 - `normal-after-release` dry-run を `analyze-log --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel` で確認し、未生成キーや activation button だけを通常入力通過証跡として扱っていない
 - runtime event 証跡を更新した場合、`status.json.status`、`blockerCode`、`preflight/`、権限済み時の `scenarios/` の関係が崩れていない
 - アクセシビリティ未許可時に安全に停止し、復旧導線を出す
+- `CGEvent.timestamp`、HID、`GestureCommand.timestamp`、慣性 tick、runtime performance が `MonotonicEventClock` の起動後単調時刻に統一され、イベント経路へ `Date().timeIntervalSince1970` を戻していない
+- wall clock が必要な JSON metadata は `wallClockUnixSeconds` など名前と単位を明記し、イベント `timestamp` と混用していない
 
 ## HID / Device 変更
 
@@ -73,11 +76,19 @@
 - `generate-scroll --dry-run --log-json` で比較可能な JSON Lines を出せる
 - `generate-scroll` の value option は値欠落を拒否し、未知 option、重複 option、余分な positional argument の expected failure を CI / completion で確認している
 - `system-test run --dry-run --log-json` で生成予定イベントを保存し、`systemTestScenario` / `sequenceIndex` つきで `analyze-log --json --assert-system-scenario <name>` によるシナリオ別機械判定を通している
+- `system-test run` は256 step / 系列30秒上限、派生値と全 timestamp の投稿前検証、末尾 sleep なし、JSON Lines 全件 encode 後の原子出力を回帰検査している
+- `generate-scroll` / `system-test` の dry-run と取得直後の実投稿 CGEvent log に `analyze-log --assert-current-uptime` を通し、epoch fixture は expected failure になっている
+- `EventPoster` と system-test の全 CGEvent 種別が投稿直前に現在 uptime 近傍の timestamp を設定し、範囲外時刻を clamp せず失敗させる
+- `InputLogRecord.timestamp` を値域で秒 / ナノ秒へ分岐せず常にナノ秒として扱い、shortcutやsystem-testのイベント列は同一referenceでの時刻検証と全件生成後に全件または0件で投稿する
+- shortcut の各event timestampは実投稿直前のuptimeであり、未来時刻を付けたkeyUpが後続入力より先行しない
+- Event Generator の派生delta / velocity / momentum / timestampが有限かつ起動後nanosecondsへ変換可能で、生成上限超過、後続timestamp変換不能、JSON encode失敗を部分出力なしの非ゼロ終了にする
 - `Ctrl + ←/→` などのショートカット送信を最終解として前提化していない
 - Finder、Safari、Mission Control、Spaces で必要な実機検証が明記されている
-- Safari Web fallback は application hit-test から最も近い scroll container を選び、nested の軸不足・lookup failure・曖昧な container で outer scrollbar を成功扱いしていない
+- Safari Web fallback は application hit-test から最も近い scroll container を選び、`AXDescription` に依存しない direct child clipping、情報不足、非有限frame、nested の軸不足で outer scrollbar を成功扱いしていない
+- selected nested target の利用可能軸だけを配送し、未対応軸を outer / CGEvent へ流さず、positive `blocked` では fallback を抑止している
+- async completion は AX適用を実配送1件、`blocked` / `noChange` を0件として記録し、enqueue時の provisional 件数を最終成功にしていない
 - nested frame、generic overflow、top-level、端到達、Computer Use、CGEvent source / tap / field の比較が保存され、AX set が wheel handler を発火しない制約を完了済みと表現していない
-- Safari 証跡に時刻ドメインが関係する場合、Issue #102 の変更を重複実装せず、取り込み後の head で最終再取得する
+- PR #101 の時刻修正前 Safari 診断を完成証跡として流用せず、ADR-0037 統合 commit と TCC 許可済み `.app` identity を固定し、contract の5 assertion、通常 async、PID固定 sync、端到達、Computer Use の通常 wheel、current-uptime CGEvent log、画面挙動、runtime performance completion を再取得する
 
 ## UI / Doctor / 権限導線変更
 

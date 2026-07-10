@@ -103,8 +103,8 @@ final class CommandLineTool {
               nape-gesture log [--duration <秒>] [--out <path>] [--exclude-generated|--only-generated]
                   グローバル入力イベントを JSON Lines で記録します。メタ情報は標準エラー、イベント本体は標準出力または --out に出します。
 
-              nape-gesture analyze-log <path> [--json] [--assert-has-unmarked-passthrough-input] [--assert-has-unmarked-click] [--assert-has-unmarked-drag] [--assert-has-unmarked-wheel] [--assert-has-unmarked-click-drag-wheel] [--assert-kill-switch-shortcut] [--assert-gesture-before-kill-switch] [--assert-system-scenario <name>]
-                  JSON Lines ログを解析し、しきい値候補を出します。--assert-has-unmarked-passthrough-input で未生成の移動またはスクロールがない場合、--assert-has-unmarked-click / --assert-has-unmarked-drag / --assert-has-unmarked-wheel で未生成の通常クリック / 通常ドラッグ / 通常ホイールがない場合、--assert-kill-switch-shortcut で未生成の Control + Option + Command + G keyDown / keyUp がない場合、--assert-gesture-before-kill-switch でキルスイッチ前の未生成ジェスチャー入力がない場合、--assert-system-scenario で system-test dry-run の期待イベント列を満たさない場合に失敗します。
+              nape-gesture analyze-log <path> [--json] [--assert-current-uptime] [--assert-has-unmarked-passthrough-input] [--assert-has-unmarked-click] [--assert-has-unmarked-drag] [--assert-has-unmarked-wheel] [--assert-has-unmarked-click-drag-wheel] [--assert-kill-switch-shortcut] [--assert-gesture-before-kill-switch] [--assert-system-scenario <name>]
+                  JSON Lines ログを解析し、しきい値候補を出します。--assert-current-uptime で全 timestamp が実行時の起動後単調時刻から60秒以内でない場合、--assert-has-unmarked-passthrough-input で未生成の移動またはスクロールがない場合、--assert-has-unmarked-click / --assert-has-unmarked-drag / --assert-has-unmarked-wheel で未生成の通常クリック / 通常ドラッグ / 通常ホイールがない場合、--assert-kill-switch-shortcut で未生成の Control + Option + Command + G keyDown / keyUp がない場合、--assert-gesture-before-kill-switch でキルスイッチ前の未生成ジェスチャー入力がない場合、--assert-system-scenario で system-test dry-run の期待イベント列を満たさない場合に失敗します。
 
               nape-gesture compare-log <baseline> <candidate> [--json]
                   純正入力ログと生成イベントログなど、2つの JSON Lines ログ差分を比較します。
@@ -154,8 +154,8 @@ final class CommandLineTool {
               nape-gesture system-test list
                   System Behavior Test のシナリオ一覧を表示します。
 
-              nape-gesture system-test run --scenario <name> [--target finder|safari] [--dry-run] [--log-json] [--out <path>] [--post-to-pid <pid>]
-                  Spaces / Mission Control / Safari / Finder 向けの実挙動検証イベント、または未マーク元入力を生成します。--dry-run --log-json で計画したイベントを JSON Lines で出力します。--post-to-pid は Reference Target App の受信経路を切り分ける診断専用です。
+              nape-gesture system-test run --scenario <name> [--target finder|safari] [--amount <値>] [--steps <1...256>] [--interval <秒>] [--dry-run] [--log-json] [--out <path>] [--post-to-pid <pid>]
+                  Spaces / Mission Control / Safari / Finder 向けの実挙動検証イベント、または未マーク元入力を生成します。イベント列は最大30秒です。--dry-run --log-json で全件検証済みの計画を JSON Lines で原子的に出力します。--post-to-pid は Reference Target App の受信経路を切り分ける診断専用です。
 
               nape-gesture benchmark [--events <数>] [--json] [--assert-baseline]
                   認識器とスクロール計画の純粋ロジック処理時間、CPU コスト、batch p95/p99 を測定します。--assert-baseline で性能基準を満たさない場合に失敗します。

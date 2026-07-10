@@ -195,10 +195,7 @@ public enum InputAssociationAnalyzer {
     }
 
     public static func timestampSeconds(fromEventTimestamp timestamp: UInt64) -> TimeInterval {
-        if timestamp >= 1_000_000_000 {
-            return TimeInterval(timestamp) / 1_000_000_000
-        }
-        return TimeInterval(timestamp)
+        MonotonicEventClock.seconds(fromTimestampNanoseconds: timestamp)
     }
 
     private static func nearestHIDRecord(to time: TimeInterval, in records: [HIDInputLogRecord]) -> HIDInputLogRecord? {
