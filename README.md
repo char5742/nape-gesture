@@ -247,10 +247,15 @@ swift run nape-gesture analyze-hid-log nape-pro-hid.jsonl
 swift build -c release
 .build/release/nape-gesture bundle-app --out .build/NapeGesture.app --replace
 .build/release/nape-gesture verify-bundle .build/NapeGesture.app
+sh scripts/test-verify-bundle.sh \
+  .build/release/nape-gesture \
+  .build/NapeGesture.app \
+  .build/verify-bundle-contract
 ```
 
 `bundle-app` は `Info.plist`、実行ファイル、`LICENSE.txt`、`THIRD_PARTY_NOTICES.md` を含む `.app` を作成し、作成直後に同じ検証を実行します。
-`verify-bundle` は既存の `.app` を再検証するためのコマンドで、bundle ID、実行ファイル名、表示名、通常 GUI アプリとして使うための `LSUIElement=false`、コード署名状態を確認します。
+`verify-bundle` は既存の `.app` を再検証するためのコマンドです。4つの identity キーを exact string 型・固定値、`LSUIElement` を exact Boolean 型の `false` として確認し、bundle root、`Contents`、`Info.plist`、実行ファイルなどの symlink を拒否します。実行ファイルは bundle 内の executable な通常ファイルでなければなりません。許可する option は `--require-signature` だけで、未知 option、path 欠落、余分な引数はエラーになります。
+`test-verify-bundle.sh` は固定値の正例 oracle と、fresh copy ごとの identity 型・値、malformed plist、辞書以外 root、symlink、containment、CLI parse の expected failure を検査します。
 公開配布前は `verify-bundle --require-signature .build/NapeGesture.app` で署名検証を必須にしてください。
 
 ローカル検証では ad-hoc 署名を使えます。

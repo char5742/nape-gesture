@@ -179,29 +179,13 @@ run_combined_success \
   .build/release/nape-gesture verify-bundle .build/NapeGesture.app
 
 run_combined_success \
-  "verify-bundle identity 出力確認" \
-  "$bundle_dir/verify-bundle-identity-output-check.log" \
-  "grep CFBundleIdentifier / CFBundleExecutable / CFBundleName / CFBundleDisplayName / LSUIElement in $bundle_dir/verify-bundle.log" \
-  sh -c "grep -q 'Info.plist: CFBundleIdentifier=dev.char5742.nape-gesture' '$bundle_dir/verify-bundle.log' && grep -q 'Info.plist: CFBundleExecutable=nape-gesture' '$bundle_dir/verify-bundle.log' && grep -q 'Info.plist: CFBundleName=Nape Gesture' '$bundle_dir/verify-bundle.log' && grep -q 'Info.plist: CFBundleDisplayName=Nape Gesture' '$bundle_dir/verify-bundle.log' && grep -q 'Info.plist: LSUIElement=false' '$bundle_dir/verify-bundle.log'"
-
-run_combined_success \
-  "不正 bundle identity 作成" \
-  "$bundle_dir/create-invalid-identity-bundle.log" \
-  "copy NapeGesture.app and set invalid CFBundleIdentifier" \
-  sh -c "rm -rf .build/NapeGestureBadIdentity.app && cp -R .build/NapeGesture.app .build/NapeGestureBadIdentity.app && /usr/libexec/PlistBuddy -c 'Set :CFBundleIdentifier dev.char5742.invalid-nape-gesture' .build/NapeGestureBadIdentity.app/Contents/Info.plist"
-
-run_split_expected_failure \
-  "不正 bundle identity 検証" \
-  "$bundle_dir/verify-bundle-invalid-identity.log" \
-  "$bundle_dir/verify-bundle-invalid-identity.stderr.log" \
-  ".build/release/nape-gesture verify-bundle .build/NapeGestureBadIdentity.app" \
-  .build/release/nape-gesture verify-bundle .build/NapeGestureBadIdentity.app
-
-run_combined_success \
-  "app bundle identity 確認" \
-  "$bundle_dir/info-plist-identity-check.log" \
-  "PlistBuddy CFBundleIdentifier / CFBundleExecutable / CFBundleName / CFBundleDisplayName / LSUIElement exact check" \
-  sh -c "/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' .build/NapeGesture.app/Contents/Info.plist | grep -Fx 'dev.char5742.nape-gesture' && /usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' .build/NapeGesture.app/Contents/Info.plist | grep -Fx 'nape-gesture' && /usr/libexec/PlistBuddy -c 'Print :CFBundleName' .build/NapeGesture.app/Contents/Info.plist | grep -Fx 'Nape Gesture' && /usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' .build/NapeGesture.app/Contents/Info.plist | grep -Fx 'Nape Gesture' && /usr/libexec/PlistBuddy -c 'Print :LSUIElement' .build/NapeGesture.app/Contents/Info.plist | grep -Fx 'false'"
+  "verify-bundle contract fixtures" \
+  "$bundle_dir/verify-bundle-contract.log" \
+  "sh scripts/test-verify-bundle.sh .build/release/nape-gesture .build/NapeGesture.app $bundle_dir/verify-bundle-contract" \
+  sh scripts/test-verify-bundle.sh \
+    .build/release/nape-gesture \
+    .build/NapeGesture.app \
+    "$bundle_dir/verify-bundle-contract"
 
 run_combined_success \
   "GUI smoke 設定作成" \

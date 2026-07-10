@@ -155,13 +155,10 @@ jobs:
         run: |
           .build/release/nape-gesture bundle-app --out .build/NapeGesture.app --replace
           .build/release/nape-gesture verify-bundle .build/NapeGesture.app
-          rm -rf .build/NapeGestureBadIdentity.app
-          cp -R .build/NapeGesture.app .build/NapeGestureBadIdentity.app
-          /usr/libexec/PlistBuddy -c 'Set :CFBundleIdentifier dev.char5742.invalid-nape-gesture' .build/NapeGestureBadIdentity.app/Contents/Info.plist
-          if .build/release/nape-gesture verify-bundle .build/NapeGestureBadIdentity.app; then
-            echo "verify-bundle accepted an unexpected CFBundleIdentifier" >&2
-            exit 1
-          fi
+          sh scripts/test-verify-bundle.sh \
+            .build/release/nape-gesture \
+            .build/NapeGesture.app \
+            .build/verify-bundle-contract-ci
           cmp LICENSE .build/NapeGesture.app/Contents/Resources/LICENSE.txt
           cmp THIRD_PARTY_NOTICES.md .build/NapeGesture.app/Contents/Resources/THIRD_PARTY_NOTICES.md
 

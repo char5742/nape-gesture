@@ -11,13 +11,10 @@ sh scripts/check-provenance.sh
 swift build -c release --scratch-path .build
 .build/release/nape-gesture bundle-app --out .build/NapeGesture.app --replace
 .build/release/nape-gesture verify-bundle .build/NapeGesture.app
-rm -rf .build/NapeGestureBadIdentity.app
-cp -R .build/NapeGesture.app .build/NapeGestureBadIdentity.app
-/usr/libexec/PlistBuddy -c 'Set :CFBundleIdentifier dev.char5742.invalid-nape-gesture' .build/NapeGestureBadIdentity.app/Contents/Info.plist
-if .build/release/nape-gesture verify-bundle .build/NapeGestureBadIdentity.app; then
-  echo "verify-bundle accepted an unexpected CFBundleIdentifier" >&2
-  exit 1
-fi
+sh scripts/test-verify-bundle.sh \
+  .build/release/nape-gesture \
+  .build/NapeGesture.app \
+  .build/verify-bundle-contract-release
 cmp LICENSE .build/NapeGesture.app/Contents/Resources/LICENSE.txt
 cmp THIRD_PARTY_NOTICES.md .build/NapeGesture.app/Contents/Resources/THIRD_PARTY_NOTICES.md
 ```
@@ -25,20 +22,23 @@ cmp THIRD_PARTY_NOTICES.md .build/NapeGesture.app/Contents/Resources/THIRD_PARTY
 `verify-bundle` は次を確認する。
 
 - `Contents/Info.plist`
-- `CFBundleIdentifier=dev.char5742.nape-gesture`
-- `CFBundleExecutable=nape-gesture`
-- `CFBundleName=Nape Gesture`
-- `CFBundleDisplayName=Nape Gesture`
-- `LSUIElement=false`
-- `Contents/MacOS/nape-gesture`
+- `CFBundleIdentifier` が exact string 型の `dev.char5742.nape-gesture`
+- `CFBundleExecutable` が exact string 型の `nape-gesture`
+- `CFBundleName` が exact string 型の `Nape Gesture`
+- `CFBundleDisplayName` が exact string 型の `Nape Gesture`
+- `LSUIElement` が exact Boolean 型の `false`
+- bundle root、`Contents`、`Contents/MacOS`、`Contents/Resources` が symlink ではないディレクトリ
+- `Info.plist` が symlink ではない通常ファイル
+- `Contents/MacOS/nape-gesture` が symlink ではなく、bundle 内に収まる executable な通常ファイル
 - `Contents/Resources/LICENSE.txt`
 - `Contents/Resources/THIRD_PARTY_NOTICES.md`
 - `codesign --verify --deep --strict --verbose=2` による署名状態
 
 通常の `verify-bundle` は署名が未完了でも構造検証を続行し、署名状態を表示する。公開配布前のゲートでは `--require-signature` を付け、署名検証失敗をエラーにする。
-`NapeGestureBadIdentity.app` の expected failure は、`verify-bundle` が Info.plist identity の退行を検出することを固定する。
+`test-verify-bundle.sh` は各ケースを正常 bundle の fresh copy から作る。4つの string identity は alternate / missing / integer、`LSUIElement` は integer `0` / real `0` / string `false` / missing / Boolean `true`、plist は malformed XML / 辞書以外 root を expected failure とし、stderr に対象キーまたは原因が出ることまで固定する。bundle root / `Contents` / `Info.plist` / executable の symlink、directory executable、`/usr/bin/true` への外部 symlinkと containment 違反、未知 option、path 欠落、余分な positional も拒否する。
+同 script の正例 oracle は `plutil -expect string/bool` と上記の literal 固定値を使うため、bundle 生成側と verifier が共有する Swift 定数だけには依存しない。CI、release 手順、completion collector は同じ contract fixture を実行する。
 `sh scripts/check-provenance.sh` は、外部ソースを読まずに tracked files だけを対象として、由来方針の削除や許可外の識別子混入を検出する。これは法的な完全証明ではなく、配布前に実施する repo-local の退行検知である。
-`verify-bundle` と `cmp` は、権限付与対象の identity と同梱文書の原本一致を機械的に固定する。
+`verify-bundle`、`test-verify-bundle.sh`、`cmp` は、権限付与対象の identity、bundle 境界、同梱文書の原本一致を機械的に固定する。
 `LSUIElement=false` は、`.app` が Dock に表示される通常 GUI アプリとして起動することを固定する。
 
 ```sh

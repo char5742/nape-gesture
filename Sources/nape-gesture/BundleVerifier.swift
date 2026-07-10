@@ -1,9 +1,10 @@
+import CoreFoundation
+import Darwin
 import Foundation
-import NapeGestureCore
 
 enum BundleVerifier {
     static func verify(appPath: String, requireSignature: Bool = false) throws -> [String] {
-        let appURL = URL(fileURLWithPath: appPath)
+        let appURL = URL(fileURLWithPath: appPath).standardizedFileURL
         let contentsURL = appURL.appendingPathComponent("Contents", isDirectory: true)
         let macOSURL = contentsURL.appendingPathComponent("MacOS", isDirectory: true)
         let resourcesURL = contentsURL.appendingPathComponent("Resources", isDirectory: true)
@@ -13,30 +14,64 @@ enum BundleVerifier {
         let noticesURL = resourcesURL.appendingPathComponent("THIRD_PARTY_NOTICES.md")
 
         var failures: [String] = []
-        let fileManager = FileManager.default
+        let appDirectoryIsSafe = verifyDirectory(
+            at: appURL,
+            name: "アプリバンドル root",
+            failures: &failures
+        )
+        let contentsDirectoryIsSafe = appDirectoryIsSafe && verifyDirectory(
+            at: contentsURL,
+            name: "Contents",
+            failures: &failures
+        )
+        let macOSDirectoryIsSafe = contentsDirectoryIsSafe && verifyDirectory(
+            at: macOSURL,
+            name: "Contents/MacOS",
+            failures: &failures
+        )
+        let resourcesDirectoryIsSafe = contentsDirectoryIsSafe && verifyDirectory(
+            at: resourcesURL,
+            name: "Contents/Resources",
+            failures: &failures
+        )
+        let executableIsSafe = macOSDirectoryIsSafe
+            && verifyExecutable(at: executableURL, failures: &failures)
+        let executableIsContained = macOSDirectoryIsSafe && verifyContainment(
+            of: executableURL,
+            in: appURL,
+            name: "実行ファイル",
+            failures: &failures
+        )
+        let infoPlistIsSafe = contentsDirectoryIsSafe && verifyRegularFile(
+            at: infoPlistURL,
+            name: "Info.plist",
+            failures: &failures
+        )
 
-        if !isDirectory(appURL) {
-            failures.append("アプリバンドルがディレクトリとして存在しません: \(appURL.path)")
+        if infoPlistIsSafe {
+            verifyInfoPlist(at: infoPlistURL, failures: &failures)
         }
-        if !isDirectory(contentsURL) {
-            failures.append("Contents ディレクトリがありません。")
-        }
-        if !isDirectory(macOSURL) {
-            failures.append("Contents/MacOS ディレクトリがありません。")
-        }
-        if !isDirectory(resourcesURL) {
-            failures.append("Contents/Resources ディレクトリがありません。")
-        }
-        if !fileManager.fileExists(atPath: executableURL.path) {
-            failures.append("実行ファイルがありません: \(executableURL.path)")
-        } else if !fileManager.isExecutableFile(atPath: executableURL.path) {
-            failures.append("実行ファイルに実行権限がありません: \(executableURL.path)")
-        }
+        let licenseIsSafe = resourcesDirectoryIsSafe
+            && verifyReadableNonEmptyFile(at: licenseURL, name: "LICENSE.txt", failures: &failures)
+        let noticesAreSafe = resourcesDirectoryIsSafe
+            && verifyReadableNonEmptyFile(
+                at: noticesURL,
+                name: "THIRD_PARTY_NOTICES.md",
+                failures: &failures
+            )
 
-        verifyInfoPlist(at: infoPlistURL, failures: &failures)
-        verifyReadableNonEmptyFile(at: licenseURL, name: "LICENSE.txt", failures: &failures)
-        verifyReadableNonEmptyFile(at: noticesURL, name: "THIRD_PARTY_NOTICES.md", failures: &failures)
-        let signatureStatus = verifyCodeSignature(appURL: appURL)
+        let canVerifySignature = appDirectoryIsSafe
+            && contentsDirectoryIsSafe
+            && macOSDirectoryIsSafe
+            && resourcesDirectoryIsSafe
+            && executableIsSafe
+            && executableIsContained
+            && infoPlistIsSafe
+            && licenseIsSafe
+            && noticesAreSafe
+        let signatureStatus = canVerifySignature
+            ? verifyCodeSignature(appURL: appURL)
+            : CodeSignatureStatus(isValid: false, message: "安全でない bundle 境界があるため未実行です。")
         if requireSignature, !signatureStatus.isValid {
             failures.append("コード署名検証に失敗しました: \(signatureStatus.message)")
         }
@@ -59,10 +94,94 @@ enum BundleVerifier {
         ]
     }
 
-    private static func isDirectory(_ url: URL) -> Bool {
-        var isDirectory: ObjCBool = false
-        let exists = FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
-        return exists && isDirectory.boolValue
+    @discardableResult
+    private static func verifyDirectory(
+        at url: URL,
+        name: String,
+        failures: inout [String]
+    ) -> Bool {
+        switch entryKind(at: url) {
+        case .directory:
+            return true
+        case .symbolicLink:
+            failures.append("\(name)に symlink は許可されません: \(url.path)")
+        case .missing:
+            failures.append("\(name)ディレクトリがありません: \(url.path)")
+        case .regularFile, .other:
+            failures.append("\(name)がディレクトリではありません: \(url.path)")
+        }
+        return false
+    }
+
+    @discardableResult
+    private static func verifyRegularFile(
+        at url: URL,
+        name: String,
+        failures: inout [String]
+    ) -> Bool {
+        switch entryKind(at: url) {
+        case .regularFile:
+            return true
+        case .symbolicLink:
+            failures.append("\(name)に symlink は許可されません: \(url.path)")
+        case .missing:
+            failures.append("\(name)がありません: \(url.path)")
+        case .directory, .other:
+            failures.append("\(name)が通常ファイルではありません: \(url.path)")
+        }
+        return false
+    }
+
+    @discardableResult
+    private static func verifyExecutable(at url: URL, failures: inout [String]) -> Bool {
+        guard verifyRegularFile(at: url, name: "実行ファイル", failures: &failures) else {
+            return false
+        }
+        guard FileManager.default.isExecutableFile(atPath: url.path) else {
+            failures.append("実行ファイルに実行権限がありません: \(url.path)")
+            return false
+        }
+        return true
+    }
+
+    @discardableResult
+    private static func verifyContainment(
+        of childURL: URL,
+        in rootURL: URL,
+        name: String,
+        failures: inout [String]
+    ) -> Bool {
+        let resolvedRootURL = rootURL.resolvingSymlinksInPath().standardizedFileURL
+        let resolvedChildURL = childURL.resolvingSymlinksInPath().standardizedFileURL
+        let rootPathPrefix = resolvedRootURL.path.hasSuffix("/")
+            ? resolvedRootURL.path
+            : resolvedRootURL.path + "/"
+
+        guard resolvedChildURL.path.hasPrefix(rootPathPrefix) else {
+            failures.append(
+                "\(name)が bundle 内に収まっていません: \(childURL.path) -> \(resolvedChildURL.path)"
+            )
+            return false
+        }
+        return true
+    }
+
+    private static func entryKind(at url: URL) -> FileSystemEntryKind {
+        var fileStatus = stat()
+        guard lstat(url.path, &fileStatus) == 0 else {
+            return .missing
+        }
+
+        switch fileStatus.st_mode & mode_t(S_IFMT) {
+        case mode_t(S_IFLNK):
+            return .symbolicLink
+        case mode_t(S_IFDIR):
+            return .directory
+        case mode_t(S_IFREG):
+            return .regularFile
+        default:
+            return .other
+        }
     }
 
     private static func verifyInfoPlist(at url: URL, failures: inout [String]) {
@@ -73,29 +192,43 @@ enum BundleVerifier {
 
         do {
             let object = try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
-            guard let plist = object as? [String: Any] else {
+            guard CFGetTypeID(object as CFTypeRef) == CFDictionaryGetTypeID(),
+                  let plist = object as? [String: Any] else {
                 failures.append("Info.plist の形式が辞書ではありません。")
                 return
             }
 
-            if plist["CFBundleExecutable"] as? String != AppBundleIdentity.executableName {
-                failures.append("CFBundleExecutable が \(AppBundleIdentity.executableName) ではありません。")
-            }
-            if plist["CFBundlePackageType"] as? String != AppBundleIdentity.packageType {
-                failures.append("CFBundlePackageType が \(AppBundleIdentity.packageType) ではありません。")
-            }
-            if plist["LSUIElement"] as? Bool != GUIAppLaunchPresenter.regularGUIApp.bundleLSUIElement {
-                failures.append("LSUIElement が false ではありません。")
-            }
-            if plist["CFBundleIdentifier"] as? String != AppBundleIdentity.bundleIdentifier {
-                failures.append("CFBundleIdentifier が \(AppBundleIdentity.bundleIdentifier) ではありません。")
-            }
-            if plist["CFBundleName"] as? String != AppBundleIdentity.bundleName {
-                failures.append("CFBundleName が \(AppBundleIdentity.bundleName) ではありません。")
-            }
-            if plist["CFBundleDisplayName"] as? String != AppBundleIdentity.displayName {
-                failures.append("CFBundleDisplayName が \(AppBundleIdentity.displayName) ではありません。")
-            }
+            verifyExactString(
+                key: "CFBundleExecutable",
+                expected: AppBundleIdentity.executableName,
+                in: plist,
+                failures: &failures
+            )
+            verifyExactString(
+                key: "CFBundlePackageType",
+                expected: AppBundleIdentity.packageType,
+                in: plist,
+                failures: &failures
+            )
+            verifyExactBooleanFalse(key: "LSUIElement", in: plist, failures: &failures)
+            verifyExactString(
+                key: "CFBundleIdentifier",
+                expected: AppBundleIdentity.bundleIdentifier,
+                in: plist,
+                failures: &failures
+            )
+            verifyExactString(
+                key: "CFBundleName",
+                expected: AppBundleIdentity.bundleName,
+                in: plist,
+                failures: &failures
+            )
+            verifyExactString(
+                key: "CFBundleDisplayName",
+                expected: AppBundleIdentity.displayName,
+                in: plist,
+                failures: &failures
+            )
             if (plist["CFBundleShortVersionString"] as? String)?.isEmpty ?? true {
                 failures.append("CFBundleShortVersionString が空です。")
             }
@@ -104,11 +237,61 @@ enum BundleVerifier {
         }
     }
 
-    private static func verifyReadableNonEmptyFile(at url: URL, name: String, failures: inout [String]) {
-        guard let data = try? Data(contentsOf: url), !data.isEmpty else {
-            failures.append("\(name) が存在しないか空です。")
+    private static func verifyExactString(
+        key: String,
+        expected: String,
+        in plist: [String: Any],
+        failures: inout [String]
+    ) {
+        guard let value = plist[key] else {
+            failures.append("\(key) がありません。")
             return
         }
+        guard CFGetTypeID(value as CFTypeRef) == CFStringGetTypeID(),
+              let stringValue = value as? String else {
+            failures.append("\(key) の型が string ではありません。")
+            return
+        }
+        guard stringValue == expected else {
+            failures.append("\(key) が \(expected) ではありません。")
+            return
+        }
+    }
+
+    private static func verifyExactBooleanFalse(
+        key: String,
+        in plist: [String: Any],
+        failures: inout [String]
+    ) {
+        guard let value = plist[key] else {
+            failures.append("\(key) がありません。")
+            return
+        }
+        guard CFGetTypeID(value as CFTypeRef) == CFBooleanGetTypeID(),
+              let booleanValue = value as? Bool else {
+            failures.append("\(key) の型が Boolean ではありません。")
+            return
+        }
+        guard booleanValue == false else {
+            failures.append("\(key) が false ではありません。")
+            return
+        }
+    }
+
+    @discardableResult
+    private static func verifyReadableNonEmptyFile(
+        at url: URL,
+        name: String,
+        failures: inout [String]
+    ) -> Bool {
+        guard verifyRegularFile(at: url, name: name, failures: &failures) else {
+            return false
+        }
+        guard let data = try? Data(contentsOf: url), !data.isEmpty else {
+            failures.append("\(name) を読めないか空です。")
+            return false
+        }
+        return true
     }
 
     private static func verifyCodeSignature(appURL: URL) -> CodeSignatureStatus {
@@ -157,6 +340,14 @@ enum BundleVerifier {
     }
 }
 
+private enum FileSystemEntryKind {
+    case missing
+    case symbolicLink
+    case directory
+    case regularFile
+    case other
+}
+
 private struct CodeSignatureStatus {
     let isValid: Bool
     let message: String
@@ -177,16 +368,64 @@ struct VerifyBundleCommand {
     }
 
     func run() throws {
-        let requireSignature = options.contains("--require-signature")
-        let paths = options.filter { !$0.hasPrefix("--") }
-        guard paths.count == 1, let appPath = paths.first else {
-            throw ToolError.missingValue("アプリバンドル")
-        }
+        let parsedOptions = try parseOptions()
 
-        let checkedItems = try BundleVerifier.verify(appPath: appPath, requireSignature: requireSignature)
-        print("アプリバンドル検証に成功しました: \(appPath)")
+        let checkedItems = try BundleVerifier.verify(
+            appPath: parsedOptions.appPath,
+            requireSignature: parsedOptions.requireSignature
+        )
+        print("アプリバンドル検証に成功しました: \(parsedOptions.appPath)")
         for item in checkedItems {
             print("- \(item)")
+        }
+    }
+
+    private func parseOptions() throws -> ParsedVerifyBundleOptions {
+        var requireSignature = false
+        var appPath: String?
+
+        for option in options {
+            if option == "--require-signature" {
+                guard !requireSignature else {
+                    throw VerifyBundleOptionError.duplicateOption(option)
+                }
+                requireSignature = true
+                continue
+            }
+            if option.hasPrefix("-") {
+                throw VerifyBundleOptionError.unknownOption(option)
+            }
+            guard appPath == nil else {
+                throw VerifyBundleOptionError.unexpectedArgument(option)
+            }
+            appPath = option
+        }
+
+        guard let appPath else {
+            throw ToolError.missingValue("アプリバンドル")
+        }
+        return ParsedVerifyBundleOptions(appPath: appPath, requireSignature: requireSignature)
+    }
+}
+
+private struct ParsedVerifyBundleOptions {
+    let appPath: String
+    let requireSignature: Bool
+}
+
+private enum VerifyBundleOptionError: LocalizedError {
+    case unknownOption(String)
+    case duplicateOption(String)
+    case unexpectedArgument(String)
+
+    var errorDescription: String? {
+        switch self {
+        case let .unknownOption(option):
+            return "verify-bundle の未知の option です: \(option)"
+        case let .duplicateOption(option):
+            return "verify-bundle の option が重複しています: \(option)"
+        case let .unexpectedArgument(argument):
+            return "verify-bundle の余分な引数です: \(argument)"
         }
     }
 }

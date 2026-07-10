@@ -134,7 +134,7 @@ final class CommandLineTool {
                   現在の実行ファイルから .app バンドルを作成します。
 
               nape-gesture verify-bundle [--require-signature] <path>
-                  .app バンドルの Info.plist、実行ファイル、配布文書、コード署名状態を検証します。
+                  .app バンドルの Info.plist exact identity、symlink を含まない bundle 境界、bundle 内の通常実行ファイル、配布文書、コード署名状態を検証します。
 
               nape-gesture generate-scroll --x <値> --y <値> [--steps <数>] [--phase auto|began|changed|ended|cancelled|momentum] [--momentum-steps <数>] [--dry-run] [--json|--log-json]
                   ピクセル単位のスクロールイベントを任意フェーズや慣性つきで生成します。--dry-run --log-json で compare-log 用 JSON Lines を出力します。

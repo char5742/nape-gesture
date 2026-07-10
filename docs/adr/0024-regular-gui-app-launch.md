@@ -2,6 +2,7 @@
 
 - 状態: 採択
 - 日付: 2026-07-09
+- 更新: 2026-07-10
 
 ## 背景
 
@@ -16,8 +17,12 @@
 - `.app` を引数なしで起動した場合、メニューバーの状態メニューを維持しつつ、設定ウィンドウを前面に開く。
 - Dock アイコンから再度開いた場合、表示中ウィンドウがなければ設定ウィンドウを再表示する。
 - CLI subcommand は維持する。`nape-gesture app` は GUI アプリモードの起動コマンドとして扱う。
-- bundle 検証、CI、completion evidence は `CFBundleIdentifier`、`CFBundleExecutable`、`CFBundleName`、`CFBundleDisplayName` に加えて `LSUIElement=false` を確認する。
-- `verify-bundle` は Info.plist identity の exact check を内包する。CI と completion evidence は、不正な `CFBundleIdentifier` の bundle を expected failure として通し、`verify-bundle` が identity 退行を検出することも固定する。
+- bundle 検証、CI、release、completion evidence は `CFBundleIdentifier`、`CFBundleExecutable`、`CFBundleName`、`CFBundleDisplayName` を exact string 型・固定値、`LSUIElement` を exact Boolean 型の `false` として確認する。
+- `verify-bundle` は CoreFoundation の type ID を先に確認してから値を比較する。`LSUIElement` の integer `0`、real `0`、string `false`、missing、Boolean `true` はすべて失敗とする。
+- bundle root、`Contents`、`Info.plist`、executable の symlink 境界を拒否する。executable は bundle 内に収まる executable な通常ファイルに限定する。
+- `verify-bundle` の option は `--require-signature` だけを許可し、未知 option、path 欠落、余分な positional を失敗させる。
+- `scripts/test-verify-bundle.sh` は正常 bundle の fresh copy ごとに negative fixture を作る。4つの string identity の alternate / missing / integer、`LSUIElement` の不正型・値・欠落、malformed plist、辞書以外 root、symlink / containment、CLI parse を expected failure とし、stderr の対象キーまたは原因も確認する。
+- CI、release、completion evidence は同 script の literal 固定値による正例 oracle を実行し、bundle 生成側と verifier の共通定数だけに依存しない。
 - `gui-smoke --config <path> --json --assert` は、runtime を開始せずに `.app` 実行主体で AppKit 内の `.regular` activation policy、設定ウィンドウ、status item `NG`、通常アプリメニュー、status menu の生成契約を機械検査する。`--config` 未指定時は一時 config を使い、ユーザーの通常設定へ書き込まない。
 - CI は bundle 検証と GUI smoke を分ける。active macOS console session がない runner では GUI smoke を warning 付きで skip し、completion evidence では active GUI session 上の `collect-completion-evidence.sh` を hard evidence として採用する。
 - Dock 表示は computer-use と System Events の Dock process 観測で代替できる限り `need:human` にしない。Info.plist、起動コード、AppKit 内 GUI smoke、AX 観測で機械確認できる範囲には使わない。
