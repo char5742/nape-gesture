@@ -34,6 +34,7 @@ jobs:
           sh -n scripts/check-generate-scroll-cli.sh
           sh -n scripts/check-system-behavior-post-result.sh
           swiftc -typecheck scripts/probe-cgevent-scroll-delivery.swift
+          swiftc -typecheck scripts/capture-pointer-window-stack.swift
           target_stable_id="vendor=123;product=456;manufacturer=example;name=nape-pro-mouse;transport=bluetooth"
           .build/debug/nape-gesture generate-scroll --x 120 --y 0 --steps 3 --momentum-steps 2 --dry-run --log-json > /tmp/generated-scroll.jsonl
           .build/debug/nape-gesture analyze-log /tmp/generated-scroll.jsonl
