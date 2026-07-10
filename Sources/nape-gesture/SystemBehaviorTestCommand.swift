@@ -1,8 +1,64 @@
+import Foundation
+
+#if !SYSTEM_BEHAVIOR_POST_RESULT_TESTING
 import AppKit
 import Carbon.HIToolbox
 import CoreGraphics
-import Foundation
 import NapeGestureCore
+#endif
+
+enum SystemBehaviorPostResultStatus: Equatable {
+    case success
+    case eventCreationFailure(count: Int)
+    case noGeneratedEvents
+
+    var failureName: String? {
+        switch self {
+        case .success:
+            return nil
+        case .eventCreationFailure:
+            return "CGEvent timestamp"
+        case .noGeneratedEvents:
+            return "system-test posting"
+        }
+    }
+
+    var failureDescription: String? {
+        switch self {
+        case .success:
+            return nil
+        case .eventCreationFailure:
+            return "現在の起動後単調時刻から60秒以内の値を生成できませんでした。"
+        case .noGeneratedEvents:
+            return "イベントを配送できなかったか、対象に変化がなかったため、生成イベント数が0件でした。"
+        }
+    }
+}
+
+struct SystemBehaviorPostResultSnapshot: Equatable {
+    var generatedEventCount: Int
+    var failedEventCreationCount: Int
+
+    var status: SystemBehaviorPostResultStatus {
+        if failedEventCreationCount > 0 {
+            return .eventCreationFailure(count: failedEventCreationCount)
+        }
+        if generatedEventCount == 0 {
+            return .noGeneratedEvents
+        }
+        return .success
+    }
+}
+
+#if !SYSTEM_BEHAVIOR_POST_RESULT_TESTING
+private extension SystemBehaviorPostResultSnapshot {
+    init(_ result: EventPostResult) {
+        self.init(
+            generatedEventCount: result.generatedEventCount,
+            failedEventCreationCount: result.failedEventCreationCount
+        )
+    }
+}
 
 struct SystemBehaviorTestCommand {
     private let options: [String]
@@ -247,12 +303,13 @@ struct SystemBehaviorTestCommand {
     }
 
     private func requireSuccessfulPost(_ result: EventPostResult) throws {
-        guard result.failedEventCreationCount == 0, result.generatedEventCount > 0 else {
-            throw ToolError.invalidValue(
-                "CGEvent timestamp",
-                "現在の起動後単調時刻から60秒以内の値を生成できませんでした。"
-            )
+        let status = SystemBehaviorPostResultSnapshot(result).status
+        guard let failureName = status.failureName,
+              let failureDescription = status.failureDescription
+        else {
+            return
         }
+        throw ToolError.invalidValue(failureName, failureDescription)
     }
 
     private func writeLogJSON(for plan: SystemTestPlan, to outputPath: String?) throws {
@@ -1179,3 +1236,4 @@ private struct UnmarkedInputEvent {
         return Int32(value)
     }
 }
+#endif
