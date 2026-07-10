@@ -303,8 +303,8 @@ public enum InputLogAnalyzer {
             positiveHorizontalScrollEvents: horizontalScrollDeltas.filter { $0 > 0 }.count,
             negativeHorizontalScrollEvents: horizontalScrollDeltas.filter { $0 < 0 }.count,
             zeroHorizontalScrollEvents: horizontalScrollDeltas.filter { $0 == 0 }.count,
-            scrollDeltaXTotal: scrollRecords.reduce(Int64(0)) { $0 + $1.scrollDeltaX },
-            scrollDeltaYTotal: scrollRecords.reduce(Int64(0)) { $0 + $1.scrollDeltaY },
+            scrollDeltaXTotal: saturatingSum(scrollRecords.map(\.scrollDeltaX)),
+            scrollDeltaYTotal: saturatingSum(scrollRecords.map(\.scrollDeltaY)),
             pointDeltaXTotal: scrollRecords.reduce(0) { $0 + $1.pointDeltaX },
             pointDeltaYTotal: scrollRecords.reduce(0) { $0 + $1.pointDeltaY },
             maximumMoveMagnitude: maxMagnitude,
@@ -354,6 +354,18 @@ public enum InputLogAnalyzer {
         scrollPhase 出現数: \(formatCounts(analysis.scrollPhaseCounts))
         momentumPhase 出現数: \(formatCounts(analysis.momentumPhaseCounts))
         """
+    }
+
+    private static func saturatingSum(_ values: [Int64]) -> Int64 {
+        var total: Int64 = 0
+        for value in values {
+            let (next, overflow) = total.addingReportingOverflow(value)
+            if overflow {
+                return value >= 0 ? Int64.max : Int64.min
+            }
+            total = next
+        }
+        return total
     }
 
     private static func percentile(_ sortedValues: [Double], fraction: Double) -> Double {

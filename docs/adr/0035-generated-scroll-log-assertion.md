@@ -17,6 +17,7 @@
 - `--expected-normal-events` は通常 scroll record 数、`--expected-momentum-events` は momentum changed record 数を表す。通常は1件以上、momentumは0件以上を受理する。momentumが1件以上なら ended-zero 1件を別に必須とし、期待総数を `normal + momentum + 1`、0件なら終了recordを要求せず `normal` とする。
 - 全 record は Nape Gesture 生成 `scrollWheel`、`isContinuous == 1` とし、timestamp は厳密増加させる。同一 record 重複、同一 timestamp、順序逆転、`systemTestScenario` / `sequenceIndex` 混在を失敗にする。
 - 全 record は X 軸だけを使い、`scrollDeltaX` が `pointDeltaX` の `generate-scroll` と同じ per-record 丸め量であることを要求する。通常区間は各 `pointDeltaX` を `normalXTotal / normalEventCount` と照合し、point 合計と、per-step 量子化値を件数倍した scroll 合計を検査する。サブ1 pointでは正しい `scrollDeltaX == 0` を許可する。非ゼロ値は期待方向と一致させる。
+- 外部ログの `Int64` 合計で process を trap させない。共通の表示集計は overflow 時に `Int64.min` / `Int64.max` へ飽和し、生成スクロール assertion は生 record の checked addition で overflow 自体を不合格理由にする。
 - `auto` の状態列は通常1件なら `changed`、2件以上なら `began, changed*, ended` とする。momentum 0件ならそこで終了し、1件以上なら `changed+, ended-zero` を続ける。`--momentum-decay 0` が生成するゼロ delta の momentum changed は許可する一方、phase なし、未知 phase、scroll/momentum phase 混在、通常 ended 欠落、momentum ended 後の tail は失敗にし、ended-zero を最終 record に限定する。
 - `generate-scroll --phase began|changed|ended|cancelled|momentum` の明示 override はこの assertion ではサポートしない。`--expected-phase-mode` は `auto` だけを受理し、それ以外は解析前に非ゼロ終了する。
 - `generate-scroll` の JSON Lines には `systemTestScenario` / `sequenceIndex` を付けない。これらは System Behavior Test の取り違え防止メタ情報として扱う。

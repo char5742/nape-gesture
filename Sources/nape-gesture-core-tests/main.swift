@@ -1069,6 +1069,20 @@ func testGeneratedScrollLogAssertionAcceptsExactAutoSequence() {
     expect(evaluation.failures.isEmpty, "受理したログに失敗理由を残さない")
 }
 
+func testInputLogAnalyzerSaturatesOverflowingScrollTotals() {
+    let positive = InputLogAnalyzer.analyze([
+        makeInputLogRecord(timestamp: 1, typeName: "scrollWheel", scrollDeltaX: Int64.max),
+        makeInputLogRecord(timestamp: 2, typeName: "scrollWheel", scrollDeltaX: 1)
+    ])
+    let negative = InputLogAnalyzer.analyze([
+        makeInputLogRecord(timestamp: 1, typeName: "scrollWheel", scrollDeltaY: Int64.min),
+        makeInputLogRecord(timestamp: 2, typeName: "scrollWheel", scrollDeltaY: -1)
+    ])
+
+    expect(positive.scrollDeltaXTotal == Int64.max, "正方向overflowのscroll合計はtrapせずInt64.maxへ飽和する")
+    expect(negative.scrollDeltaYTotal == Int64.min, "負方向overflowのscroll合計はtrapせずInt64.minへ飽和する")
+}
+
 func testGeneratedScrollLogAssertionAcceptsExpectedNegativeDirection() {
     var records = makeValidGeneratedScrollLogRecords()
     for index in 0..<38 {
@@ -2533,6 +2547,7 @@ testInputLogAnalyzerComparesBaselineAndCandidate()
 testInputLogAnalyzerCountsKeyEvents()
 testInputLogAnalyzerDoesNotTreatUnmarkedKeysAsPassthroughInput()
 testGeneratedScrollLogAssertionAcceptsExactAutoSequence()
+testInputLogAnalyzerSaturatesOverflowingScrollTotals()
 testGeneratedScrollLogAssertionAcceptsExpectedNegativeDirection()
 testGeneratedScrollLogAssertionAcceptsGeneratorEdgeCases()
 testGeneratedScrollLogAssertionRejectsMalformedSequences()
