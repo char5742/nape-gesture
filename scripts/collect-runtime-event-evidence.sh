@@ -431,8 +431,13 @@ run_scenario_with_no_leaks() {
     return
   fi
 
-  printf '$ %s system-test run --scenario %s > %s 2>&1\n' "$tool_path" "$scenario" "$system_log" >> "$commands_file"
-  "$tool_path" system-test run --scenario "$scenario" > "$system_log" 2>&1
+  if [ "$scenario" = "gesture-drag" ]; then
+    printf '$ %s system-test run --scenario %s --amount 240 > %s 2>&1\n' "$tool_path" "$scenario" "$system_log" >> "$commands_file"
+    "$tool_path" system-test run --scenario "$scenario" --amount 240 > "$system_log" 2>&1
+  else
+    printf '$ %s system-test run --scenario %s > %s 2>&1\n' "$tool_path" "$scenario" "$system_log" >> "$commands_file"
+    "$tool_path" system-test run --scenario "$scenario" > "$system_log" 2>&1
+  fi
   system_status=$?
   wait_for_target_events_to_flush "$target_pid"
   target_pid=""

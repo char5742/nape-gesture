@@ -13,11 +13,13 @@ final class EventPoster {
     private let axSearchBudgetNanoseconds: UInt64 = 120_000_000
     private let axAsyncMaximumLatencyNanoseconds: UInt64 = 160_000_000
     private let axCacheLifetimeNanoseconds: UInt64 = 250_000_000
+    private let axNotHandledCacheLifetimeNanoseconds: UInt64 = 500_000_000
     private let windowTargetCacheLifetimeNanoseconds: UInt64 = 500_000_000
     private let axScrollQueue = DispatchQueue(label: "dev.char5742.nape-gesture.ax-scroll")
     private let source: CGEventSource?
     private var cachedWindowTarget: CachedWindowTarget?
     private var cachedAXWebScrollTarget: CachedAXWebScrollTarget?
+    private var cachedAXNotHandledTarget: CachedAXNotHandledTarget?
 
     init() {
         source = CGEventSource(stateID: .hidSystemState)
@@ -566,6 +568,29 @@ final class EventPoster {
         deadline: UInt64
     ) -> AXWebScrollPreparation {
         let requestedAxes = Set(requests.map(\.axis))
+        let now = monotonicNanoseconds()
+        let notHandledCacheKey = targetProcessID.map {
+            AXNotHandledCacheKey(
+                processID: Int32($0),
+                windowNumber: targetWindowNumber,
+                pointX: point.x,
+                pointY: point.y,
+                requestedAxes: requestedAxes
+            )
+        }
+        if let notHandledCacheKey,
+           let cachedAXNotHandledTarget,
+           cachedAXNotHandledTarget.key == notHandledCacheKey {
+            let cacheAge = now >= cachedAXNotHandledTarget.resolvedAtNanoseconds
+                ? now - cachedAXNotHandledTarget.resolvedAtNanoseconds
+                : UInt64.max
+            if cacheAge <= axNotHandledCacheLifetimeNanoseconds {
+                cachedAXWebScrollTarget = nil
+                return .notHandled
+            }
+        }
+        cachedAXNotHandledTarget = nil
+
         let target: AXWebScrollTarget
         switch webContentAXScrollTargetUnderPointer(
             axes: requestedAxes,
@@ -574,12 +599,20 @@ final class EventPoster {
             deadline: deadline
         ) {
         case let .found(resolvedTarget):
+            cachedAXNotHandledTarget = nil
             target = resolvedTarget
         case .blocked:
             cachedAXWebScrollTarget = nil
+            cachedAXNotHandledTarget = nil
             return .blocked
-        case .notHandled:
+        case let .notHandled(cacheable):
             cachedAXWebScrollTarget = nil
+            if cacheable, let notHandledCacheKey {
+                cachedAXNotHandledTarget = CachedAXNotHandledTarget(
+                    key: notHandledCacheKey,
+                    resolvedAtNanoseconds: now
+                )
+            }
             return .notHandled
         }
 
@@ -587,6 +620,7 @@ final class EventPoster {
         let resolvedAxes = Set(resolvedRequests.map(\.axis))
         guard !resolvedAxes.isEmpty else {
             cachedAXWebScrollTarget = nil
+            cachedAXNotHandledTarget = nil
             return .blocked
         }
 
@@ -600,7 +634,6 @@ final class EventPoster {
             )
         }
 
-        let now = monotonicNanoseconds()
         let currentValues: [AXWebScrollAxis: Double]
         if let cacheKey,
            let cachedAXWebScrollTarget,
@@ -718,7 +751,7 @@ final class EventPoster {
         deadline: UInt64
     ) -> AXWebScrollTargetLookupResult {
         guard !axes.isEmpty, hasAXTimeRemaining(until: deadline) else {
-            return .notHandled
+            return .notHandled(cacheable: false)
         }
 
         let hitTestRoot = targetProcessID.map(AXUIElementCreateApplication)
@@ -729,7 +762,7 @@ final class EventPoster {
             point: point,
             deadline: deadline
         ) else {
-            return .notHandled
+            return .notHandled(cacheable: false)
         }
 
         var elements: [AXUIElement] = []
@@ -819,7 +852,7 @@ final class EventPoster {
         case .blocked:
             return .blocked
         case .notFound:
-            return .notHandled
+            return .notHandled(cacheable: true)
         }
     }
 
@@ -1078,6 +1111,19 @@ private struct CachedAXWebScrollTarget {
     var lastUsedAtNanoseconds: UInt64
 }
 
+private struct AXNotHandledCacheKey: Hashable {
+    var processID: Int32
+    var windowNumber: UInt32?
+    var pointX: CGFloat
+    var pointY: CGFloat
+    var requestedAxes: Set<AXWebScrollAxis>
+}
+
+private struct CachedAXNotHandledTarget {
+    var key: AXNotHandledCacheKey
+    var resolvedAtNanoseconds: UInt64
+}
+
 private struct ScrollEventContext {
     var event: CGEvent
     var targetUnderPointer: WindowTarget?
@@ -1146,7 +1192,7 @@ private struct AXWebScrollTarget {
 private enum AXWebScrollTargetLookupResult {
     case found(AXWebScrollTarget)
     case blocked
-    case notHandled
+    case notHandled(cacheable: Bool)
 }
 
 private enum AXWebScrollPreparation {

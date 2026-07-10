@@ -87,6 +87,7 @@
 - Finder、Safari、Mission Control、Spaces で必要な実機検証が明記されている
 - Safari Web fallback は application hit-test から最も近い scroll container を選び、`AXDescription` に依存しない direct child clipping、情報不足、非有限frame、nested の軸不足で outer scrollbar を成功扱いしていない
 - selected nested target の利用可能軸だけを配送し、未対応軸を outer / CGEvent へ流さず、positive `blocked` では fallback を抑止している
+- 非Webの短期 cache は ancestor 完全走査済み `notHandled` だけを exact PID / window / pointer / axes で保持し、root hit-test 失敗、`found`、`blocked` を再利用していない
 - async completion は AX適用を実配送1件、`blocked` / `noChange` を0件として記録し、enqueue時の provisional 件数を最終成功にしていない
 - nested frame、generic overflow、top-level、端到達、Computer Use、CGEvent source / tap / field の比較が保存され、AX set が wheel handler を発火しない制約を完了済みと表現していない
 - PR #101 の時刻修正前 Safari 診断を完成証跡として流用せず、ADR-0037 統合 commit と TCC 許可済み `.app` identity を固定し、contract の5 assertion、通常 async、PID固定 sync、端到達、Computer Use の通常 wheel、current-uptime CGEvent log、画面挙動、runtime performance completion を再取得する

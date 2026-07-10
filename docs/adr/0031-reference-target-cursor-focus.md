@@ -18,6 +18,7 @@ Runtime event 証跡では、`run`、Reference Target App、`system-test`、`ana
 - ready file には `diagnostics` として active/key/main window、first responder、`EventCaptureView` hit-test、要求 Quartz 座標と実 cursor location の一致も残し、無人証跡では script がこの条件を検査する。capture 中心の計算前に window layout を確定する。
 - 起動直後の activation race を ready と誤記録しない。起動後単調時刻で2秒を上限に50ms間隔で active/key/main、capture first responder、実カーソル位置を再確立し、全条件成立時だけ `ready: true` を書く。期限切れは診断値つきの `ready: false` として失敗させる。
 - `scripts/collect-runtime-event-evidence.sh` は Reference Target App 起動時に `--focus-capture-point` を付ける。
+- `gesture-drag` の無人証跡は capture window 内で完結する `--amount 240` を使い、検証操作自身が window 外へカーソルを押し出した結果を入力漏れと混同しない。
 - target log 証跡では `system-test run` に `--target finder` / `--target safari` を付けない。対象アプリ前面化の検証と Reference Target App の AppKit 受信検証を混同しない。
 
 ## 影響
