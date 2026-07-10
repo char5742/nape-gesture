@@ -93,11 +93,12 @@
 - `.app` バンドルを作成し、`verify-bundle` が成功する
 - `LICENSE` と `THIRD_PARTY_NOTICES.md` が同梱される
 - `LICENSE` と `THIRD_PARTY_NOTICES.md` はバンドル内の同梱ファイルと `cmp` で一致している
-- `CFBundleIdentifier`、`CFBundleExecutable`、`CFBundleName`、`CFBundleDisplayName` が exact string 型・固定値、`LSUIElement` が exact Boolean 型の `false` として成功している
-- CI、release、completion の正例 oracle が4文字列と `LSUIElement=false` の literal 固定値を確認し、生成側と verifier の共通定数だけに依存していない
-- 4つの string identity の alternate / missing / integer、`LSUIElement` の integer `0` / real `0` / string `false` / missing / Boolean `true`、malformed plist、辞書以外 root が fresh copy ごとの expected failure になり、stderr に対象キーまたは原因がある
+- `CFBundleIdentifier`、`CFBundleExecutable`、`CFBundleName`、`CFBundleDisplayName`、`CFBundlePackageType=APPL` が exact string 型・固定値、`LSUIElement` が exact Boolean 型の `false` として成功している
+- CI、release、completion の正例 oracle が5文字列と `LSUIElement=false` の literal 固定値を確認し、生成側と verifier の共通定数だけに依存していない
+- 4つの string identity と `CFBundlePackageType` の alternate / missing / integer、`LSUIElement` の integer `0` / real `0` / string `false` / missing / Boolean `true`、malformed plist、辞書以外 root が fresh copy ごとの expected failure になり、stderr に対象キーまたは原因がある
 - bundle root、`Contents`、`Info.plist`、executable の symlink、directory executable、bundle 外 executable が失敗し、正常な `bundle-app` 出力は成功する
 - `verify-bundle` が `--require-signature` だけを option として許可し、未知 option、path 欠落、余分な positional を失敗させる
+- contract script が artifact 出力先を一括削除せず、source bundle 内、repository root、symlink を拒否する
 - active macOS GUI session で `.build/NapeGesture.app/Contents/MacOS/nape-gesture gui-smoke --config <tmp> --json --assert` が成功し、通常 GUI activation policy、設定ウィンドウ、status item `NG`、通常アプリメニュー、status menu の生成契約を検査している。CI runner に active console session がなく skip された場合は、ローカル completion evidence を PR または Issue に残している
 - `.app` を通常 GUI アプリとして起動し、設定ウィンドウを初期表示する方針と矛盾していない
 - ローカル検証では ad-hoc 署名、公開配布では Developer ID Application 署名と公証を使う境界が明記されている

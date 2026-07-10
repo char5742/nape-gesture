@@ -41,13 +41,16 @@ if [ ! -d "$source_app" ]; then
   exit 1
 fi
 case "$artifact_dir" in
-  /|"")
+  /|""|"$repo_root"|"$source_app"|"$source_app"/*)
     printf '%s\n' "artifact directory が不正です: $artifact_dir" >&2
     exit 1
     ;;
 esac
+if [ -L "$artifact_dir" ]; then
+  printf '%s\n' "artifact directory に symlink は指定できません: $artifact_dir" >&2
+  exit 1
+fi
 
-rm -rf "$artifact_dir"
 mkdir -p "$artifact_dir"
 summary_file="$artifact_dir/summary.log"
 : > "$summary_file"
@@ -155,6 +158,7 @@ assert_fixed_plist_value "CFBundleIdentifier" "string" "dev.char5742.nape-gestur
 assert_fixed_plist_value "CFBundleExecutable" "string" "nape-gesture"
 assert_fixed_plist_value "CFBundleName" "string" "Nape Gesture"
 assert_fixed_plist_value "CFBundleDisplayName" "string" "Nape Gesture"
+assert_fixed_plist_value "CFBundlePackageType" "string" "APPL"
 assert_fixed_plist_value "LSUIElement" "bool" "false"
 
 assert_log_contains \
@@ -173,6 +177,10 @@ assert_log_contains \
   "CFBundleDisplayName 固定値出力" \
   "$artifact_dir/positive-bundle.stdout.log" \
   "Info.plist: CFBundleDisplayName=Nape Gesture"
+assert_log_contains \
+  "CFBundlePackageType 固定値出力" \
+  "$artifact_dir/positive-bundle.stdout.log" \
+  "Info.plist: CFBundlePackageType=APPL"
 assert_log_contains \
   "LSUIElement 固定値出力" \
   "$artifact_dir/positive-bundle.stdout.log" \
@@ -205,6 +213,7 @@ CFBundleIdentifier|dev.char5742.invalid-nape-gesture|bundle-identifier
 CFBundleExecutable|invalid-nape-gesture|bundle-executable
 CFBundleName|Invalid Nape Gesture|bundle-name
 CFBundleDisplayName|Invalid Nape Gesture|bundle-display-name
+CFBundlePackageType|FMWK|bundle-package-type
 EOF
 
 fresh_bundle "ls-ui-element-integer-zero"

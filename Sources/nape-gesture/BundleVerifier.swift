@@ -86,6 +86,7 @@ enum BundleVerifier {
             "Info.plist: CFBundleExecutable=\(AppBundleIdentity.executableName)",
             "Info.plist: CFBundleName=\(AppBundleIdentity.bundleName)",
             "Info.plist: CFBundleDisplayName=\(AppBundleIdentity.displayName)",
+            "Info.plist: CFBundlePackageType=\(AppBundleIdentity.packageType)",
             "Info.plist: LSUIElement=false",
             "Contents/MacOS/\(AppBundleIdentity.executableName)",
             "Contents/Resources/LICENSE.txt",
