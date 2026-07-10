@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ja" data-probe-scenario="top-level" data-probe-schema-version="1">
+<html lang="ja" data-probe-scenario="top-level" data-probe-schema-version="2">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Nape Gesture top-level scroll probe</title>
@@ -14,7 +14,7 @@
   .marker { width: 520px; min-height: 180px; padding: 24px; border: 2px solid #111; background: #fff; }
 </style>
 <div id="toolbar">
-  <output id="status">{"schemaVersion":1,"scenario":"top-level","ready":true,"outer":{"x":0,"y":0,"wheel":{"count":0,"target":"none"}},"inner":null,"frame":null}</output>
+  <output id="status">{"schemaVersion":2,"scenario":"top-level","ready":true,"outer":{"x":0,"y":0,"wheel":{"count":0,"target":"none"}},"inner":null,"frame":null}</output>
   <button id="reset" type="button">状態をリセット</button>
 </div>
 <main>
@@ -28,7 +28,7 @@
 
   function snapshot() {
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       scenario: 'top-level',
       ready: true,
       outer: {
@@ -64,7 +64,7 @@
   document.querySelector('#reset').addEventListener('click', reset);
   addEventListener('pageshow', reset);
   window.napeGestureScrollProbe = Object.freeze({
-    schemaVersion: 1,
+    schemaVersion: 2,
     scenario: 'top-level',
     snapshot,
     reset

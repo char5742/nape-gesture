@@ -92,7 +92,11 @@
 - 非Webの短期 cache は ancestor 完全走査済み `notHandled` だけを exact PID / window / pointer / axes で保持し、root hit-test 失敗、`found`、`blocked` を再利用していない
 - async completion は AX適用を実配送1件、`blocked` / `noChange` を0件として記録し、enqueue時の provisional 件数を最終成功にしていない
 - nested frame、generic overflow、top-level、端到達、Computer Use、CGEvent source / tap / field の比較が保存され、AX set が wheel handler を発火しない制約を完了済みと表現していない
-- Safari runtime contract evaluatorがreset、before / after / at-end、sync / async、PID override有無、pointer直下window owner、exit codeを機械判定し、PID固定診断を通常routing成功として扱っていない
+- Safari contract変更時にstatic checker、実WebKit render、runtime evaluatorの正負・blockedテストをCIで実行している
+- 実Safari artifactは候補commit、`.app` executable、正本contract、全artifactのSHA-256、run専用path、実行argv、reset / before / after / atEnd、exit codeを固定している
+- 通常routingはSafariのfrontmost PIDとpointer直下先頭window owner PIDを照合し、PID固定診断やrun間artifact aliasを通常routing成功として扱っていない
+- `precondition-blocked`は操作未実行のpointer/window証跡だけを持ち、exit `2` / blockedを完成扱いしていない
+- frame端は実WebKit renderで初期`maxY`と実終端を検査し、runtime artifactでもprobeの`maxY` / `atEnd`が整合し、端到達後の追加操作でframe/outerが不変であることを別遷移として判定している
 - PR #101 の時刻修正前 Safari 診断を完成証跡として流用せず、ADR-0037 統合後の同一commitとTCC許可済み `.app` identityで、contract全assertion、通常async、PID固定sync/async、端到達、Computer Useの通常wheel、current-uptime CGEvent log、画面挙動、runtime performance completionを再取得する
 
 ## UI / Doctor / 権限導線変更

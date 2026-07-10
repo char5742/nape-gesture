@@ -17,6 +17,8 @@
 - [ ] `.build/debug/nape-gesture-core-tests`
 - [ ] `swift build -c release --scratch-path .build`
 - [ ] 必要な dry-run / analyzer / bundle 検証を実行した
+- [ ] Safari contract / routing変更時: static checker、WebKit render checker、runtime evaluator testsを実行した
+- [ ] Safari実挙動変更時: 同一候補SHAの実artifact evaluatorがexit `0` / passになった、または未実施理由とblockerを記載した
 
 ## 実機検証
 

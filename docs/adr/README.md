@@ -40,12 +40,12 @@
 | [ADR-0031](0031-reference-target-cursor-focus.md) | Reference Target App の無人証跡では capture view へカーソルを固定する | runtime event、Reference Target App、system-test、target log |
 | [ADR-0032](0032-reference-target-foreground-capture.md) | Reference Target App は foreground capture 経路を証跡化する | runtime event、Reference Target App、foreground capture、postToPid |
 | [ADR-0033](0033-kill-switch-pending-release-suppression.md) | キルスイッチ後も進行中ジェスチャーの release は抑制する | Issue #12、kill-switch、activation button、元入力抑制 |
+| [ADR-0034](0034-github-actions-external-blocker.md) | GitHub Actionsの外部停止はmerge gateを代替しない | Public repository、billing、CI、need:human、Issue #91 |
 | [ADR-0035](0035-browser-discrete-shortcut-posting.md) | ブラウザ離散操作はメニュー互換ショートカットを明示 modifier 列で投稿する | Issue #10、Safari、ページ戻る/進む、ズーム、TCC |
 | [ADR-0036](0036-scroll-event-target-process-routing.md) | 通常スクロールはポインタ直下 window owner PID と AX Web fallback で配送する | Issue #10、縦横スクロール、Safari、Reference Target、CGEvent、AX |
 | [ADR-0037](0037-monotonic-event-time-domain.md) | CGEvent と慣性を起動後単調時刻へ統一する | Issue #7/#10/#14/#16/#102、CGEvent、慣性、生成イベント、runtime 性能 |
 | [ADR-0038](0038-safari-evidence-pointer-and-routing.md) | Safari 証跡では UI 操作、Quartz ポインタ、配送経路を分離する | Issue #10/#16/#105/#106、Safari、Computer Use、Quartzポインタ、通常routing |
 
-注: ADR-0034 は [PR #90](https://github.com/char5742/nape-gesture/pull/90) の「GitHub Actions の外部停止は merge gate を代替しない」で予約済みのため、このブランチでは重複追加しない。
 
 ## 追加時の確認
 

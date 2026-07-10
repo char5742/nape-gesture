@@ -22,6 +22,12 @@ jobs:
       - name: Check provenance guard
         run: sh scripts/check-provenance.sh
 
+      - name: Check Safari runtime evidence contract
+        run: |
+          python3 scripts/check-safari-scroll-probe-contract.py
+          swift scripts/check-safari-scroll-probe-render.swift
+          python3 scripts/check-safari-scroll-runtime-evidence-tests.py
+
       - name: Build debug
         run: swift build --scratch-path .build
 

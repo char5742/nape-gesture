@@ -1,10 +1,10 @@
 {
   "schemaVersion": 2,
-  "probeSchemaVersion": 1,
+  "probeSchemaVersion": 2,
   "interfaceName": "napeGestureScrollProbe",
   "statusElementId": "status",
   "runtimeEvidence": {
-    "manifestSchemaVersion": 1,
+    "manifestSchemaVersion": 2,
     "safariBundleIdentifier": "com.apple.Safari",
     "pointerMaximumDistance": 2,
     "successExitCode": 0
@@ -74,6 +74,8 @@
         "inner.wheel.target",
         "frame.x",
         "frame.y",
+        "frame.maxY",
+        "frame.atEnd",
         "frame.wheel.count",
         "frame.wheel.target"
       ],
@@ -88,6 +90,8 @@
         "inner.wheel.target",
         "frame.x",
         "frame.y",
+        "frame.maxY",
+        "frame.atEnd",
         "frame.wheel.count",
         "frame.wheel.target"
       ],
@@ -102,6 +106,8 @@
         "inner.wheel.target": { "comparison": "exact", "value": "none" },
         "frame.x": { "comparison": "exact", "value": 0 },
         "frame.y": { "comparison": "exact", "value": 0 },
+        "frame.maxY": { "comparison": "exact", "value": 1468 },
+        "frame.atEnd": { "comparison": "exact", "value": false },
         "frame.wheel.count": { "comparison": "exact", "value": 0 },
         "frame.wheel.target": { "comparison": "exact", "value": "none" }
       }
@@ -117,18 +123,24 @@
         "ready",
         "scroll.x",
         "scroll.y",
+        "scroll.maxY",
+        "scroll.atEnd",
         "wheel.count",
         "wheel.target"
       ],
       "measurementPaths": [
         "scroll.x",
         "scroll.y",
+        "scroll.maxY",
+        "scroll.atEnd",
         "wheel.count",
         "wheel.target"
       ],
       "resetExpect": {
         "scroll.x": { "comparison": "exact", "value": 0 },
         "scroll.y": { "comparison": "exact", "value": 0 },
+        "scroll.maxY": { "comparison": "exact", "value": 1468 },
+        "scroll.atEnd": { "comparison": "exact", "value": false },
         "wheel.count": { "comparison": "exact", "value": 0 },
         "wheel.target": { "comparison": "exact", "value": "none" }
       }
@@ -175,6 +187,8 @@
             "inner.wheel.target": { "comparison": "unchanged" },
             "frame.x": { "comparison": "unchanged" },
             "frame.y": { "comparison": "unchanged" },
+            "frame.maxY": { "comparison": "unchanged" },
+            "frame.atEnd": { "comparison": "unchanged" },
             "frame.wheel.count": { "comparison": "unchanged" },
             "frame.wheel.target": { "comparison": "unchanged" }
           }
@@ -212,6 +226,8 @@
             "inner.wheel.target": { "comparison": "exact", "value": "generic-1" },
             "frame.x": { "comparison": "unchanged" },
             "frame.y": { "comparison": "unchanged" },
+            "frame.maxY": { "comparison": "unchanged" },
+            "frame.atEnd": { "comparison": "unchanged" },
             "frame.wheel.count": { "comparison": "unchanged" },
             "frame.wheel.target": { "comparison": "unchanged" }
           }
@@ -258,6 +274,8 @@
             "inner.wheel.target": { "comparison": "unchanged" },
             "frame.x": { "comparison": "unchanged" },
             "frame.y": { "comparison": "increased" },
+            "frame.maxY": { "comparison": "unchanged" },
+            "frame.atEnd": { "comparison": "unchanged" },
             "frame.wheel.count": { "comparison": "unchanged" },
             "frame.wheel.target": { "comparison": "unchanged" }
           }
@@ -304,6 +322,8 @@
             "inner.wheel.target": { "comparison": "unchanged" },
             "frame.x": { "comparison": "unchanged" },
             "frame.y": { "comparison": "unchanged" },
+            "frame.maxY": { "comparison": "unchanged" },
+            "frame.atEnd": { "comparison": "unchanged" },
             "frame.wheel.count": { "comparison": "unchanged" },
             "frame.wheel.target": { "comparison": "unchanged" }
           }
@@ -425,6 +445,8 @@
             "inner.wheel.target": { "comparison": "unchanged" },
             "frame.x": { "comparison": "unchanged" },
             "frame.y": { "comparison": "increased" },
+            "frame.maxY": { "comparison": "unchanged" },
+            "frame.atEnd": { "comparison": "exact", "value": true },
             "frame.wheel.count": { "comparison": "unchanged" },
             "frame.wheel.target": { "comparison": "unchanged" }
           }
@@ -444,6 +466,8 @@
             "inner.wheel.target": { "comparison": "unchanged" },
             "frame.x": { "comparison": "unchanged" },
             "frame.y": { "comparison": "unchanged" },
+            "frame.maxY": { "comparison": "unchanged" },
+            "frame.atEnd": { "comparison": "unchanged" },
             "frame.wheel.count": { "comparison": "unchanged" },
             "frame.wheel.target": { "comparison": "unchanged" }
           }

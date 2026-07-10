@@ -21,10 +21,11 @@ python3 -m http.server 8765 --bind 127.0.0.1 --directory docs/fixtures/safari-sc
 `reset()` 後、nested fixture は frame の初期状態を受信すると `ready=true` になる。
 outer / inner / frame の座標と wheel count / target を文字列解析せず比較できる。
 
-静的 contract は completion に含める。
+静的 contract と実WebKit render契約は completion に含める。render検査はframeの実viewportから得た初期`maxY`をcontract値と照合し、実終端までscrollした`y == maxY` / `atEnd=true`と親iframeへの状態反映を確認する。
 
 ```sh
 python3 scripts/check-safari-scroll-probe-contract.py
+swift scripts/check-safari-scroll-probe-render.swift
 ```
 
 この検査は schema version、fixture ID、初期 JSON、状態 path、pointer element、比較条件を照合する。
@@ -36,11 +37,11 @@ generic overflow の `#inner` に `role` / `aria-label` がないことも固定
 実行主体は `doctor --json` で `runtimeIdentity.isAppBundle: true` と `tccStatus.accessibility.status: granted` を確認した `.build/NapeGesture.app/Contents/MacOS/nape-gesture` を使う。
 Safari PID は `pgrep -x Safari`、実ポインタ位置は `swift -e 'import CoreGraphics; print(CGEvent(source: nil)?.location ?? .zero)'` で確認する。
 
-基本コマンドは次のとおり。
+操作値とrun集合は `contract.json` を正とする。生成操作は現行contractでは各1 stepであり、例は次のとおり。
 
 ```sh
 .build/NapeGesture.app/Contents/MacOS/nape-gesture \
-  generate-scroll --x <X> --y <Y> --steps 16 --mode free \
+  generate-scroll --x <X> --y <Y> --steps 1 --mode free \
   --ax-delivery sync --post-to-pid <Safari PID>
 ```
 
@@ -56,9 +57,41 @@ Safari PID は `pgrep -x Safari`、実ポインタ位置は `swift -e 'import Co
 | 縦のみ frame | `--x 1 --y 800` | `frame.y` だけが増え、微小な未対応横軸は捨てる。outer へ fallback しない |
 | 長い article | `--y 800` | `outer.y` だけが増える。viewport より長い content group を nested scroller と誤認しない |
 | top-level | `--x 1600 --y 800` | `outer.x` / `outer.y` が増える。`AXWebArea` 自身の scrollbar 属性でも成立する |
+| frame端 | `--y 10000` 後に `--y 800` | fixtureが返す`frame.atEnd=true`と`frame.y >= frame.maxY`が一致し、追加操作後もframeとouterが不変 |
 
 normalized AX value と CSS pixel は同じ単位ではないため、生成量の一致は成功条件にしない。
 AX scrollbar set は JavaScript `wheel` handler を発火しないため、生成操作では wheel count が不変であることを期待する。
+
+## runtime artifact判定
+
+最終証跡rootには `safari-scroll-runtime-manifest.json` を置き、次で評価する。
+
+```sh
+artifact_root=<artifact-root>
+candidate_commit=$(git rev-parse HEAD)
+app_executable=.build/NapeGesture.app/Contents/MacOS/nape-gesture
+python3 scripts/check-safari-scroll-runtime-evidence.py "$artifact_root" \
+  --expected-commit "$candidate_commit" \
+  --app-executable "$app_executable" \
+  > "$artifact_root/evaluation.json"
+```
+
+manifest schema 2 は候補commit、`dev.char5742.nape-gesture`のexecutable SHA-256、正本contract SHA-256、Safari PID、6 assertion / 12 operation runを固定する。evaluatorは`--expected-commit`との一致と`--app-executable`の実SHA-256を再計算する。各artifact参照は`path`と`sha256`を持ち、`runs/<assertion>/<operation>/`外参照、正規化後の逸脱、run間path・file identity共有を拒否する。生成操作は指定した実行ファイルの絶対pathを含む実argv、native wheelはComputer Useの`direction=down / pages=0.2`をmanifestのinvocationへ保存する。
+
+実行済みrunは `executionStatus: executed` とし、pointer setup、before / after / atEnd、各operation exit codeを持つ。通常routingの事前条件がhost windowで成立しない場合だけ `executionStatus: precondition-blocked`、`invocation: null` とし、pointer setupとwindow owner証跡だけを保存する。操作後snapshotや成功exit codeを捏造して`blocked`にしない。
+probe schema 2はframeの`maxY`と`atEnd`を保存し、evaluatorが`atEnd == (y >= maxY)`を再計算する。固定pixel値だけで端到達を成功扱いしない。
+
+- exit `0`: 全12 runが`pass`。最終証跡として採用可能
+- exit `1`: contract、hash、identity、artifact、状態遷移、exit codeの不一致
+- exit `2`: 通常routingの事前条件blocked。完成扱いせずIssue #105を継続
+
+静的contract、実WebKit render、合成artifactの正負・blocked回帰は次をCIとcompletion collectorで常時実行する。
+
+```sh
+python3 scripts/check-safari-scroll-probe-contract.py
+swift scripts/check-safari-scroll-probe-render.swift
+python3 scripts/check-safari-scroll-runtime-evidence-tests.py
+```
 
 ## selector / delivery の成立条件
 
@@ -113,4 +146,4 @@ HID / session tap と AX set の併用は採用しない。Web 側の `preventDe
 
 Issue #102 の時刻 domain と `EventPoster` の timestamp / key API は ADR-0037 としてこの branch に統合済みである。
 PR #101 の最終 Safari / runtime 証跡は、その統合 commit と TCC 許可済み `.app` identity を固定して再取得する。
-`contract.json` の5 assertion、通常 async、PID 固定 sync、端到達、Computer Use の通常 wheel比較、生成 CGEvent log の `analyze-log --assert-current-uptime`、runtime performance completion を同じ commit で保存する。
+`contract.json` の6 assertion / 12 run、通常 async、PID固定 sync / async、frame端到達、Computer Use の通常 wheel比較、生成 CGEvent log の `analyze-log --assert-current-uptime`、runtime performance completion を同じ commitで保存する。runtime evaluatorは`status=pass`、`failureCount=0`、`blockedCount=0`であることを必要条件とする。

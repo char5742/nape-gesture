@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ja" data-probe-scenario="nested" data-probe-schema-version="1">
+<html lang="ja" data-probe-scenario="nested" data-probe-schema-version="2">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Nape Gesture nested scroll probe</title>
@@ -22,7 +22,7 @@
   @media (max-width: 600px) { .probes { grid-template-columns: 1fr; } }
 </style>
 <div id="toolbar">
-  <output id="status">{"schemaVersion":1,"scenario":"nested","ready":false,"outer":{"x":0,"y":0,"wheel":{"count":0,"target":"none"}},"inner":{"x":0,"y":0,"wheel":{"count":0,"target":"none"}},"frame":{"x":0,"y":0,"wheel":{"count":0,"target":"none"}}}</output>
+  <output id="status">{"schemaVersion":2,"scenario":"nested","ready":false,"outer":{"x":0,"y":0,"wheel":{"count":0,"target":"none"}},"inner":{"x":0,"y":0,"wheel":{"count":0,"target":"none"}},"frame":{"x":0,"y":0,"maxY":1468,"atEnd":false,"wheel":{"count":0,"target":"none"}}}</output>
   <button id="reset" type="button">状態をリセット</button>
 </div>
 <main class="probes">
@@ -57,6 +57,8 @@
     frameReady: false,
     frameX: 0,
     frameY: 0,
+    frameMaxY: 1468,
+    frameAtEnd: false,
     frameWheel: 0,
     frameTarget: 'none'
   };
@@ -73,7 +75,7 @@
 
   function snapshot() {
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       scenario: 'nested',
       ready: state.frameReady,
       outer: {
@@ -89,6 +91,8 @@
       frame: {
         x: Math.round(state.frameX),
         y: Math.round(state.frameY),
+        maxY: Math.round(state.frameMaxY),
+        atEnd: state.frameAtEnd,
         wheel: { count: state.frameWheel, target: state.frameTarget }
       }
     };
@@ -111,6 +115,8 @@
     state.frameReady = false;
     state.frameX = 0;
     state.frameY = 0;
+    state.frameMaxY = 1468;
+    state.frameAtEnd = false;
     state.frameWheel = 0;
     state.frameTarget = 'none';
     frame.contentWindow?.postMessage({ type: 'reset' }, location.origin);
@@ -135,10 +141,12 @@
   addEventListener('message', event => {
     if (event.source !== frame.contentWindow || event.data?.type !== 'frame-state') return;
     const frameState = event.data.state;
-    if (frameState?.schemaVersion !== 1 || frameState?.scenario !== 'frame') return;
+    if (frameState?.schemaVersion !== 2 || frameState?.scenario !== 'frame') return;
     state.frameReady = frameState.ready === true;
     state.frameX = frameState.scroll.x;
     state.frameY = frameState.scroll.y;
+    state.frameMaxY = frameState.scroll.maxY;
+    state.frameAtEnd = frameState.scroll.atEnd;
     state.frameWheel = frameState.wheel.count;
     state.frameTarget = frameState.wheel.target;
     render();
@@ -146,7 +154,7 @@
   document.querySelector('#reset').addEventListener('click', reset);
   addEventListener('pageshow', reset);
   window.napeGestureScrollProbe = Object.freeze({
-    schemaVersion: 1,
+    schemaVersion: 2,
     scenario: 'nested',
     snapshot,
     reset

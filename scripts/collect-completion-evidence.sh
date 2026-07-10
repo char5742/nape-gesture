@@ -20,6 +20,7 @@ if [ ! -f Package.swift ] || [ "$git_root" != "$repo_root" ]; then
 fi
 
 artifact_root=${NAPE_COMPLETION_ARTIFACT_ROOT:-"artifacts/completion/$(date +%F)/machine-evidence"}
+safari_runtime_artifact_root=${NAPE_SAFARI_SCROLL_RUNTIME_ARTIFACT_ROOT:-}
 commands_file="$artifact_root/commands.txt"
 summary_file="$artifact_root/summary.md"
 failure_count=0
@@ -173,6 +174,20 @@ run_combined_success \
   python3 scripts/check-safari-scroll-probe-contract.py
 
 run_combined_success \
+  "Safari scroll probe WebKit render contract" \
+  "$build_dir/safari-scroll-probe-render.log" \
+  "swift scripts/check-safari-scroll-probe-render.swift" \
+  swift scripts/check-safari-scroll-probe-render.swift
+
+run_combined_success \
+  "Safari runtime evidence evaluator tests" \
+  "$build_dir/safari-scroll-runtime-evidence-tests.log" \
+  "python3 scripts/check-safari-scroll-runtime-evidence-tests.py" \
+  python3 scripts/check-safari-scroll-runtime-evidence-tests.py
+
+safari_runtime_unfinished="- Safari runtime artifact 未指定。NAPE_SAFARI_SCROLL_RUNTIME_ARTIFACT_ROOT で最終証跡 root を指定して評価する"
+
+run_combined_success \
   "CGEvent scroll probe typecheck" \
   "$build_dir/probe-cgevent-scroll-delivery-typecheck.log" \
   "swiftc -typecheck scripts/probe-cgevent-scroll-delivery.swift" \
@@ -251,6 +266,20 @@ run_combined_success \
   "$bundle_dir/verify-bundle-require-signature-signed.log" \
   ".build/release/nape-gesture verify-bundle --require-signature .build/NapeGesture.app" \
   .build/release/nape-gesture verify-bundle --require-signature .build/NapeGesture.app
+
+if [ -n "$safari_runtime_artifact_root" ]; then
+  candidate_commit=$(git rev-parse HEAD)
+  run_split_success \
+    "Safari runtime evidence artifact" \
+    "$artifact_root/safari-scroll-runtime/evaluation.json" \
+    "$artifact_root/safari-scroll-runtime/evaluation.stderr.log" \
+    "python3 scripts/check-safari-scroll-runtime-evidence.py $safari_runtime_artifact_root --expected-commit $candidate_commit --app-executable .build/NapeGesture.app/Contents/MacOS/nape-gesture" \
+    python3 scripts/check-safari-scroll-runtime-evidence.py \
+      "$safari_runtime_artifact_root" \
+      --expected-commit "$candidate_commit" \
+      --app-executable .build/NapeGesture.app/Contents/MacOS/nape-gesture
+  safari_runtime_unfinished=""
+fi
 
 run_combined_success \
   "検証用設定作成" \
@@ -673,7 +702,8 @@ cat >> "$summary_file" <<EOF
 - 純正トラックパッドでの実操作ログ
 - TCC のアクセシビリティ / 入力監視許可操作
 - Spaces / Mission Control の画面挙動実測
-- Issue #10 の時刻修正後 Safari / 対応アプリでのページ戻る、進む、ズーム、横スクロール CGEvent log と computer-use 画面挙動再取得
+$safari_runtime_unfinished
+- Issue #10 の時刻修正後 Safari / 対応アプリでのページ戻る、進む、ズーム、横スクロール CGEvent log と computer-use 画面挙動
 - \`run\`、実イベント投稿、target 実測、常駐 CPU、入力遅延
 - Developer ID 署名、公証、stapler、Gatekeeper 評価
 

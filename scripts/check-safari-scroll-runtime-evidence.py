@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import re
@@ -15,7 +16,12 @@ PASS_EXIT_CODE = 0
 FAIL_EXIT_CODE = 1
 BLOCKED_EXIT_CODE = 2
 INTEGER_PATTERN = re.compile(r"[+-]?\d+")
+SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
+COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}")
 WINDOW_STACK_POINTER_TOLERANCE = 0.01
+APP_BUNDLE_IDENTIFIER = "dev.char5742.nape-gesture"
+EXECUTED_STATUS = "executed"
+PRECONDITION_BLOCKED_STATUS = "precondition-blocked"
 EXPECTED_FIXTURE_SCENARIOS = {"top-level", "nested", "frame"}
 EXPECTED_ASSERTION_IDS = {
     "generic-generated-fail-closed",
@@ -43,9 +49,44 @@ def is_nonnegative_int(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
+def is_exact_int(value: object, expected: object) -> bool:
+    return (
+        isinstance(expected, int)
+        and not isinstance(expected, bool)
+        and isinstance(value, int)
+        and not isinstance(value, bool)
+        and value == expected
+    )
+
+
 def load_json(path: Path) -> object:
     with path.open(encoding="utf-8") as handle:
         return json.load(handle)
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def strictly_equal(left: object, right: object) -> bool:
+    if is_number(left) and is_number(right):
+        return left == right
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, dict):
+        return set(left) == set(right) and all(
+            strictly_equal(left[key], right[key]) for key in left
+        )
+    if isinstance(left, list):
+        return len(left) == len(right) and all(
+            strictly_equal(left_value, right_value)
+            for left_value, right_value in zip(left, right)
+        )
+    return left == right
 
 
 def value_at_path(document: object, dotted_path: str) -> object:
@@ -57,9 +98,15 @@ def value_at_path(document: object, dotted_path: str) -> object:
     return value
 
 
-def resolve_artifact(root: Path, relative_path: object) -> Path:
+def resolve_artifact(root: Path, reference: object) -> Path:
+    if not isinstance(reference, dict) or set(reference) != {"path", "sha256"}:
+        raise ValueError("artifact referenceはpathとsha256だけを持つobjectに限定します。")
+    relative_path = reference.get("path")
+    expected_sha256 = reference.get("sha256")
     if not isinstance(relative_path, str) or not relative_path:
         raise ValueError("artifact pathが空です。")
+    if not isinstance(expected_sha256, str) or SHA256_PATTERN.fullmatch(expected_sha256) is None:
+        raise ValueError(f"artifact sha256が不正です: {relative_path}")
     candidate = Path(relative_path)
     if candidate.is_absolute():
         raise ValueError(f"artifact pathは相対pathに限定します: {relative_path}")
@@ -70,6 +117,12 @@ def resolve_artifact(root: Path, relative_path: object) -> Path:
         raise ValueError(f"artifact root外のpathは使用できません: {relative_path}") from error
     if not resolved.is_file():
         raise ValueError(f"artifact fileがありません: {relative_path}")
+    actual_sha256 = sha256_file(resolved)
+    if actual_sha256 != expected_sha256:
+        raise ValueError(
+            f"artifact sha256が一致しません: {relative_path} "
+            f"expected={expected_sha256} actual={actual_sha256}"
+        )
     return resolved
 
 
@@ -78,10 +131,10 @@ def compare_values(before: object, after: object, rule: object) -> tuple[bool, s
         return False, "comparison定義がobjectではありません。"
     comparison = rule.get("comparison")
     if comparison == "unchanged":
-        return after == before, f"before={before!r} after={after!r}"
+        return strictly_equal(after, before), f"before={before!r} after={after!r}"
     if comparison == "exact":
         expected = rule.get("value")
-        return after == expected, f"expected={expected!r} actual={after!r}"
+        return strictly_equal(after, expected), f"expected={expected!r} actual={after!r}"
     if comparison in {"increased", "decreased"}:
         if not is_number(before) or not is_number(after):
             return False, f"数値比較ができません: before={before!r} after={after!r}"
@@ -330,8 +383,11 @@ def validate_pointer_window_stack(
 ) -> tuple[bool, bool, str, dict[str, object]]:
     if not isinstance(document, dict):
         return False, False, "window stack証跡はobjectである必要があります。", {}
-    if document.get("schemaVersion") != 1:
+    if not is_exact_int(document.get("schemaVersion"), 1):
         return False, False, "window stack証跡のschemaVersionは1である必要があります。", {}
+    wall_clock = document.get("wallClockUnixSeconds")
+    if not is_number(wall_clock) or wall_clock <= 0:
+        return False, False, "wallClockUnixSecondsは正の有限値である必要があります。", {}
     system_uptime = document.get("systemUptimeSeconds")
     if not is_number(system_uptime) or system_uptime <= 0:
         return False, False, "systemUptimeSecondsは正の有限値である必要があります。", {}
@@ -418,9 +474,11 @@ def validate_pointer_window_stack(
 
     prerequisite_met = (
         frontmost.get("bundleIdentifier") == expected_bundle_identifier
+        and frontmost.get("processID") == safari_process_id
         and windows[0].get("ownerProcessID") == safari_process_id
     )
     detail = {
+        "wallClockUnixSeconds": wall_clock,
         "systemUptimeSeconds": system_uptime,
         "pointer": pointer,
         "pointerSetupActual": pointer_setup_actual,
@@ -429,6 +487,7 @@ def validate_pointer_window_stack(
         "windows": normalized_windows,
         "expected": {
             "frontmostBundleIdentifier": expected_bundle_identifier,
+            "frontmostProcessID": safari_process_id,
             "pointerWindowOwnerProcessID": safari_process_id,
         },
     }
@@ -446,6 +505,89 @@ def load_exit_code(root: Path, relative_path: object) -> tuple[int | None, str |
     if INTEGER_PATTERN.fullmatch(text) is None:
         return None, f"exit codeが整数ではありません: {relative_path}"
     return int(text), None
+
+
+def generated_scroll_argv(
+    command: dict[str, Any],
+    delivery: str,
+    pid_override: bool,
+    safari_process_id: int,
+    app_executable: Path,
+) -> list[str]:
+    parameters = command["parameters"]
+    argv = [
+        str(app_executable),
+        "generate-scroll",
+        "--x",
+        str(parameters["x"]),
+        "--y",
+        str(parameters["y"]),
+        "--steps",
+        str(command["steps"]),
+        "--mode",
+        str(parameters["mode"]),
+        "--ax-delivery",
+        delivery,
+    ]
+    if pid_override:
+        argv.extend(["--post-to-pid", str(safari_process_id)])
+    return argv
+
+
+def expected_invocation(
+    operation: dict[str, Any],
+    safari_process_id: int,
+    app_executable: Path,
+) -> dict[str, object]:
+    if operation["kind"] == "native-wheel":
+        return {
+            "kind": "computer-use",
+            "commands": [
+                {
+                    "id": "operation",
+                    "action": "scroll",
+                    "direction": operation["parameters"]["direction"],
+                    "pages": operation["parameters"]["pages"],
+                }
+            ],
+        }
+    commands = operation.get("sequence")
+    if not isinstance(commands, list):
+        commands = [
+            {
+                "id": "operation",
+                "parameters": operation["parameters"],
+                "steps": operation["steps"],
+            }
+        ]
+    return {
+        "kind": "cli",
+        "commands": [
+            {
+                "id": command["id"],
+                "argv": generated_scroll_argv(
+                    command,
+                    operation["delivery"],
+                    operation["pidOverride"],
+                    safari_process_id,
+                    app_executable,
+                ),
+            }
+            for command in commands
+        ],
+    }
+
+
+def iter_artifact_references(value: object):
+    if isinstance(value, dict) and set(value) == {"path", "sha256"}:
+        yield value
+        return
+    if isinstance(value, dict):
+        for child in value.values():
+            yield from iter_artifact_references(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from iter_artifact_references(child)
 
 
 def validate_snapshot(
@@ -477,6 +619,23 @@ def validate_snapshot(
             value_at_path(snapshot, path)
         except KeyError:
             errors.append(f"measurement pathがありません: {path}")
+    endpoint = snapshot.get("frame") if scenario == "nested" else snapshot.get("scroll")
+    if scenario in {"nested", "frame"}:
+        if not isinstance(endpoint, dict):
+            errors.append("frame endpoint状態がobjectではありません。")
+        else:
+            y = endpoint.get("y")
+            maximum_y = endpoint.get("maxY")
+            at_end = endpoint.get("atEnd")
+            if not is_number(y) or not is_number(maximum_y) or maximum_y <= 0:
+                errors.append("frame endpointのy/maxYが正しい有限値ではありません。")
+            elif not isinstance(at_end, bool):
+                errors.append("frame endpointのatEndがboolではありません。")
+            elif at_end is not (y >= maximum_y):
+                errors.append(
+                    f"frame endpointのatEndがy/maxYと一致しません: "
+                    f"y={y!r} maxY={maximum_y!r} atEnd={at_end!r}"
+                )
     return errors
 
 
@@ -488,6 +647,7 @@ def evaluate_run(
     operation: dict[str, Any],
     fixture: dict[str, Any],
     contract: dict[str, Any],
+    app_executable: Path,
 ) -> dict[str, object]:
     assertion_id = assertion["id"]
     operation_id = operation["id"]
@@ -505,6 +665,25 @@ def evaluate_run(
         result["failureCount"] = 1
         return result
 
+    expected_run_fields = {
+        "assertionId",
+        "operationId",
+        "fixture",
+        "pointerElementId",
+        "operation",
+        "targetProcessId",
+        "executionStatus",
+        "invocation",
+        "artifacts",
+    }
+    add_check(
+        checks,
+        "run-fields",
+        set(run) == expected_run_fields,
+        "runのfield集合を照合しました。",
+        {"expected": sorted(expected_run_fields), "actual": sorted(run)},
+    )
+
     expected_metadata = {
         "fixture": assertion["fixture"],
         "pointerElementId": assertion["pointerElementId"],
@@ -518,18 +697,53 @@ def evaluate_run(
     add_check(
         checks,
         "operation-metadata",
-        actual_metadata == expected_metadata,
+        strictly_equal(actual_metadata, expected_metadata),
         "fixture、pointer、steps、delivery、PID override、routing metadataを照合しました。",
         {"expected": expected_metadata, "actual": actual_metadata},
     )
 
     safari = manifest.get("safari")
     safari_process_id = safari.get("processId") if isinstance(safari, dict) else None
+    execution_status = run.get("executionStatus")
+    routing = operation.get("routing")
+    routing_type = routing.get("type") if isinstance(routing, dict) else None
+    execution_status_valid = isinstance(execution_status, str) and execution_status in {
+        EXECUTED_STATUS,
+        PRECONDITION_BLOCKED_STATUS,
+    } and not (
+        execution_status == PRECONDITION_BLOCKED_STATUS
+        and routing_type != "pointer-window-owner"
+    )
+    add_check(
+        checks,
+        "execution-status",
+        execution_status_valid,
+        "実行済みと事前条件blockedを分離しました。",
+        {"executionStatus": execution_status, "routingType": routing_type},
+    )
+
+    expected_run_invocation = (
+        None
+        if execution_status == PRECONDITION_BLOCKED_STATUS
+        else expected_invocation(operation, safari_process_id, app_executable)
+    )
+    add_check(
+        checks,
+        "invocation",
+        strictly_equal(run.get("invocation"), expected_run_invocation),
+        "実行経路とargvをcontractに照合しました。",
+        {"expected": expected_run_invocation, "actual": run.get("invocation")},
+    )
+
     expected_target_process_id = safari_process_id if operation.get("pidOverride") is True else None
     add_check(
         checks,
         "target-process",
-        run.get("targetProcessId") == expected_target_process_id,
+        (
+            run.get("targetProcessId") is None
+            if expected_target_process_id is None
+            else is_exact_int(run.get("targetProcessId"), expected_target_process_id)
+        ),
         "PID固定診断と通常routingのtarget processを分離しました。",
         {
             "expected": expected_target_process_id,
@@ -545,11 +759,11 @@ def evaluate_run(
         return result
 
     runtime_evidence = contract["runtimeEvidence"]
-    routing = operation.get("routing")
-    routing_type = routing.get("type") if isinstance(routing, dict) else None
-    expected_artifact_keys = {"pointerSetup", "snapshots", "exitCodes"}
+    expected_artifact_keys = {"pointerSetup"}
     if routing_type == "pointer-window-owner":
         expected_artifact_keys.add("windowOwner")
+    if execution_status != PRECONDITION_BLOCKED_STATUS:
+        expected_artifact_keys.update({"snapshots", "exitCodes"})
     add_check(
         checks,
         "artifact-set",
@@ -601,15 +815,7 @@ def evaluate_run(
                     owner_message,
                     owner_detail,
                 )
-            elif prerequisite_met:
-                add_check(
-                    checks,
-                    "pointer-window-owner",
-                    True,
-                    owner_message,
-                    owner_detail,
-                )
-            else:
+            elif execution_status == PRECONDITION_BLOCKED_STATUS and not prerequisite_met:
                 blocked_reasons.append(
                     {
                         "id": "host-overlay",
@@ -627,6 +833,30 @@ def evaluate_run(
                     owner_message,
                     owner_detail,
                 )
+            elif execution_status == EXECUTED_STATUS and prerequisite_met:
+                add_check(
+                    checks,
+                    "pointer-window-owner",
+                    True,
+                    owner_message,
+                    owner_detail,
+                )
+            elif execution_status == PRECONDITION_BLOCKED_STATUS:
+                add_check(
+                    checks,
+                    "pointer-window-owner",
+                    False,
+                    "事前条件成立時にprecondition-blockedを記録しています。",
+                    owner_detail,
+                )
+            else:
+                add_check(
+                    checks,
+                    "pointer-window-owner",
+                    False,
+                    "window owner事前条件未成立のrunを実行済みとして記録しています。",
+                    owner_detail,
+                )
         except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
             add_check(
                 checks,
@@ -642,6 +872,24 @@ def evaluate_run(
             "PID固定診断またはnative pointer routingとして確認しました。",
             {"routingType": routing_type},
         )
+
+    if execution_status == PRECONDITION_BLOCKED_STATUS:
+        failure_count = sum(not bool(check["passed"]) for check in checks)
+        result["failureCount"] = failure_count
+        if failure_count:
+            result["status"] = "fail"
+        elif blocked_reasons:
+            result["status"] = "blocked"
+        else:
+            result["status"] = "fail"
+            result["failureCount"] = 1
+            add_check(
+                checks,
+                "blocked-reason",
+                False,
+                "precondition-blockedに構造化理由がありません。",
+            )
+        return result
 
     transitions = assertion["transitions"]
     required_snapshot_names = {"before"}
@@ -755,7 +1003,7 @@ def evaluate_run(
         )
 
     structural_failure_count = sum(not bool(check["passed"]) for check in checks)
-    if not blocked_reasons and structural_failure_count == 0:
+    if structural_failure_count == 0:
         for transition_index, transition in enumerate(transitions):
             before = snapshots[transition["from"]]
             after = snapshots[transition["to"]]
@@ -780,8 +1028,6 @@ def evaluate_run(
     result["failureCount"] = failure_count
     if failure_count:
         result["status"] = "fail"
-    elif blocked_reasons:
-        result["status"] = "blocked"
     else:
         result["status"] = "pass"
     return result
@@ -791,10 +1037,30 @@ def evaluate(
     artifact_root: Path,
     contract_path: Path,
     manifest_path: Path,
+    expected_commit: str,
+    app_executable_path: Path,
 ) -> tuple[dict[str, object], int]:
     root = artifact_root.resolve()
     resolved_contract = contract_path.resolve()
     resolved_manifest = manifest_path.resolve()
+    resolved_app_executable = app_executable_path.resolve()
+    if not root.is_dir():
+        report = failure_report(
+            root,
+            resolved_contract,
+            resolved_manifest,
+            "artifact rootがdirectoryではありません。",
+        )
+        return report, FAIL_EXIT_CODE
+    canonical_manifest = root / "safari-scroll-runtime-manifest.json"
+    if resolved_manifest != canonical_manifest:
+        report = failure_report(
+            root,
+            resolved_contract,
+            resolved_manifest,
+            "manifestはartifact root直下のsafari-scroll-runtime-manifest.jsonに限定します。",
+        )
+        return report, FAIL_EXIT_CODE
     try:
         contract = load_json(resolved_contract)
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
@@ -815,14 +1081,6 @@ def evaluate(
             f"manifestを読み取れません: {error}",
         )
         return report, FAIL_EXIT_CODE
-    if not root.is_dir():
-        report = failure_report(
-            root,
-            resolved_contract,
-            resolved_manifest,
-            "artifact rootがdirectoryではありません。",
-        )
-        return report, FAIL_EXIT_CODE
     if not isinstance(contract, dict) or not isinstance(manifest, dict):
         report = failure_report(
             root,
@@ -834,6 +1092,29 @@ def evaluate(
 
     fixture_map, assertion_map, contract_errors = parse_contract(contract)
     global_checks: list[dict[str, object]] = []
+    repository_root = Path(__file__).resolve().parent.parent
+    canonical_contract_path = (
+        repository_root / "docs" / "fixtures" / "safari-scroll-probe" / "contract.json"
+    )
+    try:
+        contract_sha256 = sha256_file(resolved_contract)
+        canonical_contract_sha256 = sha256_file(canonical_contract_path)
+    except OSError as error:
+        contract_sha256 = ""
+        canonical_contract_sha256 = ""
+        contract_errors.append(f"contract sha256を計算できません: {error}")
+    add_check(
+        global_checks,
+        "canonical-contract",
+        bool(contract_sha256) and contract_sha256 == canonical_contract_sha256,
+        "repo正本と同一内容のcontractを確認しました。",
+        {
+            "evaluated": str(resolved_contract),
+            "evaluatedSha256": contract_sha256,
+            "canonical": str(canonical_contract_path),
+            "canonicalSha256": canonical_contract_sha256,
+        },
+    )
     add_check(
         global_checks,
         "contract-shape",
@@ -846,15 +1127,35 @@ def evaluate(
         contract_errors or None,
     )
     runtime_evidence = contract.get("runtimeEvidence")
+    expected_manifest_fields = {
+        "schemaVersion",
+        "contractSchemaVersion",
+        "probeSchemaVersion",
+        "contractSha256",
+        "candidate",
+        "safari",
+        "runs",
+    }
+    add_check(
+        global_checks,
+        "manifest-fields",
+        set(manifest) == expected_manifest_fields,
+        "manifestのfield集合を照合しました。",
+        {"expected": sorted(expected_manifest_fields), "actual": sorted(manifest)},
+    )
     expected_manifest_schema = (
         runtime_evidence.get("manifestSchemaVersion")
         if isinstance(runtime_evidence, dict)
         else None
     )
     manifest_versions_match = (
-        manifest.get("schemaVersion") == expected_manifest_schema
-        and manifest.get("contractSchemaVersion") == contract.get("schemaVersion")
-        and manifest.get("probeSchemaVersion") == contract.get("probeSchemaVersion")
+        is_exact_int(manifest.get("schemaVersion"), expected_manifest_schema)
+        and is_exact_int(
+            manifest.get("contractSchemaVersion"), contract.get("schemaVersion")
+        )
+        and is_exact_int(
+            manifest.get("probeSchemaVersion"), contract.get("probeSchemaVersion")
+        )
     )
     add_check(
         global_checks,
@@ -867,9 +1168,52 @@ def evaluate(
             "probe": manifest.get("probeSchemaVersion"),
         },
     )
+    add_check(
+        global_checks,
+        "contract-sha256",
+        bool(contract_sha256) and manifest.get("contractSha256") == contract_sha256,
+        "manifestが評価対象contractのSHA-256を固定しています。",
+        {
+            "expected": contract_sha256,
+            "actual": manifest.get("contractSha256"),
+        },
+    )
+    candidate = manifest.get("candidate")
+    candidate_app = candidate.get("app") if isinstance(candidate, dict) else None
+    try:
+        actual_app_sha256 = sha256_file(resolved_app_executable)
+    except OSError:
+        actual_app_sha256 = ""
+    candidate_valid = (
+        isinstance(candidate, dict)
+        and set(candidate) == {"commit", "app"}
+        and isinstance(candidate.get("commit"), str)
+        and COMMIT_PATTERN.fullmatch(candidate["commit"]) is not None
+        and candidate["commit"] == expected_commit
+        and isinstance(candidate_app, dict)
+        and set(candidate_app) == {"bundleIdentifier", "executableSha256"}
+        and candidate_app.get("bundleIdentifier") == APP_BUNDLE_IDENTIFIER
+        and isinstance(candidate_app.get("executableSha256"), str)
+        and SHA256_PATTERN.fullmatch(candidate_app["executableSha256"]) is not None
+        and bool(actual_app_sha256)
+        and candidate_app["executableSha256"] == actual_app_sha256
+    )
+    add_check(
+        global_checks,
+        "candidate-identity",
+        candidate_valid,
+        "候補commitと.app executable identityを確認しました。",
+        {
+            "candidate": candidate,
+            "expectedCommit": expected_commit,
+            "appExecutable": str(resolved_app_executable),
+            "actualExecutableSha256": actual_app_sha256,
+        },
+    )
     safari = manifest.get("safari")
     safari_valid = (
         isinstance(safari, dict)
+        and set(safari) == {"bundleIdentifier", "processId"}
         and safari.get("bundleIdentifier")
         == (runtime_evidence.get("safariBundleIdentifier") if isinstance(runtime_evidence, dict) else None)
         and is_positive_int(safari.get("processId"))
@@ -931,6 +1275,63 @@ def evaluate(
         },
     )
 
+    artifact_path_errors: list[str] = []
+    path_owners: dict[str, str] = {}
+    inode_owners: dict[tuple[int, int], str] = {}
+    for (assertion_id, operation_id), run in actual_runs.items():
+        if not isinstance(run, dict):
+            continue
+        owner = f"{assertion_id}/{operation_id}"
+        prefix = f"runs/{assertion_id}/{operation_id}/"
+        run_root = (root / "runs" / assertion_id / operation_id).resolve()
+        for reference in iter_artifact_references(run.get("artifacts")):
+            relative_path = reference.get("path")
+            if not isinstance(relative_path, str) or not relative_path.startswith(prefix):
+                artifact_path_errors.append(
+                    f"{owner}: run専用directory外のartifactです: {relative_path!r}"
+                )
+                continue
+            resolved_path = (root / relative_path).resolve()
+            try:
+                resolved_path.relative_to(run_root)
+                canonical_path = str(resolved_path.relative_to(root))
+            except ValueError:
+                artifact_path_errors.append(
+                    f"{owner}: 正規化後にrun専用directory外となるartifactです: {relative_path}"
+                )
+                continue
+            previous_owner = path_owners.get(canonical_path)
+            if previous_owner is not None:
+                artifact_path_errors.append(
+                    f"{owner}: artifact pathが{previous_owner}と重複しています: {canonical_path}"
+                )
+            else:
+                path_owners[canonical_path] = owner
+            try:
+                file_stat = resolved_path.stat()
+                inode_key = (file_stat.st_dev, file_stat.st_ino)
+            except OSError as error:
+                artifact_path_errors.append(
+                    f"{owner}: artifactのfile identityを取得できません: {relative_path}: {error}"
+                )
+                continue
+            previous_inode_owner = inode_owners.get(inode_key)
+            if previous_inode_owner is not None:
+                artifact_path_errors.append(
+                    f"{owner}: artifact file identityが{previous_inode_owner}と重複しています: "
+                    f"{canonical_path}"
+                )
+            else:
+                inode_owners[inode_key] = owner
+    add_check(
+        global_checks,
+        "artifact-path-ownership",
+        not artifact_path_errors,
+        "run専用directoryとartifact pathの一意性を確認しました。",
+        artifact_path_errors
+        or {"referenceCount": len(path_owners), "fileIdentityCount": len(inode_owners)},
+    )
+
     run_results: list[dict[str, object]] = []
     if not contract_errors and safari_valid:
         for key in sorted(expected_keys & actual_keys):
@@ -945,6 +1346,7 @@ def evaluate(
                     operation,
                     fixture,
                     contract,
+                    resolved_app_executable,
                 )
             )
 
@@ -993,6 +1395,17 @@ def parse_arguments() -> argparse.Namespace:
         type=Path,
         help="runtime manifest。省略時はartifact root/safari-scroll-runtime-manifest.json",
     )
+    parser.add_argument(
+        "--expected-commit",
+        required=True,
+        help="証跡を取得した40桁の候補commit SHA",
+    )
+    parser.add_argument(
+        "--app-executable",
+        required=True,
+        type=Path,
+        help="証跡取得に使ったNape Gesture .app内の実行ファイル",
+    )
     return parser.parse_args()
 
 
@@ -1007,6 +1420,8 @@ def main() -> int:
         arguments.artifact_root,
         arguments.contract,
         manifest_path,
+        arguments.expected_commit,
+        arguments.app_executable,
     )
     print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
     return exit_code

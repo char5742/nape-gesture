@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ja" data-probe-scenario="frame" data-probe-schema-version="1">
+<html lang="ja" data-probe-scenario="frame" data-probe-schema-version="2">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AX accessible frame</title>
@@ -8,7 +8,7 @@
   body { margin: 0; min-height: 1800px; font: 16px system-ui, sans-serif; color: #161616; background: #fff; }
   .row { min-height: 90px; padding: 12px; border-bottom: 1px solid #8fa0b8; }
 </style>
-<output id="status" hidden>{"schemaVersion":1,"scenario":"frame","ready":true,"scroll":{"x":0,"y":0},"wheel":{"count":0,"target":"none"}}</output>
+<output id="status" hidden>{"schemaVersion":2,"scenario":"frame","ready":true,"scroll":{"x":0,"y":0,"maxY":1468,"atEnd":false},"wheel":{"count":0,"target":"none"}}</output>
 <main id="frame-content"></main>
 <script data-probe-interface="napeGestureScrollProbe">
   history.scrollRestoration = 'manual';
@@ -24,11 +24,18 @@
   }
 
   function snapshot() {
+    const maxY = Math.max(0, document.documentElement.scrollHeight - innerHeight);
+    const y = Math.round(scrollY);
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       scenario: 'frame',
       ready: true,
-      scroll: { x: Math.round(scrollX), y: Math.round(scrollY) },
+      scroll: {
+        x: Math.round(scrollX),
+        y,
+        maxY: Math.round(maxY),
+        atEnd: y >= Math.round(maxY)
+      },
       wheel: { count: wheelCount, target: wheelTarget }
     };
   }
@@ -61,7 +68,7 @@
   });
   addEventListener('pageshow', reset);
   window.napeGestureScrollProbe = Object.freeze({
-    schemaVersion: 1,
+    schemaVersion: 2,
     scenario: 'frame',
     snapshot,
     reset

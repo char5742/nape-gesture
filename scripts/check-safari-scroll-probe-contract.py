@@ -38,12 +38,16 @@ EXPECTED_MEASUREMENT_PATHS = {
         "inner.wheel.target",
         "frame.x",
         "frame.y",
+        "frame.maxY",
+        "frame.atEnd",
         "frame.wheel.count",
         "frame.wheel.target",
     ),
     "frame": (
         "scroll.x",
         "scroll.y",
+        "scroll.maxY",
+        "scroll.atEnd",
         "wheel.count",
         "wheel.target",
     ),
@@ -73,12 +77,16 @@ EXPECTED_RESET_VALUES = {
         "inner.wheel.target": "none",
         "frame.x": 0,
         "frame.y": 0,
+        "frame.maxY": 1468,
+        "frame.atEnd": False,
         "frame.wheel.count": 0,
         "frame.wheel.target": "none",
     },
     "frame": {
         "scroll.x": 0,
         "scroll.y": 0,
+        "scroll.maxY": 1468,
+        "scroll.atEnd": False,
         "wheel.count": 0,
         "wheel.target": "none",
     },
@@ -318,7 +326,11 @@ EXPECTED_ASSERTIONS: dict[str, dict[str, object]] = {
                 "to": "atEnd",
                 "exitCode": "reachEnd",
                 "expect": expected_map(
-                    "nested", {"frame.y": comparison("increased")}
+                    "nested",
+                    {
+                        "frame.y": comparison("increased"),
+                        "frame.atEnd": comparison("exact", True),
+                    },
                 ),
             },
             {
@@ -386,8 +398,8 @@ def validate_contract(
     if not isinstance(runtime_evidence, dict):
         errors.append("contract.runtimeEvidence がありません。")
     else:
-        if runtime_evidence.get("manifestSchemaVersion") != 1:
-            errors.append("runtimeEvidence.manifestSchemaVersion は 1 である必要があります。")
+        if runtime_evidence.get("manifestSchemaVersion") != 2:
+            errors.append("runtimeEvidence.manifestSchemaVersion は 2 である必要があります。")
         if runtime_evidence.get("safariBundleIdentifier") != "com.apple.Safari":
             errors.append(
                 "runtimeEvidence.safariBundleIdentifier は com.apple.Safari である必要があります。"
