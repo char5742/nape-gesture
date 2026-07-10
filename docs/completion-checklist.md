@@ -173,6 +173,8 @@ NAPE_COMPLETION_ARTIFACT_ROOT=/tmp/nape-completion-machine-evidence sh scripts/c
 `Fixtures/leaky-target-log.jsonl` の `analyze-target-log --assert-no-leaks` は、漏れ候補を検出して非ゼロ終了することを期待値として記録します。
 `Fixtures/clean-target-log.jsonl` の `analyze-target-log --assert-has-generated-foreground-capture` は、ジェスチャー生成シナリオで Nape Gesture 由来イベントが foreground AppKit 経路へ届くことを記録します。
 同 fixture の `--assert-generated-foreground-scroll-x-positive --assert-generated-foreground-scroll-events-at-least 3 --assert-generated-foreground-scroll-abs-x-at-least 100` は、重複排除後の生成 foreground スクロール方向、件数、X 方向量を固定します。
+`Fixtures/generated-foreground-cross-source-coordinate-duplicate-target-log.jsonl` は、同じ NSEvent が `sendEvent` と `captureView` で異なる location を持っても1件、X量64として扱われ、2件またはX量100以上の assertion が expected failure になることを固定します。
+`Fixtures/generated-foreground-mixed-positive-x-target-log.jsonl` と `Fixtures/generated-foreground-mixed-negative-x-target-log.jsonl` は、合計の符号が期待方向でも逆方向イベントを1件含むログを expected failure として記録します。`clean-target-log.jsonl` の期待方向イベントとゼロ量終了イベントは成功し、timestamp が異なる同座標イベントは別イベントとして保持します。
 `Fixtures/generated-global-unmarked-foreground-target-log.jsonl` は、生成イベントが `globalMonitor` だけで、別の未生成イベントだけが foreground にある target log を expected failure として記録し、生成到達と foreground 到達を別々に満たす誤陽性を防ぎます。
 `Fixtures/no-generated-target-log.jsonl` の `analyze-target-log --assert-no-leaks --assert-has-generated-event` は、漏れ候補がなくても生成イベントがない target log をジェスチャー生成成立証跡として扱わないことを期待値として記録します。
 `Fixtures/normal-input-target-log.jsonl` の `analyze-target-log --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel` は、通常クリック / 通常ドラッグ / 通常ホイールが AppKit に届くことを個別に記録します。

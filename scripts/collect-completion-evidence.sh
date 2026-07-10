@@ -507,6 +507,41 @@ run_split_success \
   ".build/debug/nape-gesture analyze-target-log Fixtures/clean-target-log.jsonl --json --assert-has-generated-foreground-capture --assert-generated-foreground-scroll-x-positive --assert-generated-foreground-scroll-events-at-least 3 --assert-generated-foreground-scroll-abs-x-at-least 100" \
   .build/debug/nape-gesture analyze-target-log Fixtures/clean-target-log.jsonl --json --assert-has-generated-foreground-capture --assert-generated-foreground-scroll-x-positive --assert-generated-foreground-scroll-events-at-least 3 --assert-generated-foreground-scroll-abs-x-at-least 100
 
+run_split_success \
+  "cross-source coordinate duplicate target log canonical success" \
+  "$fixtures_dir/generated-foreground-cross-source-coordinate-duplicate-analysis.json" \
+  "$fixtures_dir/generated-foreground-cross-source-coordinate-duplicate.stderr.log" \
+  ".build/debug/nape-gesture analyze-target-log Fixtures/generated-foreground-cross-source-coordinate-duplicate-target-log.jsonl --json --assert-generated-foreground-scroll-x-positive --assert-generated-foreground-scroll-events-at-least 1 --assert-generated-foreground-scroll-abs-x-at-least 64" \
+  .build/debug/nape-gesture analyze-target-log Fixtures/generated-foreground-cross-source-coordinate-duplicate-target-log.jsonl --json --assert-generated-foreground-scroll-x-positive --assert-generated-foreground-scroll-events-at-least 1 --assert-generated-foreground-scroll-abs-x-at-least 64
+
+run_split_expected_failure \
+  "cross-source coordinate duplicate target log count inflation guard" \
+  "$fixtures_dir/generated-foreground-cross-source-coordinate-duplicate-count-analysis.json" \
+  "$fixtures_dir/generated-foreground-cross-source-coordinate-duplicate-count.stderr.log" \
+  ".build/debug/nape-gesture analyze-target-log Fixtures/generated-foreground-cross-source-coordinate-duplicate-target-log.jsonl --json --assert-generated-foreground-scroll-events-at-least 2" \
+  .build/debug/nape-gesture analyze-target-log Fixtures/generated-foreground-cross-source-coordinate-duplicate-target-log.jsonl --json --assert-generated-foreground-scroll-events-at-least 2
+
+run_split_expected_failure \
+  "cross-source coordinate duplicate target log amount inflation guard" \
+  "$fixtures_dir/generated-foreground-cross-source-coordinate-duplicate-amount-analysis.json" \
+  "$fixtures_dir/generated-foreground-cross-source-coordinate-duplicate-amount.stderr.log" \
+  ".build/debug/nape-gesture analyze-target-log Fixtures/generated-foreground-cross-source-coordinate-duplicate-target-log.jsonl --json --assert-generated-foreground-scroll-abs-x-at-least 100" \
+  .build/debug/nape-gesture analyze-target-log Fixtures/generated-foreground-cross-source-coordinate-duplicate-target-log.jsonl --json --assert-generated-foreground-scroll-abs-x-at-least 100
+
+run_split_expected_failure \
+  "mixed positive X target log direction guard" \
+  "$fixtures_dir/generated-foreground-mixed-positive-x-analysis.json" \
+  "$fixtures_dir/generated-foreground-mixed-positive-x.stderr.log" \
+  ".build/debug/nape-gesture analyze-target-log Fixtures/generated-foreground-mixed-positive-x-target-log.jsonl --json --assert-generated-foreground-scroll-x-positive" \
+  .build/debug/nape-gesture analyze-target-log Fixtures/generated-foreground-mixed-positive-x-target-log.jsonl --json --assert-generated-foreground-scroll-x-positive
+
+run_split_expected_failure \
+  "mixed negative X target log direction guard" \
+  "$fixtures_dir/generated-foreground-mixed-negative-x-analysis.json" \
+  "$fixtures_dir/generated-foreground-mixed-negative-x.stderr.log" \
+  ".build/debug/nape-gesture analyze-target-log Fixtures/generated-foreground-mixed-negative-x-target-log.jsonl --json --assert-generated-foreground-scroll-x-negative" \
+  .build/debug/nape-gesture analyze-target-log Fixtures/generated-foreground-mixed-negative-x-target-log.jsonl --json --assert-generated-foreground-scroll-x-negative
+
 run_split_expected_failure \
   "leaky target log assert-no-leaks" \
   "$fixtures_dir/leaky-target-log-analysis.json" \

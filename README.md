@@ -140,6 +140,7 @@ swift run nape-gesture init-config --vendor-id <ID> --product-id <ID> --usage-pa
 | `bundle-app` / `verify-bundle` | `.app` を作成し、Info.plist、署名、同梱物、通常 GUI 設定を検証する |
 
 `system-test --post-to-pid` は、`space-left`、`space-right`、`horizontal-scroll` など対応シナリオで Reference Target App の foreground AppKit 受信を診断します。`--target` とは同時指定せず、target ready file の diagnostics と `analyze-target-log --assert-has-generated-foreground-capture` を合わせて確認します。
+`analyze-target-log` は同じ AppKit イベントを capture source ごとの座標系に依存せず重複排除します。X 方向 assertion は合計値だけでなく、重複排除後の全イベントが期待方向またはゼロ量の終了イベントであることを検査します。
 OS の画面遷移や Safari のページ挙動は代替できないため、完成証跡では `.cghidEventTap` 経路、target log、対象アプリの画面挙動を分けて扱います。
 `system-test run --scenario kill-switch` は未マークの `Control + Option + Command + G` を interval 付きの `keyDown` / `keyUp` として投稿し、daemon 停止ログと target log 漏れなしを確認します。
 

@@ -80,13 +80,31 @@ struct AnalyzeTargetLogCommand {
             fflush(stdout)
             throw TargetLogMissingGeneratedForegroundCaptureAssertionError(path: path)
         }
-        if assertGeneratedForegroundScrollXPositive && analysis.canonicalGeneratedForegroundCaptureScrollingDeltaXTotal <= 0 {
+        if assertGeneratedForegroundScrollXPositive && (
+            analysis.canonicalGeneratedForegroundCaptureScrollingDeltaXTotal <= 0
+                || analysis.canonicalGeneratedForegroundCaptureNegativeXScrollEvents > 0
+        ) {
             fflush(stdout)
-            throw TargetLogGeneratedForegroundScrollDirectionAssertionError(path: path, expected: "正", actual: analysis.canonicalGeneratedForegroundCaptureScrollingDeltaXTotal)
+            throw TargetLogGeneratedForegroundScrollDirectionAssertionError(
+                path: path,
+                expected: "正",
+                actual: analysis.canonicalGeneratedForegroundCaptureScrollingDeltaXTotal,
+                positiveEvents: analysis.canonicalGeneratedForegroundCapturePositiveXScrollEvents,
+                negativeEvents: analysis.canonicalGeneratedForegroundCaptureNegativeXScrollEvents
+            )
         }
-        if assertGeneratedForegroundScrollXNegative && analysis.canonicalGeneratedForegroundCaptureScrollingDeltaXTotal >= 0 {
+        if assertGeneratedForegroundScrollXNegative && (
+            analysis.canonicalGeneratedForegroundCaptureScrollingDeltaXTotal >= 0
+                || analysis.canonicalGeneratedForegroundCapturePositiveXScrollEvents > 0
+        ) {
             fflush(stdout)
-            throw TargetLogGeneratedForegroundScrollDirectionAssertionError(path: path, expected: "負", actual: analysis.canonicalGeneratedForegroundCaptureScrollingDeltaXTotal)
+            throw TargetLogGeneratedForegroundScrollDirectionAssertionError(
+                path: path,
+                expected: "負",
+                actual: analysis.canonicalGeneratedForegroundCaptureScrollingDeltaXTotal,
+                positiveEvents: analysis.canonicalGeneratedForegroundCapturePositiveXScrollEvents,
+                negativeEvents: analysis.canonicalGeneratedForegroundCaptureNegativeXScrollEvents
+            )
         }
         if let minimumGeneratedForegroundScrollEvents,
            analysis.canonicalGeneratedForegroundCaptureScrollEvents < minimumGeneratedForegroundScrollEvents {
@@ -227,9 +245,11 @@ struct TargetLogGeneratedForegroundScrollDirectionAssertionError: LocalizedError
     var path: String
     var expected: String
     var actual: Double
+    var positiveEvents: Int
+    var negativeEvents: Int
 
     var errorDescription: String? {
-        "target log の重複排除済み生成foregroundスクロールX方向が期待と違います。期待=\(expected)、実際=\(actual)。`analyze-target-log \(path) --json` で canonicalGeneratedForegroundCaptureScrollingDeltaXTotal を確認してください。"
+        "target log の重複排除済み生成foregroundスクロールX方向が期待と違います。期待=\(expected)、合計=\(actual)、正方向イベント=\(positiveEvents)、負方向イベント=\(negativeEvents)。`analyze-target-log \(path) --json` で canonicalGeneratedForegroundCaptureScrollingDeltaXTotal と正負イベント数を確認してください。"
     }
 }
 
@@ -260,6 +280,8 @@ struct TargetEventLogAnalysis: Codable, Equatable {
     var generatedForegroundCaptureEvents: Int
     var canonicalGeneratedForegroundCaptureEvents: Int
     var canonicalGeneratedForegroundCaptureScrollEvents: Int
+    var canonicalGeneratedForegroundCapturePositiveXScrollEvents: Int
+    var canonicalGeneratedForegroundCaptureNegativeXScrollEvents: Int
     var scrollEvents: Int
     var preciseScrollEvents: Int
     var swipeEvents: Int
@@ -348,6 +370,8 @@ enum TargetEventLogAnalyzer {
             generatedForegroundCaptureEvents: generatedForegroundCaptureRecords.count,
             canonicalGeneratedForegroundCaptureEvents: canonicalGeneratedForegroundCaptureRecords.count,
             canonicalGeneratedForegroundCaptureScrollEvents: canonicalGeneratedForegroundCaptureScrollRecords.count,
+            canonicalGeneratedForegroundCapturePositiveXScrollEvents: canonicalGeneratedForegroundCaptureScrollRecords.filter { $0.scrollingDeltaX > 0 }.count,
+            canonicalGeneratedForegroundCaptureNegativeXScrollEvents: canonicalGeneratedForegroundCaptureScrollRecords.filter { $0.scrollingDeltaX < 0 }.count,
             scrollEvents: scrollRecords.count,
             preciseScrollEvents: scrollRecords.filter(\.hasPreciseScrollingDeltas).count,
             swipeEvents: swipeRecords.count,
@@ -388,6 +412,7 @@ enum TargetEventLogAnalyzer {
         生成かつ前面AppKit受信: \(analysis.generatedForegroundCaptureEvents)
         生成かつ前面AppKit受信（重複排除後）: \(analysis.canonicalGeneratedForegroundCaptureEvents)
         生成foreground scrollWheel（重複排除後）: \(analysis.canonicalGeneratedForegroundCaptureScrollEvents)
+        生成foreground scrollWheel X方向（重複排除後）: 正=\(analysis.canonicalGeneratedForegroundCapturePositiveXScrollEvents), 負=\(analysis.canonicalGeneratedForegroundCaptureNegativeXScrollEvents)
         scrollWheel: \(analysis.scrollEvents)
         precise scrollWheel: \(analysis.preciseScrollEvents)
         swipe: \(analysis.swipeEvents)
@@ -461,8 +486,6 @@ enum TargetEventLogAnalyzer {
         [
             String(record.timestamp),
             record.name,
-            String(record.locationX),
-            String(record.locationY),
             String(record.deltaX),
             String(record.deltaY),
             String(record.scrollingDeltaX),

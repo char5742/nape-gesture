@@ -21,11 +21,14 @@ TCC、HID probe、daemon 起動、`system-test` の CGEvent 投稿、runtime 性
 - `scripts/collect-runtime-event-evidence.sh` は ready diagnostics を検査し、target window が active/key/main で capture view に focus 済みでない場合は scenario を失敗にする。
 - `system-test --post-to-pid <pid>` は `space-left`、`space-right`、`horizontal-scroll` など対応シナリオの無人 foreground 受信診断に使える。ただし completion evidence では `.cghidEventTap` 経由の `system-test`、target log assertion、対象アプリの画面挙動証跡と分けて採否する。
 - `mission-control`、`page-back`、`page-forward`、`zoom-in`、`zoom-out` の key shortcut 系は、2026-07-10 の実験で PID 直接投稿が target log に届かなかったため PID target 証跡の対象外とする。
+- `sendEvent`、`localMonitor`、`captureView` は同じ NSEvent を異なる座標系で記録するため、canonical fingerprint は location を同一性条件に含めない。timestamp、event name、delta、phase、modifier、生成マークなどのイベント固有値で capture source 間の重複を排除する。
+- 生成 foreground スクロールの方向 assertion は合計値の符号だけで判定しない。正方向を期待する場合は負値を、負方向を期待する場合は正値を1件でも含めば失敗とし、phase 終了用のゼロ量だけを許容する。
 
 ## 影響
 
 - target log 空を、権限・投稿・前面化・記録経路のどこで失敗したか切り分けやすくなる。
 - runtime event 証跡では、AppKit 受信が `sendEvent` または `captureView` まで到達したことを JSON で確認できる。
+- capture source ごとの座標差で同一イベントの件数と移動量が水増しされず、逆方向イベントを合計値で相殺したログも成功扱いしない。
 - `postToPid` 成功だけでは Issue #6 / #9 / #10 / #12 を完了扱いにしない。
 
 ## 関連
