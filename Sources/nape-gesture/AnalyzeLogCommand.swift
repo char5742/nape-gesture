@@ -12,6 +12,7 @@ struct AnalyzeLogCommand {
     }
 
     func run() throws {
+        try Self.validateOptions(options)
         guard let path = options.first, !path.hasPrefix("--") else {
             throw ToolError.missingValue("ログファイル")
         }
@@ -98,6 +99,58 @@ struct AnalyzeLogCommand {
         "--expected-phase-mode"
     ]
 
+    private static let flagOptions: Set<String> = [
+        "--json",
+        "--assert-has-unmarked-passthrough-input",
+        "--assert-has-unmarked-click",
+        "--assert-has-unmarked-drag",
+        "--assert-has-unmarked-wheel",
+        "--assert-has-unmarked-click-drag-wheel",
+        "--assert-kill-switch-shortcut",
+        "--assert-gesture-before-kill-switch",
+        "--assert-generated-scroll-log",
+        "--assert-generated-scroll"
+    ]
+
+    private static let valueOptions: Set<String> = Set(generatedScrollExpectationOptions + [
+        "--assert-system-scenario"
+    ])
+
+    private static func validateOptions(_ options: [String]) throws {
+        guard !options.isEmpty else {
+            return
+        }
+
+        var seen: Set<String> = []
+        var index = 1
+        while index < options.count {
+            let option = options[index]
+            guard flagOptions.contains(option) || valueOptions.contains(option) else {
+                throw ToolError.invalidValue("analyze-log option", "未知または余分な引数です: \(option)")
+            }
+            guard seen.insert(option).inserted else {
+                throw ToolError.invalidValue(option, "重複指定はできません")
+            }
+
+            if valueOptions.contains(option) {
+                let valueIndex = index + 1
+                guard valueIndex < options.count, !options[valueIndex].hasPrefix("--") else {
+                    throw ToolError.missingValue(option)
+                }
+                index += 2
+            } else {
+                index += 1
+            }
+        }
+
+        if seen.contains("--assert-generated-scroll-log"), seen.contains("--assert-generated-scroll") {
+            throw ToolError.invalidValue(
+                "--assert-generated-scroll-log",
+                "alias の --assert-generated-scroll と同時指定はできません"
+            )
+        }
+    }
+
     private static func generatedScrollExpectation(
         in options: [String],
         assertionEnabled: Bool
@@ -113,8 +166,8 @@ struct AnalyzeLogCommand {
         guard let direction = GeneratedScrollExpectedDirection(rawValue: directionRaw) else {
             throw ToolError.invalidValue("--expected-direction", "\(directionRaw)（positive-x または negative-x を指定してください）")
         }
-        let normalEventCount = try positiveIntValue("--expected-normal-events", minimum: 2, in: options)
-        let momentumEventCount = try positiveIntValue("--expected-momentum-events", minimum: 1, in: options)
+        let normalEventCount = try positiveIntValue("--expected-normal-events", minimum: 1, in: options)
+        let momentumEventCount = try positiveIntValue("--expected-momentum-events", minimum: 0, in: options)
         let normalXTotal = try finiteNonzeroDoubleValue("--expected-normal-x-total", in: options)
         if (normalXTotal > 0) != (direction == .positiveX) {
             throw ToolError.invalidValue("--expected-normal-x-total", "\(normalXTotal)（--expected-direction と符号を一致させてください）")

@@ -143,7 +143,8 @@ swift run nape-gesture init-config --vendor-id <ID> --product-id <ID> --usage-pa
 `analyze-target-log` は同じ AppKit イベントを capture source ごとの座標系に依存せず重複排除します。X 方向 assertion は合計値だけでなく、重複排除後の全イベントが期待方向またはゼロ量の終了イベントであることを検査します。
 OS の画面遷移や Safari のページ挙動は代替できないため、完成証跡では `.cghidEventTap` 経路、target log、対象アプリの画面挙動を分けて扱います。
 `system-test run --scenario kill-switch` は未マークの `Control + Option + Command + G` を interval 付きの `keyDown` / `keyUp` として投稿し、daemon 停止ログと target log 漏れなしを確認します。
-`analyze-log --assert-generated-scroll-log` は投稿前の横スクロール InputLog 専用です。期待方向、通常イベント件数、momentum changed 件数、通常 X 合計量、`auto` phase mode の全指定を必須とし、全非ゼロ record の point/scroll 符号と量子化量、厳密増加 timestamp、`isContinuous == 1`、通常 `began, changed*, ended` と momentum `changed+, ended-zero` の exact 列を検査します。momentum 件数は最後の ended-zero を含みません。
+`analyze-log --assert-generated-scroll-log` は投稿前の横スクロール InputLog 専用です。期待方向、通常イベント件数、momentum changed 件数、通常 X 合計量、`auto` phase mode の全指定を必須とし、point/scroll の符号と per-step 量子化、厳密増加 timestamp、`isContinuous == 1`、phase の exact 列を検査します。通常 1 件は `changed`、2 件以上は `began, changed*, ended` です。momentum 0 件は終了 record もなく、1 件以上なら `changed+, ended-zero` になります。momentum changed は `--momentum-decay 0` などでゼロ delta になり得ます。
+`analyze-log` は未知 option、余分な positional、option の重複、値欠落を解析前に拒否します。期待値 option の typo や重複が黙って無視されたログは証跡に採用しません。
 生成時に `--phase began` などを指定する明示 phase override はこの assertion の対象外です。`--expected-phase-mode` は `auto` だけを受理し、それ以外は非ゼロ終了します。`Fixtures/sample-generated-scroll-log.jsonl` は `compare-log` 用の小規模 sample であり、生成スクロール assertion の成功 fixture ではありません。
 
 <details>

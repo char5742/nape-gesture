@@ -13,13 +13,14 @@
 ## 決定
 
 - `analyze-log --assert-generated-scroll-log` は、`--expected-direction positive-x|negative-x`、`--expected-normal-events <数>`、`--expected-momentum-events <数>`、`--expected-normal-x-total <量>`、`--expected-phase-mode auto` の全指定を必須にする。
-- `--expected-normal-events` は通常 scroll record 数、`--expected-momentum-events` は非ゼロの momentum changed record 数を表す。momentum ended-zero 1件は別に必須とし、期待総数を `normal + momentum + 1` とする。`auto` では通常2件以上、momentum changed 1件以上を要求する。
+- `analyze-log` は option allowlist を走査し、未知 option、余分な positional、重複、値欠落、生成スクロール assertion alias の同時指定を解析前に拒否する。期待値の typo や重複を黙って無視しない。
+- `--expected-normal-events` は通常 scroll record 数、`--expected-momentum-events` は momentum changed record 数を表す。通常は1件以上、momentumは0件以上を受理する。momentumが1件以上なら ended-zero 1件を別に必須とし、期待総数を `normal + momentum + 1`、0件なら終了recordを要求せず `normal` とする。
 - 全 record は Nape Gesture 生成 `scrollWheel`、`isContinuous == 1` とし、timestamp は厳密増加させる。同一 record 重複、同一 timestamp、順序逆転、`systemTestScenario` / `sequenceIndex` 混在を失敗にする。
-- 全非ゼロ record は X 軸だけを使い、`pointDeltaX` / `scrollDeltaX` の両方が非ゼロ、相互に同符号、期待方向と同符号、`generate-scroll` と同じ丸め量であることを要求する。通常区間は point/scroll の両 X 合計を `--expected-normal-x-total` と照合する。
-- `auto` の状態列は通常 `began, changed*, ended`、続いて momentum `changed+, ended-zero` と exact に一致させる。phase なし、未知 phase、scroll/momentum phase 混在、通常 ended 欠落、changed-zero 終端、momentum ended 後の tail を失敗にし、ended-zero を最終 record に限定する。
+- 全 record は X 軸だけを使い、`scrollDeltaX` が `pointDeltaX` の `generate-scroll` と同じ per-record 丸め量であることを要求する。通常区間は各 `pointDeltaX` を `normalXTotal / normalEventCount` と照合し、point 合計と、per-step 量子化値を件数倍した scroll 合計を検査する。サブ1 pointでは正しい `scrollDeltaX == 0` を許可する。非ゼロ値は期待方向と一致させる。
+- `auto` の状態列は通常1件なら `changed`、2件以上なら `began, changed*, ended` とする。momentum 0件ならそこで終了し、1件以上なら `changed+, ended-zero` を続ける。`--momentum-decay 0` が生成するゼロ delta の momentum changed は許可する一方、phase なし、未知 phase、scroll/momentum phase 混在、通常 ended 欠落、momentum ended 後の tail は失敗にし、ended-zero を最終 record に限定する。
 - `generate-scroll --phase began|changed|ended|cancelled|momentum` の明示 override はこの assertion ではサポートしない。`--expected-phase-mode` は `auto` だけを受理し、それ以外は解析前に非ゼロ終了する。
 - `generate-scroll` の JSON Lines には `systemTestScenario` / `sequenceIndex` を付けない。これらは System Behavior Test の取り違え防止メタ情報として扱う。
-- completion evidence は `generate-scroll --dry-run --log-json` の直後に全期待値付き assertion を実行する。正常39件 fixture を成功、切り詰め、途中欠落、方向・量異常、phase・timestamp・重複異常を expected failure として固定する。
+- completion evidence は `generate-scroll --dry-run --log-json` の直後に全期待値付き assertion を実行する。正常39件 fixture に加え、1 step、momentumなし、サブ1 point量子化、`momentum-decay 0` を成功として固定し、切り詰め、途中欠落、方向・量異常、phase・timestamp・重複異常を expected failure として固定する。
 - `Fixtures/sample-generated-scroll-log.jsonl` は `compare-log` 用 sample とし、この assertion では expected failure にする。成功契約には `Fixtures/generated-scroll-auto-valid.jsonl` を使う。
 
 ## 影響

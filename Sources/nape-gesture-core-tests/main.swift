@@ -1088,6 +1088,86 @@ func testGeneratedScrollLogAssertionAcceptsExpectedNegativeDirection() {
     expect(evaluation.passed, "負X方向を明示した exact auto 生成スクロールログを受理する")
 }
 
+func makeAutoNormalScrollRecords(total: Double, count: Int) -> [InputLogRecord] {
+    let pointDelta = total / Double(count)
+    return (0..<count).map { index in
+        let phase: Int64
+        if count == 1 {
+            phase = 4
+        } else if index == 0 {
+            phase = 1
+        } else if index == count - 1 {
+            phase = 8
+        } else {
+            phase = 4
+        }
+        return makeInputLogRecord(
+            timestamp: UInt64(index + 1),
+            typeName: "scrollWheel",
+            generatedByNapeGesture: true,
+            scrollDeltaX: Int64(pointDelta.rounded()),
+            scrollDeltaY: 0,
+            pointDeltaX: pointDelta,
+            pointDeltaY: 0,
+            scrollPhase: phase
+        )
+    }
+}
+
+func testGeneratedScrollLogAssertionAcceptsGeneratorEdgeCases() {
+    let noMomentumRecords = Array(makeValidGeneratedScrollLogRecords().prefix(30))
+    let noMomentumExpectation = GeneratedScrollLogExpectation(
+        direction: .positiveX,
+        normalEventCount: 30,
+        momentumEventCount: 0,
+        normalXTotal: 1200,
+        phaseMode: .auto
+    )
+    expect(
+        GeneratedScrollLogAssertion.evaluate(noMomentumRecords, expectation: noMomentumExpectation).passed,
+        "momentum-steps=0 の auto 生成ログを受理する"
+    )
+
+    let singleStepRecords = makeAutoNormalScrollRecords(total: 100, count: 1)
+    let singleStepExpectation = GeneratedScrollLogExpectation(
+        direction: .positiveX,
+        normalEventCount: 1,
+        momentumEventCount: 0,
+        normalXTotal: 100,
+        phaseMode: .auto
+    )
+    expect(singleStepRecords[0].scrollPhase == 4, "1 step の auto phase は changed になる")
+    expect(
+        GeneratedScrollLogAssertion.evaluate(singleStepRecords, expectation: singleStepExpectation).passed,
+        "steps=1 の auto 生成ログを受理する"
+    )
+
+    for total in [100.0, 1.0] {
+        let records = makeAutoNormalScrollRecords(total: total, count: 30)
+        let expectation = GeneratedScrollLogExpectation(
+            direction: .positiveX,
+            normalEventCount: 30,
+            momentumEventCount: 0,
+            normalXTotal: total,
+            phaseMode: .auto
+        )
+        expect(
+            GeneratedScrollLogAssertion.evaluate(records, expectation: expectation).passed,
+            "通常合計 \(total) を per-step 量子化した auto 生成ログを受理する"
+        )
+    }
+
+    var zeroMomentumRecords = makeValidGeneratedScrollLogRecords()
+    for index in 31..<38 {
+        zeroMomentumRecords[index].pointDeltaX = 0
+        zeroMomentumRecords[index].scrollDeltaX = 0
+    }
+    expect(
+        GeneratedScrollLogAssertion.evaluate(zeroMomentumRecords, expectation: generatedScrollLogExpectation()).passed,
+        "momentum-decay=0 が生成するゼロ changed を受理する"
+    )
+}
+
 func testGeneratedScrollLogAssertionRejectsMalformedSequences() {
     let valid = makeValidGeneratedScrollLogRecords()
 
@@ -1134,6 +1214,13 @@ func testGeneratedScrollLogAssertionRejectsMalformedSequences() {
     pointScrollAmountMismatch[5].scrollDeltaX = 39
     pointScrollAmountMismatch[6].scrollDeltaX = 41
     expectGeneratedScrollLogFailure(pointScrollAmountMismatch, name: "point/scroll量不一致", failureContains: "量子化量")
+
+    var unevenNormalSteps = valid
+    unevenNormalSteps[5].pointDeltaX = 39
+    unevenNormalSteps[5].scrollDeltaX = 39
+    unevenNormalSteps[6].pointDeltaX = 41
+    unevenNormalSteps[6].scrollDeltaX = 41
+    expectGeneratedScrollLogFailure(unevenNormalSteps, name: "通常区間の不均一step", failureContains: "per-step 期待量")
 
     var scrollTotalOverflow = valid
     scrollTotalOverflow[0].scrollDeltaX = Int64.max
@@ -2447,6 +2534,7 @@ testInputLogAnalyzerCountsKeyEvents()
 testInputLogAnalyzerDoesNotTreatUnmarkedKeysAsPassthroughInput()
 testGeneratedScrollLogAssertionAcceptsExactAutoSequence()
 testGeneratedScrollLogAssertionAcceptsExpectedNegativeDirection()
+testGeneratedScrollLogAssertionAcceptsGeneratorEdgeCases()
 testGeneratedScrollLogAssertionRejectsMalformedSequences()
 testInputLogAnalyzerCountsNormalClickDragAndWheelSeparately()
 testLogDerivedTuningAnalyzerDerivesAccelerationAndMomentum()

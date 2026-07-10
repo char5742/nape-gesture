@@ -71,8 +71,9 @@
 
 - 通常スクロールのフェーズは `scrollPhase`、慣性は `momentumPhase` に分離されている
 - `generate-scroll --dry-run --log-json` で比較可能な JSON Lines を出し、期待方向、通常/momentum件数、通常X合計量、`auto` phase mode を明示した `analyze-log --json --assert-generated-scroll-log` が成功している
-- 生成スクロール assertion は全非ゼロrecordのpoint/scroll符号・量子化量、`isContinuous == 1`、timestamp厳密増加、通常 `began, changed*, ended` と momentum `changed+, ended-zero` の exact 列を検査し、切り詰め、欠落、方向・量異常、phase・timestamp・重複異常を expected failure で固定している
+- 生成スクロール assertion はpoint/scroll符号・per-step量子化、`isContinuous == 1`、timestamp厳密増加、1件通常の`changed`、2件以上の通常 `began, changed*, ended`、momentumなしまたは `changed+, ended-zero` の exact 列を検査する。1 step、momentumなし、サブ1 point、decayゼロを成功、切り詰め、欠落、方向・量異常、phase・timestamp・重複異常を expected failure で固定している
 - 明示 phase override を `auto` と混同せず、未対応 mode は非ゼロ終了する。`sample-generated-scroll-log.jsonl` を成功 fixture として扱っていない
+- `analyze-log` の未知 option、余分な positional、重複、値欠落を expected failure として固定し、期待値 typo を黙って無視していない
 - `system-test run --dry-run --log-json` で生成予定イベントを保存し、`systemTestScenario` / `sequenceIndex` つきで `analyze-log --json --assert-system-scenario <name>` によるシナリオ別機械判定を通している
 - foreground target log の canonical 集計が capture source ごとの座標系差で同一イベントを水増しせず、方向 assertion が逆方向イベントを合計値で相殺していない
 - `Ctrl + ←/→` などのショートカット送信を最終解として前提化していない

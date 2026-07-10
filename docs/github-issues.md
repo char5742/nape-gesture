@@ -170,7 +170,7 @@ Labels: `area:core`, `area:verification`, `type:feature`, `priority:p0`
 - 通常スクロールの `began` / `changed` / `ended` は `scrollPhase` にだけ出る
 - 慣性中と慣性終了は `momentumPhase` に出る
 - `generate-scroll --dry-run --log-json` が同じ規則で出力する
-- `analyze-log --assert-generated-scroll-log` が期待方向、通常/momentum件数、通常X合計量、全非ゼロrecordのpoint/scroll整合、`isContinuous == 1`、timestamp厳密増加、通常 `began, changed*, ended` と momentum `changed+, ended-zero` の exact 列を機械判定する
+- `analyze-log --assert-generated-scroll-log` が期待方向、通常/momentum件数、通常X合計量、per-step point/scroll整合、`isContinuous == 1`、timestamp厳密増加、1件通常の`changed`、2件以上の通常 `began, changed*, ended`、momentumなしまたは `changed+, ended-zero` の exact 列を機械判定する
 - 切り詰め、途中欠落、正負混在、合計相殺、逆方向、量不足、point/scroll不一致、phase・timestamp・重複異常を fixture と completion evidence の expected failure で固定する
 - 明示 phase override は `auto` assertion と混同せず、未対応 mode を非ゼロ終了する
 - `system-test run --dry-run --log-json` が同じ規則で出力する
