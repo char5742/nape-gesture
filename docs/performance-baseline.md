@@ -49,7 +49,7 @@ CI では同じ基準として `benchmark --events 200000 --json --assert-baseli
 - `expectedExecutablePath`、`resolvedExecutablePath`、`executableIdentityMatched`
 - `processStartToken`、`processIDVersion`、`processIdentityStable` による測定中の PID / execution 固定
 - `actualDurationSeconds` と `requestedDurationReached` による単調時計の duration coverage
-- 初期 snapshot 後の決定的な trigger に使う atomic `--ready-file` JSON
+- 1件目の有効 sample と前後 identity 照合後の決定的な trigger に使う、`completedSampleCount: 1` を含む no-replace atomic `--ready-file` JSON
 - idle / active / recovery のモード別 baseline 判定
 
 tap-to-post は、権限済み実行主体で `--performance-log` または `NAPE_RUNTIME_PERFORMANCE_LOG` を有効にし、`analyze-performance-log --json --assert-baseline` で集計する。

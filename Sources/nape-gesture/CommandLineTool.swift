@@ -127,7 +127,7 @@ final class CommandLineTool {
                   runtime 性能 JSON Lines を集計します。tap callback から投稿直前/直後までの p95/p99、投稿数、作成失敗数を出します。--assert-baseline で入力遅延基準を満たさない場合に失敗します。
 
               nape-gesture sample-cpu --pid <pid> --expected-executable <path> [--duration <秒>] [--interval <秒>] [--mode idle|active|recovery] [--ready-file <path>] [--json] [--assert-baseline] [--out <path>]
-                  指定 PID の実行ファイル、開始時刻、audit token の pidversion を各 sample の前後で照合し、単調 uptime の duration deadline 到達後まで CPU 使用率を測定します。--ready-file は初期 snapshot 確定後に JSON を atomic 作成します。duration は最大 86400 秒、推定 sample 数は最大 100000 です。idle / recovery は平均 1% 以下、active は平均 15% 以下を基準にし、duration 未達、実行主体の不一致や途中変化も不合格にします。
+                  指定 PID の実行ファイル、開始時刻、audit token の pidversion を各 sample の前後で照合し、単調 uptime の duration deadline 到達後まで CPU 使用率を測定します。--ready-file は1件目の有効 sample と前後の同一性確認後、completedSampleCount を含む完全な JSON を排他的に atomic 公開し、既存ファイルを上書きしません。duration は最大 86400 秒、推定 sample 数は最大 100000 です。idle / recovery は平均 1% 以下、active は平均 15% 以下を基準にし、duration 未達、実行主体の不一致や途中変化も不合格にします。
 
               nape-gesture check-config [--config <path>] [--probe-hid]
                   対象デバイス設定と HID 入力監視の開始可否を確認します。

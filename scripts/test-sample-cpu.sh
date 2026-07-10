@@ -195,6 +195,24 @@ expect_cli_failure \
   --pid 1 --expected-executable /bin/sleep \
   --out "$temporary_directory/shared-output" --ready-file "$temporary_directory/shared-output" --json
 
+case_path_directory="$temporary_directory/case-path"
+case_path_real_directory="$temporary_directory/case-path-real"
+case_path_symlink_directory="$temporary_directory/case-path-link"
+mkdir -p "$case_path_directory" "$case_path_real_directory"
+ln -s "$case_path_real_directory" "$case_path_symlink_directory"
+expect_cli_failure \
+  "out/ready-file case-only 同一パス" \
+  '--ready-file の値が不正です: --out と同じパスは指定できません' \
+  --pid 1 --expected-executable /bin/sleep \
+  --out "$case_path_directory/Report.JSON" \
+  --ready-file "$case_path_directory/report.json" --json
+expect_cli_failure \
+  "out/ready-file ancestor symlink・case-only 同一パス" \
+  '--ready-file の値が不正です: --out と同じパスは指定できません' \
+  --pid 1 --expected-executable /bin/sleep \
+  --out "$case_path_symlink_directory/Report.JSON" \
+  --ready-file "$case_path_real_directory/report.json" --json
+
 /bin/sleep 5 &
 correct_pid=$!
 remember_child "$correct_pid"
@@ -299,6 +317,8 @@ stop_child "$coverage_target_pid"
   || fail "duration 未達の requestedDurationReached が false ではありません"
 [ "$(json_value "$temporary_directory/duration-coverage.json" baseline.passed)" = "false" ] \
   || fail "duration 未達の baseline.passed が false ではありません"
+[ "$(json_value "$temporary_directory/duration-coverage.json" sampleCount)" -ge 1 ] \
+  || fail "duration 未達 report に ready 公開前の有効 sample がありません"
 grep -Fq 'deadline 到達後に最終 sample を採取できませんでした' \
   "$temporary_directory/duration-coverage.stderr.log" \
   || fail "duration 未達のエラー理由が不明確です"
@@ -306,6 +326,8 @@ grep -Fq 'deadline 到達後に最終 sample を採取できませんでした' 
   || fail "duration 未達 ready-file が完全な JSON ではありません"
 [ "$(json_value "$coverage_sampler_ready" pid)" = "$coverage_target_pid" ] \
   || fail "duration 未達 ready-file の PID が target と一致しません"
+[ "$(json_value "$coverage_sampler_ready" completedSampleCount)" = "1" ] \
+  || fail "duration 未達 ready-file の completedSampleCount が 1 ではありません"
 
 /bin/sleep 5 &
 wrong_expected_pid=$!
@@ -410,10 +432,14 @@ stop_child "$identity_change_pid"
   || fail "途中 exec の processIdentityStable が false ではありません"
 [ "$(json_value "$temporary_directory/identity-change.json" baseline.passed)" = "false" ] \
   || fail "途中 exec の baseline.passed が false ではありません"
+[ "$(json_value "$temporary_directory/identity-change.json" sampleCount)" -ge 1 ] \
+  || fail "途中 exec report に ready 公開前の有効 sample がありません"
 [ "$(json_value "$identity_change_sampler_ready" ready)" = "true" ] \
   || fail "途中 exec ready-file が完全な JSON ではありません"
 [ "$(json_value "$identity_change_sampler_ready" pid)" = "$identity_change_pid" ] \
   || fail "途中 exec ready-file の PID が target と一致しません"
+[ "$(json_value "$identity_change_sampler_ready" completedSampleCount)" = "1" ] \
+  || fail "途中 exec ready-file の completedSampleCount が 1 ではありません"
 [ "$(json_value "$identity_change_sampler_ready" processIDVersion)" = \
   "$(json_value "$temporary_directory/identity-change.json" processIDVersion)" ] \
   || fail "途中 exec ready-file と report の初期 pidversion が一致しません"
@@ -465,10 +491,14 @@ same_path_expected=$(json_value "$temporary_directory/same-path-exec.json" expec
   || fail "同一 path exec の processIdentityStable が false ではありません"
 [ "$(json_value "$temporary_directory/same-path-exec.json" baseline.passed)" = "false" ] \
   || fail "同一 path exec の baseline.passed が false ではありません"
+[ "$(json_value "$temporary_directory/same-path-exec.json" sampleCount)" -ge 1 ] \
+  || fail "同一 path exec report に ready 公開前の有効 sample がありません"
 [ "$(json_value "$same_path_sampler_ready" ready)" = "true" ] \
   || fail "同一 path exec ready-file が完全な JSON ではありません"
 [ "$(json_value "$same_path_sampler_ready" pid)" = "$same_path_pid" ] \
   || fail "同一 path exec ready-file の PID が target と一致しません"
+[ "$(json_value "$same_path_sampler_ready" completedSampleCount)" = "1" ] \
+  || fail "同一 path exec ready-file の completedSampleCount が 1 ではありません"
 [ "$(json_value "$same_path_sampler_ready" resolvedExecutablePath)" = "$same_path_expected" ] \
   || fail "同一 path exec ready-file の executable path が report と一致しません"
 [ "$(json_value "$same_path_sampler_ready" processIDVersion)" = \

@@ -133,7 +133,7 @@ private struct CPUSampleCommandOptions {
         let outputPath = values["--out"]
         let readyFilePath = values["--ready-file"]
         if let outputPath, let readyFilePath,
-           Self.standardizedPath(outputPath) == Self.standardizedPath(readyFilePath) {
+           CPUSamplePathIdentity.mayReferToSameFile(outputPath, readyFilePath) {
             throw ToolError.invalidValue(
                 "--ready-file",
                 "--out と同じパスは指定できません: \(readyFilePath)"
@@ -167,17 +167,42 @@ private struct CPUSampleCommandOptions {
         }
         return value
     }
+}
 
-    private static func standardizedPath(_ rawPath: String) -> String {
+private enum CPUSamplePathIdentity {
+    static func mayReferToSameFile(_ firstPath: String, _ secondPath: String) -> Bool {
+        conservativeIdentity(firstPath) == conservativeIdentity(secondPath)
+    }
+
+    private static func conservativeIdentity(_ rawPath: String) -> String {
         let currentDirectoryURL = URL(
             fileURLWithPath: FileManager.default.currentDirectoryPath,
             isDirectory: true
         )
-        return URL(fileURLWithPath: rawPath, relativeTo: currentDirectoryURL)
+        var existingAncestor = URL(fileURLWithPath: rawPath, relativeTo: currentDirectoryURL)
             .absoluteURL
             .standardizedFileURL
-            .resolvingSymlinksInPath()
-            .path
+        var missingComponents: [String] = []
+
+        while !FileManager.default.fileExists(atPath: existingAncestor.path) {
+            let parent = existingAncestor.deletingLastPathComponent()
+            guard parent.path != existingAncestor.path else {
+                break
+            }
+            missingComponents.append(existingAncestor.lastPathComponent)
+            existingAncestor = parent
+        }
+
+        var resolvedURL = existingAncestor.resolvingSymlinksInPath()
+        for component in missingComponents.reversed() {
+            resolvedURL.appendPathComponent(component)
+        }
+        return resolvedURL.standardizedFileURL.path
+            .precomposedStringWithCanonicalMapping
+            .folding(
+                options: [.caseInsensitive],
+                locale: Locale(identifier: "en_US_POSIX")
+            )
     }
 }
 
@@ -262,11 +287,6 @@ private enum CPUSampler {
         )
         let initialIdentity = try ProcessIdentityResolver.snapshot(pid: pid)
         let command = try processCommand(pid: pid)
-        try CPUSampleReadyFileWriter.write(
-            path: readyFilePath,
-            pid: pid,
-            identity: initialIdentity
-        )
 
         let processInfo = ProcessInfo.processInfo
         let startUptime = processInfo.systemUptime
@@ -354,6 +374,15 @@ private enum CPUSampler {
                     executableIdentityMatched: true
                 )
             )
+
+            if samples.count == 1 {
+                try CPUSampleReadyFileWriter.write(
+                    path: readyFilePath,
+                    pid: pid,
+                    identity: identityAfterSample,
+                    completedSampleCount: samples.count
+                )
+            }
 
             let sampleCompletedUptime = processInfo.systemUptime
             let elapsedUptime = max(0, sampleCompletedUptime - startUptime)
@@ -577,19 +606,14 @@ private enum CPUSampleReadyFileWriter {
     static func write(
         path: String?,
         pid: pid_t,
-        identity: ProcessIdentitySnapshot
+        identity: ProcessIdentitySnapshot,
+        completedSampleCount: Int
     ) throws {
         guard let path else {
             return
         }
 
         let url = URL(fileURLWithPath: path)
-        guard !FileManager.default.fileExists(atPath: url.path) else {
-            throw ToolError.invalidValue(
-                "--ready-file",
-                "既に存在します: \(path)"
-            )
-        }
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(),
             withIntermediateDirectories: true
@@ -602,11 +626,43 @@ private enum CPUSampleReadyFileWriter {
             processStartToken: identity.processStartToken,
             processIDVersion: identity.processIDVersion,
             resolvedExecutablePath: identity.resolvedExecutablePath,
+            completedSampleCount: completedSampleCount,
             timestampUnixSeconds: Date().timeIntervalSince1970
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(record).write(to: url, options: .atomic)
+        let data = try encoder.encode(record)
+        let temporaryURL = url.deletingLastPathComponent().appendingPathComponent(
+            ".\(url.lastPathComponent).\(UUID().uuidString).tmp"
+        )
+        defer {
+            try? FileManager.default.removeItem(at: temporaryURL)
+        }
+
+        try data.write(to: temporaryURL, options: .atomic)
+        errno = 0
+        let result = temporaryURL.path.withCString { sourcePath in
+            url.path.withCString { destinationPath in
+                renamex_np(
+                    sourcePath,
+                    destinationPath,
+                    UInt32(RENAME_EXCL)
+                )
+            }
+        }
+        let errorCode = errno
+        guard result == 0 else {
+            if errorCode == EEXIST {
+                throw ToolError.invalidValue(
+                    "--ready-file",
+                    "既に存在するため排他的に公開できません: \(path)"
+                )
+            }
+            throw CPUSampleReadyFilePublicationError(
+                path: path,
+                errorCode: errorCode
+            )
+        }
     }
 }
 
@@ -617,7 +673,23 @@ private struct CPUSampleReadyRecord: Encodable {
     let processStartToken: String
     let processIDVersion: Int32
     let resolvedExecutablePath: String
+    let completedSampleCount: Int
     let timestampUnixSeconds: Double
+}
+
+private struct CPUSampleReadyFilePublicationError: LocalizedError {
+    let path: String
+    let errorCode: Int32
+
+    var errorDescription: String? {
+        let detail: String
+        if errorCode == 0 {
+            detail = "errno を取得できませんでした"
+        } else {
+            detail = "\(String(cString: strerror(errorCode))) (errno=\(errorCode))"
+        }
+        return "ready-file を排他的に公開できませんでした: \(path): \(detail)"
+    }
 }
 
 private struct ProcessAuditIdentity: Equatable {

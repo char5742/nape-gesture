@@ -184,6 +184,7 @@ check_sample_cpu_sleep_smoke_json() {
       "$(/usr/bin/plutil -extract pid raw -o - "$json_path")" ] &&
     [ "$(/usr/bin/plutil -extract processStartToken raw -o - "$ready_json_path")" = "$report_start_token" ] &&
     [ "$(/usr/bin/plutil -extract processIDVersion raw -o - "$ready_json_path")" = "$report_pidversion" ] &&
+    [ "$(/usr/bin/plutil -extract completedSampleCount raw -o - "$ready_json_path")" = "1" ] &&
     /usr/bin/awk -v actual="$actual_duration" -v requested="$requested_duration" \
       'BEGIN { exit !(actual >= requested) }'
 }
@@ -225,6 +226,12 @@ run_combined_success \
   "$build_dir/sample-cpu-identity-tests.log" \
   "sh scripts/test-sample-cpu.sh" \
   sh scripts/test-sample-cpu.sh
+
+run_combined_success \
+  "sample-cpu ready 16並列排他公開テスト" \
+  "$build_dir/sample-cpu-ready-race-tests.log" \
+  "sh scripts/test-sample-cpu-ready-race.sh" \
+  sh scripts/test-sample-cpu-ready-race.sh
 
 run_combined_success \
   "release build" \
@@ -393,7 +400,7 @@ run_split_success \
 run_combined_success \
   "sample-cpu JSON field check" \
   "$doctor_dir/sample-cpu-json-field-check.log" \
-  "plutil で schemaVersion / processCpuSampling / duration coverage / ready-file / identity / baseline を検査" \
+  "plutil で schemaVersion / processCpuSampling / duration coverage / ready-file completedSampleCount / identity / baseline を検査" \
   check_sample_cpu_sleep_smoke_json \
     "$doctor_dir/sample-cpu-idle-smoke.json" \
     "$sample_cpu_sleep_ready_file"

@@ -31,9 +31,11 @@ jobs:
       - name: CPU サンプリング duration・PID 境界・実行主体テスト
         run: |
           sh -n scripts/test-sample-cpu.sh
+          sh -n scripts/test-sample-cpu-ready-race.sh
           /bin/bash -n scripts/fixtures/sample-cpu-self-exec.sh
           sh -n scripts/collect-completion-evidence.sh
           sh scripts/test-sample-cpu.sh
+          sh scripts/test-sample-cpu-ready-race.sh
 
       - name: Run dry-run smoke tests
         run: |
