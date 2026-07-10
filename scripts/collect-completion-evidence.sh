@@ -489,6 +489,12 @@ run_combined_success \
   "sh scripts/check-generate-scroll-cli.sh .build/debug/nape-gesture" \
   sh scripts/check-generate-scroll-cli.sh .build/debug/nape-gesture
 
+run_combined_success \
+  "system-test 投稿結果の3状態契約" \
+  "$system_dir/system-test-post-result.log" \
+  "sh scripts/check-system-behavior-post-result.sh" \
+  sh scripts/check-system-behavior-post-result.sh
+
 run_split_success \
   "sample scroll compare-log" \
   "$fixtures_dir/compare-sample-scroll.txt" \
