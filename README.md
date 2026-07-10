@@ -138,7 +138,7 @@ swift run nape-gesture init-config --vendor-id <ID> --product-id <ID> --usage-pa
 | `devices` | IOHID で認識できるマウス系または全 HID デバイスを一覧する |
 | `hid-log` / `analyze-hid-log` | Nape Pro などの HID 生入力を記録、解析する |
 | `log` / `analyze-log` / `compare-log` | 実デバイス、純正トラックパッド、生成イベントを JSON Lines で記録、解析、比較する |
-| `target` / `analyze-target-log` | AppKit が受け取った `scrollWheel` / `swipe` / `magnify` などを画面と JSON Lines で確認する。無人証跡では `--focus-capture-point` で capture view 中心へカーソルを移動し、`--assert-has-foreground-capture` で `globalMonitor` だけの弱い証跡を除外する |
+| `target` / `analyze-target-log` | AppKit が受け取った `scrollWheel` / `swipe` / `magnify` などを画面と JSON Lines で確認する。無人証跡では `--focus-capture-point` で capture view 中心へカーソルを移動し、active/key/main、first responder、実カーソル一致後だけ `ready: true` にする。`--assert-has-foreground-capture` で `globalMonitor` だけの弱い証跡を除外する |
 | `system-test` | Spaces、Mission Control、横スクロール、キルスイッチなどのシナリオを dry-run または実行する |
 | `benchmark` | 認識器とスクロール計画の純粋ロジック処理時間を測る |
 | `analyze-performance-log` | runtime 性能 JSON Lines から tap-to-post の p95 / p99 を判定する |

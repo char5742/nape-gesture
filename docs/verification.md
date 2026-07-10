@@ -239,9 +239,9 @@ ADR-0037 はこの branch へ統合済みである。最終 Safari / runtime 証
 target log の `captureSource` は `sendEvent`、`localMonitor`、`captureView`、`globalMonitor` のどこで受けたかを示す。
 完成証跡では `globalMonitor` だけのログを採用せず、`analyze-target-log --assert-has-foreground-capture` で前面 AppKit window の受信経路を確認する。
 `target --duration <秒>` を指定すると、指定秒数後に Reference Target App が自動終了する。`--duration` を指定しない場合は従来どおり手動終了する。
-`target --ready-file <path>` を指定すると、target window が開いて JSON Lines 出力の準備ができた時点で ready file を JSON として書き出す。別プロセスの `run` / `system-test` と同期する場合は、古い ready file を消してから target をバックグラウンド起動し、ready file の作成を待ってからイベント生成側を開始する。
-ready file の `diagnostics` には `appIsActive`、`windowIsKey`、`windowIsMain`、`firstResponderIsCaptureView`、`focusInsideCaptureView` などが入る。runtime event script はこれらが成立しない target log を採用しない。
-`target --focus-capture-point` は検証自動化用に capture view 中心へカーソルを移動し、ready file の `focus` に AppKit screen 座標、Quartz 座標、移動後 cursor location を残す。手動比較では不要だが、`system-test` は現在のポインタ位置へ未マークイベントを投稿するため、無人 target log 証跡ではこのオプションを使う。
+`target --ready-file <path>` を指定すると、target window が開いて JSON Lines 出力の準備ができた時点で ready file を JSON として書き出す。別プロセスの `run` / `system-test` と同期する場合は、古い ready file を消してから target をバックグラウンド起動し、`ready: true` を待ってからイベント生成側を開始する。起動直後の activation race は起動後単調時刻で最大2秒、50ms間隔で再試行し、期限切れは診断値つきの `ready: false` にする。
+ready file の `diagnostics` には `appIsActive`、`windowIsKey`、`windowIsMain`、`firstResponderIsCaptureView`、`focusInsideCaptureView`、`focusCursorMatchesRequested`、`focusHitTestClass` などが入る。runtime event script はレイアウト確定後の hit-test が `EventCaptureView` でない target log も採用しない。
+`target --focus-capture-point` は検証自動化用に capture view 中心へカーソルを移動し、ready file の `focus` に AppKit screen 座標、Quartz 座標、移動後 cursor location を残す。手動比較では不要だが、`system-test` は現在のポインタ位置へ未マークイベントを投稿するため、無人 target log 証跡ではこのオプションを使い、要求 Quartz 座標と実 cursor location が2pt以内であることも確認する。
 target log を検証する場合、`system-test run` には `--target finder` / `--target safari` を付けない。`--target` を指定すると Finder または Safari が前面化するため、Reference Target App の AppKit 受信ログではなく、`log` や画面挙動の検証として扱う。通常スクロール系の `.free` / `.horizontal` はポインタ直下 window owner PID へ内部 API の `CGEvent.postToPid` で配送するため、target log では実カーソルが対象 window 上にあることを `CGEvent(source: nil)?.location`、CGWindow bounds、必要に応じて `AXUIElementCopyElementAtPosition` で確認する。
 保存した AppKit 受信ログは `analyze-target-log <path>` で集計し、`scrollWheel`、`swipe`、`magnify`、`rotate`、phase、momentumPhase、precise scroll の有無を確認する。
 Issue #6 / #12 の最終実測へ進む前に、まず `analyze-target-log <path> --assert-no-leaks` で target log を機械判定する。

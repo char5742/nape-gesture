@@ -17,6 +17,9 @@ final class ReferenceTargetApplication: NSApplication {
 
 final class ReferenceTargetApp: NSObject, NSApplicationDelegate, ReferenceTargetEventSink {
     private static var retainedDelegate: ReferenceTargetApp?
+    private static let readyActivationTimeout: TimeInterval = 2
+    private static let readyRetryInterval: TimeInterval = 0.05
+    private static let focusCursorTolerance: Double = 2
 
     private let configuration: ReferenceTargetConfiguration
     private let encoder = JSONEncoder()
@@ -112,13 +115,7 @@ final class ReferenceTargetApp: NSObject, NSApplicationDelegate, ReferenceTarget
         }
         installEventMonitors(textView: textView)
 
-        do {
-            try writeReadyFileIfNeeded()
-            scheduleAutomaticTerminationIfNeeded()
-        } catch {
-            launchFailure = error
-            NSApp.terminate(nil)
-        }
+        scheduleReadyFileWhenUsable()
     }
 
     func recordDelivered(event: NSEvent, source: String) {
@@ -139,7 +136,84 @@ final class ReferenceTargetApp: NSObject, NSApplicationDelegate, ReferenceTarget
         outputHandle = try FileHandle(forWritingTo: url)
     }
 
-    private func writeReadyFileIfNeeded() throws {
+    private func scheduleReadyFileWhenUsable() {
+        guard configuration.readyFilePath != nil else {
+            scheduleAutomaticTerminationIfNeeded()
+            return
+        }
+        let deadline = ProcessInfo.processInfo.systemUptime + Self.readyActivationTimeout
+        requestReadyState(deadline: deadline)
+    }
+
+    private func requestReadyState(deadline: TimeInterval) {
+        guard let window, let captureView else {
+            finishReadyAttempt(
+                ready: false,
+                diagnostics: makeReadyDiagnostics(),
+                error: ToolError.invalidValue(
+                    "target ready",
+                    "window または capture view を初期化できませんでした。"
+                )
+            )
+            return
+        }
+
+        window.makeKeyAndOrderFront(nil)
+        window.makeMain()
+        window.makeFirstResponder(captureView)
+        window.contentView?.layoutSubtreeIfNeeded()
+        NSRunningApplication.current.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+        focusRecord = focusCapturePointIfNeeded(captureView: captureView, window: window)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.readyRetryInterval) { [weak self] in
+            self?.evaluateReadyState(deadline: deadline)
+        }
+    }
+
+    private func evaluateReadyState(deadline: TimeInterval) {
+        refreshActualCursorLocation()
+        let diagnostics = makeReadyDiagnostics()
+        if readyDiagnosticsAreValid(diagnostics) {
+            finishReadyAttempt(ready: true, diagnostics: diagnostics, error: nil)
+            return
+        }
+        if ProcessInfo.processInfo.systemUptime < deadline {
+            requestReadyState(deadline: deadline)
+            return
+        }
+        finishReadyAttempt(
+            ready: false,
+            diagnostics: diagnostics,
+            error: ToolError.invalidValue(
+                "target ready",
+                "アプリのactive/key/main、capture first responder、実カーソル位置が期限内に成立しませんでした。"
+            )
+        )
+    }
+
+    private func finishReadyAttempt(
+        ready: Bool,
+        diagnostics: ReferenceTargetDiagnosticsRecord?,
+        error: Error?
+    ) {
+        do {
+            try writeReadyFileIfNeeded(ready: ready, diagnostics: diagnostics)
+            if let error {
+                launchFailure = error
+                NSApp.terminate(nil)
+            } else {
+                scheduleAutomaticTerminationIfNeeded()
+            }
+        } catch {
+            launchFailure = error
+            NSApp.terminate(nil)
+        }
+    }
+
+    private func writeReadyFileIfNeeded(
+        ready: Bool,
+        diagnostics: ReferenceTargetDiagnosticsRecord?
+    ) throws {
         guard let readyFilePath = configuration.readyFilePath else {
             return
         }
@@ -150,15 +224,43 @@ final class ReferenceTargetApp: NSObject, NSApplicationDelegate, ReferenceTarget
             withIntermediateDirectories: true
         )
         var data = try encoder.encode(ReferenceTargetReadyRecord(
-            ready: true,
+            ready: ready,
             pid: ProcessInfo.processInfo.processIdentifier,
             wallClockUnixSeconds: Date().timeIntervalSince1970,
             outputPath: configuration.outputPath,
             focus: focusRecord,
-            diagnostics: makeReadyDiagnostics()
+            diagnostics: diagnostics
         ))
         data.append(Data("\n".utf8))
         try data.write(to: url, options: .atomic)
+    }
+
+    private func refreshActualCursorLocation() {
+        guard var focusRecord,
+              let cursorLocation = CGEvent(source: nil)?.location
+        else {
+            return
+        }
+        focusRecord.cursorX = Double(cursorLocation.x)
+        focusRecord.cursorY = Double(cursorLocation.y)
+        self.focusRecord = focusRecord
+    }
+
+    private func readyDiagnosticsAreValid(_ diagnostics: ReferenceTargetDiagnosticsRecord?) -> Bool {
+        guard let diagnostics,
+              diagnostics.appIsActive,
+              diagnostics.windowIsKey,
+              diagnostics.windowIsMain,
+              diagnostics.firstResponderIsCaptureView
+        else {
+            return false
+        }
+        guard configuration.focusCapturePoint else {
+            return true
+        }
+        return diagnostics.focusInsideCaptureView == true
+            && diagnostics.focusCursorMatchesRequested == true
+            && diagnostics.focusHitTestClass == String(describing: EventCaptureView.self)
     }
 
     private func focusCapturePointIfNeeded(
@@ -204,12 +306,11 @@ final class ReferenceTargetApp: NSObject, NSApplicationDelegate, ReferenceTarget
         let app = NSApp
         let windowBounds = quartzWindowBounds(for: window)
         let firstResponder = window.firstResponder
-        let captureFrame = captureView?.frame ?? .zero
-        let focusWindowPoint = focusRecord.map {
+        let captureFrame = captureView.flatMap { view in
+            window.contentView.map { view.convert(view.bounds, to: $0) }
+        } ?? .zero
+        let focusContentPoint = focusRecord.map {
             window.convertPoint(fromScreen: NSPoint(x: $0.appKitScreenX, y: $0.appKitScreenY))
-        }
-        let focusContentPoint = focusWindowPoint.flatMap { point in
-            window.contentView?.convert(point, from: nil)
         }
         let hitTestClass = focusContentPoint.flatMap { point in
             window.contentView?.hitTest(point).map { String(describing: type(of: $0)) }
@@ -231,13 +332,26 @@ final class ReferenceTargetApp: NSObject, NSApplicationDelegate, ReferenceTarget
             captureFrameWidth: Double(captureFrame.width),
             captureFrameHeight: Double(captureFrame.height),
             focusInsideWindow: focusInside(bounds: windowBounds),
-            focusInsideCaptureView: focusContentPoint.map { captureFrame.contains($0) },
+            focusInsideCaptureView: hitTestClass.map {
+                $0 == String(describing: EventCaptureView.self)
+            },
+            focusCursorMatchesRequested: focusCursorMatchesRequested(),
             focusHitTestClass: hitTestClass,
             quartzWindowX: windowBounds.map { Double($0.minX) },
             quartzWindowY: windowBounds.map { Double($0.minY) },
             quartzWindowWidth: windowBounds.map { Double($0.width) },
             quartzWindowHeight: windowBounds.map { Double($0.height) }
         )
+    }
+
+    private func focusCursorMatchesRequested() -> Bool? {
+        guard let focusRecord else {
+            return nil
+        }
+        return hypot(
+            focusRecord.cursorX - focusRecord.quartzX,
+            focusRecord.cursorY - focusRecord.quartzY
+        ) <= Self.focusCursorTolerance
     }
 
     private func focusInside(bounds: CGRect?) -> Bool? {
@@ -495,6 +609,7 @@ private struct ReferenceTargetDiagnosticsRecord: Codable, Equatable {
     var captureFrameHeight: Double
     var focusInsideWindow: Bool?
     var focusInsideCaptureView: Bool?
+    var focusCursorMatchesRequested: Bool?
     var focusHitTestClass: String?
     var quartzWindowX: Double?
     var quartzWindowY: Double?

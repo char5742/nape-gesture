@@ -299,11 +299,14 @@ ready_file_value() {
 
 target_ready_diagnostics_valid() {
   ready_file=$1
+  [ "$(ready_file_value "$ready_file" ready)" = "true" ] || return 1
   [ "$(ready_file_value "$ready_file" diagnostics.appIsActive)" = "true" ] || return 1
   [ "$(ready_file_value "$ready_file" diagnostics.windowIsKey)" = "true" ] || return 1
   [ "$(ready_file_value "$ready_file" diagnostics.windowIsMain)" = "true" ] || return 1
   [ "$(ready_file_value "$ready_file" diagnostics.firstResponderIsCaptureView)" = "true" ] || return 1
   [ "$(ready_file_value "$ready_file" diagnostics.focusInsideCaptureView)" = "true" ] || return 1
+  [ "$(ready_file_value "$ready_file" diagnostics.focusCursorMatchesRequested)" = "true" ] || return 1
+  [ "$(ready_file_value "$ready_file" diagnostics.focusHitTestClass)" = "EventCaptureView" ] || return 1
   return 0
 }
 

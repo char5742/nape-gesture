@@ -58,6 +58,7 @@
 - 一方向停止と明示 reset 以外で復帰しないことを Core の純粋テストで確認している
 - `normal-after-release` dry-run を `analyze-log --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel` で確認し、未生成キーや activation button だけを通常入力通過証跡として扱っていない
 - runtime event 証跡を更新した場合、`status.json.status`、`blockerCode`、`preflight/`、権限済み時の `scenarios/` の関係が崩れていない
+- Reference Target の ready は起動直後に即断せず、レイアウト確定後の `EventCaptureView` hit-test、active/key/main、capture first responder、要求座標と実カーソルの一致を bounded retry 後に確認し、期限切れを `ready: false` にしている
 - アクセシビリティ未許可時に安全に停止し、復旧導線を出す
 - `CGEvent.timestamp`、HID、`GestureCommand.timestamp`、慣性 tick、runtime performance が `MonotonicEventClock` の起動後単調時刻に統一され、イベント経路へ `Date().timeIntervalSince1970` を戻していない
 - wall clock が必要な JSON metadata は `wallClockUnixSeconds` など名前と単位を明記し、イベント `timestamp` と混用していない

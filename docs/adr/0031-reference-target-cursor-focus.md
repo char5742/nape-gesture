@@ -15,13 +15,15 @@ Runtime event 証跡では、`run`、Reference Target App、`system-test`、`ana
 - Reference Target App に `--focus-capture-point` を追加し、指定時だけ capture view 中心へカーソルを移動する。
 - `--focus-capture-point` は無人の runtime event 証跡収集で使い、手動比較や純正トラックパッド観察では必須にしない。
 - ready file には `focus` として AppKit screen 座標、Quartz 座標、移動後 cursor location を残し、target log が空だった場合に位置合わせの有無を追跡できるようにする。
-- ready file には `diagnostics` として active/key/main window、first responder、capture view hit-test も残し、無人証跡では script がこの条件を検査する。
+- ready file には `diagnostics` として active/key/main window、first responder、`EventCaptureView` hit-test、要求 Quartz 座標と実 cursor location の一致も残し、無人証跡では script がこの条件を検査する。capture 中心の計算前に window layout を確定する。
+- 起動直後の activation race を ready と誤記録しない。起動後単調時刻で2秒を上限に50ms間隔で active/key/main、capture first responder、実カーソル位置を再確立し、全条件成立時だけ `ready: true` を書く。期限切れは診断値つきの `ready: false` として失敗させる。
 - `scripts/collect-runtime-event-evidence.sh` は Reference Target App 起動時に `--focus-capture-point` を付ける。
 - target log 証跡では `system-test run` に `--target finder` / `--target safari` を付けない。対象アプリ前面化の検証と Reference Target App の AppKit 受信検証を混同しない。
 
 ## 影響
 
 - runtime event 証跡は、人間のカーソル配置に依存せず再実行できる。
+- shell が ready file を観測した時点で、Reference Target の AppKit focus と実ポインタ位置が成立している。
 - 空 target log は、権限不足、投稿失敗、daemon 抑制、target 位置合わせのどれかとして切り分けやすくなる。
 - 検証自動化が一時的にカーソルを動かすため、実行中はユーザーの手動操作と並行しない。
 
