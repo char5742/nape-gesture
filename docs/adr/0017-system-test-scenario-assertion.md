@@ -19,6 +19,9 @@ Issue #9 と Issue #10 の System Behavior Test は、最終的に Finder、Safa
 - `kill-switch`、`gesture-wheel-then-kill-switch`、`normal-after-release` など既存の未生成入力シナリオも、同じ `--assert-system-scenario` 入口で確認できるようにする。
 - completion evidence と CI は、`system-test run --dry-run --log-json` の直後に `analyze-log --json --assert-system-scenario <name>` を実行する。
 - `system-test readiness --json --assert` は、scenario 一覧、Issue #9 / #10 の紐づけ、機械証跡コマンド、runtime target log 対象、画面挙動待ち、`need:human` 境界を同じ JSON schema で出力する。
+- readiness assertion は、scenario ごとの exact Issue 集合、expected target、event shape、dry-run / analyze-log コマンド、runtime / target 証跡対象の exact 集合、画面挙動待ちの exact 集合、人間作業境界、completion state を独立した期待値で検査する。証跡配列の空/非空だけから期待値を導出しない。
+- `space-left`、`space-right`、`horizontal-scroll` は Reference Target App PID への直接投稿、ready diagnostics、生成 foreground capture、方向 / 件数 / 量 assertion を runtime / target 証跡として持つ。OS や Safari の画面挙動とは分離する。
+- Markdown matrix も JSON と同じく expected target、event shape、機械前段、runtime / target、画面挙動 / 人間作業境界を表示する。
 - `system-test matrix` は `system-test readiness` と同じ出力の別名とし、completion evidence で alias の退行も検出する。
 - CLI scenario 自体は `need:human` を直接要求しない。物理トラックパッド、Nape Pro 実機、TCC、外部アカウント操作など、代替不能な作業が発生した Issue / PR にだけ `need:human` を付ける。
 
@@ -29,6 +32,7 @@ Issue #9 と Issue #10 の System Behavior Test は、最終的に Finder、Safa
 - `need:human` は、実画面挙動、純正トラックパッド操作、TCC 権限操作など、ログのシナリオ整合性では代替できない作業に絞られる。
 - `--assert-system-scenario` の成功は、生成予定イベント列の正しさを示す前段証跡であり、Finder / Safari / Mission Control / Spaces の画面が実際に動いた証跡ではない。
 - readiness matrix の成功も、画面挙動の完了証跡ではない。実測へ進む前に、何が機械で埋まっていて何が残っているかを終了コード付きで固定するための証跡である。
+- runtimeEvidence、Issue 対応、人間作業境界を誤って削除した場合は readiness assertion が非ゼロ終了し、Markdown だけを見ても残作業を追跡できる。
 
 ## 関連
 

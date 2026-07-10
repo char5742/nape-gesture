@@ -85,9 +85,10 @@ struct SystemBehaviorTestCommand {
     }
 
     private func printReadiness(options: [String]) throws {
-        let wantsJSON = options.contains("--json")
-        let wantsMarkdown = options.contains("--markdown")
-        let wantsAssert = options.contains("--assert")
+        let parsed = try parseReadinessOptions(options)
+        let wantsJSON = parsed.wantsJSON
+        let wantsMarkdown = parsed.wantsMarkdown
+        let wantsAssert = parsed.wantsAssert
         if wantsJSON && wantsMarkdown {
             throw ToolError.invalidValue("--json", "--markdown と併用できません。")
         }
@@ -106,7 +107,50 @@ struct SystemBehaviorTestCommand {
             output = report.markdown
         }
 
-        try write(output, to: value("--out", in: options), label: "system-test readiness")
+        try write(output, to: parsed.outputPath, label: "system-test readiness")
+    }
+
+    private func parseReadinessOptions(_ options: [String]) throws -> (
+        wantsJSON: Bool,
+        wantsMarkdown: Bool,
+        wantsAssert: Bool,
+        outputPath: String?
+    ) {
+        var wantsJSON = false
+        var wantsMarkdown = false
+        var wantsAssert = false
+        var outputPath: String?
+        var index = 0
+
+        while index < options.count {
+            switch options[index] {
+            case "--json":
+                wantsJSON = true
+                index += 1
+            case "--markdown":
+                wantsMarkdown = true
+                index += 1
+            case "--assert":
+                wantsAssert = true
+                index += 1
+            case "--out":
+                guard outputPath == nil else {
+                    throw ToolError.invalidValue("--out", "複数回指定できません。")
+                }
+                let valueIndex = index + 1
+                guard valueIndex < options.count,
+                      !options[valueIndex].isEmpty,
+                      !options[valueIndex].hasPrefix("--") else {
+                    throw ToolError.missingValue("--out")
+                }
+                outputPath = options[valueIndex]
+                index += 2
+            default:
+                throw ToolError.invalidValue("system-test readiness option", options[index])
+            }
+        }
+
+        return (wantsJSON, wantsMarkdown, wantsAssert, outputPath)
     }
 
     private func write(_ text: String, to outputPath: String?, label: String) throws {
@@ -837,12 +881,18 @@ private struct SystemTestReadinessReport: Encodable {
 
     static func make() -> SystemTestReadinessReport {
         let scenarios = SystemTestScenario.allCases.map { $0.readiness }
+        let completionState: String
+        if scenarios.contains(where: \.requiresScreenBehaviorEvidence) {
+            completionState = "screen-behavior-evidence-pending"
+        } else if scenarios.contains(where: \.requiresRuntimeTargetEvidence) {
+            completionState = "runtime-target-evidence-pending"
+        } else {
+            completionState = "machine-evidence-complete"
+        }
         return SystemTestReadinessReport(
             schemaVersion: 1,
             scope: "system-behavior-test-readiness",
-            completionState: scenarios.contains { $0.requiresScreenBehaviorEvidence }
-                ? "screen-behavior-evidence-pending"
-                : "machine-evidence-complete",
+            completionState: completionState,
             humanWorkPolicy: "人間作業は物理トラックパッド、Nape Pro 実機操作、外部アカウント操作など、CGEvent、保存済みログ、Reference Target App、computer-use で代替できない場合だけ need:human として扱う。",
             summary: SystemTestReadinessSummary(scenarios: scenarios),
             scenarios: scenarios
@@ -869,8 +919,8 @@ private struct SystemTestReadinessReport: Encodable {
             "",
             "## Matrix",
             "",
-            "| シナリオ | 完成要件 | 機械証跡 | 画面挙動 / 人間作業境界 | Issue | 状態 |",
-            "| --- | --- | --- | --- | --- | --- |"
+            "| シナリオ | 完成要件 | 対象 | イベント列 | 機械前段証跡 | Runtime / target 証跡 | 画面挙動 / 人間作業境界 | Issue | 状態 |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"
         ]
 
         for scenario in scenarios {
@@ -878,7 +928,10 @@ private struct SystemTestReadinessReport: Encodable {
                 [
                     scenario.scenario,
                     scenario.completionRequirement,
+                    markdownCell(scenario.expectedTargets),
+                    scenario.eventShape,
                     markdownCodeCell(scenario.machineEvidence),
+                    markdownCodeCell(scenario.runtimeEvidence),
                     markdownCell(scenario.screenBehaviorEvidence + scenario.humanWorkBoundary),
                     scenario.relatedIssues.map { "#\($0)" }.joined(separator: ", "),
                     scenario.completionState
@@ -919,15 +972,47 @@ private struct SystemTestReadinessReport: Encodable {
             SystemTestScenario.zoomIn.rawValue,
             SystemTestScenario.zoomOut.rawValue
         ])
+        let expectedRuntimeEvidenceNames = Set([
+            SystemTestScenario.spaceLeft.rawValue,
+            SystemTestScenario.spaceRight.rawValue,
+            SystemTestScenario.horizontalScroll.rawValue,
+            SystemTestScenario.killSwitch.rawValue,
+            SystemTestScenario.gestureDrag.rawValue,
+            SystemTestScenario.gestureWheel.rawValue,
+            SystemTestScenario.gestureWheelThenKillSwitch.rawValue,
+            SystemTestScenario.normalAfterRelease.rawValue
+        ])
+        let expectedIssueIDsByScenario: [String: Set<Int>] = [
+            SystemTestScenario.spaceLeft.rawValue: [9, 16],
+            SystemTestScenario.spaceRight.rawValue: [9, 16],
+            SystemTestScenario.missionControl.rawValue: [9, 16],
+            SystemTestScenario.horizontalScroll.rawValue: [10, 16],
+            SystemTestScenario.pageBack.rawValue: [10, 16],
+            SystemTestScenario.pageForward.rawValue: [10, 16],
+            SystemTestScenario.zoomIn.rawValue: [10, 16],
+            SystemTestScenario.zoomOut.rawValue: [10, 16],
+            SystemTestScenario.killSwitch.rawValue: [12, 16],
+            SystemTestScenario.gestureDrag.rawValue: [4, 6, 16],
+            SystemTestScenario.gestureWheel.rawValue: [4, 6, 16],
+            SystemTestScenario.gestureWheelThenKillSwitch.rawValue: [4, 6, 12, 16],
+            SystemTestScenario.normalAfterRelease.rawValue: [4, 6, 16]
+        ]
         let actualScreenBehaviorNames = Set(
             scenarios
                 .filter(\.requiresScreenBehaviorEvidence)
+                .map(\.scenario)
+        )
+        let actualRuntimeEvidenceNames = Set(
+            scenarios
+                .filter(\.requiresRuntimeTargetEvidence)
                 .map(\.scenario)
         )
         let missingScenarios = expectedNames.subtracting(scenarioNames).sorted()
         let unexpectedScenarios = scenarioNames.subtracting(expectedNames).sorted()
         let missingScreenBehaviorScenarios = expectedScreenBehaviorNames.subtracting(actualScreenBehaviorNames).sorted()
         let unexpectedScreenBehaviorScenarios = actualScreenBehaviorNames.subtracting(expectedScreenBehaviorNames).sorted()
+        let missingRuntimeEvidenceScenarios = expectedRuntimeEvidenceNames.subtracting(actualRuntimeEvidenceNames).sorted()
+        let unexpectedRuntimeEvidenceScenarios = actualRuntimeEvidenceNames.subtracting(expectedRuntimeEvidenceNames).sorted()
         if !missingScenarios.isEmpty {
             failures.append("readiness にない system-test scenario: \(missingScenarios.joined(separator: ", "))")
         }
@@ -947,22 +1032,86 @@ private struct SystemTestReadinessReport: Encodable {
         if summary.screenBehaviorPendingScenarioCount != expectedScreenBehaviorNames.count {
             failures.append("Issue #9 / #10 の画面挙動待ちシナリオ数が想定と一致しません。")
         }
-        if scenarios.filter({ $0.relatedIssues.contains(9) }).isEmpty {
-            failures.append("Issue #9 に紐づく scenario がありません。")
+        if !missingRuntimeEvidenceScenarios.isEmpty || !unexpectedRuntimeEvidenceScenarios.isEmpty {
+            failures.append(
+                "runtime / target 証跡対象シナリオが期待値と一致しません。"
+                    + " missing=[\(missingRuntimeEvidenceScenarios.joined(separator: ", "))]"
+                    + " unexpected=[\(unexpectedRuntimeEvidenceScenarios.joined(separator: ", "))]"
+            )
         }
-        if scenarios.filter({ $0.relatedIssues.contains(10) }).isEmpty {
-            failures.append("Issue #10 に紐づく scenario がありません。")
+        if summary.runtimeTargetEvidenceScenarioCount != expectedRuntimeEvidenceNames.count {
+            failures.append("runtimeTargetEvidenceScenarioCount が想定と一致しません。")
+        }
+        if summary.machinePreflightScenarioCount != expectedNames.count {
+            failures.append("全 scenario に機械前段証跡がそろっていません。")
         }
         if summary.needHumanLabelScenarioCount != 0 {
             failures.append("CLI が need:human 適用を直接要求しています。人間作業は外部作業が不可避な Issue / PR に限定してください。")
         }
         for scenario in scenarios {
-            if scenario.machineEvidence.isEmpty {
-                failures.append("\(scenario.scenario) に機械証跡コマンドがありません。")
+            guard let expectedIssueIDs = expectedIssueIDsByScenario[scenario.scenario] else {
+                failures.append("\(scenario.scenario) の Issue 期待値が定義されていません。")
+                continue
             }
-            if scenario.requiresScreenBehaviorEvidence && scenario.screenBehaviorEvidence.isEmpty {
-                failures.append("\(scenario.scenario) は画面挙動待ちなのに screenBehaviorEvidence が空です。")
+            if Set(scenario.relatedIssues) != expectedIssueIDs {
+                failures.append(
+                    "\(scenario.scenario) の関連 Issue が期待値と一致しません。"
+                        + " expected=\(expectedIssueIDs.sorted()) actual=\(scenario.relatedIssues.sorted())"
+                )
             }
+            if scenario.completionRequirement.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                failures.append("\(scenario.scenario) の completionRequirement が空です。")
+            }
+            if scenario.expectedTargets.isEmpty {
+                failures.append("\(scenario.scenario) の expectedTargets が空です。")
+            }
+            if scenario.eventShape.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                failures.append("\(scenario.scenario) の eventShape が空です。")
+            }
+            if scenario.machineEvidence.count != 2
+                || !scenario.machineEvidence.allSatisfy({ $0.contains(scenario.scenario) }) {
+                failures.append("\(scenario.scenario) の dry-run / analyze-log 前段証跡が不完全です。")
+            }
+            if scenario.humanWorkBoundary.isEmpty {
+                failures.append("\(scenario.scenario) の humanWorkBoundary が空です。")
+            }
+            let expectsScreenBehavior = expectedScreenBehaviorNames.contains(scenario.scenario)
+            if scenario.requiresScreenBehaviorEvidence != expectsScreenBehavior
+                || scenario.screenBehaviorEvidence.isEmpty == expectsScreenBehavior {
+                failures.append("\(scenario.scenario) の screenBehaviorEvidence が期待値と一致しません。")
+            }
+            let expectsRuntimeEvidence = expectedRuntimeEvidenceNames.contains(scenario.scenario)
+            if scenario.requiresRuntimeTargetEvidence != expectsRuntimeEvidence
+                || scenario.runtimeEvidence.isEmpty == expectsRuntimeEvidence {
+                failures.append("\(scenario.scenario) の runtimeEvidence が期待値と一致しません。")
+            }
+            if scenario.needHumanLabelApplies {
+                failures.append("\(scenario.scenario) が CLI scenario 自体へ need:human を要求しています。")
+            }
+            let expectedCompletionState: String
+            if expectsScreenBehavior {
+                expectedCompletionState = "画面挙動実測待ち"
+            } else if expectsRuntimeEvidence {
+                expectedCompletionState = "runtime target log 証跡対象"
+            } else {
+                expectedCompletionState = "機械前段証跡対象"
+            }
+            if scenario.completionState != expectedCompletionState {
+                failures.append(
+                    "\(scenario.scenario) の completionState が期待値と一致しません。"
+                        + " expected=\(expectedCompletionState) actual=\(scenario.completionState)"
+                )
+            }
+        }
+
+        let expectedCompletionState = expectedScreenBehaviorNames.isEmpty
+            ? (expectedRuntimeEvidenceNames.isEmpty ? "machine-evidence-complete" : "runtime-target-evidence-pending")
+            : "screen-behavior-evidence-pending"
+        if completionState != expectedCompletionState {
+            failures.append(
+                "report completionState が期待値と一致しません。"
+                    + " expected=\(expectedCompletionState) actual=\(completionState)"
+            )
         }
 
         if !failures.isEmpty {
@@ -1190,9 +1339,9 @@ private enum SystemTestScenario: String, CaseIterable {
         case .killSwitch:
             return [12, 16]
         case .gestureWheelThenKillSwitch:
-            return [6, 12, 16]
+            return [4, 6, 12, 16]
         case .gestureDrag, .gestureWheel, .normalAfterRelease:
-            return [6, 16]
+            return [4, 6, 16]
         }
     }
 
@@ -1287,15 +1436,33 @@ private enum SystemTestScenario: String, CaseIterable {
 
     private var runtimeEvidence: [String] {
         switch self {
+        case .spaceLeft:
+            return [
+                "system-test run --scenario space-left --post-to-pid <Reference Target App PID>",
+                "ready diagnostics の active / key / main / focus",
+                "analyze-target-log --assert-has-generated-foreground-capture --assert-generated-foreground-scroll-x-negative --assert-generated-foreground-scroll-events-at-least <下限> --assert-generated-foreground-scroll-abs-x-at-least <量>"
+            ]
+        case .spaceRight:
+            return [
+                "system-test run --scenario space-right --post-to-pid <Reference Target App PID>",
+                "ready diagnostics の active / key / main / focus",
+                "analyze-target-log --assert-has-generated-foreground-capture --assert-generated-foreground-scroll-x-positive --assert-generated-foreground-scroll-events-at-least <下限> --assert-generated-foreground-scroll-abs-x-at-least <量>"
+            ]
+        case .horizontalScroll:
+            return [
+                "system-test run --scenario horizontal-scroll --post-to-pid <Reference Target App PID>",
+                "ready diagnostics の active / key / main / focus",
+                "analyze-target-log --assert-has-generated-foreground-capture --assert-generated-foreground-scroll-x-positive --assert-generated-foreground-scroll-events-at-least <下限> --assert-generated-foreground-scroll-abs-x-at-least <量>"
+            ]
         case .gestureDrag, .gestureWheel:
             return [
                 "scripts/collect-runtime-event-evidence.sh の target log",
-                "analyze-target-log --assert-no-leaks --assert-has-generated-event --assert-has-foreground-capture"
+                "analyze-target-log --assert-no-leaks --assert-has-generated-foreground-capture"
             ]
         case .gestureWheelThenKillSwitch:
             return [
                 "scripts/collect-runtime-event-evidence.sh の daemon 停止ログと target log",
-                "analyze-target-log --assert-no-leaks --assert-has-generated-event --assert-has-foreground-capture"
+                "analyze-target-log --assert-no-leaks --assert-has-generated-foreground-capture"
             ]
         case .normalAfterRelease:
             return [
@@ -1307,10 +1474,7 @@ private enum SystemTestScenario: String, CaseIterable {
                 "system-test run --scenario kill-switch の実投稿ログ",
                 "daemon 停止ログ"
             ]
-        case .spaceLeft,
-             .spaceRight,
-             .horizontalScroll,
-             .missionControl,
+        case .missionControl,
              .pageBack,
              .pageForward,
              .zoomIn,

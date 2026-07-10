@@ -345,10 +345,56 @@ run_split_success \
   .build/debug/nape-gesture system-test matrix --json --assert
 
 run_combined_success \
+  "system-test readiness JSON out option" \
+  "$system_dir/system-test-readiness-out.log" \
+  ".build/debug/nape-gesture system-test readiness --json --assert --out $system_dir/system-test-readiness-out.json" \
+  .build/debug/nape-gesture system-test readiness --json --assert --out "$system_dir/system-test-readiness-out.json"
+
+run_combined_success \
+  "system-test readiness stdout / out JSON exact match" \
+  "$system_dir/system-test-readiness-out-cmp.log" \
+  "cmp $system_dir/system-test-readiness.json $system_dir/system-test-readiness-out.json" \
+  cmp "$system_dir/system-test-readiness.json" "$system_dir/system-test-readiness-out.json"
+
+run_combined_success \
   "system-test readiness JSON field check" \
   "$system_dir/system-test-readiness-field-check.log" \
-  "grep -q scope / screenBehaviorPendingScenarioCount / needHumanLabelScenarioCount / relatedIssues $system_dir/system-test-readiness.json" \
-  sh -c "grep -q '\"scope\"[[:space:]]*:[[:space:]]*\"system-behavior-test-readiness\"' '$system_dir/system-test-readiness.json' && grep -q '\"screenBehaviorPendingScenarioCount\"' '$system_dir/system-test-readiness.json' && grep -q '\"needHumanLabelScenarioCount\"[[:space:]]*:[[:space:]]*0' '$system_dir/system-test-readiness.json' && grep -q '\"relatedIssues\"' '$system_dir/system-test-readiness.json' && grep -q '\"scenario\"[[:space:]]*:[[:space:]]*\"mission-control\"' '$system_dir/system-test-readiness.json' && grep -q '\"scenario\"[[:space:]]*:[[:space:]]*\"page-back\"' '$system_dir/system-test-readiness.json'"
+  "grep exact readiness scope / state / scenario counts / evidence fields $system_dir/system-test-readiness.json" \
+  sh -c "grep -q '\"scope\"[[:space:]]*:[[:space:]]*\"system-behavior-test-readiness\"' '$system_dir/system-test-readiness.json' && grep -q '\"completionState\"[[:space:]]*:[[:space:]]*\"screen-behavior-evidence-pending\"' '$system_dir/system-test-readiness.json' && grep -q '\"scenarioCount\"[[:space:]]*:[[:space:]]*13' '$system_dir/system-test-readiness.json' && grep -q '\"machinePreflightScenarioCount\"[[:space:]]*:[[:space:]]*13' '$system_dir/system-test-readiness.json' && grep -q '\"screenBehaviorPendingScenarioCount\"[[:space:]]*:[[:space:]]*8' '$system_dir/system-test-readiness.json' && grep -q '\"runtimeTargetEvidenceScenarioCount\"[[:space:]]*:[[:space:]]*8' '$system_dir/system-test-readiness.json' && grep -q '\"needHumanLabelScenarioCount\"[[:space:]]*:[[:space:]]*0' '$system_dir/system-test-readiness.json' && grep -q '\"runtimeEvidence\"' '$system_dir/system-test-readiness.json' && grep -q '\"expectedTargets\"' '$system_dir/system-test-readiness.json' && grep -q '\"eventShape\"' '$system_dir/system-test-readiness.json' && grep -q '\"relatedIssues\"' '$system_dir/system-test-readiness.json'"
+
+run_combined_success \
+  "system-test readiness Markdown runtime evidence field check" \
+  "$system_dir/system-test-readiness-markdown-field-check.log" \
+  "grep Runtime / target 証跡 and --post-to-pid $system_dir/system-test-readiness.md" \
+  sh -c "grep -F '| Runtime / target 証跡 |' '$system_dir/system-test-readiness.md' && grep -F -- '--post-to-pid <Reference Target App PID>' '$system_dir/system-test-readiness.md'"
+
+run_split_expected_failure \
+  "system-test readiness rejects JSON and Markdown together" \
+  "$system_dir/system-test-readiness-conflicting-formats.stdout.log" \
+  "$system_dir/system-test-readiness-conflicting-formats.stderr.log" \
+  ".build/debug/nape-gesture system-test readiness --json --markdown --assert" \
+  .build/debug/nape-gesture system-test readiness --json --markdown --assert
+
+run_split_expected_failure \
+  "system-test readiness rejects missing out value" \
+  "$system_dir/system-test-readiness-missing-out.stdout.log" \
+  "$system_dir/system-test-readiness-missing-out.stderr.log" \
+  ".build/debug/nape-gesture system-test readiness --out" \
+  .build/debug/nape-gesture system-test readiness --out
+
+run_split_expected_failure \
+  "system-test readiness rejects unknown option" \
+  "$system_dir/system-test-readiness-unknown-option.stdout.log" \
+  "$system_dir/system-test-readiness-unknown-option.stderr.log" \
+  ".build/debug/nape-gesture system-test readiness --unknown-option" \
+  .build/debug/nape-gesture system-test readiness --unknown-option
+
+run_split_expected_failure \
+  "system-test readiness rejects duplicate out option" \
+  "$system_dir/system-test-readiness-duplicate-out.stdout.log" \
+  "$system_dir/system-test-readiness-duplicate-out.stderr.log" \
+  ".build/debug/nape-gesture system-test readiness --out $system_dir/a --out $system_dir/b" \
+  .build/debug/nape-gesture system-test readiness --out "$system_dir/a" --out "$system_dir/b"
 
 for scenario in space-left space-right mission-control horizontal-scroll page-back page-forward zoom-in zoom-out kill-switch; do
   if [ "$scenario" = "space-left" ] || [ "$scenario" = "space-right" ]; then
@@ -368,6 +414,21 @@ for scenario in space-left space-right mission-control horizontal-scroll page-ba
   run_split_success \
     "system-test $scenario analyze-log assert-system-scenario" \
     "$system_dir/system-$scenario-analysis.txt" \
+    "$system_dir/system-$scenario-analysis.stderr.log" \
+    ".build/debug/nape-gesture analyze-log $system_dir/system-$scenario.jsonl --json --assert-system-scenario $scenario" \
+    .build/debug/nape-gesture analyze-log "$system_dir/system-$scenario.jsonl" --json --assert-system-scenario "$scenario"
+done
+
+for scenario in gesture-drag gesture-wheel; do
+  run_combined_success \
+    "system-test $scenario dry-run JSON Lines" \
+    "$system_dir/system-$scenario.log" \
+    ".build/debug/nape-gesture system-test run --scenario $scenario --dry-run --log-json --out $system_dir/system-$scenario.jsonl" \
+    .build/debug/nape-gesture system-test run --scenario "$scenario" --dry-run --log-json --out "$system_dir/system-$scenario.jsonl"
+
+  run_split_success \
+    "system-test $scenario analyze-log assert-system-scenario" \
+    "$system_dir/system-$scenario-analysis.json" \
     "$system_dir/system-$scenario-analysis.stderr.log" \
     ".build/debug/nape-gesture analyze-log $system_dir/system-$scenario.jsonl --json --assert-system-scenario $scenario" \
     .build/debug/nape-gesture analyze-log "$system_dir/system-$scenario.jsonl" --json --assert-system-scenario "$scenario"

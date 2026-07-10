@@ -73,7 +73,7 @@
 - `generate-scroll --dry-run --log-json` で比較可能な JSON Lines を出せる
 - `system-test run --dry-run --log-json` で生成予定イベントを保存し、`systemTestScenario` / `sequenceIndex` つきで `analyze-log --json --assert-system-scenario <name>` によるシナリオ別機械判定を通している
 - foreground target log の canonical 集計が capture source ごとの座標系差で同一イベントを水増しせず、方向 assertion が逆方向イベントを合計値で相殺していない
-- `system-test readiness --json --assert` で Issue #9 / #10 の機械証跡、画面挙動待ち、`need:human` 境界を確認している。readiness 成功を画面挙動完了として扱っていない
+- `system-test readiness --json --assert` で exact Issue 集合、expected target、event shape、機械前段、runtime / target 証跡対象、画面挙動待ち、`need:human` 境界を確認している。Markdown も runtime / target 証跡を表示し、readiness 成功を画面挙動完了として扱っていない
 - `Ctrl + ←/→` などのショートカット送信を最終解として前提化していない
 - Finder、Safari、Mission Control、Spaces で必要な実機検証が明記されている
 
