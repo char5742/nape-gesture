@@ -16,8 +16,6 @@ struct AnalyzeLogCommand {
             throw ToolError.missingValue("ログファイル")
         }
 
-        let records = try InputLogFileReader.readRecords(path: path)
-        let analysis = InputLogAnalyzer.analyze(records)
         let assertHasUnmarkedPassthroughInput = options.contains("--assert-has-unmarked-passthrough-input")
         let assertHasUnmarkedClick = options.contains("--assert-has-unmarked-click")
         let assertHasUnmarkedDrag = options.contains("--assert-has-unmarked-drag")
@@ -28,6 +26,12 @@ struct AnalyzeLogCommand {
         let assertGeneratedScrollLog = options.contains("--assert-generated-scroll-log")
             || options.contains("--assert-generated-scroll")
         let systemScenario = try Self.systemScenarioAssertion(in: options)
+        let generatedScrollExpectation = try Self.generatedScrollExpectation(
+            in: options,
+            assertionEnabled: assertGeneratedScrollLog
+        )
+        let records = try InputLogFileReader.readRecords(path: path)
+        let analysis = InputLogAnalyzer.analyze(records)
 
         if options.contains("--json") {
             let encoder = JSONEncoder()
@@ -66,8 +70,8 @@ struct AnalyzeLogCommand {
             fflush(stdout)
             throw InputLogMissingGestureBeforeKillSwitchAssertionError(path: path)
         }
-        if assertGeneratedScrollLog {
-            let evaluation = GeneratedScrollLogAssertion.evaluate(records)
+        if let generatedScrollExpectation {
+            let evaluation = GeneratedScrollLogAssertion.evaluate(records, expectation: generatedScrollExpectation)
             if !evaluation.passed {
                 fflush(stdout)
                 throw InputLogGeneratedScrollAssertionError(path: path, failures: evaluation.failures)
@@ -84,6 +88,65 @@ struct AnalyzeLogCommand {
                 )
             }
         }
+    }
+
+    private static let generatedScrollExpectationOptions = [
+        "--expected-direction",
+        "--expected-normal-events",
+        "--expected-momentum-events",
+        "--expected-normal-x-total",
+        "--expected-phase-mode"
+    ]
+
+    private static func generatedScrollExpectation(
+        in options: [String],
+        assertionEnabled: Bool
+    ) throws -> GeneratedScrollLogExpectation? {
+        guard assertionEnabled else {
+            if let unexpectedOption = generatedScrollExpectationOptions.first(where: options.contains) {
+                throw ToolError.invalidValue(unexpectedOption, "--assert-generated-scroll-log と併用してください。")
+            }
+            return nil
+        }
+
+        let directionRaw = try SettingsStore.requiredValue(for: "--expected-direction", in: options)
+        guard let direction = GeneratedScrollExpectedDirection(rawValue: directionRaw) else {
+            throw ToolError.invalidValue("--expected-direction", "\(directionRaw)（positive-x または negative-x を指定してください）")
+        }
+        let normalEventCount = try positiveIntValue("--expected-normal-events", minimum: 2, in: options)
+        let momentumEventCount = try positiveIntValue("--expected-momentum-events", minimum: 1, in: options)
+        let normalXTotal = try finiteNonzeroDoubleValue("--expected-normal-x-total", in: options)
+        if (normalXTotal > 0) != (direction == .positiveX) {
+            throw ToolError.invalidValue("--expected-normal-x-total", "\(normalXTotal)（--expected-direction と符号を一致させてください）")
+        }
+        let phaseModeRaw = try SettingsStore.requiredValue(for: "--expected-phase-mode", in: options)
+        guard let phaseMode = GeneratedScrollExpectedPhaseMode(rawValue: phaseModeRaw) else {
+            throw ToolError.invalidValue("--expected-phase-mode", "\(phaseModeRaw)（生成スクロール assertion は auto のみ対応します）")
+        }
+
+        return GeneratedScrollLogExpectation(
+            direction: direction,
+            normalEventCount: normalEventCount,
+            momentumEventCount: momentumEventCount,
+            normalXTotal: normalXTotal,
+            phaseMode: phaseMode
+        )
+    }
+
+    private static func positiveIntValue(_ name: String, minimum: Int, in options: [String]) throws -> Int {
+        let rawValue = try SettingsStore.requiredValue(for: name, in: options)
+        guard let value = Int(rawValue), value >= minimum else {
+            throw ToolError.invalidValue(name, "\(rawValue)（\(minimum) 以上を指定してください）")
+        }
+        return value
+    }
+
+    private static func finiteNonzeroDoubleValue(_ name: String, in options: [String]) throws -> Double {
+        let rawValue = try SettingsStore.requiredValue(for: name, in: options)
+        guard let value = Double(rawValue), value.isFinite, value != 0 else {
+            throw ToolError.invalidValue(name, "\(rawValue)（有限の非ゼロ値を指定してください）")
+        }
+        return value
     }
 
     private static func systemScenarioAssertion(in options: [String]) throws -> SystemLogScenario? {

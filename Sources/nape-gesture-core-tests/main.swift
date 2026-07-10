@@ -985,42 +985,59 @@ func testInputLogAnalyzerDoesNotTreatUnmarkedKeysAsPassthroughInput() {
     expect(analysis.unmarkedPassthroughInputEvents == 0, "キルスイッチなどの未生成キーだけでは通常入力通過扱いにしない")
 }
 
-func testGeneratedScrollLogAssertionAcceptsPhaseSeparatedMomentum() {
-    let records = [
+func generatedScrollLogExpectation() -> GeneratedScrollLogExpectation {
+    GeneratedScrollLogExpectation(
+        direction: .positiveX,
+        normalEventCount: 30,
+        momentumEventCount: 8,
+        normalXTotal: 1200,
+        phaseMode: .auto
+    )
+}
+
+func makeValidGeneratedScrollLogRecords() -> [InputLogRecord] {
+    var records: [InputLogRecord] = []
+    for index in 0..<30 {
+        let phase: Int64
+        if index == 0 {
+            phase = 1
+        } else if index == 29 {
+            phase = 8
+        } else {
+            phase = 4
+        }
+        records.append(
+            makeInputLogRecord(
+                timestamp: UInt64(index + 1),
+                typeName: "scrollWheel",
+                generatedByNapeGesture: true,
+                scrollDeltaX: 40,
+                scrollDeltaY: 0,
+                pointDeltaX: 40,
+                pointDeltaY: 0,
+                scrollPhase: phase
+            )
+        )
+    }
+
+    let momentumPointDeltas = [40.0, 34.0, 28.9, 24.565, 20.88025, 17.7482125, 15.085980625, 12.82308353125]
+    for (index, pointDelta) in momentumPointDeltas.enumerated() {
+        records.append(
+            makeInputLogRecord(
+                timestamp: UInt64(31 + index),
+                typeName: "scrollWheel",
+                generatedByNapeGesture: true,
+                scrollDeltaX: Int64(pointDelta.rounded()),
+                scrollDeltaY: 0,
+                pointDeltaX: pointDelta,
+                pointDeltaY: 0,
+                momentumPhase: 4
+            )
+        )
+    }
+    records.append(
         makeInputLogRecord(
-            timestamp: 1,
-            typeName: "scrollWheel",
-            generatedByNapeGesture: true,
-            scrollDeltaX: 40,
-            pointDeltaX: 40,
-            scrollPhase: 1
-        ),
-        makeInputLogRecord(
-            timestamp: 2,
-            typeName: "scrollWheel",
-            generatedByNapeGesture: true,
-            scrollDeltaX: 32,
-            pointDeltaX: 32,
-            scrollPhase: 4
-        ),
-        makeInputLogRecord(
-            timestamp: 3,
-            typeName: "scrollWheel",
-            generatedByNapeGesture: true,
-            scrollDeltaX: 24,
-            pointDeltaX: 24,
-            scrollPhase: 8
-        ),
-        makeInputLogRecord(
-            timestamp: 4,
-            typeName: "scrollWheel",
-            generatedByNapeGesture: true,
-            scrollDeltaX: 12,
-            pointDeltaX: 12,
-            momentumPhase: 4
-        ),
-        makeInputLogRecord(
-            timestamp: 5,
+            timestamp: 39,
             typeName: "scrollWheel",
             generatedByNapeGesture: true,
             scrollDeltaX: 0,
@@ -1029,61 +1046,165 @@ func testGeneratedScrollLogAssertionAcceptsPhaseSeparatedMomentum() {
             pointDeltaY: 0,
             momentumPhase: 8
         )
-    ]
+    )
+    return records
+}
 
-    let evaluation = GeneratedScrollLogAssertion.evaluate(records)
+func expectGeneratedScrollLogFailure(
+    _ records: [InputLogRecord],
+    name: String,
+    failureContains expectedFailure: String
+) {
+    let evaluation = GeneratedScrollLogAssertion.evaluate(records, expectation: generatedScrollLogExpectation())
+    expect(!evaluation.passed, "\(name) を生成スクロール assertion で拒否する")
+    expect(evaluation.failures.contains { $0.contains(expectedFailure) }, "\(name) の失敗理由に \(expectedFailure) を含める")
+}
 
-    expect(evaluation.passed, "通常スクロール phase と momentumPhase が分離した生成スクロールログを受理する")
+func testGeneratedScrollLogAssertionAcceptsExactAutoSequence() {
+    let records = makeValidGeneratedScrollLogRecords()
+    let evaluation = GeneratedScrollLogAssertion.evaluate(records, expectation: generatedScrollLogExpectation())
+
+    expect(records.count == 39, "正常 fixture は通常30件、momentum changed 8件、ended-zero 1件で構成する")
+    expect(evaluation.passed, "期待方向、件数、量、auto phase 状態列が一致する生成スクロールログを受理する")
     expect(evaluation.failures.isEmpty, "受理したログに失敗理由を残さない")
 }
 
-func testGeneratedScrollLogAssertionRejectsSystemTestMetadataAndPhaseMixing() {
-    let records = [
-        makeInputLogRecord(
-            timestamp: 1,
-            typeName: "scrollWheel",
-            generatedByNapeGesture: true,
-            scrollDeltaX: 40,
-            pointDeltaX: 40,
-            scrollPhase: 1,
-            momentumPhase: 4,
-            systemTestScenario: "space-right",
-            sequenceIndex: 0
-        )
-    ]
+func testGeneratedScrollLogAssertionAcceptsExpectedNegativeDirection() {
+    var records = makeValidGeneratedScrollLogRecords()
+    for index in 0..<38 {
+        records[index].pointDeltaX = -abs(records[index].pointDeltaX)
+        records[index].scrollDeltaX = -abs(records[index].scrollDeltaX)
+    }
+    let expectation = GeneratedScrollLogExpectation(
+        direction: .negativeX,
+        normalEventCount: 30,
+        momentumEventCount: 8,
+        normalXTotal: -1200,
+        phaseMode: .auto
+    )
 
-    let evaluation = GeneratedScrollLogAssertion.evaluate(records)
+    let evaluation = GeneratedScrollLogAssertion.evaluate(records, expectation: expectation)
 
-    expect(!evaluation.passed, "system-test メタ情報と phase 混在を含む生成スクロールログを拒否する")
-    expect(evaluation.failures.contains { $0.contains("systemTestScenario") }, "systemTestScenario 混在を失敗理由に出す")
-    expect(evaluation.failures.contains { $0.contains("sequenceIndex") }, "sequenceIndex 混在を失敗理由に出す")
-    expect(evaluation.failures.contains { $0.contains("scrollPhase と momentumPhase") }, "phase 混在を失敗理由に出す")
+    expect(evaluation.passed, "負X方向を明示した exact auto 生成スクロールログを受理する")
 }
 
-func testGeneratedScrollLogAssertionRejectsMomentumWithoutZeroEnd() {
-    let records = [
+func testGeneratedScrollLogAssertionRejectsMalformedSequences() {
+    let valid = makeValidGeneratedScrollLogRecords()
+
+    expectGeneratedScrollLogFailure(Array(valid.prefix(1)), name: "先頭1件への切り詰め", failureContains: "全イベント件数")
+
+    var missingMiddle = valid
+    missingMiddle.remove(at: 10)
+    expectGeneratedScrollLogFailure(missingMiddle, name: "途中record欠落", failureContains: "全イベント件数")
+
+    var mixedSigns = valid
+    mixedSigns[5].pointDeltaX = -40
+    mixedSigns[5].scrollDeltaX = -40
+    mixedSigns[6].pointDeltaX = 120
+    mixedSigns[6].scrollDeltaX = 120
+    expectGeneratedScrollLogFailure(mixedSigns, name: "正負混在", failureContains: "期待方向")
+
+    var zeroSum = valid
+    for index in 0..<30 {
+        let delta: Double = index.isMultiple(of: 2) ? 40 : -40
+        zeroSum[index].pointDeltaX = delta
+        zeroSum[index].scrollDeltaX = Int64(delta)
+    }
+    expectGeneratedScrollLogFailure(zeroSum, name: "正負合計相殺", failureContains: "期待方向")
+
+    var reverseDirection = valid
+    for index in 0..<38 {
+        reverseDirection[index].pointDeltaX = -abs(reverseDirection[index].pointDeltaX)
+        reverseDirection[index].scrollDeltaX = -abs(reverseDirection[index].scrollDeltaX)
+    }
+    expectGeneratedScrollLogFailure(reverseDirection, name: "逆方向", failureContains: "期待方向")
+
+    var insufficientAmount = valid
+    for index in 0..<30 {
+        insufficientAmount[index].pointDeltaX = 39
+        insufficientAmount[index].scrollDeltaX = 39
+    }
+    expectGeneratedScrollLogFailure(insufficientAmount, name: "通常X量不足", failureContains: "pointDeltaX 合計")
+
+    var pointScrollMismatch = valid
+    pointScrollMismatch[5].scrollDeltaX = -40
+    expectGeneratedScrollLogFailure(pointScrollMismatch, name: "point/scroll符号不一致", failureContains: "符号が一致しません")
+
+    var pointScrollAmountMismatch = valid
+    pointScrollAmountMismatch[5].scrollDeltaX = 39
+    pointScrollAmountMismatch[6].scrollDeltaX = 41
+    expectGeneratedScrollLogFailure(pointScrollAmountMismatch, name: "point/scroll量不一致", failureContains: "量子化量")
+
+    var scrollTotalOverflow = valid
+    scrollTotalOverflow[0].scrollDeltaX = Int64.max
+    expectGeneratedScrollLogFailure(scrollTotalOverflow, name: "scrollDeltaX合計overflow", failureContains: "Int64 の範囲")
+
+    var missingNormalEnd = valid
+    missingNormalEnd[29].scrollPhase = 4
+    expectGeneratedScrollLogFailure(missingNormalEnd, name: "通常ended欠落", failureContains: "状態列")
+
+    var reversedOrder = valid
+    reversedOrder.swapAt(0, 1)
+    expectGeneratedScrollLogFailure(reversedOrder, name: "record順序逆転", failureContains: "timestamp が厳密増加")
+
+    var unknownPhase = valid
+    unknownPhase[5].scrollPhase = 99
+    expectGeneratedScrollLogFailure(unknownPhase, name: "未知phase", failureContains: "未知の phase")
+
+    var sameTimestamp = valid
+    sameTimestamp[2].timestamp = sameTimestamp[1].timestamp
+    sameTimestamp[2].pointDeltaX = 41
+    sameTimestamp[2].scrollDeltaX = 41
+    sameTimestamp[3].pointDeltaX = 39
+    sameTimestamp[3].scrollDeltaX = 39
+    expectGeneratedScrollLogFailure(sameTimestamp, name: "異なるrecordの同一timestamp", failureContains: "timestamp が厳密増加")
+
+    var duplicateRecord = valid
+    duplicateRecord[2] = duplicateRecord[1]
+    expectGeneratedScrollLogFailure(duplicateRecord, name: "同一record重複", failureContains: "sequence に重複")
+
+    var changedZeroTerminal = valid
+    changedZeroTerminal[38].momentumPhase = 4
+    expectGeneratedScrollLogFailure(changedZeroTerminal, name: "changed-zero終端", failureContains: "ended-zero record")
+
+    var tailAfterEnd = valid
+    tailAfterEnd.append(
         makeInputLogRecord(
-            timestamp: 1,
+            timestamp: 40,
             typeName: "scrollWheel",
             generatedByNapeGesture: true,
-            scrollDeltaX: 40,
-            pointDeltaX: 40,
-            scrollPhase: 1
-        ),
-        makeInputLogRecord(
-            timestamp: 2,
-            typeName: "scrollWheel",
-            generatedByNapeGesture: true,
-            scrollDeltaX: 20,
-            pointDeltaX: 20,
-            momentumPhase: 4
+            scrollDeltaX: 0,
+            scrollDeltaY: 0,
+            pointDeltaX: 0,
+            pointDeltaY: 0
         )
-    ]
+    )
+    expectGeneratedScrollLogFailure(tailAfterEnd, name: "momentum終了後tail", failureContains: "終了後 tail")
 
-    let evaluation = GeneratedScrollLogAssertion.evaluate(records)
+    var invalidContinuous = valid
+    invalidContinuous[5].isContinuous = 2
+    expectGeneratedScrollLogFailure(invalidContinuous, name: "isContinuous=2", failureContains: "isContinuous が 1")
 
-    expect(!evaluation.passed, "momentum がゼロ delta で終わらない生成スクロールログを拒否する")
-    expect(evaluation.failures.contains { $0.contains("ゼロ delta") }, "momentum 終了 delta の失敗理由を出す")
+    expectGeneratedScrollLogFailure([], name: "空ログ", failureContains: "空です")
+
+    var mixedPhase = valid
+    mixedPhase[5].momentumPhase = 4
+    expectGeneratedScrollLogFailure(mixedPhase, name: "scroll/momentum phase混在", failureContains: "同じ record に混在")
+
+    var missingPhase = valid
+    missingPhase[5].scrollPhase = 0
+    expectGeneratedScrollLogFailure(missingPhase, name: "phaseなし", failureContains: "両方がない")
+
+    var allBegan = valid
+    for index in 0..<30 {
+        allBegan[index].scrollPhase = 1
+    }
+    expectGeneratedScrollLogFailure(allBegan, name: "通常phase全件began", failureContains: "状態列")
+
+    var systemTestMetadata = valid
+    systemTestMetadata[0].systemTestScenario = "space-right"
+    systemTestMetadata[0].sequenceIndex = 0
+    expectGeneratedScrollLogFailure(systemTestMetadata, name: "system-testメタ情報混在", failureContains: "systemTestScenario")
 }
 
 func testInputLogAnalyzerCountsNormalClickDragAndWheelSeparately() {
@@ -2324,9 +2445,9 @@ testInputLogRecordEncodesSystemTestMetadataWhenPresent()
 testInputLogAnalyzerComparesBaselineAndCandidate()
 testInputLogAnalyzerCountsKeyEvents()
 testInputLogAnalyzerDoesNotTreatUnmarkedKeysAsPassthroughInput()
-testGeneratedScrollLogAssertionAcceptsPhaseSeparatedMomentum()
-testGeneratedScrollLogAssertionRejectsSystemTestMetadataAndPhaseMixing()
-testGeneratedScrollLogAssertionRejectsMomentumWithoutZeroEnd()
+testGeneratedScrollLogAssertionAcceptsExactAutoSequence()
+testGeneratedScrollLogAssertionAcceptsExpectedNegativeDirection()
+testGeneratedScrollLogAssertionRejectsMalformedSequences()
 testInputLogAnalyzerCountsNormalClickDragAndWheelSeparately()
 testLogDerivedTuningAnalyzerDerivesAccelerationAndMomentum()
 testLogDerivedTuningAnalyzerReportsMissingSamples()

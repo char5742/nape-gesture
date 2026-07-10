@@ -70,7 +70,9 @@
 ## 生成イベント / Spaces / Mission Control 変更
 
 - 通常スクロールのフェーズは `scrollPhase`、慣性は `momentumPhase` に分離されている
-- `generate-scroll --dry-run --log-json` で比較可能な JSON Lines を出し、`analyze-log --json --assert-generated-scroll-log` が成功している
+- `generate-scroll --dry-run --log-json` で比較可能な JSON Lines を出し、期待方向、通常/momentum件数、通常X合計量、`auto` phase mode を明示した `analyze-log --json --assert-generated-scroll-log` が成功している
+- 生成スクロール assertion は全非ゼロrecordのpoint/scroll符号・量子化量、`isContinuous == 1`、timestamp厳密増加、通常 `began, changed*, ended` と momentum `changed+, ended-zero` の exact 列を検査し、切り詰め、欠落、方向・量異常、phase・timestamp・重複異常を expected failure で固定している
+- 明示 phase override を `auto` と混同せず、未対応 mode は非ゼロ終了する。`sample-generated-scroll-log.jsonl` を成功 fixture として扱っていない
 - `system-test run --dry-run --log-json` で生成予定イベントを保存し、`systemTestScenario` / `sequenceIndex` つきで `analyze-log --json --assert-system-scenario <name>` によるシナリオ別機械判定を通している
 - foreground target log の canonical 集計が capture source ごとの座標系差で同一イベントを水増しせず、方向 assertion が逆方向イベントを合計値で相殺していない
 - `Ctrl + ←/→` などのショートカット送信を最終解として前提化していない

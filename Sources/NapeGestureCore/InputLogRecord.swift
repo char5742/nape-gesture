@@ -417,9 +417,59 @@ public struct GeneratedScrollLogEvaluation: Codable, Equatable, Sendable {
     }
 }
 
+public enum GeneratedScrollExpectedDirection: String, Codable, Equatable, Sendable {
+    case positiveX = "positive-x"
+    case negativeX = "negative-x"
+
+    fileprivate var sign: Int {
+        switch self {
+        case .positiveX:
+            return 1
+        case .negativeX:
+            return -1
+        }
+    }
+}
+
+public enum GeneratedScrollExpectedPhaseMode: String, Codable, Equatable, Sendable {
+    case auto
+}
+
+public struct GeneratedScrollLogExpectation: Codable, Equatable, Sendable {
+    public var direction: GeneratedScrollExpectedDirection
+    public var normalEventCount: Int
+    public var momentumEventCount: Int
+    public var normalXTotal: Double
+    public var phaseMode: GeneratedScrollExpectedPhaseMode
+
+    public init(
+        direction: GeneratedScrollExpectedDirection,
+        normalEventCount: Int,
+        momentumEventCount: Int,
+        normalXTotal: Double,
+        phaseMode: GeneratedScrollExpectedPhaseMode
+    ) {
+        self.direction = direction
+        self.normalEventCount = normalEventCount
+        self.momentumEventCount = momentumEventCount
+        self.normalXTotal = normalXTotal
+        self.phaseMode = phaseMode
+    }
+}
+
 public enum GeneratedScrollLogAssertion {
-    public static func evaluate(_ records: [InputLogRecord]) -> GeneratedScrollLogEvaluation {
-        var failures: [String] = []
+    private static let phaseBegan: Int64 = 1
+    private static let phaseChanged: Int64 = 4
+    private static let phaseEnded: Int64 = 8
+
+    public static func evaluate(
+        _ records: [InputLogRecord],
+        expectation: GeneratedScrollLogExpectation
+    ) -> GeneratedScrollLogEvaluation {
+        var failures = expectationFailures(expectation)
+        guard failures.isEmpty, let expectedRecordCount = expectedRecordCount(expectation) else {
+            return GeneratedScrollLogEvaluation(passed: false, failures: failures)
+        }
 
         if records.isEmpty {
             failures.append("生成スクロールログが空です。")
@@ -432,11 +482,14 @@ public enum GeneratedScrollLogAssertion {
         if records.contains(where: { !$0.generatedByNapeGesture }) {
             failures.append("Nape Gesture 生成マークのないイベントが混在しています。")
         }
-        if records.contains(where: { $0.isContinuous == 0 }) {
-            failures.append("continuous/precise ではない scrollWheel が混在しています。")
+        if let invalidContinuous = records.firstIndex(where: { $0.isContinuous != 1 }) {
+            failures.append("isContinuous が 1 ではない record があります。index=\(invalidContinuous)、実際=\(records[invalidContinuous].isContinuous)。")
         }
-        if !timestampsAreMonotonic(records) {
-            failures.append("timestamp が単調増加していません。")
+        if !timestampsAreStrictlyIncreasing(records) {
+            failures.append("timestamp が厳密増加していません。同一 timestamp と順序逆転は許可しません。")
+        }
+        if containsDuplicateRecord(records) {
+            failures.append("同一 record がイベント sequence に重複しています。")
         }
         if records.contains(where: { $0.systemTestScenario != nil }) {
             failures.append("generate-scroll ログに systemTestScenario が混在しています。")
@@ -444,49 +497,262 @@ public enum GeneratedScrollLogAssertion {
         if records.contains(where: { $0.sequenceIndex != nil }) {
             failures.append("generate-scroll ログに system-test 用の sequenceIndex が混在しています。")
         }
-        if records.contains(where: { $0.scrollPhase != 0 && $0.momentumPhase != 0 }) {
-            failures.append("scrollPhase と momentumPhase が同じイベントに混在しています。")
+        if let mixedPhase = records.firstIndex(where: { $0.scrollPhase != 0 && $0.momentumPhase != 0 }) {
+            failures.append("scrollPhase と momentumPhase が同じ record に混在しています。index=\(mixedPhase)。")
         }
-        if momentumStartsBeforeScrollEnds(records) {
-            failures.append("momentumPhase が通常スクロール phase の完了前に出ています。")
+        if let missingPhase = records.firstIndex(where: { $0.scrollPhase == 0 && $0.momentumPhase == 0 }) {
+            failures.append("scrollPhase と momentumPhase の両方がない record があります。index=\(missingPhase)。")
         }
-        if hasMomentum(records), !lastMomentumRecordHasZeroDelta(records) {
-            failures.append("最後の momentumPhase イベントがゼロ delta で終了していません。")
+        if let unknownPhase = records.firstIndex(where: { !hasSupportedAutoPhase($0) }) {
+            let record = records[unknownPhase]
+            failures.append(
+                "phase mode auto で未対応または未知の phase があります。index=\(unknownPhase)、scrollPhase=\(record.scrollPhase)、momentumPhase=\(record.momentumPhase)。"
+            )
         }
-        if records.allSatisfy({ $0.scrollDeltaX == 0 && $0.scrollDeltaY == 0 && $0.pointDeltaX == 0 && $0.pointDeltaY == 0 }) {
-            failures.append("非ゼロのスクロール delta がありません。")
+
+        let normalEventCount = records.filter { $0.scrollPhase != 0 && $0.momentumPhase == 0 }.count
+        if normalEventCount != expectation.normalEventCount {
+            failures.append("通常イベント件数が期待値と一致しません。期待=\(expectation.normalEventCount)、実際=\(normalEventCount)。")
         }
-        if !records.contains(where: { $0.scrollPhase != 0 }) {
-            failures.append("通常スクロール phase がありません。")
+        let momentumEventCount = records.filter { $0.scrollPhase == 0 && $0.momentumPhase == phaseChanged }.count
+        if momentumEventCount != expectation.momentumEventCount {
+            failures.append("momentum changed イベント件数が期待値と一致しません。期待=\(expectation.momentumEventCount)、実際=\(momentumEventCount)。")
+        }
+        if records.count != expectedRecordCount {
+            failures.append("全イベント件数が期待値と一致しません。期待=\(expectedRecordCount)、実際=\(records.count)。")
+        }
+
+        failures.append(contentsOf: autoPhaseFailures(records, expectation: expectation))
+        failures.append(contentsOf: directionAndAmountFailures(records, expectation: expectation))
+
+        let momentumEndIndices = records.indices.filter {
+            records[$0].scrollPhase == 0 && records[$0].momentumPhase == phaseEnded
+        }
+        if momentumEndIndices.count != 1 {
+            failures.append("momentum ended-zero record は 1 件必要です。実際=\(momentumEndIndices.count)。")
+        }
+        if let momentumEndIndex = momentumEndIndices.first {
+            if momentumEndIndex != records.index(before: records.endIndex) {
+                failures.append("momentum ended-zero record は最終 record でなければなりません。終了後 tail は許可しません。")
+            }
+            if !hasZeroDelta(records[momentumEndIndex]) {
+                failures.append("momentum ended record がゼロ delta ではありません。index=\(momentumEndIndex)。")
+            }
         }
 
         return GeneratedScrollLogEvaluation(passed: failures.isEmpty, failures: failures)
     }
 
-    private static func timestampsAreMonotonic(_ records: [InputLogRecord]) -> Bool {
-        zip(records, records.dropFirst()).allSatisfy { $0.timestamp <= $1.timestamp }
+    private static func expectationFailures(_ expectation: GeneratedScrollLogExpectation) -> [String] {
+        var failures: [String] = []
+        if expectation.normalEventCount < 2 {
+            failures.append("phase mode auto の通常イベント件数は 2 以上でなければなりません。")
+        }
+        if expectation.momentumEventCount < 1 {
+            failures.append("phase mode auto の momentum イベント件数は 1 以上でなければなりません。")
+        }
+        if !expectation.normalXTotal.isFinite || expectation.normalXTotal == 0 {
+            failures.append("期待する通常 X 合計量は有限の非ゼロ値でなければなりません。")
+        } else if sign(expectation.normalXTotal) != expectation.direction.sign {
+            failures.append("期待方向と通常 X 合計量の符号が一致していません。")
+        }
+        if roundedInt64(expectation.normalXTotal) == nil {
+            failures.append("期待する通常 X 合計量を Int64 の scrollDeltaX 合計へ変換できません。")
+        }
+        if expectedRecordCount(expectation) == nil {
+            failures.append("期待イベント件数の合計が Int の範囲を超えています。")
+        }
+        return failures
     }
 
-    private static func momentumStartsBeforeScrollEnds(_ records: [InputLogRecord]) -> Bool {
-        guard let firstMomentumIndex = records.firstIndex(where: { $0.momentumPhase != 0 }) else {
+    private static func expectedRecordCount(_ expectation: GeneratedScrollLogExpectation) -> Int? {
+        let (movementCount, movementOverflow) = expectation.normalEventCount.addingReportingOverflow(expectation.momentumEventCount)
+        guard !movementOverflow else {
+            return nil
+        }
+        let (recordCount, terminalOverflow) = movementCount.addingReportingOverflow(1)
+        return terminalOverflow ? nil : recordCount
+    }
+
+    private static func autoPhaseFailures(
+        _ records: [InputLogRecord],
+        expectation: GeneratedScrollLogExpectation
+    ) -> [String] {
+        guard expectation.phaseMode == .auto,
+              let expectedCount = expectedRecordCount(expectation) else {
+            return []
+        }
+
+        let comparableCount = min(records.count, expectedCount)
+        for index in 0..<comparableCount {
+            let expectedPhases = expectedAutoPhases(index: index, expectation: expectation)
+            let record = records[index]
+            if record.scrollPhase != expectedPhases.scroll || record.momentumPhase != expectedPhases.momentum {
+                return [
+                    "phase mode auto の状態列が一致しません。index=\(index)、期待=(scroll:\(expectedPhases.scroll), momentum:\(expectedPhases.momentum))、実際=(scroll:\(record.scrollPhase), momentum:\(record.momentumPhase))。"
+                ]
+            }
+        }
+        return []
+    }
+
+    private static func expectedAutoPhases(
+        index: Int,
+        expectation: GeneratedScrollLogExpectation
+    ) -> (scroll: Int64, momentum: Int64) {
+        if index < expectation.normalEventCount {
+            if index == 0 {
+                return (phaseBegan, 0)
+            }
+            if index == expectation.normalEventCount - 1 {
+                return (phaseEnded, 0)
+            }
+            return (phaseChanged, 0)
+        }
+        if index < expectation.normalEventCount + expectation.momentumEventCount {
+            return (0, phaseChanged)
+        }
+        return (0, phaseEnded)
+    }
+
+    private static func directionAndAmountFailures(
+        _ records: [InputLogRecord],
+        expectation: GeneratedScrollLogExpectation
+    ) -> [String] {
+        var failures: [String] = []
+        var reportedVerticalDelta = false
+        var reportedMissingXChannel = false
+        var reportedSignMismatch = false
+        var reportedDirectionMismatch = false
+        var reportedAmountMismatch = false
+
+        for (index, record) in records.enumerated() where !hasZeroDelta(record) {
+            if !reportedVerticalDelta && (record.pointDeltaY != 0 || record.scrollDeltaY != 0) {
+                failures.append("期待方向は X 軸ですが Y delta が非ゼロです。index=\(index)。")
+                reportedVerticalDelta = true
+            }
+            if !reportedMissingXChannel && (record.pointDeltaX == 0 || record.scrollDeltaX == 0) {
+                failures.append("非ゼロイベントの pointDeltaX と scrollDeltaX は両方とも非ゼロでなければなりません。index=\(index)。")
+                reportedMissingXChannel = true
+            }
+            if record.pointDeltaX != 0, record.scrollDeltaX != 0 {
+                if !reportedSignMismatch && sign(record.pointDeltaX) != sign(record.scrollDeltaX) {
+                    failures.append("pointDeltaX と scrollDeltaX の符号が一致しません。index=\(index)。")
+                    reportedSignMismatch = true
+                }
+                if !reportedDirectionMismatch && (
+                    sign(record.pointDeltaX) != expectation.direction.sign
+                        || sign(record.scrollDeltaX) != expectation.direction.sign
+                ) {
+                    failures.append("非ゼロイベントの X 方向が期待方向 \(expectation.direction.rawValue) と一致しません。index=\(index)。")
+                    reportedDirectionMismatch = true
+                }
+                if !reportedAmountMismatch && quantizedPointDelta(record.pointDeltaX) != record.scrollDeltaX {
+                    failures.append("pointDeltaX と scrollDeltaX の量子化量が一致しません。index=\(index)、point=\(record.pointDeltaX)、scroll=\(record.scrollDeltaX)。")
+                    reportedAmountMismatch = true
+                }
+            }
+        }
+
+        let expectedMovementCount = expectation.normalEventCount + expectation.momentumEventCount
+        for index in 0..<min(records.count, expectedMovementCount) where hasZeroDelta(records[index]) {
+            failures.append("通常または momentum changed 区間にゼロ delta record があります。index=\(index)。")
+            break
+        }
+
+        let normalRecords = records.prefix(min(records.count, expectation.normalEventCount))
+        let pointTotal = normalRecords.reduce(0.0) { $0 + $1.pointDeltaX }
+        if !approximatelyEqual(pointTotal, expectation.normalXTotal) {
+            failures.append("通常区間の pointDeltaX 合計が期待量と一致しません。期待=\(expectation.normalXTotal)、実際=\(pointTotal)。")
+        }
+        if let expectedScrollTotal = roundedInt64(expectation.normalXTotal) {
+            let scrollTotal = scrollDeltaXTotal(normalRecords)
+            if let scrollTotal, scrollTotal != expectedScrollTotal {
+                failures.append("通常区間の scrollDeltaX 合計が期待量と一致しません。期待=\(expectedScrollTotal)、実際=\(scrollTotal)。")
+            } else if scrollTotal == nil {
+                failures.append("通常区間の scrollDeltaX 合計が Int64 の範囲を超えています。")
+            }
+        }
+
+        return failures
+    }
+
+    private static func hasSupportedAutoPhase(_ record: InputLogRecord) -> Bool {
+        let supportedScrollPhases: Set<Int64> = [0, phaseBegan, phaseChanged, phaseEnded]
+        let supportedMomentumPhases: Set<Int64> = [0, phaseChanged, phaseEnded]
+        return supportedScrollPhases.contains(record.scrollPhase)
+            && supportedMomentumPhases.contains(record.momentumPhase)
+    }
+
+    private static func timestampsAreStrictlyIncreasing(_ records: [InputLogRecord]) -> Bool {
+        zip(records, records.dropFirst()).allSatisfy { $0.timestamp < $1.timestamp }
+    }
+
+    private static func containsDuplicateRecord(_ records: [InputLogRecord]) -> Bool {
+        guard records.count > 1 else {
             return false
         }
-        return records[..<firstMomentumIndex].contains(where: { $0.scrollPhase == 0 })
-            || records[firstMomentumIndex...].contains(where: { $0.scrollPhase != 0 })
-    }
-
-    private static func hasMomentum(_ records: [InputLogRecord]) -> Bool {
-        records.contains { $0.momentumPhase != 0 }
-    }
-
-    private static func lastMomentumRecordHasZeroDelta(_ records: [InputLogRecord]) -> Bool {
-        guard let last = records.last(where: { $0.momentumPhase != 0 }) else {
+        for index in 0..<(records.count - 1) where records[(index + 1)...].contains(records[index]) {
             return true
         }
-        return last.scrollDeltaX == 0
-            && last.scrollDeltaY == 0
-            && last.pointDeltaX == 0
-            && last.pointDeltaY == 0
+        return false
+    }
+
+    private static func hasZeroDelta(_ record: InputLogRecord) -> Bool {
+        record.scrollDeltaX == 0
+            && record.scrollDeltaY == 0
+            && record.pointDeltaX == 0
+            && record.pointDeltaY == 0
+    }
+
+    private static func sign(_ value: Double) -> Int {
+        value > 0 ? 1 : -1
+    }
+
+    private static func sign(_ value: Int64) -> Int {
+        value > 0 ? 1 : -1
+    }
+
+    private static func approximatelyEqual(_ lhs: Double, _ rhs: Double) -> Bool {
+        abs(lhs - rhs) <= max(1e-9, abs(rhs) * 1e-9)
+    }
+
+    private static func roundedInt64(_ value: Double) -> Int64? {
+        guard value.isFinite else {
+            return nil
+        }
+        let rounded = value.rounded()
+        guard rounded >= -9_223_372_036_854_775_808.0,
+              rounded < 9_223_372_036_854_775_808.0 else {
+            return nil
+        }
+        return Int64(rounded)
+    }
+
+    private static func scrollDeltaXTotal(_ records: ArraySlice<InputLogRecord>) -> Int64? {
+        var total: Int64 = 0
+        for record in records {
+            let (next, overflow) = total.addingReportingOverflow(record.scrollDeltaX)
+            guard !overflow else {
+                return nil
+            }
+            total = next
+        }
+        return total
+    }
+
+    private static func quantizedPointDelta(_ value: Double) -> Int64? {
+        guard value.isFinite else {
+            return nil
+        }
+        let rounded = value.rounded()
+        if rounded > Double(Int32.max) {
+            return Int64(Int32.max)
+        }
+        if rounded < Double(Int32.min) {
+            return Int64(Int32.min)
+        }
+        return Int64(rounded)
     }
 }
 

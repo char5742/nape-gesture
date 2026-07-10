@@ -383,8 +383,60 @@ run_split_success \
   "generate-scroll space-right analyze-log assert-generated-scroll-log" \
   "$system_dir/generated-space-right-analysis.json" \
   "$system_dir/generated-space-right-analysis.stderr.log" \
-  ".build/debug/nape-gesture analyze-log $system_dir/generated-space-right.jsonl --json --assert-generated-scroll-log" \
-  .build/debug/nape-gesture analyze-log "$system_dir/generated-space-right.jsonl" --json --assert-generated-scroll-log
+  ".build/debug/nape-gesture analyze-log $system_dir/generated-space-right.jsonl --json --assert-generated-scroll-log --expected-direction positive-x --expected-normal-events 30 --expected-momentum-events 8 --expected-normal-x-total 1200 --expected-phase-mode auto" \
+  .build/debug/nape-gesture analyze-log "$system_dir/generated-space-right.jsonl" --json --assert-generated-scroll-log --expected-direction positive-x --expected-normal-events 30 --expected-momentum-events 8 --expected-normal-x-total 1200 --expected-phase-mode auto
+
+run_split_success \
+  "generated scroll auto 39件 fixture assertion" \
+  "$fixtures_dir/generated-scroll-auto-valid-analysis.json" \
+  "$fixtures_dir/generated-scroll-auto-valid-analysis.stderr.log" \
+  ".build/debug/nape-gesture analyze-log Fixtures/generated-scroll-auto-valid.jsonl --json --assert-generated-scroll-log --expected-direction positive-x --expected-normal-events 30 --expected-momentum-events 8 --expected-normal-x-total 1200 --expected-phase-mode auto" \
+  .build/debug/nape-gesture analyze-log Fixtures/generated-scroll-auto-valid.jsonl --json --assert-generated-scroll-log --expected-direction positive-x --expected-normal-events 30 --expected-momentum-events 8 --expected-normal-x-total 1200 --expected-phase-mode auto
+
+for fixture in \
+  Fixtures/generated-scroll-auto-all-began.jsonl \
+  Fixtures/generated-scroll-auto-changed-zero-terminal.jsonl \
+  Fixtures/generated-scroll-auto-continuous-two.jsonl \
+  Fixtures/generated-scroll-auto-duplicate-record.jsonl \
+  Fixtures/generated-scroll-auto-empty.jsonl \
+  Fixtures/generated-scroll-auto-insufficient-normal-x.jsonl \
+  Fixtures/generated-scroll-auto-middle-missing.jsonl \
+  Fixtures/generated-scroll-auto-mixed-signs.jsonl \
+  Fixtures/generated-scroll-auto-normal-ended-missing.jsonl \
+  Fixtures/generated-scroll-auto-order-reversed.jsonl \
+  Fixtures/generated-scroll-auto-phase-missing.jsonl \
+  Fixtures/generated-scroll-auto-phase-mixed.jsonl \
+  Fixtures/generated-scroll-auto-point-scroll-amount-mismatch.jsonl \
+  Fixtures/generated-scroll-auto-point-scroll-sign-mismatch.jsonl \
+  Fixtures/generated-scroll-auto-reversed-direction.jsonl \
+  Fixtures/generated-scroll-auto-same-timestamp.jsonl \
+  Fixtures/generated-scroll-auto-tail-after-ended.jsonl \
+  Fixtures/generated-scroll-auto-truncated-to-one.jsonl \
+  Fixtures/generated-scroll-auto-unknown-phase.jsonl \
+  Fixtures/generated-scroll-auto-zero-sum.jsonl
+do
+  fixture_name=$(basename "$fixture" .jsonl)
+  run_split_expected_failure \
+    "generated scroll $fixture_name expected failure" \
+    "$fixtures_dir/$fixture_name-analysis.json" \
+    "$fixtures_dir/$fixture_name-analysis.stderr.log" \
+    ".build/debug/nape-gesture analyze-log $fixture --json --assert-generated-scroll-log --expected-direction positive-x --expected-normal-events 30 --expected-momentum-events 8 --expected-normal-x-total 1200 --expected-phase-mode auto" \
+    .build/debug/nape-gesture analyze-log "$fixture" --json --assert-generated-scroll-log --expected-direction positive-x --expected-normal-events 30 --expected-momentum-events 8 --expected-normal-x-total 1200 --expected-phase-mode auto
+done
+
+run_split_expected_failure \
+  "sample generated scroll comparison-only fixture assertion" \
+  "$fixtures_dir/sample-generated-scroll-log-assertion.json" \
+  "$fixtures_dir/sample-generated-scroll-log-assertion.stderr.log" \
+  ".build/debug/nape-gesture analyze-log Fixtures/sample-generated-scroll-log.jsonl --json --assert-generated-scroll-log --expected-direction positive-x --expected-normal-events 30 --expected-momentum-events 8 --expected-normal-x-total 1200 --expected-phase-mode auto" \
+  .build/debug/nape-gesture analyze-log Fixtures/sample-generated-scroll-log.jsonl --json --assert-generated-scroll-log --expected-direction positive-x --expected-normal-events 30 --expected-momentum-events 8 --expected-normal-x-total 1200 --expected-phase-mode auto
+
+run_split_expected_failure \
+  "generated scroll explicit phase override expectation unsupported" \
+  "$fixtures_dir/generated-scroll-explicit-phase-mode-unsupported.json" \
+  "$fixtures_dir/generated-scroll-explicit-phase-mode-unsupported.stderr.log" \
+  ".build/debug/nape-gesture analyze-log Fixtures/generated-scroll-auto-valid.jsonl --json --assert-generated-scroll-log --expected-direction positive-x --expected-normal-events 30 --expected-momentum-events 8 --expected-normal-x-total 1200 --expected-phase-mode began" \
+  .build/debug/nape-gesture analyze-log Fixtures/generated-scroll-auto-valid.jsonl --json --assert-generated-scroll-log --expected-direction positive-x --expected-normal-events 30 --expected-momentum-events 8 --expected-normal-x-total 1200 --expected-phase-mode began
 
 run_split_success \
   "sample scroll compare-log" \
