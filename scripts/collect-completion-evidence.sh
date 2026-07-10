@@ -187,6 +187,32 @@ run_combined_success \
     .build/NapeGesture.app \
     "$bundle_dir/verify-bundle-contract"
 
+run_split_expected_failure \
+  "verify-bundle contract artifact dotdot 境界" \
+  "$bundle_dir/verify-bundle-artifact-dotdot.stdout.log" \
+  "$bundle_dir/verify-bundle-artifact-dotdot.stderr.log" \
+  "sh scripts/test-verify-bundle.sh .build/release/nape-gesture .build/NapeGesture.app .build/../.build/NapeGesture.app/unsafe-artifact" \
+  sh scripts/test-verify-bundle.sh \
+    .build/release/nape-gesture \
+    .build/NapeGesture.app \
+    .build/../.build/NapeGesture.app/unsafe-artifact
+
+run_combined_success \
+  "verify-bundle contract artifact 親 symlink fixture" \
+  "$bundle_dir/verify-bundle-artifact-parent-symlink-create.log" \
+  "ln -sfn $repo_root/.build/NapeGesture.app $bundle_dir/verify-bundle-source-ancestor-link" \
+  ln -sfn "$repo_root/.build/NapeGesture.app" "$bundle_dir/verify-bundle-source-ancestor-link"
+
+run_split_expected_failure \
+  "verify-bundle contract artifact 親 symlink 境界" \
+  "$bundle_dir/verify-bundle-artifact-parent-symlink.stdout.log" \
+  "$bundle_dir/verify-bundle-artifact-parent-symlink.stderr.log" \
+  "sh scripts/test-verify-bundle.sh .build/release/nape-gesture .build/NapeGesture.app $bundle_dir/verify-bundle-source-ancestor-link/unsafe-artifact" \
+  sh scripts/test-verify-bundle.sh \
+    .build/release/nape-gesture \
+    .build/NapeGesture.app \
+    "$bundle_dir/verify-bundle-source-ancestor-link/unsafe-artifact"
+
 run_combined_success \
   "GUI smoke 設定作成" \
   "$gui_dir/init-gui-smoke-config.log" \

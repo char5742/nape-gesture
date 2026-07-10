@@ -21,7 +21,7 @@
 - `verify-bundle` は CoreFoundation の type ID を先に確認してから値を比較する。`LSUIElement` の integer `0`、real `0`、string `false`、missing、Boolean `true` はすべて失敗とする。
 - bundle root、`Contents`、`Info.plist`、executable の symlink 境界を拒否する。executable は bundle 内に収まる executable な通常ファイルに限定する。
 - `verify-bundle` の option は `--require-signature` だけを許可し、未知 option、path 欠落、余分な positional を失敗させる。
-- `scripts/test-verify-bundle.sh` は正常 bundle の fresh copy ごとに negative fixture を作る。4つの string identity と `CFBundlePackageType` の alternate / missing / integer、`LSUIElement` の不正型・値・欠落、malformed plist、辞書以外 root、symlink / containment、CLI parse を expected failure とし、stderr の対象キーまたは原因も確認する。artifact 出力先は一括削除せず、bundle 内・repository root・symlink を拒否する。
+- `scripts/test-verify-bundle.sh` は正常 bundle の fresh copy ごとに negative fixture を作る。4つの string identity と `CFBundlePackageType` の alternate / missing / integer、`LSUIElement` の不正型・値・欠落、malformed plist、辞書以外 root、symlink / containment、CLI parse を expected failure とし、stderr の対象キーまたは原因も確認する。artifact 出力先は一括削除せず、存在する最深親の実体 path を解決して bundle 内・repository root・最終 symlink・`../` / 親 symlink 経由の bundle 到達を拒否する。
 - CI、release、completion evidence は同 script の literal 固定値による正例 oracle を実行し、bundle 生成側と verifier の共通定数だけに依存しない。
 - `gui-smoke --config <path> --json --assert` は、runtime を開始せずに `.app` 実行主体で AppKit 内の `.regular` activation policy、設定ウィンドウ、status item `NG`、通常アプリメニュー、status menu の生成契約を機械検査する。`--config` 未指定時は一時 config を使い、ユーザーの通常設定へ書き込まない。
 - CI は bundle 検証と GUI smoke を分ける。active macOS console session がない runner では GUI smoke を warning 付きで skip し、completion evidence では active GUI session 上の `collect-completion-evidence.sh` を hard evidence として採用する。

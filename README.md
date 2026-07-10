@@ -255,7 +255,7 @@ sh scripts/test-verify-bundle.sh \
 
 `bundle-app` は `Info.plist`、実行ファイル、`LICENSE.txt`、`THIRD_PARTY_NOTICES.md` を含む `.app` を作成し、作成直後に同じ検証を実行します。
 `verify-bundle` は既存の `.app` を再検証するためのコマンドです。4つの identity キーと `CFBundlePackageType=APPL` を exact string 型・固定値、`LSUIElement` を exact Boolean 型の `false` として確認し、bundle root、`Contents`、`Info.plist`、実行ファイルなどの symlink を拒否します。実行ファイルは bundle 内の executable な通常ファイルでなければなりません。許可する option は `--require-signature` だけで、未知 option、path 欠落、余分な引数はエラーになります。
-`test-verify-bundle.sh` は固定値の正例 oracle と、fresh copy ごとの identity 型・値、malformed plist、辞書以外 root、symlink、containment、CLI parse の expected failure を検査します。
+`test-verify-bundle.sh` は固定値の正例 oracle と、fresh copy ごとの identity 型・値、malformed plist、辞書以外 root、symlink、containment、CLI parse の expected failure を検査します。artifact 出力先は存在する最深親の実体 path から解決し、`../` や親 symlink を経由した source bundle 内への書き込みも拒否します。
 公開配布前は `verify-bundle --require-signature .build/NapeGesture.app` で署名検証を必須にしてください。
 
 ローカル検証では ad-hoc 署名を使えます。

@@ -32,6 +32,45 @@ case "$artifact_dir" in
   *) artifact_dir="$repo_root/$artifact_dir" ;;
 esac
 
+resolve_creation_path() {
+  input=$1
+  current=/
+  original_ifs=$IFS
+  IFS=/
+  set -f
+  for component in $input; do
+    case "$component" in
+      ""|.)
+        ;;
+      ..)
+        if [ "$current" != / ]; then
+          current=${current%/*}
+          [ -n "$current" ] || current=/
+        fi
+        ;;
+      *)
+        if [ "$current" = / ]; then
+          candidate="/$component"
+        else
+          candidate="$current/$component"
+        fi
+        if [ -e "$candidate" ] || [ -L "$candidate" ]; then
+          current=$(realpath -q "$candidate") || {
+            set +f
+            IFS=$original_ifs
+            return 1
+          }
+        else
+          current=$candidate
+        fi
+        ;;
+    esac
+  done
+  set +f
+  IFS=$original_ifs
+  printf '%s\n' "$current"
+}
+
 if [ ! -x "$binary" ]; then
   printf '%s\n' "nape-gesture binary を実行できません: $binary" >&2
   exit 1
@@ -40,16 +79,25 @@ if [ ! -d "$source_app" ]; then
   printf '%s\n' "検証元 bundle がありません: $source_app" >&2
   exit 1
 fi
-case "$artifact_dir" in
-  /|""|"$repo_root"|"$source_app"|"$source_app"/*)
-    printf '%s\n' "artifact directory が不正です: $artifact_dir" >&2
-    exit 1
-    ;;
-esac
 if [ -L "$artifact_dir" ]; then
   printf '%s\n' "artifact directory に symlink は指定できません: $artifact_dir" >&2
   exit 1
 fi
+source_app_resolved=$(realpath -q "$source_app") || {
+  printf '%s\n' "検証元 bundle の実体 path を解決できません: $source_app" >&2
+  exit 1
+}
+artifact_dir_resolved=$(resolve_creation_path "$artifact_dir") || {
+  printf '%s\n' "artifact directory の実体 path を解決できません: $artifact_dir" >&2
+  exit 1
+}
+case "$artifact_dir_resolved" in
+  /|""|"$repo_root"|"$source_app_resolved"|"$source_app_resolved"/*)
+    printf '%s\n' "artifact directory が不正です: $artifact_dir" >&2
+    exit 1
+    ;;
+esac
+artifact_dir=$artifact_dir_resolved
 
 mkdir -p "$artifact_dir"
 summary_file="$artifact_dir/summary.log"
