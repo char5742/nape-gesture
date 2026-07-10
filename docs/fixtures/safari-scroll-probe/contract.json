@@ -1,7 +1,14 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
+  "probeSchemaVersion": 1,
   "interfaceName": "napeGestureScrollProbe",
   "statusElementId": "status",
+  "runtimeEvidence": {
+    "manifestSchemaVersion": 1,
+    "safariBundleIdentifier": "com.apple.Safari",
+    "pointerMaximumDistance": 2,
+    "successExitCode": 0
+  },
   "fixtures": [
     {
       "scenario": "top-level",
@@ -19,7 +26,23 @@
         "outer.wheel.target",
         "inner",
         "frame"
-      ]
+      ],
+      "measurementPaths": [
+        "outer.x",
+        "outer.y",
+        "outer.wheel.count",
+        "outer.wheel.target",
+        "inner",
+        "frame"
+      ],
+      "resetExpect": {
+        "outer.x": { "comparison": "exact", "value": 0 },
+        "outer.y": { "comparison": "exact", "value": 0 },
+        "outer.wheel.count": { "comparison": "exact", "value": 0 },
+        "outer.wheel.target": { "comparison": "exact", "value": "none" },
+        "inner": { "comparison": "exact", "value": null },
+        "frame": { "comparison": "exact", "value": null }
+      }
     },
     {
       "scenario": "nested",
@@ -53,7 +76,35 @@
         "frame.y",
         "frame.wheel.count",
         "frame.wheel.target"
-      ]
+      ],
+      "measurementPaths": [
+        "outer.x",
+        "outer.y",
+        "outer.wheel.count",
+        "outer.wheel.target",
+        "inner.x",
+        "inner.y",
+        "inner.wheel.count",
+        "inner.wheel.target",
+        "frame.x",
+        "frame.y",
+        "frame.wheel.count",
+        "frame.wheel.target"
+      ],
+      "resetExpect": {
+        "outer.x": { "comparison": "exact", "value": 0 },
+        "outer.y": { "comparison": "exact", "value": 0 },
+        "outer.wheel.count": { "comparison": "exact", "value": 0 },
+        "outer.wheel.target": { "comparison": "exact", "value": "none" },
+        "inner.x": { "comparison": "exact", "value": 0 },
+        "inner.y": { "comparison": "exact", "value": 0 },
+        "inner.wheel.count": { "comparison": "exact", "value": 0 },
+        "inner.wheel.target": { "comparison": "exact", "value": "none" },
+        "frame.x": { "comparison": "exact", "value": 0 },
+        "frame.y": { "comparison": "exact", "value": 0 },
+        "frame.wheel.count": { "comparison": "exact", "value": 0 },
+        "frame.wheel.target": { "comparison": "exact", "value": "none" }
+      }
     },
     {
       "scenario": "frame",
@@ -68,7 +119,19 @@
         "scroll.y",
         "wheel.count",
         "wheel.target"
-      ]
+      ],
+      "measurementPaths": [
+        "scroll.x",
+        "scroll.y",
+        "wheel.count",
+        "wheel.target"
+      ],
+      "resetExpect": {
+        "scroll.x": { "comparison": "exact", "value": 0 },
+        "scroll.y": { "comparison": "exact", "value": 0 },
+        "wheel.count": { "comparison": "exact", "value": 0 },
+        "wheel.target": { "comparison": "exact", "value": "none" }
+      }
     }
   ],
   "assertions": [
@@ -76,65 +139,316 @@
       "id": "generic-generated-fail-closed",
       "fixture": "nested",
       "pointerElementId": "inner",
-      "operation": "generate-scroll --x 1 --y 800 --mode free",
-      "expect": {
-        "outer.x": "unchanged",
-        "outer.y": "unchanged",
-        "inner.x": "unchanged",
-        "inner.y": "unchanged",
-        "inner.wheel.count": "unchanged",
-        "frame.x": "unchanged",
-        "frame.y": "unchanged"
-      }
+      "operations": [
+        {
+          "id": "sync-pid",
+          "kind": "generated-scroll",
+          "parameters": { "x": 1, "y": 800, "mode": "free" },
+          "steps": 1,
+          "delivery": "sync",
+          "pidOverride": true,
+          "routing": { "type": "pid-override" }
+        },
+        {
+          "id": "async-pid",
+          "kind": "generated-scroll",
+          "parameters": { "x": 1, "y": 800, "mode": "free" },
+          "steps": 1,
+          "delivery": "async",
+          "pidOverride": true,
+          "routing": { "type": "pid-override" }
+        }
+      ],
+      "transitions": [
+        {
+          "from": "before",
+          "to": "after",
+          "exitCode": "operation",
+          "expect": {
+            "outer.x": { "comparison": "unchanged" },
+            "outer.y": { "comparison": "unchanged" },
+            "outer.wheel.count": { "comparison": "unchanged" },
+            "outer.wheel.target": { "comparison": "unchanged" },
+            "inner.x": { "comparison": "unchanged" },
+            "inner.y": { "comparison": "unchanged" },
+            "inner.wheel.count": { "comparison": "unchanged" },
+            "inner.wheel.target": { "comparison": "unchanged" },
+            "frame.x": { "comparison": "unchanged" },
+            "frame.y": { "comparison": "unchanged" },
+            "frame.wheel.count": { "comparison": "unchanged" },
+            "frame.wheel.target": { "comparison": "unchanged" }
+          }
+        }
+      ]
     },
     {
       "id": "generic-native-wheel",
       "fixture": "nested",
       "pointerElementId": "inner",
-      "operation": "native-wheel",
-      "expect": {
-        "outer.y": "unchanged",
-        "inner.y": "increased",
-        "inner.wheel.count": "increased"
-      }
+      "operations": [
+        {
+          "id": "native-wheel",
+          "kind": "native-wheel",
+          "parameters": { "direction": "down", "pages": 0.2 },
+          "steps": 1,
+          "delivery": "native",
+          "pidOverride": false,
+          "routing": { "type": "pointer-element" }
+        }
+      ],
+      "transitions": [
+        {
+          "from": "before",
+          "to": "after",
+          "exitCode": "operation",
+          "expect": {
+            "outer.x": { "comparison": "unchanged" },
+            "outer.y": { "comparison": "unchanged" },
+            "outer.wheel.count": { "comparison": "unchanged" },
+            "outer.wheel.target": { "comparison": "unchanged" },
+            "inner.x": { "comparison": "unchanged" },
+            "inner.y": { "comparison": "increased" },
+            "inner.wheel.count": { "comparison": "increased" },
+            "inner.wheel.target": { "comparison": "exact", "value": "generic-1" },
+            "frame.x": { "comparison": "unchanged" },
+            "frame.y": { "comparison": "unchanged" },
+            "frame.wheel.count": { "comparison": "unchanged" },
+            "frame.wheel.target": { "comparison": "unchanged" }
+          }
+        }
+      ]
     },
     {
-      "id": "vertical-frame-with-minor-horizontal-delta",
+      "id": "vertical-only-frame",
       "fixture": "nested",
       "pointerElementId": "frame",
-      "operation": "generate-scroll --x 1 --y 800 --mode free",
-      "expect": {
-        "outer.x": "unchanged",
-        "outer.y": "unchanged",
-        "inner.x": "unchanged",
-        "inner.y": "unchanged",
-        "frame.x": "unchanged",
-        "frame.y": "increased",
-        "frame.wheel.count": "unchanged"
-      }
+      "operations": [
+        {
+          "id": "sync-pid",
+          "kind": "generated-scroll",
+          "parameters": { "x": 1, "y": 800, "mode": "free" },
+          "steps": 1,
+          "delivery": "sync",
+          "pidOverride": true,
+          "routing": { "type": "pid-override" }
+        },
+        {
+          "id": "async-pid",
+          "kind": "generated-scroll",
+          "parameters": { "x": 1, "y": 800, "mode": "free" },
+          "steps": 1,
+          "delivery": "async",
+          "pidOverride": true,
+          "routing": { "type": "pid-override" }
+        }
+      ],
+      "transitions": [
+        {
+          "from": "before",
+          "to": "after",
+          "exitCode": "operation",
+          "expect": {
+            "outer.x": { "comparison": "unchanged" },
+            "outer.y": { "comparison": "unchanged" },
+            "outer.wheel.count": { "comparison": "unchanged" },
+            "outer.wheel.target": { "comparison": "unchanged" },
+            "inner.x": { "comparison": "unchanged" },
+            "inner.y": { "comparison": "unchanged" },
+            "inner.wheel.count": { "comparison": "unchanged" },
+            "inner.wheel.target": { "comparison": "unchanged" },
+            "frame.x": { "comparison": "unchanged" },
+            "frame.y": { "comparison": "increased" },
+            "frame.wheel.count": { "comparison": "unchanged" },
+            "frame.wheel.target": { "comparison": "unchanged" }
+          }
+        }
+      ]
     },
     {
-      "id": "long-article-uses-outer-target",
+      "id": "long-article",
       "fixture": "nested",
       "pointerElementId": "article",
-      "operation": "generate-scroll --y 800 --mode free",
-      "expect": {
-        "outer.y": "increased",
-        "outer.wheel.count": "unchanged",
-        "inner.y": "unchanged",
-        "frame.y": "unchanged"
-      }
+      "operations": [
+        {
+          "id": "sync-pid",
+          "kind": "generated-scroll",
+          "parameters": { "x": 0, "y": 800, "mode": "free" },
+          "steps": 1,
+          "delivery": "sync",
+          "pidOverride": true,
+          "routing": { "type": "pid-override" }
+        },
+        {
+          "id": "async-pid",
+          "kind": "generated-scroll",
+          "parameters": { "x": 0, "y": 800, "mode": "free" },
+          "steps": 1,
+          "delivery": "async",
+          "pidOverride": true,
+          "routing": { "type": "pid-override" }
+        }
+      ],
+      "transitions": [
+        {
+          "from": "before",
+          "to": "after",
+          "exitCode": "operation",
+          "expect": {
+            "outer.x": { "comparison": "unchanged" },
+            "outer.y": { "comparison": "increased" },
+            "outer.wheel.count": { "comparison": "unchanged" },
+            "outer.wheel.target": { "comparison": "unchanged" },
+            "inner.x": { "comparison": "unchanged" },
+            "inner.y": { "comparison": "unchanged" },
+            "inner.wheel.count": { "comparison": "unchanged" },
+            "inner.wheel.target": { "comparison": "unchanged" },
+            "frame.x": { "comparison": "unchanged" },
+            "frame.y": { "comparison": "unchanged" },
+            "frame.wheel.count": { "comparison": "unchanged" },
+            "frame.wheel.target": { "comparison": "unchanged" }
+          }
+        }
+      ]
     },
     {
-      "id": "top-level-web-area-scrollbars",
+      "id": "top-level",
       "fixture": "top-level",
       "pointerElementId": "top-content",
-      "operation": "generate-scroll --x 1600 --y 800 --mode free",
-      "expect": {
-        "outer.x": "increased",
-        "outer.y": "increased",
-        "outer.wheel.count": "unchanged"
-      }
+      "operations": [
+        {
+          "id": "sync-pid",
+          "kind": "generated-scroll",
+          "parameters": { "x": 1600, "y": 800, "mode": "free" },
+          "steps": 1,
+          "delivery": "sync",
+          "pidOverride": true,
+          "routing": { "type": "pid-override" }
+        },
+        {
+          "id": "async-pid",
+          "kind": "generated-scroll",
+          "parameters": { "x": 1600, "y": 800, "mode": "free" },
+          "steps": 1,
+          "delivery": "async",
+          "pidOverride": true,
+          "routing": { "type": "pid-override" }
+        },
+        {
+          "id": "async-normal",
+          "kind": "generated-scroll",
+          "parameters": { "x": 1600, "y": 800, "mode": "free" },
+          "steps": 1,
+          "delivery": "async",
+          "pidOverride": false,
+          "routing": {
+            "type": "pointer-window-owner",
+            "ownerPrerequisite": {
+              "bundleIdentifier": "com.apple.Safari",
+              "processIdSource": "manifest.safari.processId"
+            }
+          }
+        }
+      ],
+      "transitions": [
+        {
+          "from": "before",
+          "to": "after",
+          "exitCode": "operation",
+          "expect": {
+            "outer.x": { "comparison": "increased" },
+            "outer.y": { "comparison": "increased" },
+            "outer.wheel.count": { "comparison": "unchanged" },
+            "outer.wheel.target": { "comparison": "unchanged" },
+            "inner": { "comparison": "unchanged" },
+            "frame": { "comparison": "unchanged" }
+          }
+        }
+      ]
+    },
+    {
+      "id": "frame-edge",
+      "fixture": "nested",
+      "pointerElementId": "frame",
+      "operations": [
+        {
+          "id": "sync-pid",
+          "kind": "generated-scroll",
+          "sequence": [
+            {
+              "id": "reachEnd",
+              "parameters": { "x": 0, "y": 10000, "mode": "free" },
+              "steps": 1
+            },
+            {
+              "id": "edge",
+              "parameters": { "x": 0, "y": 800, "mode": "free" },
+              "steps": 1
+            }
+          ],
+          "delivery": "sync",
+          "pidOverride": true,
+          "routing": { "type": "pid-override" }
+        },
+        {
+          "id": "async-pid",
+          "kind": "generated-scroll",
+          "sequence": [
+            {
+              "id": "reachEnd",
+              "parameters": { "x": 0, "y": 10000, "mode": "free" },
+              "steps": 1
+            },
+            {
+              "id": "edge",
+              "parameters": { "x": 0, "y": 800, "mode": "free" },
+              "steps": 1
+            }
+          ],
+          "delivery": "async",
+          "pidOverride": true,
+          "routing": { "type": "pid-override" }
+        }
+      ],
+      "transitions": [
+        {
+          "from": "before",
+          "to": "atEnd",
+          "exitCode": "reachEnd",
+          "expect": {
+            "outer.x": { "comparison": "unchanged" },
+            "outer.y": { "comparison": "unchanged" },
+            "outer.wheel.count": { "comparison": "unchanged" },
+            "outer.wheel.target": { "comparison": "unchanged" },
+            "inner.x": { "comparison": "unchanged" },
+            "inner.y": { "comparison": "unchanged" },
+            "inner.wheel.count": { "comparison": "unchanged" },
+            "inner.wheel.target": { "comparison": "unchanged" },
+            "frame.x": { "comparison": "unchanged" },
+            "frame.y": { "comparison": "increased" },
+            "frame.wheel.count": { "comparison": "unchanged" },
+            "frame.wheel.target": { "comparison": "unchanged" }
+          }
+        },
+        {
+          "from": "atEnd",
+          "to": "after",
+          "exitCode": "edge",
+          "expect": {
+            "outer.x": { "comparison": "unchanged" },
+            "outer.y": { "comparison": "unchanged" },
+            "outer.wheel.count": { "comparison": "unchanged" },
+            "outer.wheel.target": { "comparison": "unchanged" },
+            "inner.x": { "comparison": "unchanged" },
+            "inner.y": { "comparison": "unchanged" },
+            "inner.wheel.count": { "comparison": "unchanged" },
+            "inner.wheel.target": { "comparison": "unchanged" },
+            "frame.x": { "comparison": "unchanged" },
+            "frame.y": { "comparison": "unchanged" },
+            "frame.wheel.count": { "comparison": "unchanged" },
+            "frame.wheel.target": { "comparison": "unchanged" }
+          }
+        }
+      ]
     }
   ]
 }
