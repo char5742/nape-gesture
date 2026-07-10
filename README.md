@@ -141,8 +141,9 @@ swift run nape-gesture init-config --vendor-id <ID> --product-id <ID> --usage-pa
 | `bundle-app` / `verify-bundle` | `.app` を作成し、Info.plist、署名、同梱物、通常 GUI 設定を検証する |
 
 `system-test --post-to-pid` は Reference Target App の sink 診断専用です。
-`generate-scroll --post-to-pid` は Codex などの自動化ホスト window がポインタ位置を覆う場合の画面証跡診断専用です。通常 runtime は引き続きポインタ直下の通常 window owner を対象にします。
-完成証跡は配送経路ごとに分けます。Spaces は `.cghidEventTap`、通常アプリ内スクロールはポインタ直下 PID への CGEvent / AX Web fallback、Reference Target App の受信は `analyze-target-log --assert-has-foreground-capture` を使います。
+`generate-scroll --post-to-pid` は Codex などの自動化ホスト window がポインタ位置を覆う場合の画面証跡診断専用です。値欠落、重複、未知 option、余分な positional argument は実イベント投稿前に拒否します。通常 runtime は引き続きポインタ直下の通常 window owner を対象にします。
+完成証跡は配送経路ごとに分けます。Spaces は `.cghidEventTap`、通常アプリ内スクロールはポインタ直下 PID への CGEvent / AX Web fallback、Reference Target App の受信は `analyze-target-log --assert-has-foreground-capture` を使います。Web content の AX fallback は hit element から最も近い scroll container だけを選び、nested target を解決できない場合は outer page を無条件に成功扱いしません。
+AX scrollbar set は Web の `wheel` handler を発火せず、公開 AX tree が generic overflow の境界を省略する場合は通常 wheel と同じ nested routing を保証できません。成立範囲、Computer Use 比較、再現 fixture は [Safari scroll 配送比較](docs/safari-scroll-delivery-verification.md) を参照してください。この項目は一部完了であり、Issue #102 取り込み後の最終 Safari 証跡再取得が必要です。
 `system-test run --scenario kill-switch` は未マークの `Control + Option + Command + G` を interval 付きの `keyDown` / `keyUp` として投稿し、daemon 停止ログと target log 漏れなしを確認します。
 
 <details>

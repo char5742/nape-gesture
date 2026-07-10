@@ -10,6 +10,8 @@ struct GenerateScrollCommand {
     }
 
     func run() throws {
+        try validateOptions()
+
         let deltaX = try doubleValue(for: "--x", defaultValue: 0)
         let deltaY = try doubleValue(for: "--y", defaultValue: 0)
         let steps = try intValue(for: "--steps", defaultValue: 1)
@@ -79,6 +81,47 @@ struct GenerateScrollCommand {
             }
         }
         poster.waitForPendingAXScroll()
+    }
+
+    private func validateOptions() throws {
+        let valueOptions: Set<String> = [
+            "--x",
+            "--y",
+            "--steps",
+            "--interval",
+            "--phase",
+            "--momentum-steps",
+            "--momentum-decay",
+            "--momentum-scale",
+            "--mode",
+            "--ax-delivery",
+            "--post-to-pid"
+        ]
+        let flagOptions: Set<String> = ["--dry-run", "--log-json", "--json"]
+        var seen: Set<String> = []
+        var index = options.startIndex
+
+        while index < options.endIndex {
+            let option = options[index]
+            guard valueOptions.contains(option) || flagOptions.contains(option) else {
+                if option.hasPrefix("-") {
+                    throw ToolError.invalidValue("generate-scroll option", "未知の option です: \(option)")
+                }
+                throw ToolError.invalidValue("generate-scroll positional argument", option)
+            }
+            guard seen.insert(option).inserted else {
+                throw ToolError.invalidValue(option, "同じ option は複数回指定できません。")
+            }
+
+            index = options.index(after: index)
+            guard valueOptions.contains(option) else {
+                continue
+            }
+            guard index < options.endIndex, !options[index].hasPrefix("--") else {
+                throw ToolError.missingValue(option)
+            }
+            index = options.index(after: index)
+        }
     }
 
     private func doubleValue(for name: String, defaultValue: Double) throws -> Double {

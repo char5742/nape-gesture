@@ -161,6 +161,12 @@ run_combined_success \
   .build/debug/nape-gesture-core-tests
 
 run_combined_success \
+  "CGEvent scroll probe typecheck" \
+  "$build_dir/probe-cgevent-scroll-delivery-typecheck.log" \
+  "swiftc -typecheck scripts/probe-cgevent-scroll-delivery.swift" \
+  swiftc -typecheck scripts/probe-cgevent-scroll-delivery.swift
+
+run_combined_success \
   "release build" \
   "$build_dir/swift-build-release.log" \
   "swift build -c release --scratch-path .build" \
@@ -385,6 +391,12 @@ run_split_success \
   "$system_dir/generated-space-right-analysis.stderr.log" \
   ".build/debug/nape-gesture analyze-log $system_dir/generated-space-right.jsonl" \
   .build/debug/nape-gesture analyze-log "$system_dir/generated-space-right.jsonl"
+
+run_combined_success \
+  "generate-scroll CLI expected failure" \
+  "$system_dir/generate-scroll-cli-expected-failure.log" \
+  "sh scripts/check-generate-scroll-cli.sh .build/debug/nape-gesture" \
+  sh scripts/check-generate-scroll-cli.sh .build/debug/nape-gesture
 
 run_split_success \
   "sample scroll compare-log" \

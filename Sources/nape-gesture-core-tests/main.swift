@@ -1478,6 +1478,184 @@ func testScrollEventPhaseEncoderSeparatesScrollAndMomentumPhases() {
     )
 }
 
+func testAXScrollTargetSelectorPrefersNearestNestedContainer() {
+    let nodes = [
+        AXScrollTargetNode(role: "AXStaticText", frame: AXScrollTargetFrame(width: 80, height: 20)),
+        AXScrollTargetNode(role: "AXWebArea", frame: AXScrollTargetFrame(width: 500, height: 1_500)),
+        AXScrollTargetNode(
+            role: "AXScrollArea",
+            frame: AXScrollTargetFrame(width: 500, height: 300),
+            scrollbarAxes: [.vertical]
+        ),
+        AXScrollTargetNode(role: "AXWebArea", frame: AXScrollTargetFrame(width: 1_000, height: 2_500)),
+        AXScrollTargetNode(
+            role: "AXScrollArea",
+            frame: AXScrollTargetFrame(width: 1_000, height: 700),
+            scrollbarAxes: [.vertical]
+        )
+    ]
+
+    expect(
+        AXScrollTargetSelector.select(nodes: nodes, requestedAxes: [.vertical]) == .target(nodeIndex: 2),
+        "nested WebArea の最も近い AXScrollArea を outer より優先する"
+    )
+}
+
+func testAXScrollTargetSelectorDoesNotPromoteMissingNestedAxisToOuter() {
+    let nodes = [
+        AXScrollTargetNode(role: "AXWebArea", frame: AXScrollTargetFrame(width: 500, height: 1_500)),
+        AXScrollTargetNode(
+            role: "AXScrollArea",
+            frame: AXScrollTargetFrame(width: 500, height: 300),
+            scrollbarAxes: [.vertical]
+        ),
+        AXScrollTargetNode(role: "AXWebArea", frame: AXScrollTargetFrame(width: 2_000, height: 2_500)),
+        AXScrollTargetNode(
+            role: "AXScrollArea",
+            frame: AXScrollTargetFrame(width: 1_000, height: 700),
+            scrollbarAxes: [.horizontal, .vertical]
+        )
+    ]
+
+    expect(
+        AXScrollTargetSelector.select(nodes: nodes, requestedAxes: [.horizontal, .vertical])
+            == .blocked(.nearestContainerMissingScrollbars),
+        "nested container が要求軸を欠く場合は outer へ昇格しない"
+    )
+}
+
+func testAXScrollTargetSelectorFailsClosedForAmbiguousNestedContent() {
+    let explicitRegionNodes = [
+        AXScrollTargetNode(role: "AXGroup", frame: AXScrollTargetFrame(width: 536, height: 136)),
+        AXScrollTargetNode(
+            role: "AXGroup",
+            frame: AXScrollTargetFrame(width: 608, height: 511),
+            clippedDescendantAxes: [.vertical]
+        ),
+        AXScrollTargetNode(role: "AXWebArea", frame: AXScrollTargetFrame(width: 1_000, height: 2_500)),
+        AXScrollTargetNode(
+            role: "AXScrollArea",
+            frame: AXScrollTargetFrame(width: 1_000, height: 700),
+            scrollbarAxes: [.vertical]
+        )
+    ]
+    let omittedRegionNodes = [
+        AXScrollTargetNode(role: "AXGroup", frame: AXScrollTargetFrame(width: 600, height: 1_500)),
+        AXScrollTargetNode(role: "AXWebArea", frame: AXScrollTargetFrame(width: 1_000, height: 2_500)),
+        AXScrollTargetNode(
+            role: "AXScrollArea",
+            frame: AXScrollTargetFrame(width: 1_000, height: 700),
+            scrollbarAxes: [.vertical]
+        )
+    ]
+
+    expect(
+        AXScrollTargetSelector.select(nodes: explicitRegionNodes, requestedAxes: [.vertical])
+            == .blocked(.ambiguousDescendant),
+        "内側 group が AX child を clip する場合は outer を選ばない"
+    )
+    expect(
+        AXScrollTargetSelector.select(nodes: omittedRegionNodes, requestedAxes: [.vertical])
+            == .blocked(.ambiguousDescendant),
+        "AX tree から内側境界が省略されても大きな内側 group 上では outer を選ばない"
+    )
+}
+
+func testAXScrollTargetSelectorKeepsTopLevelScroll() {
+    let nodes = [
+        AXScrollTargetNode(role: "AXStaticText", frame: AXScrollTargetFrame(width: 120, height: 20)),
+        AXScrollTargetNode(role: "AXGroup", frame: AXScrollTargetFrame(width: 2_000, height: 2_500)),
+        AXScrollTargetNode(role: "AXWebArea", frame: AXScrollTargetFrame(width: 2_000, height: 2_500)),
+        AXScrollTargetNode(
+            role: "AXScrollArea",
+            frame: AXScrollTargetFrame(width: 1_000, height: 700),
+            scrollbarAxes: [.horizontal, .vertical]
+        )
+    ]
+
+    expect(
+        AXScrollTargetSelector.select(nodes: nodes, requestedAxes: [.vertical]) == .target(nodeIndex: 3),
+        "document 全体と同じ extent の top-level content では縦 scrollbar を維持する"
+    )
+    expect(
+        AXScrollTargetSelector.select(nodes: nodes, requestedAxes: [.horizontal]) == .target(nodeIndex: 3),
+        "document 全体と同じ extent の top-level content では横 scrollbar を維持する"
+    )
+}
+
+func testAXScrollTargetSelectorDoesNotTreatLookupEarlyReturnAsSuccess() {
+    let nestedWithoutContainer = [
+        AXScrollTargetNode(role: "AXWebArea", frame: AXScrollTargetFrame(width: 500, height: 1_500)),
+        AXScrollTargetNode(role: "AXGroup", frame: AXScrollTargetFrame(width: 500, height: 300)),
+        AXScrollTargetNode(role: "AXWebArea", frame: AXScrollTargetFrame(width: 2_000, height: 2_500)),
+        AXScrollTargetNode(
+            role: "AXScrollArea",
+            frame: AXScrollTargetFrame(width: 1_000, height: 700),
+            scrollbarAxes: [.vertical]
+        )
+    ]
+    let nonWeb = [
+        AXScrollTargetNode(role: "AXButton", frame: AXScrollTargetFrame(width: 80, height: 30)),
+        AXScrollTargetNode(role: "AXWindow", frame: AXScrollTargetFrame(width: 1_000, height: 700))
+    ]
+
+    expect(
+        AXScrollTargetSelector.select(nodes: nestedWithoutContainer, requestedAxes: [.vertical])
+            == .blocked(.nearestWebAreaContainerUnavailable),
+        "nested WebArea の container lookup が途切れた場合は outer を成功扱いしない"
+    )
+    expect(
+        AXScrollTargetSelector.select(nodes: nonWeb, requestedAxes: [.vertical]) == .notFound,
+        "WebArea lookup がない early return は target 解決済みとしない"
+    )
+}
+
+func testAXScrollValuePlannerDistinguishesBoundaryAndLookupFailure() {
+    expect(
+        AXScrollValuePlanner.plan(
+            requests: [AXScrollValueRequest(axis: .vertical, delta: 800)],
+            currentValues: [.vertical: 0.25],
+            scale: 3_200
+        ) == .updates([AXScrollValueUpdate(axis: .vertical, currentValue: 0.25, nextValue: 0.5)]),
+        "解決済み scrollbar は normalized value update を作る"
+    )
+    expect(
+        AXScrollValuePlanner.plan(
+            requests: [AXScrollValueRequest(axis: .vertical, delta: 800)],
+            currentValues: [.vertical: 1],
+            scale: 3_200
+        ) == .noChange,
+        "端到達は lookup failure ではなく noChange とする"
+    )
+    expect(
+        AXScrollValuePlanner.plan(
+            requests: [AXScrollValueRequest(axis: .vertical, delta: 800)],
+            currentValues: [:],
+            scale: 3_200
+        ) == .unavailable,
+        "要求軸の current value 欠落は処理済みにしない"
+    )
+}
+
+func testAXScrollTargetCacheKeyIncludesResolvedTargetIdentity() {
+    let nested = AXScrollTargetCacheKey(
+        processID: 42,
+        windowNumber: 7,
+        pointX: 400,
+        pointY: 300,
+        targetIdentity: 100
+    )
+    let outer = AXScrollTargetCacheKey(
+        processID: 42,
+        windowNumber: 7,
+        pointX: 400,
+        pointY: 300,
+        targetIdentity: 200
+    )
+
+    expect(nested != outer, "同じ PID・window・座標でも修正後 target が異なる cache key を再利用しない")
+}
+
 func testTargetDeviceGateOnlyHandlesRecentTargetActivity() {
     var gate = TargetDeviceGateState(
         configuration: TargetDeviceGateConfiguration(
@@ -2307,6 +2485,13 @@ testInputAssociationAnalyzerAcceptsSecondAndNanosecondTimestamps()
 testScrollGenerationPlannerAutoPhases()
 testScrollGenerationPlannerPhaseOverrideAndMomentum()
 testScrollEventPhaseEncoderSeparatesScrollAndMomentumPhases()
+testAXScrollTargetSelectorPrefersNearestNestedContainer()
+testAXScrollTargetSelectorDoesNotPromoteMissingNestedAxisToOuter()
+testAXScrollTargetSelectorFailsClosedForAmbiguousNestedContent()
+testAXScrollTargetSelectorKeepsTopLevelScroll()
+testAXScrollTargetSelectorDoesNotTreatLookupEarlyReturnAsSuccess()
+testAXScrollValuePlannerDistinguishesBoundaryAndLookupFailure()
+testAXScrollTargetCacheKeyIncludesResolvedTargetIdentity()
 testTargetDeviceGateOnlyHandlesRecentTargetActivity()
 testTargetDeviceGateKeepsHandlingWhileActivationButtonIsDown()
 testTargetDeviceGateUsesAssociationWindowFromSettings()

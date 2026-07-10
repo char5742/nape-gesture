@@ -71,9 +71,13 @@
 
 - 通常スクロールのフェーズは `scrollPhase`、慣性は `momentumPhase` に分離されている
 - `generate-scroll --dry-run --log-json` で比較可能な JSON Lines を出せる
+- `generate-scroll` の value option は値欠落を拒否し、未知 option、重複 option、余分な positional argument の expected failure を CI / completion で確認している
 - `system-test run --dry-run --log-json` で生成予定イベントを保存し、`systemTestScenario` / `sequenceIndex` つきで `analyze-log --json --assert-system-scenario <name>` によるシナリオ別機械判定を通している
 - `Ctrl + ←/→` などのショートカット送信を最終解として前提化していない
 - Finder、Safari、Mission Control、Spaces で必要な実機検証が明記されている
+- Safari Web fallback は application hit-test から最も近い scroll container を選び、nested の軸不足・lookup failure・曖昧な container で outer scrollbar を成功扱いしていない
+- nested frame、generic overflow、top-level、端到達、Computer Use、CGEvent source / tap / field の比較が保存され、AX set が wheel handler を発火しない制約を完了済みと表現していない
+- Safari 証跡に時刻ドメインが関係する場合、Issue #102 の変更を重複実装せず、取り込み後の head で最終再取得する
 
 ## UI / Doctor / 権限導線変更
 

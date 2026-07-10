@@ -2,59 +2,55 @@
 
 ## 状態
 
-採択
+採択（公開 AX API の成立範囲に限定）
 
 ## 背景
 
-`horizontal-scroll` の Safari 実動作確認で、`CGEvent` の水平 delta、phase、precise / continuous field は生成されていたが、Safari Web content の `scrollX` は変化しなかった。
-Reference Target App でも `.cghidEventTap` / `.cgSessionEventTap` へ投稿した scrollWheel は `globalMonitor` だけに現れ、前面 AppKit window の通常受信経路に入らなかった。
+`horizontal-scroll` の Safari 実動作確認では、`CGEvent` に水平 delta、phase、precise / continuous field があっても Web content の `scrollX` / `scrollY` は変化しなかった。
+Reference Target App では `postToPid` が `sendEvent` / `localMonitor` に入る一方、`.cghidEventTap` / `.cgSessionEventTap` は foreground AppKit 受信の代替にならなかった。
+Safari の top-level `AXScrollArea` scrollbar へ normalized `AXValue` を設定すると画面は動いたため、初期実装は `AXWebArea` ancestor の scrollbar を補助経路にした。
 
-一方で、`postToPid` で前面またはポインタ直下のアプリへ投稿した scrollWheel は Reference Target App の `sendEvent` / `localMonitor` に入り、`analyze-target-log --assert-has-generated-event --assert-has-foreground-capture` を通過した。
-Safari Web content では、document の `maxX` がある検証ページでも CGEvent 合成 scrollWheel は水平 scroll root を動かさなかったが、`AXWebArea` ancestor から horizontal scrollbar value を設定すると `scrollX` が変化した。
-同じく CGEvent 合成 scrollWheel 単体では縦スクロールの `scrollY` も安定した完成証跡にできないため、通常の `.free` スクロールでも `AXWebArea` が公開する vertical scrollbar を補助経路にする。
-検証中、UserNotificationCenter の権限通知 overlay が `AXUIElementCopyElementAtPosition` の hit-test を奪い、画面上は Safari Web content に見える位置でも `AXSystemDialog` が返るケースがあった。
-また、AX scrollbar への連続 set は画面側への反映が非同期であり、各 step で直前の `AXValue` を読み直すと古い値を基準に後続 delta を上書きすることが分かった。
+ただし、body scroll と内側 `overflow:auto` を持つ review ページでは、内側領域上の生成が `outer=508 / inner=0 / wheel=0`、Computer Use が `outer=0 / inner=1488 / wheel=1 / target=content` だった。
+top-level scrollbar の set 成功だけを配送成功とすると、ポインタに近い nested target と Web の wheel semantics を迂回する。
+また、AX scrollbar への連続 set は画面反映が非同期であり、各 step で実値だけを読み直すと古い値で後続 delta を失う。
 
 ## 決定
 
-- 通常アプリ内スクロールに相当する `.free` / `.horizontal` は、現在のポインタ直下にある layer 0 window を `CGWindowListCopyWindowInfo` で特定し、その window owner PID へ内部 API の `CGEvent.postToPid` で配送する。CLI の `--post-to-pid` override とは区別する。
-- 同時に `kCGMouseEventWindowUnderMousePointer` と `kCGMouseEventWindowUnderMousePointerThatCanHandleThisEvent` を設定し、対象 window をイベントに明示する。
-- `.horizontal` は、ポインタ直下の AX element から ancestor を辿り、`AXWebArea` 配下の `AXHorizontalScrollBar` が見つかる場合は CGEvent を投稿せず normalized `AXValue` を delta に応じて更新する。
-- `.free` は、ポインタ直下の `AXWebArea` 配下に horizontal / vertical scrollbar が見つかる場合、対応する delta だけ normalized `AXValue` を更新する。要求された AX 対象軸を事前に全て解決できた場合だけ AX 成功扱いにし、片軸だけ見つかった斜め入力で残りの delta を捨てない。上下限で値が変わらない軸は解決済みとして扱い、動ける他軸だけを更新する。
-- AX fallback はアプリ名で分岐しない。Safari 固有対応ではなく、Accessibility が公開する Web content の scrollbar への補助経路として扱う。
-- AX hit-test が通知や権限ダイアログなど別 PID の overlay を返しても、`CGWindowListCopyWindowInfo` で得たポインタ直下の通常 window owner PID を正とする。`AXUIElementCreateApplication(PID)` を渡した application 固定 `AXUIElementCopyElementAtPosition` を第一経路にし、対象 AXWindow / app tree の探索は fallback にする。
-- runtime の event tap 経路では AX fallback、同じ入力の CGEvent fallback、離散ショートカットを serial queue に載せ、tap callback 自体を AX tree 探索で止めず、同経路内の生成順序も維持する。AX request がない Spaces `.forcedHorizontal` は queue 待ちを作らず従来どおり同期投稿する。CLI / system-test は実動作証跡を取りやすいよう同期実行を既定にする。
-- daemon 起動時と activation button 押下時にポインタ直下 target の水平 / 垂直 Web capability を prewarm する。override PID が同じでポインタが直近 window bounds 内にある成功 target は 500ms、成功した target PID / window / pointer の scrollbar と最後に設定した normalized value は 250ms、探索を完了して非 Web と判定した結果は軸別に 500ms cache する。window target 不在や AX timeout / unavailable は miss cache せず、期限切れの non-Web entry は次の AX 処理時に破棄する。value cache 期限後は要素を捨てず実値だけ再取得し、非同期反映前の古い値で delta を失わない。
-- AX API の 1 call timeout は 20ms、prewarm 全体は 40ms、実配送の探索全体は 120ms、async enqueue から fallback までの最大待ち時間は 160ms とする。application 固定 hit-test が成功した場合は ancestor だけを確認し、ポインタ下が非 Web 要素なら window 全体を探索せず CGEvent fallback へ進む。
-- async 実配送の performance log は enqueue 時の provisional record と serial queue 内の実配送 completion record を同じ command 単位の `operationID` で結ぶ。解析時は completion の `postStartedAtNanoseconds` / `postFinishedAtNanoseconds` を使い、completion がなく schema 2 の `deliveryDeferred=true` のまま残った配送は baseline を通さない。
-- `generate-scroll --post-to-pid <PID>` は自動化ホストの window がポインタ位置を覆う検証環境だけで使う診断用 override とする。通常 runtime のポインタ直下 window owner 選択は変更しない。
-- Spaces 向けの `.forcedHorizontal` は従来どおり `.cghidEventTap` を維持する。macOS のグローバル操作候補と通常アプリ内スクロールは配送経路を分ける。
-- Safari Web content の完成判定では、CGEvent 合成 scrollWheel 単体ではなく、AX fallback 後の `scrollX` 変化を画面反映証跡として採用する。
+- `.free` / `.horizontal` の CGEvent fallback は、ポインタ直下の layer 0 window owner PID を `CGWindowListCopyWindowInfo` で特定して `postToPid` する。Spaces の `.forcedHorizontal` は `.cghidEventTap` を維持する。
+- `kCGMouseEventWindowUnderMousePointer` と `kCGMouseEventWindowUnderMousePointerThatCanHandleThisEvent` に対象 window を設定する。
+- Web fallback は `AXUIElementCreateApplication(PID)` による application-scoped hit-test の結果から ancestor を上昇し、最初の `AXWebArea` に対応する最も近い `AXScrollArea` または scrollbar 属性を持つ container だけを候補にする。window / app tree の descending 探索は行わない。
+- nested frame の container を top-level より優先する。最も近い container が要求軸を全て公開しない場合は、残りの軸を捨てたり outer container へ昇格したりせず CGEvent fallback へ閉じる。
+- AX tree に named region の子 clipping、または outer viewport より大きく document 全体とは異なる group が見えるのに scrollbar がない場合は、outer AX set を行わない。
+- 対応 scrollbar と全要求軸の current value を解決できた場合だけ normalized `AXValue` を更新する。上下限で値が変わらない場合は target 解決済みの `noChange` とし、lookup failure と分けて CGEvent を重ねない。
+- 複数軸の途中 set failure は適用済み軸を rollback する。rollback 自体が失敗した場合は部分 AX 適用へ CGEvent を重ねない。
+- runtime の AX fallback、CGEvent fallback、離散ショートカットは serial queue に載せる。AX request がない Spaces は同期直送する。CLI / system-test は同期実行を既定にする。
+- daemon 起動時と activation button 押下時に Web capability を prewarm する。window target cache は 500ms とするが、Web target は各 step で hit-test と純粋 selector により再解決する。
+- normalized value cache は PID / window / pointer に加えて、解決した container identity を key に含める。同一点で nested / outer target が変われば再利用しない。250ms 経過後は新しく解決した scrollbar の実値を読む。non-Web miss cache は持たない。
+- AX API の 1 call timeout は 20ms、prewarm 全体は 40ms、実配送探索は 120ms、async enqueue から fallback までは最大 160ms とする。
+- async performance log は provisional と queue 内 completion を `operationID` で解決し、schema 2 の deferred record に completion がなければ baseline を通さない。
+- `generate-scroll --post-to-pid <PID>` は自動化ホストが pointer window 判定を覆う場合の診断専用とする。`--post-to-pid` / `--ax-delivery` を含む value option は値必須とし、未知 option、重複 option、余分な positional argument を投稿前に拒否する。
+- Safari の完成判定は top-level の `scrollX` / `scrollY` だけで行わない。[Safari scroll 配送比較](../safari-scroll-delivery-verification.md) の generic overflow、AX accessible frame、端到達、Computer Use、CGEvent variant を分ける。
 
 ## 根拠
 
-- `nape-gesture log --only-generated` では水平 scrollWheel の `pointDeltaX` / `scrollDeltaX` / phase / continuous は生成済みだった。
-- Reference Target App では `postToPid` 経路で `captureSourceCounts` に `sendEvent` と `localMonitor` が出た。
-- Safari では、実カーソルを Web content 上へ移し、AX hit test が `AXWebArea` / `AXScrollArea` を返す状態でも、CGEvent 合成 scrollWheel 単体では `scrollX` / `scrollY` が変化しなかった。
-- document の `maxX=3544` を確認した検証ページで、AX horizontal scrollbar value を `0.5` に設定すると `scrollX=1772` へ変化した。
-- 同じ検証ページで、実装後の `system-test run --scenario horizontal-scroll --target safari --amount 1600 --steps 32` は `scrollX=0` から `scrollX=1272` へ変化した。
-- 同じ検証ページで、実装後の `generate-scroll --mode horizontal --x -1600 --steps 32` は `scrollX=1272` から `scrollX=0` へ戻した。
-- 2026-07-10 の追加検証で、実カーソルが Web content 上にあり通常 window owner が Safari になる状態では、PID override なしの async 経路で横 `scrollX=0 -> 1609`、縦 `scrollY=0 -> 1675`、斜め負方向で `scrollX=0 / scrollY=0` への復帰を確認した。
-- Codex window が通常 window target を覆う状態では、対象を `--post-to-pid <Safari PID>` で固定して同じ async AX 配送を再検証した。Safari サイドバーを閉じて実カーソル下を Web content にした `maxX=2876 / maxY=3350` のページで、横 32 step は `scrollX=0 -> 1438`、縦 32 step は `scrollY=0 -> 1675`、斜め負方向 32 step は `scrollX=0 / scrollY=0` へ復帰した。final6 `.app` の各 process の wall time は 0.37〜0.38 秒で、31 step の interval 約 0.25 秒と起動時間を含む。
-- window target 最適化前の `artifacts/completion/2026-07-10/pr101-ax-delivery-final3` は、Spaces p95 8.04ms、gesture-wheel p95 8.37ms で 8ms 基準を超えた。生ログから、Spaces でも不要な window list 探索を行い、通常スクロールも同じ座標で step ごとに window list を再取得していたことを特定したため、基準を緩めず配送先探索を修正した。
-- 最終修正後の `artifacts/completion/2026-07-10/pr101-ax-delivery-final6` では target log 5シナリオと runtime performance 3シナリオが全件成功した。schema 2 の provisional / completion 解決後の `deferredDeliveryRecordCount` は全て 0、tap-to-delivery-finished p95 は Spaces 0.10ms、gesture-wheel 1.76ms、gesture-wheel-then-kill-switch 1.73ms だった。この値は AppKit 受信、Safari 画面反映、32 step の wall time を含まない。
-- AX scrollbar はピクセル単位ではなく 0...1 の正規化値を公開するため、CGEvent の pixel delta と完全一致させる完了条件にはしない。Safari / WebView 系 Web content では、動かない CGEvent よりも保守的に画面反映できることを優先する。
-- computer-use のネイティブ vertical scroll は `scrollY=0` から `scrollY=816` へ変化したため、ページ自体のスクロール可否ではなく CGEvent 合成 scroll の Safari 反映差分である。
-- 検証中、ポインタ直下に `UserNotificationCenter` と `universalAccessAuthWarn` が重なるケースがあり、画面挙動検証では `CGEvent(source: nil)?.location` と `AXUIElementCopyElementAtPosition` で実カーソル下の対象を確認する必要がある。
+- `nape-gesture log --only-generated` では scrollWheel の point / integer delta、phase、continuous field が生成されていた。
+- Reference Target App の `postToPid` は `captureSourceCounts` に `sendEvent` と `localMonitor` を残した。
+- document の `maxX=3544` のページで AX horizontal scrollbar value を `0.5` にすると `scrollX=1772` になった。
+- 初期実装の top-level 検証では、PID override なしの async が横 `0 -> 1609`、縦 `0 -> 1675`、PID 固定 32 step が横 `0 -> 1438`、縦 `0 -> 1675`、負方向が両軸 0 へ復帰した。
+- review 元ページの generic overflow は修正前生成が `outer=508 / inner=0 / wheel=0`、Computer Use が `outer=0 / inner=1488 / wheel=1 / target=content` だった。
+- 修正後の repo fixture は generic overflow で全 scroll 値 0、AX accessible frame で `outer=0 / frame=367 / frameWheel=0` だった。Computer Use は generic が `outer=0 / inner=682 / innerWheel=1`、frame が `outer=0 / frame=332 / frameWheel=1` だった。
+- frame scrollbar を `1` にした後の正方向生成は `outer=0 / frame=1` を維持した。empty update を outer fallback と誤認しない。
+- top-level fixture は斜め生成が `scrollX=679 / scrollY=304`、通常 content 上の縦生成が `scrollY=608` で、縦横 scroll を維持した。
+- `scripts/probe-cgevent-scroll-delivery.swift` では PID 直接投稿が marker / source にかかわらず `wheel=0`、HID / session tap は `wheel=1` だが `inner=0 / outer=0`、annotated tap は `wheel=0` だった。
+- HID / session tap と AX set の併用は採用しない。Web 側の `preventDefault()` を外部から判定できず、handler が止めた scroll を強制し得る。また tap 投稿では `--post-to-pid` の診断対象固定を保証できない。
+- `artifacts/completion/2026-07-10/pr101-ax-delivery-final6` は target log 5シナリオ、runtime performance 3シナリオ、`deferredDeliveryRecordCount=0`、p95 0.10〜1.76ms を示す。ただし AppKit 受信、nested target、Safari 画面反映、wheel handler はこの性能値に含まない。
+- AX scrollbar は 0...1 の normalized value であり、CGEvent pixel delta と CSS pixel の一致は成功条件にしない。
 
 ## 影響
 
-- 通常スクロール系は、前面アプリではなくポインタ直下 window owner へ配送するため、ユーザーのマウス操作に近い対象選択になる。
-- Spaces の `.forcedHorizontal` は pointer window を配送先に使わないため、不要な window list 探索を行わない。通常スクロールは同じ座標の短期 target cache により、連続 step ごとの window list 再取得を避ける。
-- AX fallback は `AXWebArea` に限定し、要求軸を処理できた場合は CGEvent を投稿しないため、CGEvent と AX の二重スクロールを避ける。
-- 複数軸の途中 set 失敗では適用済み軸を rollback する。rollback 自体が失敗した場合は部分 AX 適用へ CGEvent を重ねず、target cache を破棄して次の入力で再解決する。
-- AX fallback が全体 timeout、対象 scrollbar 不在、権限不足、set 失敗で成立しない場合は既存の CGEvent 投稿経路へ戻る。対象 scrollbar を解決済みで上下限に達した軸は handled とし、CGEvent を重ねない。
-- 通知や権限 overlay が存在しても、通常 window owner PID と異なる AX hit-test 結果は補助経路の探索起点にしない。
-- 自動化ホスト自身が最前面 window になる場合は、診断用 PID override で対象 Web content を固定し、runtime の通常対象選択と AX 配送自体の証跡を分ける。
-- `AXWebArea` 以外で追加補助が必要になった場合は、個別アプリ分岐ではなく、公開 AX capability や実デバイス証跡を根拠に追加方針を決める。
-- Safari Web content の縦横スクロールは、人間のトラックパッド操作に頼らず computer-use と AX 状態読み取りで画面反映を機械確認できる。
+- 通常アプリ内スクロールは前面アプリ固定ではなく pointer window owner を対象にする。
+- window list の短期 cache は維持するが、AX target は nested の変化を見落とさないよう毎 step 再解決する。
+- AX tree 上で検出できた ambiguous nested を outer page へ誤配送するより、CGEvent fallback が画面を動かさない fail-closed を優先する。
+- lookup early return は成功扱いにしない。対象 scrollbar と current value を解決済みの端到達だけを `noChange` とする。
+- AX scrollbar set は JavaScript `wheel` handler を発火しない。AX tree が generic overflow の container 境界と曖昧さの手掛かりをすべて省略する場合、公開 AX API だけでは実 wheel と同じ target / `preventDefault()` semantics を保証できない。この製品要件は未完了として残す。
+- この branch では Issue #102 の時刻ドメインを重複修正しない。PR #101 の最終 Safari / runtime 証跡は Issue #102 の変更を取り込んだ head で再取得する。

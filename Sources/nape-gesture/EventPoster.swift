@@ -13,13 +13,11 @@ final class EventPoster {
     private let axSearchBudgetNanoseconds: UInt64 = 120_000_000
     private let axAsyncMaximumLatencyNanoseconds: UInt64 = 160_000_000
     private let axCacheLifetimeNanoseconds: UInt64 = 250_000_000
-    private let axMissCacheLifetimeNanoseconds: UInt64 = 500_000_000
     private let windowTargetCacheLifetimeNanoseconds: UInt64 = 500_000_000
     private let axScrollQueue = DispatchQueue(label: "dev.char5742.nape-gesture.ax-scroll")
     private let source: CGEventSource?
     private var cachedWindowTarget: CachedWindowTarget?
     private var cachedAXWebScrollTarget: CachedAXWebScrollTarget?
-    private var axWebScrollMisses: [AXWebScrollMissKey: UInt64] = [:]
 
     init() {
         source = CGEventSource(stateID: .hidSystemState)
@@ -154,7 +152,7 @@ final class EventPoster {
             targetProcessID: operation.targetProcessID,
             targetWindowNumber: operation.targetWindowNumber,
             deadline: deadline
-        ) {
+        ).suppressesCGEventFallback {
             return
         }
         postCGScrollEvent(
@@ -463,16 +461,22 @@ final class EventPoster {
         targetProcessID: pid_t?,
         targetWindowNumber: UInt32?,
         deadline: UInt64
-    ) -> Bool {
-        guard let updates = axWebScrollUpdates(
+    ) -> AXWebScrollDeliveryOutcome {
+        let preparation = axWebScrollUpdates(
             for: requests,
             at: point,
             targetProcessID: targetProcessID,
             targetWindowNumber: targetWindowNumber,
             deadline: deadline
         )
-        else {
-            return false
+        let updates: [AXWebScrollUpdate]
+        switch preparation {
+        case let .updates(preparedUpdates):
+            updates = preparedUpdates
+        case .noChange:
+            return .noChange
+        case .unavailable:
+            return .notHandled
         }
 
         var appliedUpdates: [AXWebScrollUpdate] = []
@@ -486,7 +490,7 @@ final class EventPoster {
                 cachedAXWebScrollTarget = nil
                 let didRollback = rollbackAXWebScrollUpdates(appliedUpdates)
                 // 部分適用を戻せない場合は CGEvent を重ねない。
-                return !didRollback
+                return didRollback ? .notHandled : .partiallyApplied
             }
             appliedUpdates.append(update)
         }
@@ -499,7 +503,7 @@ final class EventPoster {
             self.cachedAXWebScrollTarget = cachedAXWebScrollTarget
         }
 
-        return true
+        return .applied
     }
 
     private func rollbackAXWebScrollUpdates(_ updates: [AXWebScrollUpdate]) -> Bool {
@@ -522,120 +526,78 @@ final class EventPoster {
         targetProcessID: pid_t?,
         targetWindowNumber: UInt32?,
         deadline: UInt64
-    ) -> [AXWebScrollUpdate]? {
+    ) -> AXWebScrollPreparation {
+        let requestedAxes = Set(requests.map(\.axis))
+        let target: AXWebScrollTarget
+        switch webContentAXScrollTargetUnderPointer(
+            axes: requestedAxes,
+            at: point,
+            targetProcessID: targetProcessID,
+            deadline: deadline
+        ) {
+        case let .found(resolvedTarget):
+            target = resolvedTarget
+        case .blocked, .notFound, .unavailable:
+            cachedAXWebScrollTarget = nil
+            return .unavailable
+        }
+
         let cacheKey = targetProcessID.map {
-            AXWebScrollCacheKey(
-                processID: $0,
+            AXScrollTargetCacheKey(
+                processID: Int32($0),
                 windowNumber: targetWindowNumber,
                 pointX: point.x,
-                pointY: point.y
+                pointY: point.y,
+                targetIdentity: target.identity
             )
         }
-        let requestedAxes = Set(requests.map(\.axis))
 
         let now = monotonicNanoseconds()
-        axWebScrollMisses = axWebScrollMisses.filter { _, missedAt in
-            now >= missedAt && now - missedAt <= axMissCacheLifetimeNanoseconds
-        }
+        let currentValues: [AXWebScrollAxis: Double]
         if let cacheKey,
-           var cachedAXWebScrollTarget,
+           let cachedAXWebScrollTarget,
            cachedAXWebScrollTarget.key == cacheKey,
-           requestedAxes.allSatisfy({ cachedAXWebScrollTarget.scrollBars[$0] != nil }) {
+           CFEqual(cachedAXWebScrollTarget.container, target.container),
+           requestedAxes.allSatisfy({ cachedAXWebScrollTarget.values[$0] != nil }) {
             let cacheAge = now >= cachedAXWebScrollTarget.lastUsedAtNanoseconds
                 ? now - cachedAXWebScrollTarget.lastUsedAtNanoseconds
                 : UInt64.max
             if cacheAge <= axCacheLifetimeNanoseconds {
-                cachedAXWebScrollTarget.lastUsedAtNanoseconds = now
-                self.cachedAXWebScrollTarget = cachedAXWebScrollTarget
-                return makeAXWebScrollUpdates(
-                    for: requests,
-                    scrollBars: cachedAXWebScrollTarget.scrollBars,
-                    currentValues: cachedAXWebScrollTarget.values
-                )
-            }
-            if let refreshedValues = axWebScrollValues(
+                currentValues = cachedAXWebScrollTarget.values
+            } else if let refreshedValues = axWebScrollValues(
                 for: requestedAxes,
-                scrollBars: cachedAXWebScrollTarget.scrollBars,
+                scrollBars: target.scrollBars,
                 deadline: deadline
             ) {
-                cachedAXWebScrollTarget.values.merge(refreshedValues) { _, refreshed in refreshed }
-                cachedAXWebScrollTarget.lastUsedAtNanoseconds = now
-                self.cachedAXWebScrollTarget = cachedAXWebScrollTarget
-                return makeAXWebScrollUpdates(
-                    for: requests,
-                    scrollBars: cachedAXWebScrollTarget.scrollBars,
-                    currentValues: cachedAXWebScrollTarget.values
-                )
+                currentValues = refreshedValues
+            } else {
+                self.cachedAXWebScrollTarget = nil
+                return .unavailable
             }
-            self.cachedAXWebScrollTarget = nil
-        } else if let cacheKey,
-                  let cachedAXWebScrollTarget,
-                  cachedAXWebScrollTarget.key != cacheKey {
-            self.cachedAXWebScrollTarget = nil
-        }
-
-        var scrollBars = cacheKey == cachedAXWebScrollTarget?.key
-            ? cachedAXWebScrollTarget?.scrollBars ?? [:]
-            : [:]
-        for request in requests where scrollBars[request.axis] == nil {
-            let missKey = cacheKey.map { AXWebScrollMissKey(target: $0, axis: request.axis) }
-            if let missKey,
-               let missedAt = axWebScrollMisses[missKey],
-               now >= missedAt,
-               now - missedAt <= axMissCacheLifetimeNanoseconds {
-                return nil
-            }
-            if let missKey {
-                axWebScrollMisses.removeValue(forKey: missKey)
-            }
-            guard hasAXTimeRemaining(until: deadline) else {
-                return nil
-            }
-            switch webContentAXScrollBarUnderPointer(
-                axis: request.axis,
-                at: point,
-                targetProcessID: targetProcessID,
-                deadline: deadline
-            ) {
-            case let .found(scrollBar):
-                scrollBars[request.axis] = scrollBar
-            case .notFound:
-                if let missKey {
-                    axWebScrollMisses[missKey] = monotonicNanoseconds()
-                }
-                return nil
-            case .unavailable:
-                return nil
-            }
-        }
-
-        guard let currentValues = axWebScrollValues(
+        } else if let refreshedValues = axWebScrollValues(
             for: requestedAxes,
-            scrollBars: scrollBars,
+            scrollBars: target.scrollBars,
             deadline: deadline
-        ) else {
-            return nil
+        ) {
+            currentValues = refreshedValues
+        } else {
+            cachedAXWebScrollTarget = nil
+            return .unavailable
         }
+
         if let cacheKey {
-            var combined = cachedAXWebScrollTarget?.key == cacheKey
-                ? cachedAXWebScrollTarget
-                : nil
-            if combined == nil {
-                combined = CachedAXWebScrollTarget(
-                    key: cacheKey,
-                    scrollBars: [:],
-                    values: [:],
-                    lastUsedAtNanoseconds: now
-                )
-            }
-            combined?.scrollBars.merge(scrollBars) { _, resolved in resolved }
-            combined?.values.merge(currentValues) { _, refreshed in refreshed }
-            combined?.lastUsedAtNanoseconds = now
-            cachedAXWebScrollTarget = combined
+            cachedAXWebScrollTarget = CachedAXWebScrollTarget(
+                key: cacheKey,
+                container: target.container,
+                values: currentValues,
+                lastUsedAtNanoseconds: now
+            )
+        } else {
+            cachedAXWebScrollTarget = nil
         }
         return makeAXWebScrollUpdates(
             for: requests,
-            scrollBars: scrollBars,
+            scrollBars: target.scrollBars,
             currentValues: currentValues
         )
     }
@@ -666,257 +628,211 @@ final class EventPoster {
         for requests: [AXWebScrollRequest],
         scrollBars: [AXWebScrollAxis: AXUIElement],
         currentValues: [AXWebScrollAxis: Double]
-    ) -> [AXWebScrollUpdate]? {
-        var updates: [AXWebScrollUpdate] = []
-        for request in requests {
-            guard let currentValue = currentValues[request.axis] else {
-                return nil
-            }
-            let nextValue = clampedUnitValue(currentValue + request.delta / axWebScrollScale)
-            if nextValue != currentValue {
-                guard let scrollBar = scrollBars[request.axis] else {
-                    return nil
+    ) -> AXWebScrollPreparation {
+        let plan = AXScrollValuePlanner.plan(
+            requests: requests.map {
+                AXScrollValueRequest(axis: $0.axis.coreAxis, delta: $0.delta)
+            },
+            currentValues: Dictionary(
+                uniqueKeysWithValues: currentValues.map { ($0.key.coreAxis, $0.value) }
+            ),
+            scale: axWebScrollScale
+        )
+        switch plan {
+        case let .updates(plannedUpdates):
+            var updates: [AXWebScrollUpdate] = []
+            for plannedUpdate in plannedUpdates {
+                let axis = AXWebScrollAxis(coreAxis: plannedUpdate.axis)
+                guard let scrollBar = scrollBars[axis] else {
+                    return .unavailable
                 }
                 updates.append(
                     AXWebScrollUpdate(
-                        axis: request.axis,
+                        axis: axis,
                         scrollBar: scrollBar,
-                        currentValue: currentValue,
-                        nextValue: nextValue
+                        currentValue: plannedUpdate.currentValue,
+                        nextValue: plannedUpdate.nextValue
                     )
                 )
             }
+            return .updates(updates)
+        case .noChange:
+            return .noChange
+        case .unavailable:
+            return .unavailable
         }
-        return updates
     }
 
-    private func webContentAXScrollBarUnderPointer(
-        axis: AXWebScrollAxis,
+    private func webContentAXScrollTargetUnderPointer(
+        axes: Set<AXWebScrollAxis>,
         at point: CGPoint,
         targetProcessID: pid_t?,
         deadline: UInt64
-    ) -> AXWebScrollLookupResult {
-        guard hasAXTimeRemaining(until: deadline) else {
-            return .unavailable
-        }
-        var roots: [AXUIElement] = []
-        if let targetProcessID {
-            let application = AXUIElementCreateApplication(targetProcessID)
-            applyAXMessagingTimeout(to: application)
-            var applicationElement: AXUIElement?
-            let applicationHitTestResult = AXUIElementCopyElementAtPosition(
-                application,
-                Float(point.x),
-                Float(point.y),
-                &applicationElement
-            )
-            if applicationHitTestResult == .success,
-               let applicationElement {
-                applyAXMessagingTimeout(to: applicationElement)
-                if let scrollBar = webContentAXScrollBarByAscending(
-                    from: applicationElement,
-                    axis: axis,
-                    deadline: deadline
-                ) {
-                    return .found(scrollBar)
-                }
-                return hasAXTimeRemaining(until: deadline) ? .notFound : .unavailable
-            }
-
-            if let window = axWindow(containing: point, in: application, deadline: deadline) {
-                roots.append(window)
-            } else {
-                roots.append(application)
-            }
-        } else {
-            let systemWideElement = AXUIElementCreateSystemWide()
-            applyAXMessagingTimeout(to: systemWideElement)
-            var rawElement: AXUIElement?
-            if AXUIElementCopyElementAtPosition(
-                systemWideElement,
-                Float(point.x),
-                Float(point.y),
-                &rawElement
-            ) == .success,
-               let rawElement {
-                applyAXMessagingTimeout(to: rawElement)
-                if let scrollBar = webContentAXScrollBarByAscending(
-                    from: rawElement,
-                    axis: axis,
-                    deadline: deadline
-                ) {
-                    return .found(scrollBar)
-                }
-                return hasAXTimeRemaining(until: deadline) ? .notFound : .unavailable
-            }
+    ) -> AXWebScrollTargetLookupResult {
+        guard !axes.isEmpty, hasAXTimeRemaining(until: deadline) else {
             return .unavailable
         }
 
-        for root in roots {
-            guard hasAXTimeRemaining(until: deadline) else {
-                return .unavailable
-            }
-            applyAXMessagingTimeout(to: root)
-            if let scrollBar = webContentAXScrollBarByAscending(from: root, axis: axis, deadline: deadline) {
-                return .found(scrollBar)
-            }
-            if let scrollBar = webContentAXScrollBarByDescending(
-                from: root,
-                axis: axis,
-                at: point,
-                deadline: deadline
-            ) {
-                return .found(scrollBar)
-            }
+        let hitTestRoot = targetProcessID.map(AXUIElementCreateApplication)
+            ?? AXUIElementCreateSystemWide()
+        applyAXMessagingTimeout(to: hitTestRoot)
+        var hitElement: AXUIElement?
+        guard AXUIElementCopyElementAtPosition(
+            hitTestRoot,
+            Float(point.x),
+            Float(point.y),
+            &hitElement
+        ) == .success,
+              let hitElement
+        else {
+            return .unavailable
         }
 
-        return hasAXTimeRemaining(until: deadline) ? .notFound : .unavailable
-    }
-
-    private func axWindow(
-        containing point: CGPoint,
-        in application: AXUIElement,
-        deadline: UInt64
-    ) -> AXUIElement? {
-        let windows = axElementArrayAttribute(
-            application,
-            kAXWindowsAttribute as CFString,
-            deadline: deadline
-        )
-        return windows.first { window in
-            guard hasAXTimeRemaining(until: deadline) else {
-                return false
-            }
-            let frame = axFrameAttribute(window, deadline: deadline)
-            return frame?.contains(point) == true
-        }
-    }
-
-    private func webContentAXScrollBarByAscending(
-        from rawElement: AXUIElement?,
-        axis: AXWebScrollAxis,
-        deadline: UInt64
-    ) -> AXUIElement? {
-        var current = rawElement
-        var foundWebArea = false
-        for _ in 0..<12 {
+        var elements: [AXUIElement] = []
+        var nodes: [AXScrollTargetNode] = []
+        var scrollBarsByNode: [Int: [AXWebScrollAxis: AXUIElement]] = [:]
+        var current: AXUIElement? = hitElement
+        for _ in 0..<16 {
             guard hasAXTimeRemaining(until: deadline), let element = current else {
-                return nil
+                break
             }
             applyAXMessagingTimeout(to: element)
-            let role = axStringAttribute(element, kAXRoleAttribute as CFString, deadline: deadline)
-            if role == "AXWebArea" {
-                foundWebArea = true
+            guard let role = axStringAttribute(
+                element,
+                kAXRoleAttribute as CFString,
+                deadline: deadline
+            ) else {
+                return .unavailable
             }
-            if foundWebArea,
-               let scrollBar = axElementAttribute(element, axis.attribute, deadline: deadline) {
-                return scrollBar
+
+            var scrollBars: [AXWebScrollAxis: AXUIElement] = [:]
+            for axis in axes {
+                if let scrollBar = axElementAttribute(element, axis.attribute, deadline: deadline) {
+                    scrollBars[axis] = scrollBar
+                }
+            }
+            let rawFrame = axFrameAttribute(element, deadline: deadline)
+            let frame = rawFrame.map {
+                AXScrollTargetFrame(width: Double($0.width), height: Double($0.height))
+            }
+            let description = axStringAttribute(
+                element,
+                kAXDescriptionAttribute as CFString,
+                deadline: deadline
+            ) ?? ""
+            var clippedDescendantAxes: Set<AXWebScrollAxis> = []
+            if roleMayContainNestedScroll(role), !description.isEmpty {
+                guard let rawFrame,
+                      let resolvedAxes = axClippedDescendantAxes(
+                        element,
+                        containerFrame: rawFrame,
+                        requestedAxes: axes,
+                        deadline: deadline
+                      )
+                else {
+                    return .unavailable
+                }
+                clippedDescendantAxes = resolvedAxes
+            }
+            let index = elements.count
+            elements.append(element)
+            nodes.append(
+                AXScrollTargetNode(
+                    role: role,
+                    frame: frame,
+                    scrollbarAxes: Set(scrollBars.keys.map(\.coreAxis)),
+                    clippedDescendantAxes: Set(clippedDescendantAxes.map(\.coreAxis))
+                )
+            )
+            scrollBarsByNode[index] = scrollBars
+
+            if role == "AXApplication" {
+                break
             }
             current = axElementAttribute(element, kAXParentAttribute as CFString, deadline: deadline)
         }
 
-        return nil
-    }
-
-    private func webContentAXScrollBarByDescending(
-        from root: AXUIElement,
-        axis: AXWebScrollAxis,
-        at point: CGPoint,
-        deadline: UInt64
-    ) -> AXUIElement? {
-        var stack = [root]
-        var visitedCount = 0
-        while let element = stack.popLast(), visitedCount < 160 {
-            guard hasAXTimeRemaining(until: deadline) else {
-                return nil
+        switch AXScrollTargetSelector.select(
+            nodes: nodes,
+            requestedAxes: Set(axes.map(\.coreAxis))
+        ) {
+        case let .target(nodeIndex):
+            guard elements.indices.contains(nodeIndex),
+                  let scrollBars = scrollBarsByNode[nodeIndex],
+                  axes.allSatisfy({ scrollBars[$0] != nil })
+            else {
+                return .blocked
             }
-            visitedCount += 1
-            applyAXMessagingTimeout(to: element)
-            if let frame = axFrameAttribute(element, deadline: deadline),
-               !frame.isEmpty,
-               !frame.contains(point) {
-                continue
-            }
-            let role = axStringAttribute(element, kAXRoleAttribute as CFString, deadline: deadline)
-
-            if role == "AXWebArea" {
-                if let scrollBar = webContentAXScrollBar(
-                    forWebArea: element,
-                    axis: axis,
-                    deadline: deadline
-                ) {
-                    return scrollBar
-                }
-            }
-
-            let children = axElementArrayAttribute(
-                element,
-                kAXChildrenAttribute as CFString,
-                deadline: deadline
+            let container = elements[nodeIndex]
+            return .found(
+                AXWebScrollTarget(
+                    container: container,
+                    identity: Int(CFHash(container)),
+                    scrollBars: scrollBars
+                )
             )
-            stack.append(contentsOf: children.reversed())
+        case .blocked:
+            return .blocked
+        case .notFound:
+            return hasAXTimeRemaining(until: deadline) ? .notFound : .unavailable
         }
-
-        return nil
     }
 
-    private func webContentAXScrollBar(
-        forWebArea webArea: AXUIElement,
-        axis: AXWebScrollAxis,
+    private func roleMayContainNestedScroll(_ role: String) -> Bool {
+        ["AXGroup", "AXList", "AXOutline", "AXTable", "AXTextArea"].contains(role)
+    }
+
+    private func axClippedDescendantAxes(
+        _ element: AXUIElement,
+        containerFrame: CGRect,
+        requestedAxes: Set<AXWebScrollAxis>,
         deadline: UInt64
-    ) -> AXUIElement? {
+    ) -> Set<AXWebScrollAxis>? {
         guard hasAXTimeRemaining(until: deadline) else {
             return nil
         }
-        if let scrollBar = axElementAttribute(webArea, axis.attribute, deadline: deadline) {
-            return scrollBar
-        }
-        guard let parent = axElementAttribute(
-            webArea,
-            kAXParentAttribute as CFString,
-            deadline: deadline
-        ) else {
+        applyAXMessagingTimeout(to: element)
+        var value: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(
+            element,
+            kAXChildrenAttribute as CFString,
+            &value
+        )
+        guard result == .success else {
             return nil
         }
-        if let scrollBar = axElementAttribute(parent, axis.attribute, deadline: deadline) {
-            return scrollBar
+        guard let children = value as? [AXUIElement], !children.isEmpty else {
+            return []
         }
-        return axScrollBarDescendant(axis: axis, from: parent, deadline: deadline)
-    }
 
-    private func axScrollBarDescendant(
-        axis: AXWebScrollAxis,
-        from root: AXUIElement,
-        deadline: UInt64
-    ) -> AXUIElement? {
-        var stack = [root]
-        var visitedCount = 0
-        while let element = stack.popLast(), visitedCount < 64 {
+        let sampledChildren = children.count == 1
+            ? [children[0]]
+            : [children[0], children[children.count - 1]]
+        var clippedAxes: Set<AXWebScrollAxis> = []
+        for child in sampledChildren {
             guard hasAXTimeRemaining(until: deadline) else {
                 return nil
             }
-            visitedCount += 1
-            applyAXMessagingTimeout(to: element)
-            if axStringAttribute(element, kAXRoleAttribute as CFString, deadline: deadline) == "AXScrollBar",
-               axis.matchesScrollBar(
-                   orientation: axStringAttribute(
-                       element,
-                       kAXOrientationAttribute as CFString,
-                       deadline: deadline
-                   ),
-                   frame: axFrameAttribute(element, deadline: deadline)
-               ) {
-                return element
+            applyAXMessagingTimeout(to: child)
+            guard let childFrame = axFrameAttribute(child, deadline: deadline) else {
+                continue
             }
-            stack.append(
-                contentsOf: axElementArrayAttribute(
-                    element,
-                    kAXChildrenAttribute as CFString,
-                    deadline: deadline
-                ).reversed()
-            )
+            for axis in requestedAxes {
+                switch axis {
+                case .horizontal:
+                    if childFrame.minX < containerFrame.minX - 1
+                        || childFrame.maxX > containerFrame.maxX + 1 {
+                        clippedAxes.insert(axis)
+                    }
+                case .vertical:
+                    if childFrame.minY < containerFrame.minY - 1
+                        || childFrame.maxY > containerFrame.maxY + 1 {
+                        clippedAxes.insert(axis)
+                    }
+                }
+            }
         }
-        return nil
+        return clippedAxes
     }
 
     private func applyAXMessagingTimeout(to element: AXUIElement) {
@@ -946,25 +862,6 @@ final class EventPoster {
         let result = (value as! AXUIElement)
         applyAXMessagingTimeout(to: result)
         return result
-    }
-
-    private func axElementArrayAttribute(
-        _ element: AXUIElement,
-        _ attribute: CFString,
-        deadline: UInt64
-    ) -> [AXUIElement] {
-        guard hasAXTimeRemaining(until: deadline) else {
-            return []
-        }
-        applyAXMessagingTimeout(to: element)
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, attribute, &value) == .success,
-              let values = value as? [AXUIElement]
-        else {
-            return []
-        }
-        values.forEach(applyAXMessagingTimeout)
-        return values
     }
 
     private func axNumericAttribute(
@@ -1074,10 +971,6 @@ final class EventPoster {
         return size
     }
 
-    private func clampedUnitValue(_ value: Double) -> Double {
-        min(max(value, 0), 1)
-    }
-
     private func pidValue(_ raw: Any?) -> pid_t? {
         if let value = raw as? pid_t {
             return value
@@ -1108,21 +1001,9 @@ private struct ScrollDeliveryOperation {
     var fallbackMode: ScrollPostMode
 }
 
-private struct AXWebScrollCacheKey: Hashable {
-    var processID: pid_t
-    var windowNumber: UInt32?
-    var pointX: Double
-    var pointY: Double
-}
-
-private struct AXWebScrollMissKey: Hashable {
-    var target: AXWebScrollCacheKey
-    var axis: AXWebScrollAxis
-}
-
 private struct CachedAXWebScrollTarget {
-    var key: AXWebScrollCacheKey
-    var scrollBars: [AXWebScrollAxis: AXUIElement]
+    var key: AXScrollTargetCacheKey
+    var container: AXUIElement
     var values: [AXWebScrollAxis: Double]
     var lastUsedAtNanoseconds: UInt64
 }
@@ -1166,24 +1047,54 @@ private enum AXWebScrollAxis: Hashable {
         }
     }
 
-    func matchesScrollBar(orientation: String?, frame: CGRect?) -> Bool {
-        switch (self, orientation) {
-        case (.horizontal, "AXHorizontalOrientation"), (.vertical, "AXVerticalOrientation"):
-            return true
-        case (_, .some):
-            return false
-        case (.horizontal, nil):
-            return frame.map { $0.width >= $0.height } ?? false
-        case (.vertical, nil):
-            return frame.map { $0.height > $0.width } ?? false
+    var coreAxis: AXScrollAxis {
+        switch self {
+        case .horizontal:
+            return .horizontal
+        case .vertical:
+            return .vertical
         }
     }
+
+    init(coreAxis: AXScrollAxis) {
+        switch coreAxis {
+        case .horizontal:
+            self = .horizontal
+        case .vertical:
+            self = .vertical
+        }
+    }
+
 }
 
-private enum AXWebScrollLookupResult {
-    case found(AXUIElement)
+private struct AXWebScrollTarget {
+    var container: AXUIElement
+    var identity: Int
+    var scrollBars: [AXWebScrollAxis: AXUIElement]
+}
+
+private enum AXWebScrollTargetLookupResult {
+    case found(AXWebScrollTarget)
+    case blocked
     case notFound
     case unavailable
+}
+
+private enum AXWebScrollPreparation {
+    case updates([AXWebScrollUpdate])
+    case noChange
+    case unavailable
+}
+
+private enum AXWebScrollDeliveryOutcome {
+    case applied
+    case noChange
+    case notHandled
+    case partiallyApplied
+
+    var suppressesCGEventFallback: Bool {
+        self != .notHandled
+    }
 }
 
 private struct AXWebScrollRequest {

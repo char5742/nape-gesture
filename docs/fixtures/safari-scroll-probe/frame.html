@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ja">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AX accessible frame</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 1800px; font: 16px system-ui, sans-serif; color: #161616; background: #fff; }
+  .row { min-height: 90px; padding: 12px; border-bottom: 1px solid #8fa0b8; }
+</style>
+<main id="frame-content"></main>
+<script>
+  history.scrollRestoration = 'manual';
+  let wheelCount = 0;
+  let wheelTarget = 'none';
+
+  for (let index = 1; index <= 20; index += 1) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.id = `frame-${index}`;
+    row.textContent = `frame row ${index}`;
+    document.querySelector('#frame-content').append(row);
+  }
+
+  function report() {
+    parent.postMessage({ type: 'frame-state', scrollY, wheelCount, wheelTarget }, location.origin);
+  }
+
+  addEventListener('scroll', report);
+  addEventListener('wheel', event => {
+    wheelCount += 1;
+    wheelTarget = event.target.id || event.target.tagName;
+    report();
+  }, { capture: true });
+  addEventListener('message', event => {
+    if (event.origin !== location.origin || event.data?.type !== 'reset') return;
+    scrollTo(0, 0);
+    wheelCount = 0;
+    wheelTarget = 'none';
+    report();
+  });
+  addEventListener('pageshow', () => {
+    scrollTo(0, 0);
+    report();
+  });
+</script>
+</html>
