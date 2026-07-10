@@ -137,7 +137,7 @@ swift run nape-gesture init-config --vendor-id <ID> --product-id <ID> --usage-pa
 | `system-test` | Spaces、Mission Control、横スクロール、キルスイッチなどのシナリオを dry-run または実行する |
 | `benchmark` | 認識器とスクロール計画の純粋ロジック処理時間を測る |
 | `analyze-performance-log` | runtime 性能 JSON Lines から tap-to-post の p95 / p99 を判定する |
-| `sample-cpu` | PID、必須の `--expected-executable`、開始トークン、audit token の pidversion を開始時・各 sample の前後で照合しながら CPU 使用率を採取し、idle / active / recovery と実行主体同一性を JSON と終了コードで判定する |
+| `sample-cpu` | PID、必須の `--expected-executable`、開始トークン、audit token の pidversion を開始時・各 sample の前後で照合し、単調 uptime の duration deadline 到達後まで CPU 使用率を採取して baseline を判定する |
 | `bundle-app` / `verify-bundle` | `.app` を作成し、Info.plist、署名、同梱物、通常 GUI 設定を検証する |
 
 `system-test --post-to-pid` は Reference Target App の sink 診断専用です。
@@ -145,6 +145,8 @@ swift run nape-gesture init-config --vendor-id <ID> --product-id <ID> --usage-pa
 `system-test run --scenario kill-switch` は未マークの `Control + Option + Command + G` を interval 付きの `keyDown` / `keyUp` として投稿し、daemon 停止ログと target log 漏れなしを確認します。
 `sample-cpu` の `--expected-executable` は必須です。GUI runtime の対象は `.build/NapeGesture.app/Contents/MacOS/nape-gesture` 自身であり、この実行ファイルを直接バックグラウンド起動した直後の `$!` を PID として使います。
 `--pid` は `pid_t` の正範囲 `1...2147483647` だけを受理します。実行主体は開始トークン、実行ファイルパス、`(pid, pidversion)` で固定し、PID 再利用、同一 path を含む `exec` / `posix_spawn`、path 変化、audit token 取得不能を fail closed で不合格にします。
+`--duration` と `--interval` は正の有限値だけを受理し、duration は最大 86400 秒、`ceil(duration / interval) + 1` で見積もる sample 数は最大 100000 です。`actualDurationSeconds` は単調な `ProcessInfo.systemUptime` で計測し、初回 sample に加えて duration deadline 到達後の最終 sample が成功した場合だけ `requestedDurationReached` を `true` にして baseline 判定へ採用します。
+`--ready-file <path>` を指定すると、初期 identity snapshot と `processCommand` の確定後、採取開始直前に `schemaVersion`、`ready`、PID、開始トークン、pidversion、resolved path、timestamp を含む JSON を atomic 作成します。既存ファイルと `--out` と同じパスは拒否するため、呼び出し側は起動前に ready path が存在しない状態にします。ready は初期 snapshot 完了だけを示し、duration 到達や baseline 合格は示しません。
 `pgrep` は同名の別プロセスを選び得て、`open` と `swift run` の `$!` は対象 executable 自身の PID を保証しないため、常駐 CPU 証跡の PID 確定には使いません。
 
 <details>
@@ -298,7 +300,7 @@ NAPE_RUNTIME_EVENT_USE_APP_BUNDLE=1 sh scripts/collect-runtime-event-evidence.sh
 
 `benchmark` と `doctor` 内の benchmark は `measurementKind: "pureLogic"` の証跡であり、イベントタップから投稿、AppKit 受信、画面反映までの入力遅延実測ではありません。
 tap-to-post 遅延を完成証跡にする場合は、`run --performance-log` または `NAPE_RUNTIME_PERFORMANCE_LOG` で runtime 性能 JSON Lines を取り、`analyze-performance-log --json --assert-baseline` で判定します。
-常駐 CPU を完成証跡にする場合は、日常利用と同じ実行主体を直接起動して得た PID と、その実行ファイルの絶対パスを `sample-cpu --expected-executable ... --json --assert-baseline` に渡します。既存の `schemaVersion: 1` とキーを維持し、report の `expectedExecutablePath`、`resolvedExecutablePath`、`executableIdentityMatched`、`processIdentityStable` と、report / 各 sample の `processStartToken`、`processIDVersion` も保存して、CPU 値だけで合格にしません。
+常駐 CPU を完成証跡にする場合は、日常利用と同じ実行主体を直接起動して得た PID と、その実行ファイルの絶対パスを `sample-cpu --expected-executable ... --json --assert-baseline` に渡します。既存の `schemaVersion: 1` とキーを維持し、report の `expectedExecutablePath`、`resolvedExecutablePath`、`executableIdentityMatched`、`processIdentityStable`、`requestedDurationReached` と、report / 各 sample の `processStartToken`、`processIDVersion` も保存して、CPU 値だけで合格にしません。
 性能レビューで見る JSON キー、CPU 使用率、入力遅延の合格基準は [docs/performance-baseline.md](docs/performance-baseline.md) にまとめています。
 
 ## 開発運用

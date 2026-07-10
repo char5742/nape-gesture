@@ -132,6 +132,7 @@ run_split_expected_failure() {
 run_sample_cpu_sleep_smoke() {
   /bin/sleep 2 &
   sample_pid=$!
+  rm -f "$sample_cpu_sleep_ready_file"
 
   .build/debug/nape-gesture sample-cpu \
     --pid "$sample_pid" \
@@ -139,6 +140,7 @@ run_sample_cpu_sleep_smoke() {
     --duration 0.2 \
     --interval 0.1 \
     --mode idle \
+    --ready-file "$sample_cpu_sleep_ready_file" \
     --json \
     --assert-baseline
   sample_status=$?
@@ -150,6 +152,7 @@ run_sample_cpu_sleep_smoke() {
 
 check_sample_cpu_sleep_smoke_json() {
   json_path=$1
+  ready_json_path=$2
   expected_path=$(/usr/bin/plutil -extract expectedExecutablePath raw -o - "$json_path")
   resolved_path=$(/usr/bin/plutil -extract resolvedExecutablePath raw -o - "$json_path")
   report_start_token=$(/usr/bin/plutil -extract processStartToken raw -o - "$json_path")
@@ -157,6 +160,8 @@ check_sample_cpu_sleep_smoke_json() {
   report_pidversion=$(/usr/bin/plutil -extract processIDVersion raw -o - "$json_path")
   first_sample_pidversion=$(/usr/bin/plutil -extract samples.0.processIDVersion raw -o - "$json_path")
   sample_count=$(/usr/bin/plutil -extract sampleCount raw -o - "$json_path")
+  requested_duration=$(/usr/bin/plutil -extract requestedDurationSeconds raw -o - "$json_path")
+  actual_duration=$(/usr/bin/plutil -extract actualDurationSeconds raw -o - "$json_path")
   average_cpu=$(/usr/bin/plutil -extract averagePercentOfOneCore raw -o - "$json_path")
 
   [ "$(/usr/bin/plutil -extract schemaVersion raw -o - "$json_path")" = "1" ] &&
@@ -168,11 +173,19 @@ check_sample_cpu_sleep_smoke_json() {
     [ "$report_start_token" = "$first_sample_start_token" ] &&
     [ -n "$report_pidversion" ] &&
     [ "$report_pidversion" = "$first_sample_pidversion" ] &&
+    [ "$(/usr/bin/plutil -extract requestedDurationReached raw -o - "$json_path")" = "true" ] &&
     [ "$(/usr/bin/plutil -extract samples.0.resolvedExecutablePath raw -o - "$json_path")" = "$expected_path" ] &&
     [ "$(/usr/bin/plutil -extract samples.0.executableIdentityMatched raw -o - "$json_path")" = "true" ] &&
-    [ "$sample_count" -gt 0 ] &&
+    [ "$sample_count" -ge 2 ] &&
     [ -n "$average_cpu" ] &&
-    [ "$(/usr/bin/plutil -extract baseline.passed raw -o - "$json_path")" = "true" ]
+    [ "$(/usr/bin/plutil -extract baseline.passed raw -o - "$json_path")" = "true" ] &&
+    [ "$(/usr/bin/plutil -extract ready raw -o - "$ready_json_path")" = "true" ] &&
+    [ "$(/usr/bin/plutil -extract pid raw -o - "$ready_json_path")" = \
+      "$(/usr/bin/plutil -extract pid raw -o - "$json_path")" ] &&
+    [ "$(/usr/bin/plutil -extract processStartToken raw -o - "$ready_json_path")" = "$report_start_token" ] &&
+    [ "$(/usr/bin/plutil -extract processIDVersion raw -o - "$ready_json_path")" = "$report_pidversion" ] &&
+    /usr/bin/awk -v actual="$actual_duration" -v requested="$requested_duration" \
+      'BEGIN { exit !(actual >= requested) }'
 }
 
 build_dir="$artifact_root/build-and-tests"
@@ -180,6 +193,7 @@ bundle_dir="$artifact_root/bundle"
 gui_dir="$artifact_root/gui-smoke"
 provenance_dir="$artifact_root/provenance"
 doctor_dir="$artifact_root/doctor-and-performance"
+sample_cpu_sleep_ready_file="$doctor_dir/sample-cpu-idle-smoke.ready.json"
 system_dir="$artifact_root/system-test-dry-run"
 fixtures_dir="$artifact_root/fixtures-analysis"
 hid_dir="$artifact_root/hid-inventory"
@@ -207,7 +221,7 @@ run_combined_success \
   .build/debug/nape-gesture-core-tests
 
 run_combined_success \
-  "sample-cpu PID 境界・実行主体同一性テスト" \
+  "sample-cpu duration・PID 境界・実行主体同一性テスト" \
   "$build_dir/sample-cpu-identity-tests.log" \
   "sh scripts/test-sample-cpu.sh" \
   sh scripts/test-sample-cpu.sh
@@ -373,14 +387,16 @@ run_split_success \
   "sample-cpu idle smoke JSON" \
   "$doctor_dir/sample-cpu-idle-smoke.json" \
   "$doctor_dir/sample-cpu-idle-smoke.stderr.log" \
-  "/bin/sleep 2 & sample_pid=\$!; .build/debug/nape-gesture sample-cpu --pid \$sample_pid --expected-executable /bin/sleep --duration 0.2 --interval 0.1 --mode idle --json --assert-baseline" \
+  "/bin/sleep 2 & sample_pid=\$!; .build/debug/nape-gesture sample-cpu --pid \$sample_pid --expected-executable /bin/sleep --duration 0.2 --interval 0.1 --mode idle --ready-file $sample_cpu_sleep_ready_file --json --assert-baseline" \
   run_sample_cpu_sleep_smoke
 
 run_combined_success \
   "sample-cpu JSON field check" \
   "$doctor_dir/sample-cpu-json-field-check.log" \
-  "plutil で schemaVersion / processCpuSampling / averagePercentOfOneCore / expectedExecutablePath / resolvedExecutablePath / executableIdentityMatched / processStartToken / processIDVersion / processIdentityStable / baseline を検査" \
-  check_sample_cpu_sleep_smoke_json "$doctor_dir/sample-cpu-idle-smoke.json"
+  "plutil で schemaVersion / processCpuSampling / duration coverage / ready-file / identity / baseline を検査" \
+  check_sample_cpu_sleep_smoke_json \
+    "$doctor_dir/sample-cpu-idle-smoke.json" \
+    "$sample_cpu_sleep_ready_file"
 
 run_combined_success \
   "system-test list" \

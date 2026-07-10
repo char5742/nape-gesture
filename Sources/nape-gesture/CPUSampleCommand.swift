@@ -9,24 +9,18 @@ struct CPUSampleCommand {
     }
 
     func run() throws {
-        let pid = try pidValue("--pid")
-        let expectedExecutablePath = try SettingsStore.requiredValue(
-            for: "--expected-executable",
-            in: options
-        )
-        let duration = try doubleValue("--duration", defaultValue: 30)
-        let interval = try doubleValue("--interval", defaultValue: 1)
-        let mode = try CPUSampleMode(raw: SettingsStore.value(for: "--mode", in: options) ?? "idle")
+        let configuration = try CPUSampleCommandOptions(options: options)
         let report = try CPUSampler.sample(
-            pid: pid,
-            expectedExecutablePath: expectedExecutablePath,
-            duration: duration,
-            interval: interval,
-            mode: mode
+            pid: configuration.pid,
+            expectedExecutablePath: configuration.expectedExecutablePath,
+            duration: configuration.duration,
+            interval: configuration.interval,
+            mode: configuration.mode,
+            readyFilePath: configuration.readyFilePath
         )
 
         let output: String
-        if options.contains("--json") {
+        if configuration.outputsJSON {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             let data = try encoder.encode(report)
@@ -35,34 +29,15 @@ struct CPUSampleCommand {
             output = CPUSampleFormatter.format(report)
         }
 
-        try write(output, to: SettingsStore.value(for: "--out", in: options))
+        try write(output, to: configuration.outputPath)
 
-        if options.contains("--assert-baseline") {
+        if configuration.assertsBaseline {
             if report.baseline.passed {
                 fputs("常駐 CPU 使用率基準: 合格\n", stderr)
             } else {
                 throw CPUSampleBaselineAssertionError(message: report.baseline.failureDescription ?? "CPU 基準を満たしていません。")
             }
         }
-    }
-
-    private func pidValue(_ name: String) throws -> pid_t {
-        let raw = try SettingsStore.requiredValue(for: name, in: options)
-        guard let value = pid_t(raw), value > 0 else {
-            throw ToolError.invalidValue(name, raw)
-        }
-        return value
-    }
-
-    private func doubleValue(_ name: String, defaultValue: Double) throws -> Double {
-        guard options.contains(name) else {
-            return defaultValue
-        }
-        let raw = try SettingsStore.requiredValue(for: name, in: options)
-        guard let value = Double(raw), value > 0 else {
-            throw ToolError.invalidValue(name, raw)
-        }
-        return value
     }
 
     private func write(_ text: String, to outputPath: String?) throws {
@@ -78,6 +53,165 @@ struct CPUSampleCommand {
         )
         try text.write(to: url, atomically: true, encoding: .utf8)
         fputs("CPU 使用率サンプルを書き出しました: \(outputPath)\n", stderr)
+    }
+}
+
+private struct CPUSampleCommandOptions {
+    private static let valueOptionNames: Set<String> = [
+        "--pid",
+        "--expected-executable",
+        "--duration",
+        "--interval",
+        "--mode",
+        "--out",
+        "--ready-file"
+    ]
+    private static let flagOptionNames: Set<String> = [
+        "--json",
+        "--assert-baseline"
+    ]
+
+    let pid: pid_t
+    let expectedExecutablePath: String
+    let duration: TimeInterval
+    let interval: TimeInterval
+    let mode: CPUSampleMode
+    let outputPath: String?
+    let readyFilePath: String?
+    let outputsJSON: Bool
+    let assertsBaseline: Bool
+
+    init(options: [String]) throws {
+        var values: [String: String] = [:]
+        var flags: Set<String> = []
+        var index = 0
+
+        while index < options.count {
+            let option = options[index]
+            if Self.valueOptionNames.contains(option) {
+                guard values[option] == nil else {
+                    throw ToolError.invalidValue(option, "重複して指定されています")
+                }
+                let valueIndex = index + 1
+                guard valueIndex < options.count,
+                      !options[valueIndex].hasPrefix("--") else {
+                    throw ToolError.missingValue(option)
+                }
+                values[option] = options[valueIndex]
+                index += 2
+                continue
+            }
+            if Self.flagOptionNames.contains(option) {
+                guard flags.insert(option).inserted else {
+                    throw ToolError.invalidValue(option, "重複して指定されています")
+                }
+                index += 1
+                continue
+            }
+            throw ToolError.invalidValue("sample-cpu option", option)
+        }
+
+        let rawPID = try Self.requiredValue("--pid", values: values)
+        guard let pid = pid_t(rawPID), pid > 0 else {
+            throw ToolError.invalidValue("--pid", rawPID)
+        }
+        let expectedExecutablePath = try Self.requiredValue(
+            "--expected-executable",
+            values: values
+        )
+        let rawDuration = values["--duration"] ?? "30"
+        let duration = try Self.positiveFiniteDouble("--duration", raw: rawDuration)
+        let rawInterval = values["--interval"] ?? "1"
+        let interval = try Self.positiveFiniteDouble("--interval", raw: rawInterval)
+        try CPUSampleLimits.validate(
+            duration: duration,
+            interval: interval,
+            rawDuration: rawDuration,
+            rawInterval: rawInterval
+        )
+
+        let outputPath = values["--out"]
+        let readyFilePath = values["--ready-file"]
+        if let outputPath, let readyFilePath,
+           Self.standardizedPath(outputPath) == Self.standardizedPath(readyFilePath) {
+            throw ToolError.invalidValue(
+                "--ready-file",
+                "--out と同じパスは指定できません: \(readyFilePath)"
+            )
+        }
+
+        self.pid = pid
+        self.expectedExecutablePath = expectedExecutablePath
+        self.duration = duration
+        self.interval = interval
+        mode = try CPUSampleMode(raw: values["--mode"] ?? "idle")
+        self.outputPath = outputPath
+        self.readyFilePath = readyFilePath
+        outputsJSON = flags.contains("--json")
+        assertsBaseline = flags.contains("--assert-baseline")
+    }
+
+    private static func requiredValue(
+        _ name: String,
+        values: [String: String]
+    ) throws -> String {
+        guard let value = values[name] else {
+            throw ToolError.missingValue(name)
+        }
+        return value
+    }
+
+    private static func positiveFiniteDouble(_ name: String, raw: String) throws -> Double {
+        guard let value = Double(raw), value.isFinite, value > 0 else {
+            throw ToolError.invalidValue(name, raw)
+        }
+        return value
+    }
+
+    private static func standardizedPath(_ rawPath: String) -> String {
+        let currentDirectoryURL = URL(
+            fileURLWithPath: FileManager.default.currentDirectoryPath,
+            isDirectory: true
+        )
+        return URL(fileURLWithPath: rawPath, relativeTo: currentDirectoryURL)
+            .absoluteURL
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+            .path
+    }
+}
+
+private enum CPUSampleLimits {
+    static let maximumDurationSeconds = 86_400
+    static let maximumSampleCount = 100_000
+
+    static func validate(
+        duration: TimeInterval,
+        interval: TimeInterval,
+        rawDuration: String,
+        rawInterval: String
+    ) throws {
+        guard duration <= TimeInterval(maximumDurationSeconds) else {
+            throw ToolError.invalidValue(
+                "--duration",
+                "\(rawDuration)（上限は \(maximumDurationSeconds) 秒です）"
+            )
+        }
+
+        let ratio = duration / interval
+        guard ratio.isFinite else {
+            throw ToolError.invalidValue(
+                "--duration / --interval",
+                "有限な比率ではありません: duration=\(rawDuration), interval=\(rawInterval)"
+            )
+        }
+        let estimatedSampleCount = ceil(ratio) + 1
+        guard estimatedSampleCount <= Double(maximumSampleCount) else {
+            throw ToolError.invalidValue(
+                "--duration / --interval",
+                "推定 sample 数が上限 \(maximumSampleCount) を超えます: duration=\(rawDuration), interval=\(rawInterval)"
+            )
+        }
     }
 }
 
@@ -120,39 +254,49 @@ private enum CPUSampler {
         expectedExecutablePath rawExpectedExecutablePath: String,
         duration: TimeInterval,
         interval: TimeInterval,
-        mode: CPUSampleMode
+        mode: CPUSampleMode,
+        readyFilePath: String?
     ) throws -> CPUSampleReport {
         let expectedExecutablePath = try ProcessIdentityResolver.expectedExecutablePath(
             rawExpectedExecutablePath
         )
         let initialIdentity = try ProcessIdentityResolver.snapshot(pid: pid)
         let command = try processCommand(pid: pid)
-        let requestedSamples = max(1, Int(ceil(duration / interval)))
-        let start = Date()
+        try CPUSampleReadyFileWriter.write(
+            path: readyFilePath,
+            pid: pid,
+            identity: initialIdentity
+        )
+
+        let processInfo = ProcessInfo.processInfo
+        let startUptime = processInfo.systemUptime
+        let deadlineUptime = startUptime + duration
+        var nextSampleUptime = startUptime
         var samples: [CPUSample] = []
         var processExitedEarly = false
         var executableIdentityMatched = initialIdentity.resolvedExecutablePath == expectedExecutablePath
         var processIdentityStable = true
         var resolvedExecutablePath = initialIdentity.resolvedExecutablePath
         var identityFailureDescription: String?
+        var requestedDurationReached = false
+        var sampleNumber = 0
 
         if !executableIdentityMatched {
             identityFailureDescription = "指定 PID \(pid) の実行ファイルが期待値と一致しません。expected=\(expectedExecutablePath), resolved=\(initialIdentity.resolvedExecutablePath)"
         }
 
-        for index in 0..<requestedSamples {
+        while samples.count < CPUSampleLimits.maximumSampleCount {
             guard executableIdentityMatched else {
                 break
             }
-            if index > 0 {
-                Thread.sleep(forTimeInterval: interval)
-            }
+            sleepUntil(nextSampleUptime, processInfo: processInfo)
+            sampleNumber += 1
 
             guard let identityBeforeSample = inspectIdentity(
                 pid: pid,
                 expectedExecutablePath: expectedExecutablePath,
                 initialIdentity: initialIdentity,
-                sampleNumber: index + 1,
+                sampleNumber: sampleNumber,
                 phase: "採取前",
                 processExitedEarly: &processExitedEarly,
                 executableIdentityMatched: &executableIdentityMatched,
@@ -167,7 +311,7 @@ private enum CPUSampler {
                 processExitedEarly = true
                 executableIdentityMatched = false
                 processIdentityStable = false
-                identityFailureDescription = "sample \(index + 1) の CPU 使用率を取得できませんでした。対象プロセスが終了したか PID が再利用された可能性があります。"
+                identityFailureDescription = "sample \(sampleNumber) の CPU 使用率を取得できませんでした。対象プロセスが終了したか PID が再利用された可能性があります。"
                 break
             }
 
@@ -175,7 +319,7 @@ private enum CPUSampler {
                 pid: pid,
                 expectedExecutablePath: expectedExecutablePath,
                 initialIdentity: initialIdentity,
-                sampleNumber: index + 1,
+                sampleNumber: sampleNumber,
                 phase: "採取後",
                 processExitedEarly: &processExitedEarly,
                 executableIdentityMatched: &executableIdentityMatched,
@@ -191,7 +335,7 @@ private enum CPUSampler {
                 processIdentityStable = false
                 identityFailureDescription = identityChangeDescription(
                     pid: pid,
-                    sampleNumber: index + 1,
+                    sampleNumber: sampleNumber,
                     phase: "CPU 採取中",
                     expectedExecutablePath: expectedExecutablePath,
                     initialIdentity: identityBeforeSample,
@@ -210,9 +354,19 @@ private enum CPUSampler {
                     executableIdentityMatched: true
                 )
             )
+
+            let sampleCompletedUptime = processInfo.systemUptime
+            let elapsedUptime = max(0, sampleCompletedUptime - startUptime)
+            if samples.count >= 2,
+               sampleCompletedUptime >= deadlineUptime,
+               elapsedUptime >= duration {
+                requestedDurationReached = true
+                break
+            }
+            nextSampleUptime = min(sampleCompletedUptime + interval, deadlineUptime)
         }
 
-        let actualDuration = Date().timeIntervalSince(start)
+        let actualDuration = max(0, processInfo.systemUptime - startUptime)
         let values = samples.map(\.cpuPercentOfOneCore)
         let average = values.isEmpty ? 0 : values.reduce(0, +) / Double(values.count)
         let maximum = values.max() ?? 0
@@ -223,13 +377,18 @@ private enum CPUSampler {
                 && !processExitedEarly
                 && executableIdentityMatched
                 && processIdentityStable
+                && requestedDurationReached
+                && actualDuration >= duration
                 && average <= mode.averageLimitPercentOfOneCore,
             failureDescription: failureDescription(
                 mode: mode,
                 average: average,
                 samples: samples,
                 processExitedEarly: processExitedEarly,
-                identityFailureDescription: identityFailureDescription
+                identityFailureDescription: identityFailureDescription,
+                requestedDuration: duration,
+                actualDuration: actualDuration,
+                requestedDurationReached: requestedDurationReached
             )
         )
 
@@ -249,6 +408,7 @@ private enum CPUSampler {
             requestedDurationSeconds: duration,
             sampleIntervalSeconds: interval,
             actualDurationSeconds: actualDuration,
+            requestedDurationReached: requestedDurationReached,
             sampleCount: samples.count,
             averagePercentOfOneCore: average,
             maximumPercentOfOneCore: maximum,
@@ -263,21 +423,45 @@ private enum CPUSampler {
         average: Double,
         samples: [CPUSample],
         processExitedEarly: Bool,
-        identityFailureDescription: String?
+        identityFailureDescription: String?,
+        requestedDuration: TimeInterval,
+        actualDuration: TimeInterval,
+        requestedDurationReached: Bool
     ) -> String? {
+        var failures: [String] = []
         if let identityFailureDescription {
-            return identityFailureDescription
+            failures.append(identityFailureDescription)
         }
         if samples.isEmpty {
-            return "CPU 使用率サンプルがありません。PID とプロセス寿命を確認してください。"
+            failures.append("CPU 使用率サンプルがありません。PID とプロセス寿命を確認してください。")
         }
-        if processExitedEarly {
-            return "測定中に対象プロセスが終了しました。常駐 CPU 証跡として採用できません。"
+        if processExitedEarly, identityFailureDescription == nil {
+            failures.append("測定中に対象プロセスが終了しました。常駐 CPU 証跡として採用できません。")
+        }
+        if !requestedDurationReached {
+            failures.append(
+                "要求 duration \(format(requestedDuration)) 秒の deadline 到達後に最終 sample を採取できませんでした。actual=\(format(actualDuration)) 秒"
+            )
         }
         if average > mode.averageLimitPercentOfOneCore {
-            return "\(mode.description) 平均 CPU 使用率 \(format(average))% が基準 \(format(mode.averageLimitPercentOfOneCore))% を超えています。"
+            failures.append(
+                "\(mode.description) 平均 CPU 使用率 \(format(average))% が基準 \(format(mode.averageLimitPercentOfOneCore))% を超えています。"
+            )
         }
-        return nil
+        return failures.isEmpty ? nil : failures.joined(separator: "\n")
+    }
+
+    private static func sleepUntil(
+        _ deadlineUptime: TimeInterval,
+        processInfo: ProcessInfo
+    ) {
+        while true {
+            let remaining = deadlineUptime - processInfo.systemUptime
+            guard remaining > 0 else {
+                return
+            }
+            Thread.sleep(forTimeInterval: remaining)
+        }
     }
 
     private static func inspectIdentity(
@@ -387,6 +571,53 @@ private struct ProcessIdentitySnapshot: Equatable {
     let resolvedExecutablePath: String
     let processStartToken: String
     let processIDVersion: Int32
+}
+
+private enum CPUSampleReadyFileWriter {
+    static func write(
+        path: String?,
+        pid: pid_t,
+        identity: ProcessIdentitySnapshot
+    ) throws {
+        guard let path else {
+            return
+        }
+
+        let url = URL(fileURLWithPath: path)
+        guard !FileManager.default.fileExists(atPath: url.path) else {
+            throw ToolError.invalidValue(
+                "--ready-file",
+                "既に存在します: \(path)"
+            )
+        }
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+
+        let record = CPUSampleReadyRecord(
+            schemaVersion: 1,
+            ready: true,
+            pid: pid,
+            processStartToken: identity.processStartToken,
+            processIDVersion: identity.processIDVersion,
+            resolvedExecutablePath: identity.resolvedExecutablePath,
+            timestampUnixSeconds: Date().timeIntervalSince1970
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(record).write(to: url, options: .atomic)
+    }
+}
+
+private struct CPUSampleReadyRecord: Encodable {
+    let schemaVersion: Int
+    let ready: Bool
+    let pid: pid_t
+    let processStartToken: String
+    let processIDVersion: Int32
+    let resolvedExecutablePath: String
+    let timestampUnixSeconds: Double
 }
 
 private struct ProcessAuditIdentity: Equatable {
@@ -615,6 +846,7 @@ private struct CPUSampleReport: Encodable {
     let requestedDurationSeconds: Double
     let sampleIntervalSeconds: Double
     let actualDurationSeconds: Double
+    let requestedDurationReached: Bool
     let sampleCount: Int
     let averagePercentOfOneCore: Double
     let maximumPercentOfOneCore: Double
@@ -659,6 +891,7 @@ private enum CPUSampleFormatter {
         サンプル数: \(report.sampleCount)
         要求 duration: \(formatSeconds(report.requestedDurationSeconds)) 秒
         実測 duration: \(formatSeconds(report.actualDurationSeconds)) 秒
+        duration 到達後 sample: \(report.requestedDurationReached ? "はい" : "いいえ")
         interval: \(formatSeconds(report.sampleIntervalSeconds)) 秒
         平均 CPU: \(formatPercent(report.averagePercentOfOneCore)) % / 1 core
         最大 CPU: \(formatPercent(report.maximumPercentOfOneCore)) % / 1 core
