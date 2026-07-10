@@ -651,21 +651,40 @@ struct SystemBehaviorTestCommand {
     private func postUnmarkedInputEvents(_ events: [UnmarkedInputEvent], to pid: pid_t?) throws {
         let source = CGEventSource(stateID: .hidSystemState)
         source?.setLocalEventsFilterDuringSuppressionState([], state: .eventSuppressionStateSuppressionInterval)
-        var cursorPosition = currentPointerLocation()
-        var previousTime: TimeInterval?
+        guard let timestamps = MonotonicEventClock.validatedTimestampSequenceNanosecondsForPosting(
+            fromSecondsSinceStartup: events.map(\.time)
+        ) else {
+            throw ToolError.invalidValue(
+                "CGEvent timestamp",
+                "現在の起動後単調時刻から60秒以内のイベント列を生成できませんでした。"
+            )
+        }
 
-        for plannedEvent in events {
-            if let previousTime {
-                Thread.sleep(forTimeInterval: max(plannedEvent.time - previousTime, 0))
-            }
-            guard let event = plannedEvent.makeCGEvent(source: source, cursorPosition: &cursorPosition) else {
+        var cursorPosition = currentPointerLocation()
+        var preparedEvents: [(time: TimeInterval, event: CGEvent)] = []
+        preparedEvents.reserveCapacity(events.count)
+
+        for (plannedEvent, timestamp) in zip(events, timestamps) {
+            guard let event = plannedEvent.makeCGEvent(
+                source: source,
+                cursorPosition: &cursorPosition,
+                timestampNanoseconds: timestamp
+            ) else {
                 throw ToolError.invalidValue(
-                    "CGEvent timestamp",
-                    "現在の起動後単調時刻から60秒以内の値を生成できませんでした。"
+                    "CGEvent",
+                    "イベント列を投稿前に全件生成できませんでした。"
                 )
             }
-            post(event, to: pid)
-            previousTime = plannedEvent.time
+            preparedEvents.append((time: plannedEvent.time, event: event))
+        }
+
+        var previousTime: TimeInterval?
+        for preparedEvent in preparedEvents {
+            if let previousTime {
+                Thread.sleep(forTimeInterval: max(preparedEvent.time - previousTime, 0))
+            }
+            post(preparedEvent.event, to: pid)
+            previousTime = preparedEvent.time
         }
     }
 
@@ -965,7 +984,11 @@ private struct UnmarkedInputEvent {
         )
     }
 
-    func makeCGEvent(source: CGEventSource?, cursorPosition: inout CGPoint) -> CGEvent? {
+    func makeCGEvent(
+        source: CGEventSource?,
+        cursorPosition: inout CGPoint,
+        timestampNanoseconds: UInt64
+    ) -> CGEvent? {
         let event: CGEvent?
         if type == .keyDown || type == .keyUp {
             guard keyCode >= 0, keyCode <= Int64(UInt16.max) else {
@@ -1005,11 +1028,10 @@ private struct UnmarkedInputEvent {
             event?.setIntegerValueField(.mouseEventDeltaY, value: deltaY)
         }
 
-        guard let event,
-              CGEventUtilities.setMonotonicTimestamp(secondsSinceStartup: time, on: event)
-        else {
+        guard let event else {
             return nil
         }
+        event.timestamp = CGEventTimestamp(timestampNanoseconds)
         return event
     }
 

@@ -393,6 +393,34 @@ run_split_success \
   .build/debug/nape-gesture analyze-log "$system_dir/generated-space-right.jsonl" --assert-current-uptime
 
 run_split_expected_failure \
+  "generate-scroll 派生値 overflow" \
+  "$system_dir/generated-overflow.jsonl" \
+  "$system_dir/generated-overflow.stderr.log" \
+  ".build/debug/nape-gesture generate-scroll --x 1e308 --steps 1 --momentum-steps 1 --momentum-scale 2 --dry-run --log-json" \
+  .build/debug/nape-gesture generate-scroll --x 1e308 --steps 1 --momentum-steps 1 --momentum-scale 2 --dry-run --log-json
+
+run_combined_success \
+  "generate-scroll overflow の部分出力禁止" \
+  "$system_dir/generated-overflow-assertion.log" \
+  "overflow時のstdoutが空でstderrに派生イベント失敗理由があることを確認" \
+  sh -c 'test ! -s "$1" && grep -Fq "派生イベントが有限値ではない" "$2"' \
+  sh "$system_dir/generated-overflow.jsonl" "$system_dir/generated-overflow.stderr.log"
+
+run_split_expected_failure \
+  "generate-scroll 後続timestamp変換不能" \
+  "$system_dir/generated-unconvertible-timestamp.jsonl" \
+  "$system_dir/generated-unconvertible-timestamp.stderr.log" \
+  ".build/debug/nape-gesture generate-scroll --x 1 --steps 2 --interval 1e308 --dry-run --log-json" \
+  .build/debug/nape-gesture generate-scroll --x 1 --steps 2 --interval 1e308 --dry-run --log-json
+
+run_combined_success \
+  "generate-scroll timestamp失敗の部分出力禁止" \
+  "$system_dir/generated-unconvertible-timestamp-assertion.log" \
+  "後続timestamp変換不能時のstdoutが空であることを確認" \
+  sh -c 'test ! -s "$1" && grep -Fq "timestampを起動後nanosecondsへ変換できない" "$2"' \
+  sh "$system_dir/generated-unconvertible-timestamp.jsonl" "$system_dir/generated-unconvertible-timestamp.stderr.log"
+
+run_split_expected_failure \
   "epoch timestamp analyze-log assert-current-uptime" \
   "$fixtures_dir/epoch-timestamp-current-uptime.json" \
   "$fixtures_dir/epoch-timestamp-current-uptime.stderr.log" \

@@ -58,6 +58,26 @@ public enum MonotonicEventClock {
         return timestamp
     }
 
+    public static func validatedTimestampSequenceNanosecondsForPosting(
+        fromSecondsSinceStartup values: [TimeInterval],
+        referenceTimestampNanoseconds: UInt64 = nowTimestampNanoseconds,
+        maximumDifferenceSeconds: TimeInterval = maximumPostingSkewSeconds
+    ) -> [UInt64]? {
+        var timestamps: [UInt64] = []
+        timestamps.reserveCapacity(values.count)
+        for value in values {
+            guard let timestamp = validatedTimestampNanosecondsForPosting(
+                fromSecondsSinceStartup: value,
+                referenceTimestampNanoseconds: referenceTimestampNanoseconds,
+                maximumDifferenceSeconds: maximumDifferenceSeconds
+            ) else {
+                return nil
+            }
+            timestamps.append(timestamp)
+        }
+        return timestamps
+    }
+
     public static func elapsed(
         from start: TimeInterval,
         to end: TimeInterval,

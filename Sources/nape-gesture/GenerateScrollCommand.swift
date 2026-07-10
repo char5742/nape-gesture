@@ -55,12 +55,18 @@ struct GenerateScrollCommand {
             momentumScale: momentumScale,
             startTime: MonotonicEventClock.nowSeconds
         )
+        guard !commands.isEmpty else {
+            throw ToolError.invalidValue(
+                "generate-scroll",
+                "派生イベントが有限値ではない、timestampを起動後nanosecondsへ変換できない、または生成上限 \(ScrollGenerationPlanner.maximumCommandCount) 件を超えています。"
+            )
+        }
 
         if isDryRun {
             if outputLogJSON {
                 try printInputLog(commands, mode: mode)
             } else {
-                printPlan(commands, mode: mode)
+                try printPlan(commands, mode: mode)
             }
             return
         }
@@ -139,7 +145,7 @@ struct GenerateScrollCommand {
         }
     }
 
-    private func printPlan(_ commands: [GestureCommand], mode: ScrollPostMode) {
+    private func printPlan(_ commands: [GestureCommand], mode: ScrollPostMode) throws {
         let preview = commands.enumerated().map { index, command in
             let posted = mode.deltas(for: command)
             return ScrollCommandPreview(
@@ -159,9 +165,8 @@ struct GenerateScrollCommand {
         if options.contains("--json") {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            if let data = try? encoder.encode(preview) {
-                print(String(decoding: data, as: UTF8.self))
-            }
+            let data = try encoder.encode(preview)
+            print(String(decoding: data, as: UTF8.self))
             return
         }
 
@@ -178,6 +183,8 @@ struct GenerateScrollCommand {
     private func printInputLog(_ commands: [GestureCommand], mode: ScrollPostMode) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
+        var lines: [String] = []
+        lines.reserveCapacity(commands.count)
 
         for command in commands {
             guard let timestamp = MonotonicEventClock.timestampNanoseconds(
@@ -205,9 +212,11 @@ struct GenerateScrollCommand {
                 keyCode: 0,
                 flags: 0
             )
-            if let data = try? encoder.encode(record) {
-                print(String(decoding: data, as: UTF8.self))
-            }
+            let data = try encoder.encode(record)
+            lines.append(String(decoding: data, as: UTF8.self))
+        }
+        if !lines.isEmpty {
+            print(lines.joined(separator: "\n"))
         }
     }
 

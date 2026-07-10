@@ -76,6 +76,9 @@
 - `system-test run --dry-run --log-json` で生成予定イベントを保存し、`systemTestScenario` / `sequenceIndex` つきで `analyze-log --json --assert-system-scenario <name>` によるシナリオ別機械判定を通している
 - `generate-scroll` / `system-test` の dry-run と取得直後の実投稿 CGEvent log に `analyze-log --assert-current-uptime` を通し、epoch fixture は expected failure になっている
 - `EventPoster` と system-test の全 CGEvent 種別が投稿直前に現在 uptime 近傍の timestamp を設定し、範囲外時刻を clamp せず失敗させる
+- `InputLogRecord.timestamp` を値域で秒 / ナノ秒へ分岐せず常にナノ秒として扱い、shortcutやsystem-testのイベント列は同一referenceでの時刻検証と全件生成後に全件または0件で投稿する
+- shortcut の各event timestampは実投稿直前のuptimeであり、未来時刻を付けたkeyUpが後続入力より先行しない
+- Event Generator の派生delta / velocity / momentum / timestampが有限かつ起動後nanosecondsへ変換可能で、生成上限超過、後続timestamp変換不能、JSON encode失敗を部分出力なしの非ゼロ終了にする
 - `Ctrl + ←/→` などのショートカット送信を最終解として前提化していない
 - Finder、Safari、Mission Control、Spaces で必要な実機検証が明記されている
 - PR #101 以前の Safari 診断を時刻修正後の証跡として流用せず、Issue #10 / #16 は CGEvent log と画面挙動を再取得待ちにしている

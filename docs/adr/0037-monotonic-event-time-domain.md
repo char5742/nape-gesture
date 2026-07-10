@@ -16,7 +16,11 @@ CoreGraphics SDK の `CGEventTypes.h` は `CGEventTimestamp` を「roughly, nano
 - `CGEvent.timestamp`、HID 入力時刻、`GestureCommand.timestamp`、慣性 tick、生成 `CGEvent.timestamp` は、すべて起動後の単調時刻を使う。
 - Core の `MonotonicEventClock` を唯一の現在値・秒/ナノ秒変換境界とする。現在値は `DispatchTime.now().uptimeNanoseconds` から得る。
 - `InputLogRecord.timestamp` と `CGEventTimestamp` は起動後ナノ秒、`RawInputEvent.time`、`GestureCommand.timestamp`、`RuntimePerformanceRecord.commandTimestamp` は起動後秒とする。runtime performance の `*Nanoseconds` フィールドも同じ uptime ドメインとする。
+- `InputLogRecord.timestamp` は値の大小にかかわらず常にナノ秒として解釈する。起動後1秒未満の値だけを秒とみなす旧heuristicは使わない。
 - `EventPoster` と `system-test` の実投稿は、投稿時点の uptime との差が60秒を超える timestamp を拒否する。epoch、非有限値、古すぎる command を clamp して投稿しない。
+- shortcut のkeyDown / keyUpとsystem-testの未マーク入力列は同じreference uptimeでsequence全体を先に検証し、CGEventも全件生成してから投稿する。時刻不正または生成失敗が1件でもあれば、列の一部だけを投稿しない。
+- shortcut は入力commandの時刻をsequence検証した後、keyDown / keyUpそれぞれへ実投稿直前のuptimeを設定する。未来のkeyUp時刻を先に付けて、直後の入力イベントよりtimestampを進めない。
+- Event Generator は入力だけでなく、分割delta、速度、momentum係数、timestampの派生値も有限かつ起動後nanosecondsへ変換可能であることを確認する。無限値、変換不能timestamp、10万件を超える計画は全体を拒否する。JSON Linesは全件の検証とencode後に一括出力し、後続レコード失敗時にも先頭行だけを残さない。
 - `MomentumEngine` は時刻逆行、非有限 elapsed、通常1秒または設定済み `frameInterval` の2倍を超える tick gap で慣性を停止し、イベントを投稿しない。通常 tick だけは設定済み `frameInterval` を最小積分時間として使う。
 - `generate-scroll --dry-run --log-json` と `system-test run --dry-run --log-json` も起動後ナノ秒を出力する。直後に `analyze-log --assert-current-uptime` を実行し、全レコードが現在 uptime から60秒以内であることを機械判定する。
 - Reference Target App の ready metadata に必要な wall clock は `wallClockUnixSeconds` と明記し、イベントの `timestamp` と同じフィールド名を使わない。

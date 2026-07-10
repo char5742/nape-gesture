@@ -5,8 +5,6 @@ import Foundation
 import NapeGestureCore
 
 final class EventPoster {
-    private static let keyReleaseDelay: TimeInterval = 0.01
-
     private let source: CGEventSource?
 
     init() {
@@ -84,25 +82,31 @@ final class EventPoster {
         flags: CGEventFlags,
         timestamp: TimeInterval
     ) -> EventPostResult {
-        let eventSpecifications = [
-            (keyDown: true, timestamp: timestamp),
-            (keyDown: false, timestamp: timestamp + Self.keyReleaseDelay)
-        ]
-        let events = eventSpecifications.compactMap { specification -> CGEvent? in
+        let eventSpecifications = [true, false]
+        guard let eventTimestamps = MonotonicEventClock.validatedTimestampSequenceNanosecondsForPosting(
+            fromSecondsSinceStartup: eventSpecifications.map { _ in timestamp }
+        ) else {
+            return EventPostResult(generatedEventCount: 0, failedEventCreationCount: eventSpecifications.count)
+        }
+
+        var events: [CGEvent] = []
+        for (keyDown, eventTimestamp) in zip(eventSpecifications, eventTimestamps) {
             guard let event = CGEvent(
                 keyboardEventSource: source,
                 virtualKey: keyCode,
-                keyDown: specification.keyDown
-            ), CGEventUtilities.setMonotonicTimestamp(
-                secondsSinceStartup: specification.timestamp,
-                on: event
+                keyDown: keyDown
             ) else {
-                return nil
+                return EventPostResult(
+                    generatedEventCount: 0,
+                    failedEventCreationCount: eventSpecifications.count - events.count
+                )
             }
-            return event
+            event.timestamp = CGEventTimestamp(eventTimestamp)
+            events.append(event)
         }
 
         for event in events {
+            event.timestamp = CGEventTimestamp(MonotonicEventClock.nowTimestampNanoseconds)
             CGEventUtilities.setGeneratedMarker(on: event)
             event.flags = flags
             event.post(tap: .cghidEventTap)
@@ -110,7 +114,7 @@ final class EventPoster {
 
         return EventPostResult(
             generatedEventCount: events.count,
-            failedEventCreationCount: 2 - events.count
+            failedEventCreationCount: 0
         )
     }
 

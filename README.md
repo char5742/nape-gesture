@@ -202,6 +202,8 @@ swift run nape-gesture verify-bundle .build/NapeGesture.app
 swift run nape-gesture-core-tests
 ```
 
+`generate-scroll` は入力値だけでなく、分割後のdelta、速度、momentum、timestampが有限かつ起動後nanosecondsへ変換可能であることを投稿・出力前に検証します。派生値がoverflowする計画、変換不能な後続timestamp、10万件を超える計画は、JSON Linesを途中まで出力せず非ゼロ終了します。
+
 </details>
 
 ## 設定と安全性

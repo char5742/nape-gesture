@@ -506,6 +506,21 @@ func testMonotonicEventClockRejectsEpochForPosting() {
         ) == nil,
         "Unix epoch 秒を uptime timestamp として投稿しない"
     )
+
+    expect(
+        MonotonicEventClock.validatedTimestampSequenceNanosecondsForPosting(
+            fromSecondsSinceStartup: [uptimeSeconds, uptimeSeconds],
+            referenceTimestampNanoseconds: uptimeNanoseconds
+        )?.count == 2,
+        "shortcut の入力時刻を同じreferenceで一括検証する"
+    )
+    expect(
+        MonotonicEventClock.validatedTimestampSequenceNanosecondsForPosting(
+            fromSecondsSinceStartup: [uptimeSeconds, uptimeSeconds + 61],
+            referenceTimestampNanoseconds: uptimeNanoseconds
+        ) == nil,
+        "shortcut の一方が範囲外ならsequence全体を拒否する"
+    )
 }
 
 func testMomentumFirstTickUsesUptimeDomain() {
@@ -1501,11 +1516,11 @@ func testInputAssociationAnalyzerRejectsCloserNonTargetHIDDevice() {
     expect(!analysis.hasValidAssociationWindowEvidence, "対象外互換 HID がより近いログは有効な紐づけ証跡として扱わない")
 }
 
-func testInputAssociationAnalyzerAcceptsSecondAndNanosecondTimestamps() {
+func testInputAssociationAnalyzerAlwaysTreatsEventTimestampsAsNanoseconds() {
     expectApproximatelyEqual(
         InputAssociationAnalyzer.timestampSeconds(fromEventTimestamp: 42),
-        42,
-        "小さい timestamp は秒値として扱う"
+        0.000000042,
+        "起動直後の小さいevent timestampもナノ秒として扱う"
     )
     expectApproximatelyEqual(
         InputAssociationAnalyzer.timestampSeconds(fromEventTimestamp: 42_500_000_000),
@@ -1552,6 +1567,51 @@ func testScrollGenerationPlannerPhaseOverrideAndMomentum() {
     expect(commands[2].deltaX == 20, "最初の慣性量はステップ量を基準にする")
     expect(commands[3].deltaX == 10, "慣性量を decay で減衰する")
     expect(commands[4].phase == .ended, "慣性列の最後に ended を追加する")
+}
+
+func testScrollGenerationPlannerRejectsNonFiniteDerivedValuesAndOversizedPlans() {
+    expect(
+        ScrollGenerationPlanner.makeCommands(
+            deltaX: 1e308,
+            deltaY: 0,
+            steps: 1,
+            interval: 0.008,
+            phaseOverride: nil,
+            momentumSteps: 1,
+            momentumDecay: 0.85,
+            momentumScale: 2,
+            startTime: 1
+        ).isEmpty,
+        "有限入力からoverflowするmomentumを部分生成しない"
+    )
+    expect(
+        ScrollGenerationPlanner.makeCommands(
+            deltaX: 1,
+            deltaY: 0,
+            steps: ScrollGenerationPlanner.maximumCommandCount,
+            interval: 0.008,
+            phaseOverride: nil,
+            momentumSteps: 1,
+            momentumDecay: 0.85,
+            momentumScale: 1,
+            startTime: 1
+        ).isEmpty,
+        "生成上限を超える計画を確保しない"
+    )
+    expect(
+        ScrollGenerationPlanner.makeCommands(
+            deltaX: 1,
+            deltaY: 0,
+            steps: 2,
+            interval: 1e308,
+            phaseOverride: nil,
+            momentumSteps: 0,
+            momentumDecay: 0.85,
+            momentumScale: 1,
+            startTime: 1
+        ).isEmpty,
+        "有限でも起動後nanosecondsへ変換不能な後続timestampを部分生成しない"
+    )
 }
 
 func testScrollEventPhaseEncoderSeparatesScrollAndMomentumPhases() {
@@ -2367,9 +2427,10 @@ testInputAssociationAnalyzerRejectsButtonUsageMismatch()
 testInputAssociationAnalyzerAcceptsCanonicalButtonUsageMapping()
 testInputAssociationAnalyzerRejectsSingleNonTargetHIDDevice()
 testInputAssociationAnalyzerRejectsCloserNonTargetHIDDevice()
-testInputAssociationAnalyzerAcceptsSecondAndNanosecondTimestamps()
+testInputAssociationAnalyzerAlwaysTreatsEventTimestampsAsNanoseconds()
 testScrollGenerationPlannerAutoPhases()
 testScrollGenerationPlannerPhaseOverrideAndMomentum()
+testScrollGenerationPlannerRejectsNonFiniteDerivedValuesAndOversizedPlans()
 testScrollEventPhaseEncoderSeparatesScrollAndMomentumPhases()
 testTargetDeviceGateOnlyHandlesRecentTargetActivity()
 testTargetDeviceGateKeepsHandlingWhileActivationButtonIsDown()
