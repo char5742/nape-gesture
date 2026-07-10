@@ -37,7 +37,7 @@
 - `actualDurationSeconds >= requestedDurationSeconds`、`requestedDurationReached == true`、sample 数が2以上で、単調 uptime の deadline 到達後に最終 sample がある。duration 未達は CPU 平均が基準内でも不合格である
 - audit token の PID 一致を検証し、取得した Mach task name port を全経路で deallocate し、取得不能を fail closed にしている。libbsm のリンクは `nape-gesture` executable target だけである
 - `--ready-file` は1件目の有効 sample と前後 identity 照合後に `completedSampleCount: 1` を含む完全 JSON を一時 sibling から `RENAME_EXCL` で排他的に atomic 公開する。並列競合の敗者は既存ファイルを上書きせず、一時ファイルも残さない。ready 後の同一 path exec や途中終了でも sample が1件以上ある失敗 report JSON が保存される
-- `--out` と `--ready-file` は既存 ancestor の symlink と非存在 leaf の大文字小文字差を考慮して衝突を拒否する。正しい `/bin/sleep`、duration 未達、誤った expected executable、shell wrapper、path 変更 exec、同一 path exec、16並列 ready 競合、PID 上限超過、`inf` / `nan` / 巨大比率、option 欠損・重複の expected failure、identity / ready JSON fields の回帰テストが通っている
+- `--out` と `--ready-file` は component を左から処理し、存在する symlink を展開してから後続の `..` を適用する。非存在 component、相対 path、root、case-fold を維持し、`alias/link/../report.json` と symlink 後に非存在 component / `..` がある変種も同一実体として拒否する。正しい `/bin/sleep`、duration 未達、誤った expected executable、shell wrapper、path 変更 exec、同一 path exec、16並列 ready 競合、PID 上限超過、`inf` / `nan` / 巨大比率、option 欠損・重複の expected failure、identity / ready JSON fields の回帰テストが通っている
 - completion evidence の短時間 `sample-cpu` smoke を、日常利用時の常駐 CPU 完了証跡として扱っていない
 - 閾値超過時に調整した設定値や生成パラメータが、ログと benchmark の再測定で確認されている
 

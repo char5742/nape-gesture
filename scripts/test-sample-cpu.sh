@@ -194,6 +194,11 @@ expect_cli_failure \
   '--ready-file の値が不正です: --out と同じパスは指定できません' \
   --pid 1 --expected-executable /bin/sleep \
   --out "$temporary_directory/shared-output" --ready-file "$temporary_directory/shared-output" --json
+expect_cli_failure \
+  "out/ready-file root より上の dot-dot 同一パス" \
+  '--ready-file の値が不正です: --out と同じパスは指定できません' \
+  --pid 1 --expected-executable /bin/sleep \
+  --out / --ready-file /../../ --json
 
 case_path_directory="$temporary_directory/case-path"
 case_path_real_directory="$temporary_directory/case-path-real"
@@ -212,6 +217,27 @@ expect_cli_failure \
   --pid 1 --expected-executable /bin/sleep \
   --out "$case_path_symlink_directory/Report.JSON" \
   --ready-file "$case_path_real_directory/report.json" --json
+
+symlink_dotdot_directory="$temporary_directory/symlink-dotdot"
+mkdir -p "$symlink_dotdot_directory/alias" "$symlink_dotdot_directory/real/child"
+ln -s "../real/child" "$symlink_dotdot_directory/alias/link"
+expect_cli_failure \
+  "out/ready-file symlink 解決後の dot-dot 同一パス" \
+  '--ready-file の値が不正です: --out と同じパスは指定できません' \
+  --pid 1 --expected-executable /bin/sleep \
+  --out "$symlink_dotdot_directory/real/report.json" \
+  --ready-file "$symlink_dotdot_directory/alias/link/../report.json" --json
+if ! (
+  cd "$symlink_dotdot_directory" || exit 1
+  expect_cli_failure \
+    "out/ready-file symlink 後の非存在 component・dot-dot 同一相対パス" \
+    '--ready-file の値が不正です: --out と同じパスは指定できません' \
+    --pid 1 --expected-executable /bin/sleep \
+    --out "real/child/report.json" \
+    --ready-file "alias/link/not-created/../report.json" --json
+); then
+  fail "symlink 後の非存在 component・dot-dot 同一相対パスを拒否できませんでした"
+fi
 
 /bin/sleep 5 &
 correct_pid=$!

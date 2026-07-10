@@ -170,39 +170,93 @@ private struct CPUSampleCommandOptions {
 }
 
 private enum CPUSamplePathIdentity {
+    private static let maximumSymbolicLinkResolutionCount = 64
+
     static func mayReferToSameFile(_ firstPath: String, _ secondPath: String) -> Bool {
-        conservativeIdentity(firstPath) == conservativeIdentity(secondPath)
+        guard let firstIdentity = conservativeIdentity(firstPath),
+              let secondIdentity = conservativeIdentity(secondPath) else {
+            return true
+        }
+        return firstIdentity == secondIdentity
     }
 
-    private static func conservativeIdentity(_ rawPath: String) -> String {
-        let currentDirectoryURL = URL(
-            fileURLWithPath: FileManager.default.currentDirectoryPath,
-            isDirectory: true
-        )
-        var existingAncestor = URL(fileURLWithPath: rawPath, relativeTo: currentDirectoryURL)
-            .absoluteURL
-            .standardizedFileURL
-        var missingComponents: [String] = []
-
-        while !FileManager.default.fileExists(atPath: existingAncestor.path) {
-            let parent = existingAncestor.deletingLastPathComponent()
-            guard parent.path != existingAncestor.path else {
-                break
-            }
-            missingComponents.append(existingAncestor.lastPathComponent)
-            existingAncestor = parent
+    private static func conservativeIdentity(_ rawPath: String) -> String? {
+        guard let resolvedPath = resolvePathComponents(rawPath) else {
+            return nil
         }
-
-        var resolvedURL = existingAncestor.resolvingSymlinksInPath()
-        for component in missingComponents.reversed() {
-            resolvedURL.appendPathComponent(component)
-        }
-        return resolvedURL.standardizedFileURL.path
+        return resolvedPath
             .precomposedStringWithCanonicalMapping
             .folding(
                 options: [.caseInsensitive],
                 locale: Locale(identifier: "en_US_POSIX")
             )
+    }
+
+    private static func resolvePathComponents(_ rawPath: String) -> String? {
+        var pendingComponents: ArraySlice<String>
+        if rawPath.hasPrefix("/") {
+            pendingComponents = ArraySlice(pathComponents(rawPath))
+        } else {
+            pendingComponents = ArraySlice(
+                pathComponents(FileManager.default.currentDirectoryPath)
+                    + pathComponents(rawPath)
+            )
+        }
+
+        var resolvedComponents: [String] = []
+        var symbolicLinkResolutionCount = 0
+
+        while let component = pendingComponents.first {
+            pendingComponents = pendingComponents.dropFirst()
+
+            switch component {
+            case ".":
+                continue
+            case "..":
+                if !resolvedComponents.isEmpty {
+                    resolvedComponents.removeLast()
+                }
+                continue
+            default:
+                break
+            }
+
+            let candidatePath = absolutePath(resolvedComponents + [component])
+            var fileStatus = stat()
+            errno = 0
+            if lstat(candidatePath, &fileStatus) == 0 {
+                if (fileStatus.st_mode & S_IFMT) == S_IFLNK {
+                    guard symbolicLinkResolutionCount < maximumSymbolicLinkResolutionCount,
+                          let destination = try? FileManager.default.destinationOfSymbolicLink(
+                              atPath: candidatePath
+                          ) else {
+                        return nil
+                    }
+                    symbolicLinkResolutionCount += 1
+                    if destination.hasPrefix("/") {
+                        resolvedComponents.removeAll(keepingCapacity: true)
+                    }
+                    pendingComponents = ArraySlice(
+                        pathComponents(destination) + pendingComponents
+                    )
+                    continue
+                }
+            } else if errno != ENOENT && errno != ENOTDIR {
+                return nil
+            }
+
+            resolvedComponents.append(component)
+        }
+
+        return absolutePath(resolvedComponents)
+    }
+
+    private static func pathComponents(_ path: String) -> [String] {
+        path.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
+    }
+
+    private static func absolutePath(_ components: [String]) -> String {
+        components.isEmpty ? "/" : "/" + components.joined(separator: "/")
     }
 }
 

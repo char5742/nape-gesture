@@ -32,7 +32,7 @@
 | [ADR-0023](0023-repo-local-provenance-guard.md) | repo-local 由来ガード | Issue #1、Issue #15、Issue #16、ライセンス、由来 |
 | [ADR-0024](0024-regular-gui-app-launch.md) | 通常 GUI アプリとして起動する | Issue #11、Issue #15、Issue #16、GUI、`.app` |
 | [ADR-0025](0025-gui-permission-recovery-actions.md) | GUI 権限復旧導線の表示契約 | Issue #74、Issue #11、Issue #13、Issue #16、GUI、TCC |
-| [ADR-0026](0026-runtime-performance-log-evidence.md) | runtime 性能ログと実行主体固定による tap-to-post / CPU 証跡 | Issue #14、Issue #16、runtime、性能、tap-to-post、sample-cpu、PID 同一性、pidversion、audit token、duration、ready-file、RENAME_EXCL、case-insensitive path |
+| [ADR-0026](0026-runtime-performance-log-evidence.md) | runtime 性能ログと実行主体固定による tap-to-post / CPU 証跡 | Issue #14、Issue #16、runtime、性能、tap-to-post、sample-cpu、PID 同一性、pidversion、audit token、duration、ready-file、RENAME_EXCL、symlink、dot-dot、case-insensitive path |
 | [ADR-0027](0027-grok-cli-auxiliary-review.md) | Grok CLI を補助レビューと発散に使う | Grok、並列開発、UI、PRレビュー、第三者視点 |
 | [ADR-0028](0028-readme-product-dashboard.md) | README を製品入口兼状態ダッシュボードとして扱う | README、GUI、完成状態、Mermaid、キャプチャ |
 | [ADR-0029](0029-grok-operational-surface.md) | Grok 運用知見を AGENTS.md と Codex skill に同期する | Grok、AGENTS.md、Codex skill、補助レビュー |
