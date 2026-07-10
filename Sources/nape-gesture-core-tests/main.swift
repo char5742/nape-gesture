@@ -1816,6 +1816,7 @@ func testRuntimeRecoverySchedulesDelayedWakeRetryOnlyWhenEnabled() {
     let wake = state.handleDidWake(at: 20, retryDelay: 1.5)
 
     expect(!wake.shouldStartRuntime, "wake 直後は遅延再開に留める")
+    expect(state.mode == .stopped(reason: .wake, stoppedAt: 20), "wake 後は遅延再開待機として停止状態へ遷移する")
     expect(state.pendingRetry?.reason == .wake, "wake 後の遅延再開理由を保持する")
     expectApproximatelyEqual(state.pendingRetry?.requestedAt, 20, "wake 後の遅延再開要求時刻を保持する")
     expectApproximatelyEqual(state.pendingRetry?.notBefore, 21.5, "wake 後の遅延再開可能時刻を保持する")
@@ -1825,6 +1826,7 @@ func testRuntimeRecoverySchedulesDelayedWakeRetryOnlyWhenEnabled() {
 
     expect(!tooEarly.shouldStartRuntime, "wake 遅延前は再開しない")
     expect(ready.shouldStartRuntime, "wake 遅延後は再開対象になる")
+    expect(state.mode == .starting(reason: .automaticRetry(.wake), requestedAt: 21.5), "wake 遅延後は wake 由来の自動再試行として開始する")
 }
 
 func testRuntimeRecoveryDoesNotScheduleWakeRetryAfterManualStop() {
@@ -2008,6 +2010,62 @@ func testRuntimeRecoveryKeepsWakeRetryWhenSleepNotificationRepeats() {
 
     expect(retry.shouldStartRuntime, "sleep 通知が重複しても wake 後再試行対象を維持する")
     expect(state.mode == .starting(reason: .automaticRetry(.wake), requestedAt: 21), "重複 sleep 後も wake 由来の自動再試行として開始する")
+}
+
+func testRuntimeRecoveryKeepsPendingRetryWhenWakeNotificationRepeats() {
+    var state = RuntimeRecoveryState()
+    state.recordRuntimeStarted()
+    _ = state.handleWillSleep(at: 10)
+
+    let firstWake = state.handleDidWake(at: 20, retryDelay: 5)
+    let scheduledState = state
+    let duplicateWake = state.handleDidWake(at: 20.1, retryDelay: 10)
+
+    expect(!firstWake.shouldStartRuntime && !firstWake.shouldStopRuntime, "最初の wake は遅延再開だけを予約する")
+    expect(!duplicateWake.shouldStartRuntime && !duplicateWake.shouldStopRuntime, "重複 wake は runtime 操作を要求しない")
+    expect(state == scheduledState, "重複 wake は最初の wake が作った再試行予約と時刻を変更しない")
+
+    let tooEarly = state.retryIfReady(at: 24.99)
+    let ready = state.retryIfReady(at: 25)
+
+    expect(!tooEarly.shouldStartRuntime, "重複 wake 後も最初の予約時刻より前には再開しない")
+    expect(ready.shouldStartRuntime, "重複 wake 後も最初の予約時刻で再開する")
+    expect(state.mode == .starting(reason: .automaticRetry(.wake), requestedAt: 25), "重複 wake 後も wake 由来の自動再試行として開始する")
+}
+
+func testRuntimeRecoveryIgnoresWakeWithoutPriorSleep() {
+    let pendingFailure = RuntimeRecoveryFailureKind.targetDeviceNotFound
+    let states: [(name: String, state: RuntimeRecoveryState)] = [
+        ("初期停止", RuntimeRecoveryState()),
+        ("実行中", RuntimeRecoveryState(mode: .running)),
+        ("開始中", RuntimeRecoveryState(mode: .starting(reason: .manualStart, requestedAt: 3))),
+        (
+            "失敗後の再試行待機中",
+            RuntimeRecoveryState(
+                mode: .stopped(reason: .runtimeFailure(pendingFailure), stoppedAt: 5),
+                pendingRetry: RuntimeRetryRequest(
+                    reason: .runtimeFailure(pendingFailure),
+                    requestedAt: 5,
+                    notBefore: 8
+                )
+            )
+        ),
+        (
+            "手動停止中",
+            RuntimeRecoveryState(
+                mode: .stopped(reason: .manualStop, stoppedAt: 7),
+                autoRetryEnabled: false
+            )
+        )
+    ]
+
+    for candidate in states {
+        var state = candidate.state
+        let wake = state.handleDidWake(at: 20, retryDelay: 1)
+
+        expect(!wake.shouldStartRuntime && !wake.shouldStopRuntime, "sleep 未経由の wake は runtime 操作を要求しない: \(candidate.name)")
+        expect(state == candidate.state, "sleep 未経由の wake は既存状態を変更しない: \(candidate.name)")
+    }
 }
 
 func testRuntimeStatusPresenterShowsRunningAndStoppedStates() {
@@ -2272,6 +2330,8 @@ testRuntimeRecoveryDoesNotRetryAfterWakeFromInitialStop()
 testRuntimeRecoveryDoesNotRetryAfterWakeForHumanFixRequiredFailure()
 testRuntimeRecoveryRetriesAfterWakeWhenRecoverableRetryWasPending()
 testRuntimeRecoveryKeepsWakeRetryWhenSleepNotificationRepeats()
+testRuntimeRecoveryKeepsPendingRetryWhenWakeNotificationRepeats()
+testRuntimeRecoveryIgnoresWakeWithoutPriorSleep()
 testRuntimeStatusPresenterShowsRunningAndStoppedStates()
 testRuntimeStatusPresenterShowsAutoRetryAndSleepStates()
 testPermissionRecoveryPresenterShowsSeparatePermissionActions()
