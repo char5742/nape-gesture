@@ -19,6 +19,7 @@
 - Grok CLI を使った補助レビューがある場合でも、指摘採否、テスト、CI、merge 判断はメインスレッドが責任を持つ
 - Grok 運用ルールを変えた場合、`AGENTS.md`、[ADR-0027](adr/0027-grok-cli-auxiliary-review.md)、[ADR-0029](adr/0029-grok-operational-surface.md)、必要なら `$grok-auxiliary-review` skill の同期を確認している
 - computer-use で代替できる GUI 操作を `need:human` にしていない。OS セキュリティ設定を変更する UI 操作では直前確認を取っている
+- 生成イベントの配送先がQuartzポインタに依存する検証では、Computer Useの要素操作をポインタ配置の証拠にせず、要求座標と実座標、pointer直下window ownerを保存している
 - Mermaid 図やアプリキャプチャを使う場合、実装、docs、実際の画面証跡と矛盾していない
 
 ## 性能 / Benchmark 変更
@@ -78,6 +79,7 @@
 - `generate-scroll` の value option は値欠落を拒否し、未知 option、重複 option、余分な positional argument の expected failure を CI / completion で確認している
 - `system-test run --dry-run --log-json` で生成予定イベントを保存し、`systemTestScenario` / `sequenceIndex` つきで `analyze-log --json --assert-system-scenario <name>` によるシナリオ別機械判定を通している
 - `system-test run` は256 step / 系列30秒上限、派生値と全 timestamp の投稿前検証、末尾 sleep なし、JSON Lines 全件 encode 後の原子出力を回帰検査している
+- `system-test run` の生成0件をtimestamp不正と誤報せず、CGEvent作成失敗、配送成功、配送不能または変化なしを別状態としてCI / completionで検査している
 - `generate-scroll` / `system-test` の dry-run と取得直後の実投稿 CGEvent log に `analyze-log --assert-current-uptime` を通し、epoch fixture は expected failure になっている
 - `EventPoster` と system-test の全 CGEvent 種別が投稿直前に現在 uptime 近傍の timestamp を設定し、範囲外時刻を clamp せず失敗させる
 - `InputLogRecord.timestamp` を値域で秒 / ナノ秒へ分岐せず常にナノ秒として扱い、shortcutやsystem-testのイベント列は同一referenceでの時刻検証と全件生成後に全件または0件で投稿する
@@ -90,7 +92,8 @@
 - 非Webの短期 cache は ancestor 完全走査済み `notHandled` だけを exact PID / window / pointer / axes で保持し、root hit-test 失敗、`found`、`blocked` を再利用していない
 - async completion は AX適用を実配送1件、`blocked` / `noChange` を0件として記録し、enqueue時の provisional 件数を最終成功にしていない
 - nested frame、generic overflow、top-level、端到達、Computer Use、CGEvent source / tap / field の比較が保存され、AX set が wheel handler を発火しない制約を完了済みと表現していない
-- PR #101 の時刻修正前 Safari 診断を完成証跡として流用せず、ADR-0037 統合 commit と TCC 許可済み `.app` identity を固定し、contract の5 assertion、通常 async、PID固定 sync、端到達、Computer Use の通常 wheel、current-uptime CGEvent log、画面挙動、runtime performance completion を再取得する
+- Safari runtime contract evaluatorがreset、before / after / at-end、sync / async、PID override有無、pointer直下window owner、exit codeを機械判定し、PID固定診断を通常routing成功として扱っていない
+- PR #101 の時刻修正前 Safari 診断を完成証跡として流用せず、ADR-0037 統合後の同一commitとTCC許可済み `.app` identityで、contract全assertion、通常async、PID固定sync/async、端到達、Computer Useの通常wheel、current-uptime CGEvent log、画面挙動、runtime performance completionを再取得する
 
 ## UI / Doctor / 権限導線変更
 

@@ -25,9 +25,10 @@
 - 専用 CLI、GitHub / browser / app plugin、スクリプトで完結する作業はそれらを優先する。
 - ローカル Mac アプリ UI の読み取り、クリック、入力、スクロール、ドラッグ、画面証跡取得が必要な場合は computer-use を積極的に使う。
 - `.app` 起動、設定ウィンドウ、メニューバー `NG`、System Settings pane の表示確認、スクリーンショット取得は computer-use で前進させる。
+- 生成イベントの配送先がQuartzポインタ位置に依存する検証では、computer-useの要素クリックをポインタ移動の証拠にしない。要求座標と実座標、pointer直下window ownerを別途記録し、PID固定診断を通常routing成功として扱わない。
 - TCC、アクセシビリティ、入力監視、VPN、OS セキュリティなど local system settings の変更直前には、具体的な操作内容とリスクを説明してユーザー確認を取る。
 - computer-use で代替できる GUI 操作は `need:human` にしない。物理デバイス操作、ユーザー本人しか通せない認証、秘密情報入力など、エージェントが代替できない作業だけを `need:human` に残す。
-- computer-use の画面証跡は、ログ、`doctor --json`、runtime evidence、CI の代替にしない。詳細方針は [ADR-0030](docs/adr/0030-computer-use-gui-operation-evidence.md) を正とする。
+- computer-use の画面証跡は、ログ、`doctor --json`、runtime evidence、CI の代替にしない。詳細方針は [ADR-0030](docs/adr/0030-computer-use-gui-operation-evidence.md) と [ADR-0038](docs/adr/0038-safari-evidence-pointer-and-routing.md) を正とする。
 
 ## Nape Gesture 固有制約
 
