@@ -1,7 +1,8 @@
 # ADR-0017: System Behavior Test dry-run のシナリオ別機械判定
 
-- 状態: 採択
+- 状態: 置換済み
 - 日付: 2026-07-09
+- 置換先: [ADR-0036](0036-emulate-trackpad-driver-output-events.md)
 
 ## 背景
 

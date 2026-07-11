@@ -10,15 +10,13 @@
 - `chmod` は使わない。読み取り専用ファイルは編集しない。
 - Issue / PR コメント投稿、PR review、reply など GitHub 上の書き込みは、可能な限り `gh api` または GitHub app / MCP を使う。
 
-## Grok CLI
+## 独立モデル監査
 
-- Grok は補助レビュー、UI / UX 発散、文言確認、第三者視点、PR 差分の別観点チェックに積極的に使う。
-- Grok の出力は助言であり、完成判定、CI、テスト、runtime 証跡、merge 判断の代替にしない。採否はメインスレッドが責任を持つ。
-- レビュー用途では非対話実行を基本にし、`--model grok-4.5`、`--disable-web-search`、`--no-subagents`、`--permission-mode plan`、`--tools ''`、`--max-turns 1` を既定にする。
-- 再現性が必要な場合は prompt、stdout、stderr、`grok version`、base/head SHA、対象 diff を `artifacts/grok-review/` に保存する。
-- `--json-schema` 実行で `structuredOutputError` が出た場合は構造化レビュー失敗として扱う。プロンプトを絞って 1 回再実行し、それでも失敗する場合は plain/text の助言としてだけ扱い、証跡や gate にしない。
-- Grok に編集させる場合は専用 branch / worktree / 所有範囲を分け、メインスレッドが差分をレビューしてから取り込む。
-- ローカル skill `$grok-auxiliary-review` が使える場合は、Grok 運用の実行手順として優先的に参照する。詳細方針は [ADR-0027](docs/adr/0027-grok-cli-auxiliary-review.md) と [ADR-0029](docs/adr/0029-grok-operational-surface.md) を正とする。
+- Grok CLIによる独立監査、補助レビュー、UI / UX発散、文言確認、PR差分レビューは行わない。
+- Grokの実行結果を設計判断、Issue要件、PR review、完成判定、CI gate、runtime証跡へ使わない。
+- 設計、実装、レビュー、merge判断はメインスレッドが責任を持ち、並列化には通常のCodexサブエージェントだけを使う。
+- `artifacts/grok-review/`へ新しい監査証跡を追加しない。旧証跡が存在しても現在の判断根拠にはしない。
+- 詳細方針は[ADR-0035](docs/adr/0035-discontinue-grok-independent-audit.md)を正とする。
 
 ## Computer Use
 
@@ -33,5 +31,9 @@
 
 - アプリごとの有効・無効、感度、割り当て設定は追加しない。特定ボタン未押下時は通常マウスとして振る舞う方針を維持する。
 - `need:human` は、computer-use と直前確認でも代替できない TCC 操作、純正トラックパッド操作、Nape Pro 実機操作、証明書操作など、人間が実作業しないと進められない項目だけに使う。レビュー待ちや判断待ちには使わない。
-- 第三者プロジェクト由来のコード、定数、状態遷移、係数をコピーしない。実装パラメータはこのリポジトリのログと公開 API から再導出する。
+- 第三者プロジェクト由来のコード、定数、状態遷移、係数をコピーしない。実装契約とパラメータはApple公式資料、Apple OSS、このリポジトリの純正trackpad / Nape Proログから再導出する。
+- 製品のgesture出力はtrackpad driver上位出力相当のscroll / gesture、DockSwipe、NavigationSwipe、magnification eventに限定する。DriverKit virtual trackpad、AX scrollbar、対象PID配送、keyboard shortcutによるgesture代替は使わない。
+- 通常SDK非公開のevent contractは最小のcompatibility adapterへ隔離し、未知のmacOS versionやcontract不一致ではfail closedにする。詳細は[ADR-0036](docs/adr/0036-emulate-trackpad-driver-output-events.md)を正とする。
+- output contractの`supported`は登録済みfixture ID、SHA-256、schema、contract ID、OS version / build、fixture実体の完全一致でだけ生成する。未登録fixtureやhash不一致を文字列IDだけで通さない。
+- 製品gesture出力と旧単純scroll / shortcut /対象PID配送を含む診断出力はmodule境界で分離する。診断出力を製品fallbackやcompletion evidenceへ使わない。詳細は[ADR-0037](docs/adr/0037-separate-product-and-diagnostic-event-output.md)を正とする。
 - ユーザーが見る挙動、GUI、権限導線、検証手順、完成状態、配布手順を変える場合は README を更新する。更新不要なら PR 本文で理由を明記する。

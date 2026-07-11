@@ -2,12 +2,28 @@
 
 この文書は `.app` バンドル作成、署名、公証、配布前の権限付与確認をまとめる。Apple Developer ID と App Store Connect 認証情報がない環境では、公開配布用の署名と公証は実行しない。
 
+## Trackpad event compatibility
+
+[ADR-0036](adr/0036-emulate-trackpad-driver-output-events.md)により、製品出力はtrackpad driver上位出力相当のevent contractをsystem-wide streamへ送る。DriverKit System Extension、`.dext`、DriverKit entitlementは使わない。
+
+通常SDKに公開されていないevent contractをcompatibility adapterで扱うため、配布はDeveloper ID Application署名と公証による直接配布を正とし、Mac App Store提出を前提にしない。release buildでは次を検査する。
+
+- private contractがcompatibility adapter外へ漏れていない
+- binaryが想定外のprivate headerや第三者由来objectを同梱していない
+- runtime / doctorがOS build、contract schema、fixture ID / SHA-256、supported / unsupported / contractMismatchを表示する
+- 対応対象のmacOS buildでtrackpad scroll、DockSwipe、NavigationSwipe、magnificationのcontract smokeが成功する
+- 未知のOS version、symbol不在、fixture不一致ではevent投稿前にfail closedになる
+- AX、対象PID配送、application別分岐、keyboard shortcut fallbackを含まない
+
+公証成功はevent contract互換性の証明ではない。署名・公証・Gatekeeper評価と、OS version別runtime証跡を別々のrelease gateとして保存する。
+
 ## ローカルで再現できる検証
 
 release build から `.app` を作成し、バンドル構造と同梱文書を検証する。
 
 ```sh
 sh scripts/check-provenance.sh
+sh scripts/check-product-output-boundary.sh
 swift build -c release --scratch-path .build
 .build/release/nape-gesture bundle-app --out .build/NapeGesture.app --replace
 .build/release/nape-gesture verify-bundle .build/NapeGesture.app
@@ -30,7 +46,7 @@ cmp THIRD_PARTY_NOTICES.md .build/NapeGesture.app/Contents/Resources/THIRD_PARTY
 - `codesign --verify --deep --strict --verbose=2` による署名状態
 
 通常の `verify-bundle` は署名が未完了でも構造検証を続行し、署名状態を表示する。公開配布前のゲートでは `--require-signature` を付け、署名検証失敗をエラーにする。
-`sh scripts/check-provenance.sh` は、外部ソースを読まずに tracked files だけを対象として、由来方針の削除や許可外の識別子混入を検出する。これは法的な完全証明ではなく、配布前に実施する repo-local の退行検知である。
+`sh scripts/check-provenance.sh`は、外部ソースを読まずにtracked filesだけを対象として、由来方針の削除や許可外の識別子混入を検出する。`sh scripts/check-product-output-boundary.sh`はproduct / diagnostic output target、許可import、fail-closed入口を検査する。前者は法的な完全証明ではなく、後者もruntime contract成立の代替ではない。
 `PlistBuddy` と `cmp` は、権限付与対象の identity と同梱文書の原本一致を機械的に固定する。
 `LSUIElement=false` は、`.app` が Dock に表示される通常 GUI アプリとして起動することを固定する。
 

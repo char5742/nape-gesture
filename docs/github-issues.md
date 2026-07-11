@@ -24,7 +24,7 @@
 
 `need:human` は承認待ち、レビュー待ち、確認依頼、人間による判断待ちを表す label ではない。
 純正トラックパッド操作、Nape Pro 実機操作、スリープ、デバイス抜き差し、TCC 権限変更など、人間が手を動かして実行する物理作業または macOS UI 操作が最後の手段として必要な Issue にだけ使う。
-自動化、CGEvent 投稿、dry-run、fixtures、ログ解析、Reference Target App、System Behavior Test、権限済み環境での実イベント投稿で代替できる作業は、人間へ依頼する前にそれらで潰し込む。
+自動化、system-wide event投稿、dry-run、fixtures、ログ解析、Reference Target App、System Behavior Test、権限済み環境での実イベント投稿で代替できる作業は、人間へ依頼する前にそれらで潰し込む。純正trackpad driver output contractの正本取得は、生成eventで代替せず物理trackpad操作を使う。
 人間作業が残る場合も、依頼前に手順を最小化し、取得すべきログ、期待値、失敗時の切り分けを Issue に明記する。
 
 ## Milestone 1: リポジトリ移行と品質ゲート
@@ -177,7 +177,7 @@ Labels: `area:core`, `area:verification`, `type:feature`, `priority:p0`
 なし。
 
 並列化:
-完了済み。今後は純正ログとの差分調整に進める。
+移行前の公開scroll fieldと単一`momentum`表現の範囲では完了済み。trackpad driver上位出力の共通session / momentum lifecycleはIssue #128、raw contract比較はIssue #129で置き換える。
 
 ### Issue 8: 純正トラックパッドログから加速度・しきい値・慣性パラメータを再導出する
 
@@ -205,18 +205,18 @@ Issue 4。
 Labels: `area:verification`, `type:research`, `priority:p0`, `blocked:external`
 
 目的:
-単なるショートカット送信を最終解にせず、生成スクロール系イベントで macOS がどこまで純正相当に扱うかを実測する。
+純正trackpad driver上位出力相当のDockSwipe eventで、Spaces / Mission Controlが連続追従することを実測する。
 
 完了条件:
 
-- Finder と Safari を対象に `space-left` / `space-right` を実測済み
-- Mission Control の純正操作ログと生成イベントログを比較済み
-- `screen behavior`, `CGEvent log`, `AppKit target log`, `体感差分` が同じシナリオ名で保存されている
-- 公開 API の限界がある場合、ログを根拠に説明されている
-- 代替操作を使う場合のチューニング値と品質目標がある
+- FinderとSafariを前面にして同じDockSwipe event系列で`space-left` / `space-right`を実測済み
+- Mission Control / App Exposéの純正操作logと生成event logを同一schemaで比較済み
+- type、subtype、progress、motion、phase、終了速度、timestamp、順序を比較できる
+- `screen behavior`、raw event log、AppKit target log、体感差分が同じscenario IDで保存されている
+- AX、対象PID配送、application別分岐、keyboard shortcut fallbackがない
 
 依存関係:
-アクセシビリティ権限、Issue 7、Issue 8。
+Issue 7、Issue 8、Issue 117、Issue 118、Issue 125、Issue 126、Issue 128、Issue 129、Issue 130、Issue 131。
 
 並列化:
 実機検証担当と生成パラメータ調整担当に分けられる。
@@ -226,21 +226,62 @@ Labels: `area:verification`, `type:research`, `priority:p0`, `blocked:external`
 Labels: `area:runtime`, `area:verification`, `type:qa`, `priority:p1`
 
 目的:
-設定に存在する主要ジェスチャー割り当てが、Safari/Finder/Reference Target App で期待通りに動くことを確認する。
+設定に存在する主要gesture割り当てが、trackpad driver上位出力eventとしてSafari / Finder / Reference Target Appで期待通りに動くことを確認する。
 
 完了条件:
 
 - `pageBack` / `pageForward` が Safari で検証されている
 - `zoomIn` / `zoomOut` が対応アプリで検証されている
 - `horizontalScroll` が横スクロール可能なビューで検証されている
-- 離散アクションは慣性を発生させない
-- 生成キーイベントのログと画面挙動が一致している
+- page移動はNavigationSwipe、zoomはmagnification / zoom、横scrollはtrackpad scroll eventとして出る
+- 純正trackpad logとtype、subtype、field、phase、momentum、順序を比較できる
+- applicationごとのshortcut mapping、対象PID配送、AX fallbackがない
 
 依存関係:
-アクセシビリティ権限、Issue 3。
+Issue 3、Issue 117、Issue 118、Issue 119、Issue 125、Issue 127、Issue 128、Issue 129、Issue 130、Issue 131。
 
 並列化:
 Spaces 検証と並列可能。
+
+### Issue 117: Trackpad driver上位出力eventでmacOS gestureを再現する
+
+Labels: `area:runtime`, `area:hid`, `area:verification`, `type:feature`, `priority:p0`
+
+目的:
+mouse入力をtrackpad driverが上位へ出すscroll / gesture、DockSwipe、NavigationSwipe、magnification event列へ変換し、macOSの標準gesture処理へsystem-wideに渡す。
+
+完了条件:
+
+- 純正trackpad output eventをraw fieldとserialized data付きで保存・解析できる
+- trackpad scroll、横scroll、momentum、page swipe、magnificationが純正contractと一致する
+- Spaces / Mission ControlがDockSwipe eventで連続追従し、終了・cancelでstuckしない
+- Finder / Safari / Web content / nested scroll targetでapplication固有配送なしに動作する
+- AX、対象PID配送、application別分岐、keyboard shortcut fallbackがない
+- macOS version別compatibility fixtureとfail-closed testがある
+- 製品出力とlegacy診断出力がmodule境界とCI guardで分離されている
+- output sessionが単一のmonotonic clock、sequence ID、terminal stateを持つ
+- trackpad event系列の投稿遅延、drop、作成・投稿失敗を性能schemaで判定できる
+- Mac Mouse Fixのコード、field番号、定数、係数、状態遷移をコピーしていない
+
+Sub-issues:
+
+| Issue | 役割 | `need:human` |
+| --- | --- | --- |
+| #118 | 純正trackpad output event logger | なし |
+| #125 | 純正trackpad物理操作によるevent contract取得 | あり |
+| #119 | trackpad scroll + companion gesture / momentum | なし |
+| #126 | DockSwipeによるSpaces / Mission Control | なし |
+| #127 | NavigationSwipe / magnification | なし |
+| #122 | macOS version compatibility adapter | なし |
+| #124 | AX /対象PID配送 / shortcut fallback禁止guard | なし |
+| #128 | output session model / monotonic clock | なし |
+| #129 | raw event専用analyzer / contract fixture比較 | なし |
+| #130 | product daemon統合 / fail closed | なし |
+| #131 | product出力とlegacy診断出力のmodule・CI分離 | なし |
+| #132 | trackpad output event系列の性能schema / baseline | なし |
+
+設計正本:
+[ADR-0036](adr/0036-emulate-trackpad-driver-output-events.md)、[ADR-0037](adr/0037-separate-product-and-diagnostic-event-output.md)
 
 ## Milestone 4: 常駐アプリ品質
 

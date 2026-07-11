@@ -23,7 +23,7 @@ body:
     id: commands
     attributes:
       label: 実行コマンド
-      description: `doctor`、`log`、`hid-log`、`system-test`、`target` などを記録してください。
+      description: "`doctor`、`log`、`hid-log`、`system-test`、`target` などを記録してください。"
     validations:
       required: true
   - type: textarea
@@ -37,6 +37,6 @@ body:
     id: result
     attributes:
       label: 判定
-      description: 成功、失敗、公開 API の限界、次の調整項目を書いてください。
+      description: 成功、失敗、event contract差分、macOS互換境界、次の調整項目を書いてください。
     validations:
       required: true

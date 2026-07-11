@@ -1,7 +1,8 @@
 # ADR-0027: Grok CLI を補助レビューと発散に使う
 
-- 状態: 採択
+- 状態: 置換済み
 - 日付: 2026-07-09
+- 置換先: [ADR-0035](0035-discontinue-grok-independent-audit.md)
 
 ## 背景
 

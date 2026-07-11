@@ -46,104 +46,33 @@ Issue orchestration と証跡付き close は [ADR-0005](adr/0005-issue-orchestr
 
 ## 次の並列投入候補
 
-2026-07-08 時点で、Issue 1、Issue 2、Issue 3、Issue 7 は完了済み。
-次は次の順でサブエージェントへ分ける。
+2026-07-11時点ではIssue #117を親にし、trackpad driver上位出力eventへの移行を次の順で進める。旧Issue #7の単一phase model、forced horizontal scroll、shortcut dry-runは移行前baselineであり、新経路の完了扱いにしない。
 
-| Issue | 目的 | 所有範囲 | 衝突リスク | 完了確認 |
+| 段階 | Issue | 目的 | 主な所有範囲 | 人間作業 |
 | --- | --- | --- | --- | --- |
-| Issue 14 | 入力遅延と CPU 使用率の測定基準を固定する | `Sources/nape-gesture/BenchmarkCommand.swift`, `docs/verification.md`, `docs/pr-review-checklist.md` | 低 | `swift build --scratch-path .build`, `.build/debug/nape-gesture-core-tests`, `.build/debug/nape-gesture benchmark --events 200000 --json`, `.build/debug/nape-gesture doctor --benchmark-events 50000 --json` |
-| Issue 5 | HID 対象デバイスとイベントタップ入力の紐づけを厳密化する | `Sources/NapeGestureCore/`, `Sources/nape-gesture/NapeGestureRuntime.swift`, `Sources/nape-gesture/HIDInputMonitor.swift`, `Sources/nape-gesture/SettingsWindowController.swift` | 中 | `swift build --scratch-path .build`, `.build/debug/nape-gesture-core-tests`, `.build/debug/nape-gesture check-config --config <検証設定> --probe-hid` |
-| Issue 6 | 元入力抑制を Reference Target App とログ解析で検証可能にする | `Sources/nape-gesture/ReferenceTargetApp.swift`, `Sources/nape-gesture/AnalyzeTargetLogCommand.swift`, `docs/verification.md` | 中 | `swift build --scratch-path .build`, `.build/debug/nape-gesture target --out <target-log>`, `.build/debug/nape-gesture analyze-target-log <target-log>` |
-| Issue 9 | Spaces / Mission Control の実機挙動マトリクスを作る | `Sources/nape-gesture/SystemBehaviorTestCommand.swift`, `docs/verification.md`, `docs/system-behavior-matrix.md` | 中 | `.build/debug/nape-gesture system-test list`, `.build/debug/nape-gesture system-test run --scenario space-left --target finder --dry-run --log-json --out /tmp/system-space-left.jsonl`, `.build/debug/nape-gesture analyze-log /tmp/system-space-left.jsonl` |
-| Issue 4 | Nape Pro HID profile を実機ログから確定する | `docs/verification.md`, `Fixtures/`, `logs/` | 低 | `.build/debug/nape-gesture devices --all --json`, `.build/debug/nape-gesture hid-log --vendor-id <ID> --product-id <ID> --usage-page <ID> --usage <ID> --duration 10`, `.build/debug/nape-gesture analyze-hid-log <log>`, `.build/debug/nape-gesture doctor --config <設定> --probe-hid --json` |
+| 1 | #118 | listen-only raw event logger | logger CLI、raw schema、metadata、tests | なし |
+| 1 | #128 | output session model / monotonic clock | core lifecycle、sequence、terminal state、pure tests | なし |
+| 1 | #129 | raw event analyzer / fixture比較 | analyzer、negative fixtures、contract report | なし |
+| 2 | #125 | 純正trackpad contract取得 | 保存済みraw log、scenario metadata | 純正trackpad物理操作だけ必要 |
+| 3 | #119 | scroll + companion gesture / momentum | scroll family adapter、session state | なし |
+| 3 | #126 | DockSwipe | Spaces / Mission Control family adapter | なし |
+| 3 | #127 | NavigationSwipe / magnification | page / zoom family adapter | なし |
+| 4 | #122 | macOS compatibility adapter | version fixture、supported / mismatch判定 | なし |
+| 4 | #130 | daemon統合 / fail closed | runtime output coordinator、停止・復帰 | なし |
+| 4 | #131 | product / diagnostic分離 | module境界、CI guard、旧CI移行 | なし |
+| 5 | #132 | output性能baseline | queue / post latency、drop、p95 / p99 | なし |
+| 6 | #9 / #10 | 最終実機受入 | system-wide挙動、画面証跡、体感差分 | Nape Pro /純正trackpad物理操作だけ必要 |
 
-Issue 4 と Issue 9 は実機と権限状態に依存するため、実機なしの dry-run だけで完了扱いにしない。
+段階1は所有ファイルが重ならない範囲で並列化する。段階3もevent familyごとのmoduleを分けて並列化できる。段階4は共通interfaceが固まってから統合し、メインスレッドが依存方向、CI、runtime証跡をレビューする。
 
-## Grok CLI による補助レビュー
+`need:human`は#125と#9 / #10の物理操作にだけ付ける。logger、analyzer、adapter、fixture test、CI guard、GUI / doctor表示を先に完成させ、物理操作を依頼する時点で実行コマンドと保存先を確定させる。
 
-Grok CLI の使い分けは [ADR-0027](adr/0027-grok-cli-auxiliary-review.md) を正とする。
-実行時の短いルールは repo 直下の `AGENTS.md`、再利用可能な手順はローカル Codex skill `$grok-auxiliary-review` にも置く。
-この 3 層の役割分担は [ADR-0029](adr/0029-grok-operational-surface.md) を正とする。
-メインスレッドは GPT-5.5 / Codex として実装、テスト、PR レビュー、merge 判断、Issue 反映を主担当にする。
-Grok は別モデルの第二視点として、UI / UX、文言、レビュー観点の抜け、第三者視点の確認に使う。
+## 独立モデル監査
 
-確認済みの非対話実行:
+[ADR-0035](adr/0035-discontinue-grok-independent-audit.md)により、Grok CLIによる独立監査、補助レビュー、発散、PR差分レビューは行わない。
+メインスレッドが設計、実装、レビュー、merge判断、Issue反映の責任を持つ。並列化が必要な場合は、同じリポジトリ方針と証跡契約を共有する通常のCodexサブエージェントへ、所有範囲を限定して委譲する。
 
-```sh
-grok -p "Nape Gesture の設定画面で、初心者が迷いやすいUIリスクを日本語で3点だけ挙げてください。" \
-  --model grok-4.5 \
-  --disable-web-search \
-  --no-subagents \
-  --permission-mode plan \
-  --tools '' \
-  --max-turns 1
-```
-
-差分レビューは入力を明示する:
-
-```sh
-tmpdir=$(mktemp -d /tmp/grok-review.XXXXXX)
-artifact_dir=${GROK_REVIEW_ARTIFACT_DIR:-artifacts/grok-review/$(date +%F-%H%M%S)}
-mkdir -p "$artifact_dir"
-grok version > "$artifact_dir/grok-version.txt"
-git fetch origin main
-base_ref=$(git rev-parse origin/main)
-head_ref=$(git rev-parse HEAD)
-{
-  printf '%s\n' "以下の git diff だけを第三者視点でレビューしてください。外部ファイルは読まないでください。"
-  printf 'base: %s\nhead: %s\n' "$base_ref" "$head_ref"
-  git diff "$base_ref...$head_ref" -- <対象ファイル>
-} > "$tmpdir/prompt.md"
-cp "$tmpdir/prompt.md" "$artifact_dir/prompt.md"
-grok --prompt-file "$tmpdir/prompt.md" \
-  --model grok-4.5 \
-  --disable-web-search \
-  --no-subagents \
-  --permission-mode plan \
-  --tools '' \
-  --max-turns 1 \
-  > "$artifact_dir/stdout.txt" \
-  2> "$artifact_dir/stderr.log"
-```
-
-構造化されたレビュー観点が必要な場合:
-
-```sh
-tmpdir=$(mktemp -d /tmp/grok-review.XXXXXX)
-artifact_dir=${GROK_REVIEW_ARTIFACT_DIR:-artifacts/grok-review/$(date +%F-%H%M%S)}
-mkdir -p "$artifact_dir"
-grok version > "$artifact_dir/grok-version.txt"
-git fetch origin main
-base_ref=$(git rev-parse origin/main)
-head_ref=$(git rev-parse HEAD)
-{
-  printf '%s\n' "以下の git diff だけをレビューし、レビュー観点を最大3点返してください。外部ファイルは読まないでください。問題がなければ空配列にしてください。"
-  printf 'base: %s\nhead: %s\n' "$base_ref" "$head_ref"
-  git diff "$base_ref...$head_ref" -- <対象ファイル>
-} > "$tmpdir/prompt.md"
-cp "$tmpdir/prompt.md" "$artifact_dir/prompt.md"
-grok --prompt-file "$tmpdir/prompt.md" \
-  --model grok-4.5 \
-  --disable-web-search \
-  --no-subagents \
-  --permission-mode plan \
-  --tools '' \
-  --max-turns 1 \
-  --output-format json \
-  --json-schema '{"type":"object","properties":{"findings":{"type":"array","items":{"type":"string"},"maxItems":3}},"required":["findings"],"additionalProperties":false}' \
-  > "$artifact_dir/stdout.json" \
-  2> "$artifact_dir/stderr.log"
-```
-
-運用ルール:
-
-- Grok の出力は助言であり、機械証跡や完成判定の代替にしない
-- Grok のレビューを採用する前に、メインスレッドが Issue 要件、コード、docs、テストと照合する
-- 再現性が必要なレビューでは model と CLI version を固定・保存し、base/head SHA と対象差分を prompt-file に含め、prompt / stdout / stderr を保存する
-- レビュー用途では `--disable-web-search`、`--no-subagents`、`--permission-mode plan`、`--tools ''`、`--max-turns 1` を基本にし、必要以上に外部状態や編集権限を与えない
-- 非対話実行では MCP 警告が stderr に出る場合があるため、証跡にする場合は stdout と stderr を分けて保存する
-- Grok に編集させる場合は、通常のサブエージェントと同じく専用 branch / worktree / 所有範囲を分け、`--permission-mode default` から始める。最初から `--always-approve`、`auto`、`dontAsk`、`bypassPermissions` を使わない
-- UI 発散では Grok の候補を使ってよいが、アプリ別設定不要、TCC 境界、Mac Mouse Fix 由来禁止、完成判定の証跡要件はメインスレッドのルールを優先する
+`artifacts/grok-review/`へ新しい証跡を追加せず、既存のGrok出力も現在の設計判断、PR review、完成判定、CI gateには使わない。
 
 ## Computer Use による GUI 操作
 

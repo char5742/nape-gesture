@@ -1,7 +1,7 @@
 # 性能測定基準
 
 この文書は Issue 14 の基準として、入力遅延と CPU 使用率を PR レビューで確認するための証跡を定義する。
-`benchmark` は純粋ロジックのベンチマークであり、イベントタップから CGEvent 投稿、AppKit 受信、画面反映までの実測ではない。
+`benchmark`は純粋ロジックのベンチマークであり、event tapからtrackpad output event系列の投稿、AppKit受信、画面反映までの実測ではない。
 
 ## 保存する証跡
 
@@ -41,11 +41,14 @@ tap-to-post は、権限済み実行主体で `--performance-log` または `NAP
 次は `benchmark` では完了扱いにしない。
 
 - IOHID または CGEvent tap へ入力が届くまでの遅延
-- tap callback から `CGEventPost` 完了までの処理時間
+- tap callbackからtrackpad output adapterの最初のevent投稿までの処理時間
+- 同一frameのscroll + companion gesture、またはDockSwipe / NavigationSwipe / magnification系列の投稿完了までの処理時間
 - 投稿イベントが AppKit や対象アプリに届くまでの遅延
 - WindowServer、Spaces、Mission Control の画面反映時間
 - Nape Pro 実機の連続操作中 CPU 使用率
 - スリープ復帰、デバイス抜き差し、権限変更後の復旧時 CPU 使用率
+
+raw event loggerはtap callback内のcopy時間、callback外queue待ち、field scan / encode時間、queue depth、drop countを分離する。logger自身がevent timingを歪めていないことと、trackpad output系列の作成・投稿数が一致することはIssue #132でbaseline化する。
 
 tap-to-post は runtime 性能 JSON Lines から自動集計する。
 この値を完了条件に含める PR では、イベントタップ受信時刻、投稿直前/直後時刻、投稿コマンド数を同じ操作 ID で記録した `RuntimePerformanceRecord` と、`analyze-performance-log --json --assert-baseline` の出力を添付する。
@@ -81,14 +84,14 @@ tap-to-post は runtime 性能 JSON Lines から自動集計する。
 
 | 区間 | 基準 |
 | --- | --- |
-| tap callback から最初の投稿まで | p95 8 ms 以下、p99 16 ms 以下 |
-| tap callback から連続スクロール投稿まで | p95 8 ms 以下、p99 16 ms 以下 |
+| tap callbackから最初のtrackpad output event投稿まで | p95 8 ms以下、p99 16 ms以下 |
+| tap callbackから同一frame event系列の投稿完了まで | p95 8 ms以下、p99 16 ms以下 |
 | 投稿から AppKit 受信まで | p95 16 ms 以下 |
 
 上記の実機基準は、アクセシビリティと入力監視が許可された日常利用と同じ `.app` または実行ファイルで測る。
 `doctor --json` の `runtimeIdentity` が、実際に許可した対象と一致していない測定は採用しない。
 tap callback から投稿までの基準は `analyze-performance-log --assert-baseline` で終了コード判定する。
-投稿なしレコード、生成イベント作成失敗、`measurementKind != runtimeTapToPost`、`includesEventTapAndPosting != true` は不合格とする。
+投稿なしrecord、予定event数と実投稿数の不一致、event作成失敗、`measurementKind != runtimeTapToPost`、`includesEventTapAndPosting != true`は不合格とする。
 
 ## tap-to-post 測定手順
 

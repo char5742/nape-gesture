@@ -3,7 +3,7 @@
 Nape Gesture は、Nape Pro などの通常マウス入力を macOS 上でトラックパッド級のジェスチャー操作へ変換する常駐 GUI アプリです。
 特定ボタンを押している間だけジェスチャーモードへ入り、押していないときは通常のマウスとして振る舞います。
 
-Mac Mouse Fix のコード、定数、状態遷移、係数は流用しません。公開 API と、このリポジトリで取得した実機ログから独自に挙動を作ります。
+Mac Mouse Fixの操作感とtrackpad driver出力構成を目標にしますが、コード、定数、状態遷移、係数は流用しません。Apple公式資料、Apple OSS、このリポジトリで取得した純正trackpad / Nape Proログからevent contractを独自に再導出します。
 
 ## いまの完成状態
 
@@ -12,7 +12,8 @@ Mac Mouse Fix のコード、定数、状態遷移、係数は流用しません
 | 通常 GUI アプリ | 実装済み。`.app` identity、通常 GUI 設定、AppKit `gui-smoke`、computer-use による設定ウィンドウ表示、System Events による Dock item 観測は確認済み | `bundle-app` / `verify-bundle` / `gui-smoke`、[ADR-0024](docs/adr/0024-regular-gui-app-launch.md) |
 | メニューバー常駐 UI | 実装済み。AppKit `gui-smoke` で status item `NG`、状態、開始、緊急停止、停止、設定、権限導線の生成契約を検査する。SystemUIServer の AX name に出ない場合は `gui-smoke` を正とする | [docs/completion-checklist.md](docs/completion-checklist.md) |
 | 設定 UI | 実装済み。編集項目 catalog、JSON round-trip、computer-use による `.app` 設定表示と保存操作は確認済み。保存は設定ファイル更新までの証跡で、TCC 許可済み runtime と実イベントは completion matrix で管理する | [ADR-0021](docs/adr/0021-settings-ui-field-catalog.md)、[docs/completion-checklist.md](docs/completion-checklist.md) |
-| Runtime event | `.build/NapeGesture.app` の TCC 許可済み経路で成功。gesture-drag / gesture-wheel / kill-switch / gesture-wheel-then-kill-switch / normal-after-release を `scripts/collect-runtime-event-evidence.sh` で機械判定した | [ADR-0032](docs/adr/0032-reference-target-foreground-capture.md)、[ADR-0033](docs/adr/0033-kill-switch-pending-release-suppression.md) |
+| Runtime入力・安全性 | `.build/NapeGesture.app`のTCC許可済み経路で、gesture認識、元入力抑制、kill switch、通常入力復帰を機械判定済み。既存CGEvent出力の成功は最終gesture出力の完成証跡にはしない | [ADR-0032](docs/adr/0032-reference-target-foreground-capture.md)、[ADR-0033](docs/adr/0033-kill-switch-pending-release-suppression.md) |
+| Trackpad driver出力 | 再構築中。listen-only raw logger、product / diagnostic output target、source guard、未対応contractのfail-closedは実装済み。完全なruntime target分離と各event family adapterは未完了 | [local smoke](docs/evidence/2026-07-11-trackpad-event-logger-local-smoke.md)、[ADR-0036](docs/adr/0036-emulate-trackpad-driver-output-events.md)、[ADR-0037](docs/adr/0037-separate-product-and-diagnostic-event-output.md) |
 | 通常入力通過 | 機械証跡あり。ジェスチャーボタン未押下時と解放後の通常クリック、ドラッグ、ホイールを AppKit target log で確認する | [ADR-0016](docs/adr/0016-normal-input-kind-assertions.md) |
 | 権限導線 | 実装済み。GUI と `doctor` が TCC 権限付与対象を表示し、System Settings を開く | [ADR-0020](docs/adr/0020-doctor-tcc-permission-target.md)、[ADR-0025](docs/adr/0025-gui-permission-recovery-actions.md) |
 | runtime 性能測定 | tap callback から投稿直前/直後までを JSON Lines で保存し、p95 / p99 を判定できる | [docs/performance-baseline.md](docs/performance-baseline.md) |
@@ -24,19 +25,25 @@ Mac Mouse Fix のコード、定数、状態遷移、係数は流用しません
 
 ## 全体像
 
+以下は[ADR-0036](docs/adr/0036-emulate-trackpad-driver-output-events.md)で採択した目標構成です。入力認識と安全停止は実装済みですが、trackpad driver出力adapterは再構築中であり、図中の出力系列が現在すべて実装済みであることを示しません。
+
 ```mermaid
 flowchart LR
     mouse["Nape Pro / 通常マウス"] --> hid["IOHID 入力監視"]
     mouse --> tap["CGEvent tap"]
     hid --> association["対象デバイス紐づけ"]
-    tap --> runtime["Nape Gesture runtime"]
-    association --> runtime
-    runtime --> pressed{"特定ボタン押下中?"}
+    tap --> recognizer["入力抑制 / gesture認識"]
+    association --> recognizer
+    recognizer --> pressed{"特定ボタン押下中?"}
     pressed -->|いいえ| passthrough["通常入力として通過"]
-    pressed -->|はい| gesture["生成は実装済み<br/>Spaces / Mission Control などの OS 反応は実機検証待ち"]
-    gesture --> appkit["macOS / AppKit / 前面アプリ"]
+    pressed -->|はい| output["trackpad driver出力adapter"]
+    output --> scroll["scroll + gesture / momentum"]
+    output --> system["DockSwipe / NavigationSwipe / magnification"]
+    scroll --> stream["macOS system-wide event stream"]
+    system --> stream
+    stream --> appkit["macOS標準gesture処理 / AppKit"]
     passthrough --> appkit
-    runtime --> status["GUI 状態表示 / doctor / JSON Lines 証跡"]
+    recognizer --> status["GUI 状態表示 / doctor / JSON Lines 証跡"]
 ```
 
 この図は入力経路と責務の全体像です。
@@ -128,20 +135,23 @@ swift run nape-gesture init-config --vendor-id <ID> --product-id <ID> --usage-pa
 | --- | --- |
 | `app` | 通常 GUI アプリモードで起動する |
 | `gui-smoke` | runtime を開始せずに通常 GUI activation policy、設定ウィンドウ、status item `NG`、通常アプリメニュー、status menu を JSON で検査する。`--config` 未指定時は一時 config を使う |
-| `run` | グローバルイベントタップで入力を読み、生成イベントを投稿する |
-| `doctor` | 権限、対象デバイス、HID probe、runtime ready、benchmark を一括診断する |
+| `run` | グローバルイベントタップで入力を読み、入力認識と安全性を検証する。trackpad driver出力adapterへの移行完了まではgesture出力の完成証跡に使わない |
+| `doctor` | 権限、対象デバイス、HID probe、trackpad output contract、runtime ready、benchmarkを一括診断する |
 | `devices` | IOHID で認識できるマウス系または全 HID デバイスを一覧する |
 | `hid-log` / `analyze-hid-log` | Nape Pro などの HID 生入力を記録、解析する |
 | `log` / `analyze-log` / `compare-log` | 実デバイス、純正トラックパッド、生成イベントを JSON Lines で記録、解析、比較する |
+| `trackpad-event-log` | 純正trackpad driver上位出力のevent type、subtype、raw field 0...255、serialized event、capture順、OS / scenario metadataをlisten-onlyで記録する |
 | `target` / `analyze-target-log` | AppKit が受け取った `scrollWheel` / `swipe` / `magnify` などを画面と JSON Lines で確認する。無人証跡では `--focus-capture-point` で capture view 中心へカーソルを移動し、`--assert-has-foreground-capture` で `globalMonitor` だけの弱い証跡を除外する |
-| `system-test` | Spaces、Mission Control、横スクロール、キルスイッチなどのシナリオを dry-run または実行する |
+| `system-test` | 入力抑制、通常入力復帰、キルスイッチと旧出力baselineをdry-runまたは実行する。単純scroll / forced horizontal / shortcut scenarioは診断専用 |
 | `benchmark` | 認識器とスクロール計画の純粋ロジック処理時間を測る |
 | `analyze-performance-log` | runtime 性能 JSON Lines から tap-to-post の p95 / p99 を判定する |
 | `bundle-app` / `verify-bundle` | `.app` を作成し、Info.plist、署名、同梱物、通常 GUI 設定を検証する |
 
 `system-test --post-to-pid` は Reference Target App の sink 診断専用です。
-完成証跡では `.cghidEventTap` 経由の `system-test` と `analyze-target-log --assert-has-foreground-capture` を使います。
+製品gesture出力と完成証跡には使いません。`.cghidEventTap`経由であっても、旧単純scroll / forced horizontal / shortcut scenarioはtrackpad driver上位出力の完成証跡にしません。
 `system-test run --scenario kill-switch` は未マークの `Control + Option + Command + G` を interval 付きの `keyDown` / `keyUp` として投稿し、daemon 停止ログと target log 漏れなしを確認します。
+
+次のCLI例に含まれる`generate-scroll`と旧`system-test`出力は、公開scroll field、入力抑制、安全停止、移行前baselineの診断用です。trackpad driver出力contractの採否には`trackpad-event-log`とIssue #129で実装する専用analyzerを使います。
 
 <details>
 <summary>CLI 例を開く</summary>
@@ -161,6 +171,9 @@ swift run nape-gesture log
 swift run nape-gesture log --duration 8 --out trackpad-space-right.jsonl --exclude-generated
 swift run nape-gesture analyze-log Fixtures/sample-log.jsonl
 swift run nape-gesture compare-log Fixtures/sample-trackpad-scroll-log.jsonl Fixtures/sample-generated-scroll-log.jsonl
+
+repo_head_sha=$(git rev-parse HEAD)
+swift run nape-gesture trackpad-event-log --duration 8 --out trackpad-driver-space-right.jsonl --scenario-id pure-trackpad-space-right --device-label built-in-trackpad --repo-head-sha "$repo_head_sha"
 
 swift run nape-gesture target
 swift run nape-gesture target --out target-events.jsonl
@@ -313,6 +326,6 @@ README は製品入口兼状態ダッシュボードとして扱います。
 ## ライセンス方針
 
 Mac Mouse Fix のコードや調整値は取り込みません。
-実装パラメータはこのツールで取得したログから再導出します。
+実装contractとパラメータはApple公式資料、Apple OSS、このツールで取得した純正trackpad / Nape Proログから再導出します。
 このリポジトリのライセンスは [LICENSE](LICENSE)、依存通知は [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) に記載します。
 アプリバンドルにはそれぞれ `Contents/Resources/LICENSE.txt` と `Contents/Resources/THIRD_PARTY_NOTICES.md` として同梱します。
