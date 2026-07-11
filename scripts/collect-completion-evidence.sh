@@ -136,6 +136,7 @@ provenance_dir="$artifact_root/provenance"
 doctor_dir="$artifact_root/doctor-and-performance"
 system_dir="$artifact_root/system-test-dry-run"
 fixtures_dir="$artifact_root/fixtures-analysis"
+trackpad_analyzer_dir="$artifact_root/trackpad-event-analyzer"
 hid_dir="$artifact_root/hid-inventory"
 
 config_path="$doctor_dir/nape-gesture.config.json"
@@ -165,6 +166,26 @@ run_combined_success \
   "$build_dir/core-tests.log" \
   ".build/debug/nape-gesture-core-tests" \
   .build/debug/nape-gesture-core-tests
+
+mkdir -p "$trackpad_analyzer_dir"
+printf '%s' '{"schemaVersion":2}' > "$trackpad_analyzer_dir/invalid-log.jsonl"
+printf '%s\n' '{}' > "$trackpad_analyzer_dir/invalid-manifest.json"
+
+run_split_expected_failure \
+  "Trackpad raw analyzer不正入力" \
+  "$trackpad_analyzer_dir/invalid-report.json" \
+  "$trackpad_analyzer_dir/invalid-report.stderr.log" \
+  ".build/debug/nape-gesture analyze-trackpad-event-log invalid-log.jsonl --manifest invalid-manifest.json --json" \
+  .build/debug/nape-gesture analyze-trackpad-event-log \
+  "$trackpad_analyzer_dir/invalid-log.jsonl" \
+  --manifest "$trackpad_analyzer_dir/invalid-manifest.json" \
+  --json
+
+run_combined_success \
+  "Trackpad raw analyzer失敗report確認" \
+  "$trackpad_analyzer_dir/invalid-report-check.log" \
+  "grep -F '\"passed\" : false' invalid-report.json" \
+  grep -F '"passed" : false' "$trackpad_analyzer_dir/invalid-report.json"
 
 run_combined_success \
   "release build" \

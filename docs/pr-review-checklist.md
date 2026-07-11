@@ -78,6 +78,11 @@
 
 - raw loggerはcallback内をcopy・採番・bounded queue投入に限定し、0 event、queue飽和、write / flush / close失敗を成功扱いにしていない
 - raw fieldは`fieldNumber`の数値昇順でzeroとdouble bit patternを保持し、serialized eventをCoreGraphicsで再構築できる
+- `--out` captureはevidence kind、最終log SHA / bytes / event数 / timestamp範囲、metadata、logger executable SHA、完了wall-clockをmanifestへ固定し、失敗captureに旧sidecar、symlink、一時fileを残していない
+- 厳格analyzerはtyped decodeの既定値補完前にLF終端、空行、重複key、nesting上限、整数精度、required field、nullable subtype、metadata、capture順、timestamp、raw field順、bit pattern、Base64を検証している
+- unknown top-level / metadata fieldを捨てず、raw JSON表現とreportへ保持している
+- generated product captureは生成marker、actual event type、raw target process fieldとprovenanceのlog SHA / 件数 / 順序 / timestamp / type / output session / familyを照合し、製品source境界guardと併せてPID、AX、shortcut、key / pointer / button経路を拒否している
+- CoreGraphics再構築で保持されないraw field差分を捨てたり意味推測せず`rawFieldDifferences`へ分離し、type / timestamp / flags / subtype /公開named field不一致だけをPhase 1の再構築失敗にしている
 - `--duration`なしのloggerはSIGINT後にevent受付を止め、queue drainとflush / closeを完了している
 - output sessionはsession ID、0始まりで欠落のないcapture order、非減少の起動後timestamp、terminal stateを保持する
 - input lifecycleとmomentum lifecycleを別型にし、input ended後のsession完了またはmomentum開始待ちを明示している

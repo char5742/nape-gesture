@@ -1,14 +1,15 @@
-import AppKit
 import CoreGraphics
 import Darwin
 import Dispatch
 import Foundation
 import NapeGestureCore
+import NapeGestureDiagnosticOutput
 
 final class TrackpadDriverEventLogger {
     private static let maximumPendingEvents = 4_096
 
     private let encoder = JSONEncoder()
+    private let manifestStore = TrackpadDriverEventCaptureManifestStore()
     private let options: [String]
     private let processingQueue = DispatchQueue(label: "com.napegesture.trackpad-event-log.processing")
     private let pendingEventSlots = DispatchSemaphore(value: maximumPendingEvents)
@@ -21,7 +22,7 @@ final class TrackpadDriverEventLogger {
     private var interruptSource: DispatchSourceSignal?
     private var runMetadata: TrackpadDriverEventLogMetadata?
     private var nextCaptureIndex: UInt64 = 0
-    private var emittedEvents = 0
+    private var emittedEvents: UInt64 = 0
     private var loggingError: Error?
     private var acceptingEvents = false
 
@@ -37,15 +38,36 @@ final class TrackpadDriverEventLogger {
         }
 
         let configuration = try makeConfiguration()
-        guard Self.supportsRawFieldScan else {
+        guard TrackpadDriverEventSnapshotFactory.supportsRawFieldScan else {
             throw TrackpadDriverEventLoggerError.unsupportedEventFieldLayout
         }
         runMetadata = try Self.makeMetadata(configuration: configuration)
+        let loggerExecutableSHA256: String?
+        if configuration.manifestPath == nil {
+            loggerExecutableSHA256 = nil
+        } else {
+            loggerExecutableSHA256 = try Self.runningExecutableSHA256()
+        }
         nextCaptureIndex = 0
         emittedEvents = 0
         loggingError = nil
         try AccessibilityPermission.ensurePrompted()
 
+        if let outputPath = configuration.outputPath, let manifestPath = configuration.manifestPath {
+            do {
+                try manifestStore.prepareDestination(
+                    logPath: outputPath,
+                    manifestPath: manifestPath
+                )
+            } catch let error as TrackpadDriverEventCaptureManifestStoreError {
+                if case .pathConflict = error {
+                    throw TrackpadDriverEventLoggerError.outputManifestPathConflict(outputPath)
+                }
+                throw TrackpadDriverEventLoggerError.manifestPreparationFailed(
+                    error.localizedDescription
+                )
+            }
+        }
         outputHandle = try makeOutputHandle(path: configuration.outputPath)
         defer {
             stop()
@@ -56,6 +78,13 @@ final class TrackpadDriverEventLogger {
             try? finalizeOutputHandle()
         }
         installInterruptHandler()
+
+        if configuration.outputPath == nil {
+            fputs(
+                "標準出力では確定後のfile bytesを再読込できないため、capture manifestは生成しません。\n",
+                stderr
+            )
+        }
 
         let userInfo = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
         guard let tap = CGEvent.tapCreate(
@@ -109,11 +138,64 @@ final class TrackpadDriverEventLogger {
             }
             throw error
         }
+        let captureCompletedAt = Date()
         if let capturedLoggingError {
             throw capturedLoggingError
         }
         guard emittedEvents > 0 else {
             throw TrackpadDriverEventLoggerError.noEventsCaptured
+        }
+
+        if let outputPath = configuration.outputPath {
+            guard
+                let manifestPath = configuration.manifestPath,
+                let evidenceKind = configuration.evidenceKind,
+                let loggerExecutableSHA256
+            else {
+                throw TrackpadDriverEventLoggerError.manifestConfigurationUnavailable
+            }
+            let logData = try Self.finalizedLogData(path: outputPath)
+            let summary: TrackpadDriverEventCaptureLogSummary
+            do {
+                summary = try TrackpadDriverEventCaptureManifest.summarize(logData: logData)
+            } catch {
+                throw TrackpadDriverEventLoggerError.finalizedLogInspectionFailed(
+                    error.localizedDescription
+                )
+            }
+            guard summary.eventCount == emittedEvents else {
+                throw TrackpadDriverEventLoggerError.finalizedLogEventCountMismatch(
+                    emitted: emittedEvents,
+                    finalized: summary.eventCount
+                )
+            }
+
+            let manifest = TrackpadDriverEventCaptureManifest(
+                evidenceKind: evidenceKind,
+                logSummary: summary,
+                loggerExecutableSHA256: loggerExecutableSHA256,
+                captureCompletedAt: captureCompletedAt
+            )
+            do {
+                try manifest.validate(logData: logData)
+            } catch {
+                throw TrackpadDriverEventLoggerError.manifestValidationFailed(
+                    error.localizedDescription
+                )
+            }
+            do {
+                try manifestStore.writeAtomically(manifest, toPath: manifestPath)
+            } catch let error as TrackpadDriverEventCaptureManifestStoreError {
+                if case .renameFailed = error {
+                    throw TrackpadDriverEventLoggerError.manifestRenameFailed(
+                        error.localizedDescription
+                    )
+                }
+                throw TrackpadDriverEventLoggerError.manifestWriteFailed(
+                    error.localizedDescription
+                )
+            }
+            fputs("capture manifestを保存しました。path=\(manifestPath)\n", stderr)
         }
         fputs("トラックパッド診断イベントログを終了しました。events=\(emittedEvents)\n", stderr)
     }
@@ -258,6 +340,8 @@ final class TrackpadDriverEventLogger {
         var scenarioID: String?
         var deviceLabel: String?
         var repoHeadSHA: String?
+        var manifestPath: String?
+        var evidenceKind: TrackpadDriverEventEvidenceKind?
         var seenOptions = Set<String>()
         var index = 0
         let supportedOptions = [
@@ -265,7 +349,9 @@ final class TrackpadDriverEventLogger {
             "--out",
             "--scenario-id",
             "--device-label",
-            "--repo-head-sha"
+            "--repo-head-sha",
+            "--manifest-out",
+            "--evidence-kind"
         ]
 
         while index < options.count {
@@ -293,12 +379,12 @@ final class TrackpadDriverEventLogger {
                 }
                 outputPath = value
             case "--scenario-id":
-                guard !value.isEmpty else {
+                guard Self.hasContent(value) else {
                     throw ToolError.invalidValue(option, value)
                 }
                 scenarioID = value
             case "--device-label":
-                guard !value.isEmpty else {
+                guard Self.hasContent(value) else {
                     throw ToolError.invalidValue(option, value)
                 }
                 deviceLabel = value
@@ -307,10 +393,70 @@ final class TrackpadDriverEventLogger {
                     throw ToolError.invalidValue(option, value)
                 }
                 repoHeadSHA = value.lowercased()
+            case "--manifest-out":
+                guard !value.isEmpty else {
+                    throw ToolError.invalidValue(option, value)
+                }
+                manifestPath = value
+            case "--evidence-kind":
+                guard let parsed = TrackpadDriverEventEvidenceKind(rawValue: value) else {
+                    throw TrackpadDriverEventLoggerError.invalidEvidenceKind(value)
+                }
+                evidenceKind = parsed
             default:
                 break
             }
             index += 2
+        }
+
+        if let outputPath {
+            manifestPath = manifestPath ?? outputPath + ".manifest.json"
+            guard let evidenceKind else {
+                throw TrackpadDriverEventLoggerError.missingEvidenceKind
+            }
+            guard let manifestPath else {
+                throw TrackpadDriverEventLoggerError.manifestConfigurationUnavailable
+            }
+            do {
+                try manifestStore.validateDistinctLocations(
+                    logPath: outputPath,
+                    manifestPath: manifestPath
+                )
+            } catch let error as TrackpadDriverEventCaptureManifestStoreError {
+                if case .pathConflict = error {
+                    throw TrackpadDriverEventLoggerError.outputManifestPathConflict(outputPath)
+                }
+                throw TrackpadDriverEventLoggerError.manifestPreparationFailed(
+                    error.localizedDescription
+                )
+            }
+            if evidenceKind != .synthetic {
+                guard scenarioID != nil else {
+                    throw TrackpadDriverEventLoggerError.requiredEvidenceMetadataMissing(
+                        evidenceKind: evidenceKind,
+                        option: "--scenario-id"
+                    )
+                }
+                guard deviceLabel != nil else {
+                    throw TrackpadDriverEventLoggerError.requiredEvidenceMetadataMissing(
+                        evidenceKind: evidenceKind,
+                        option: "--device-label"
+                    )
+                }
+                guard repoHeadSHA != nil else {
+                    throw TrackpadDriverEventLoggerError.requiredEvidenceMetadataMissing(
+                        evidenceKind: evidenceKind,
+                        option: "--repo-head-sha"
+                    )
+                }
+            }
+        } else {
+            if manifestPath != nil {
+                throw TrackpadDriverEventLoggerError.manifestRequiresFileOutput
+            }
+            if evidenceKind != nil {
+                throw TrackpadDriverEventLoggerError.evidenceKindRequiresManifest
+            }
         }
 
         return TrackpadDriverEventLoggerConfiguration(
@@ -318,7 +464,9 @@ final class TrackpadDriverEventLogger {
             outputPath: outputPath,
             scenarioID: scenarioID,
             deviceLabel: deviceLabel,
-            repoHeadSHA: repoHeadSHA
+            repoHeadSHA: repoHeadSHA,
+            manifestPath: manifestPath,
+            evidenceKind: evidenceKind
         )
     }
 
@@ -329,6 +477,10 @@ final class TrackpadDriverEventLogger {
         return value.unicodeScalars.allSatisfy { scalar in
             CharacterSet(charactersIn: "0123456789abcdefABCDEF").contains(scalar)
         }
+    }
+
+    private static func hasContent(_ value: String) -> Bool {
+        !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private static func makeMetadata(
@@ -362,6 +514,62 @@ final class TrackpadDriverEventLogger {
 
         return buffer.withUnsafeBufferPointer { pointer in
             String(cString: pointer.baseAddress!)
+        }
+    }
+
+    private static func runningExecutableSHA256() throws -> String {
+        var requiredSize: UInt32 = 0
+        _ = _NSGetExecutablePath(nil, &requiredSize)
+        guard requiredSize > 1 else {
+            throw TrackpadDriverEventLoggerError.runningExecutableHashUnavailable(
+                "実行file pathの必要buffer長を取得できませんでした。"
+            )
+        }
+
+        var buffer = [CChar](repeating: 0, count: Int(requiredSize))
+        let result = buffer.withUnsafeMutableBufferPointer { pointer in
+            _NSGetExecutablePath(pointer.baseAddress, &requiredSize)
+        }
+        guard result == 0, let baseAddress = buffer.withUnsafeBufferPointer({ $0.baseAddress }) else {
+            throw TrackpadDriverEventLoggerError.runningExecutableHashUnavailable(
+                "実行file pathを取得できませんでした。"
+            )
+        }
+
+        let executableURL = URL(fileURLWithPath: String(cString: baseAddress))
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+        do {
+            let values = try executableURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+            guard values.isRegularFile == true, let fileSize = values.fileSize, fileSize > 0 else {
+                throw TrackpadDriverEventLoggerError.runningExecutableHashUnavailable(
+                    "実行fileが空またはregular fileではありません。path=\(executableURL.path)"
+                )
+            }
+            let executableData = try Data(contentsOf: executableURL, options: .mappedIfSafe)
+            guard !executableData.isEmpty else {
+                throw TrackpadDriverEventLoggerError.runningExecutableHashUnavailable(
+                    "実行file bytesが空です。path=\(executableURL.path)"
+                )
+            }
+            return TrackpadDriverEventCaptureManifest.sha256HexDigest(of: executableData)
+        } catch let error as TrackpadDriverEventLoggerError {
+            throw error
+        } catch {
+            throw TrackpadDriverEventLoggerError.runningExecutableHashUnavailable(
+                "path=\(executableURL.path) details=\(error.localizedDescription)"
+            )
+        }
+    }
+
+    private static func finalizedLogData(path: String) throws -> Data {
+        let logURL = URL(fileURLWithPath: path).standardizedFileURL
+        do {
+            return try Data(contentsOf: logURL, options: .mappedIfSafe)
+        } catch {
+            throw TrackpadDriverEventLoggerError.finalizedLogReadFailed(
+                "path=\(logURL.path) details=\(error.localizedDescription)"
+            )
         }
     }
 
@@ -432,13 +640,16 @@ final class TrackpadDriverEventLogger {
     private func printCommandHelp() {
         print(
             """
-            nape-gesture trackpad-event-log [--duration <秒>] [--out <path>] [--scenario-id <ID>] [--device-label <ラベル>] [--repo-head-sha <SHA>]
+            nape-gesture trackpad-event-log [--duration <秒>] [--out <path>] [--manifest-out <path>] [--evidence-kind <synthetic|physicalTrackpad|generatedProduct>] [--scenario-id <ID>] [--device-label <ラベル>] [--repo-head-sha <SHA>]
 
             純正トラックパッドがCoreGraphicsへ送るイベント契約を、listen-onlyのCGEvent tapでJSON Linesとして記録します。
             callbackではイベントのcopy・採番・bounded queue投入だけを行い、event type 0...63とzeroを含むraw field 0...255をfieldNumber昇順で保存します。
             serializedEventBase64を正本とし、OS version/build、logger version、scenario ID、device label、repo HEAD SHAを各eventへ保存します。
             --repo-head-sha は40桁または64桁の完全な16進SHAを指定してください。診断中は対象外の入力を避けてください。
-            --duration 未指定時は Ctrl-C まで継続し、SIGINT受信後にqueueをdrainしてflush / closeします。0 event、queue飽和、write / close失敗は非ゼロ終了します。--out 未指定時は標準出力へ書き出します。
+            --out指定時は--evidence-kindが必須です。--manifest-out省略時は<out>.manifest.jsonへsidecarを生成します。physicalTrackpad / generatedProductでは--scenario-id、--device-label、--repo-head-shaも必須です。
+            manifestは確定log fileのflush / close後に最終bytesを再読込して生成し、同じdirectoryのtemporary fileからatomic renameします。capture開始前に同じpathの旧sidecarを削除するため、失敗captureに旧manifestは残りません。
+            --out未指定時はJSON Linesを標準出力へ書き出しますが、完全性を証明できるfile bytesがないためmanifestを生成しません。--manifest-outまたは--evidence-kindだけの指定は失敗します。
+            --duration未指定時はCtrl-Cまで継続し、SIGINT受信後にqueueをdrainしてflush / closeします。0 event、queue飽和、log write / flush / close、executable SHA取得、manifest write / renameの失敗は非ゼロ終了します。
             """
         )
     }
@@ -452,80 +663,21 @@ final class TrackpadDriverEventLogger {
         capturedEvent: CapturedTrackpadDriverEvent,
         metadata: TrackpadDriverEventLogMetadata
     ) throws -> TrackpadDriverEventLog {
-        let event = capturedEvent.event
-        let fixedDeltaX = event.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2)
-        let fixedDeltaY = event.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1)
-        let fixedDeltaZ = event.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis3)
-        let pointDeltaX = event.getDoubleValueField(.scrollWheelEventPointDeltaAxis2)
-        let pointDeltaY = event.getDoubleValueField(.scrollWheelEventPointDeltaAxis1)
-        let pointDeltaZ = event.getDoubleValueField(.scrollWheelEventPointDeltaAxis3)
-        return TrackpadDriverEventLog(
-            metadata: metadata,
-            captureIndex: capturedEvent.captureIndex,
-            timestamp: event.timestamp,
-            typeRaw: Int(capturedEvent.type.rawValue),
-            typeName: capturedEvent.type.trackpadDriverStableName,
-            eventSubtype: NSEvent(cgEvent: event).map { Int64($0.subtype.rawValue) },
-            flags: event.flags.rawValue,
-            scrollDeltaX: event.getIntegerValueField(.scrollWheelEventDeltaAxis2),
-            scrollDeltaY: event.getIntegerValueField(.scrollWheelEventDeltaAxis1),
-            scrollDeltaZ: event.getIntegerValueField(.scrollWheelEventDeltaAxis3),
-            scrollFixedDeltaX: finiteValue(fixedDeltaX),
-            scrollFixedDeltaXBitPattern: fixedDeltaX.bitPattern,
-            scrollFixedDeltaY: finiteValue(fixedDeltaY),
-            scrollFixedDeltaYBitPattern: fixedDeltaY.bitPattern,
-            scrollFixedDeltaZ: finiteValue(fixedDeltaZ),
-            scrollFixedDeltaZBitPattern: fixedDeltaZ.bitPattern,
-            scrollPointDeltaX: finiteValue(pointDeltaX),
-            scrollPointDeltaXBitPattern: pointDeltaX.bitPattern,
-            scrollPointDeltaY: finiteValue(pointDeltaY),
-            scrollPointDeltaYBitPattern: pointDeltaY.bitPattern,
-            scrollPointDeltaZ: finiteValue(pointDeltaZ),
-            scrollPointDeltaZBitPattern: pointDeltaZ.bitPattern,
-            scrollPhase: event.getIntegerValueField(.scrollWheelEventScrollPhase),
-            momentumPhase: event.getIntegerValueField(.scrollWheelEventMomentumPhase),
-            isContinuous: event.getIntegerValueField(.scrollWheelEventIsContinuous),
-            sourceUserData: event.getIntegerValueField(.eventSourceUserData),
-            rawFields: rawFields(event: event),
-            serializedEventBase64: try serializedEventBase64(
-                event: event,
-                captureIndex: capturedEvent.captureIndex
+        do {
+            return try TrackpadDriverEventSnapshotFactory.makeRecord(
+                event: capturedEvent.event,
+                observedType: capturedEvent.type,
+                captureIndex: capturedEvent.captureIndex,
+                metadata: metadata
             )
-        )
-    }
-
-    private static func rawFields(event: CGEvent) -> [TrackpadDriverRawField] {
-        (TrackpadDriverEventLog.rawFieldScanLowerBound...TrackpadDriverEventLog.maximumRawFieldNumber).map { fieldNumber in
-            let field = rawEventField(fieldNumber: fieldNumber)
-            let integerValue = event.getIntegerValueField(field)
-            let doubleValue = event.getDoubleValueField(field)
-            return TrackpadDriverRawField(
-                fieldNumber: fieldNumber,
-                integerValue: integerValue,
-                doubleValue: finiteValue(doubleValue),
-                doubleBitPattern: doubleValue.bitPattern
-            )
+        } catch let error as TrackpadDriverEventSnapshotError {
+            switch error {
+            case .unsupportedEventFieldLayout:
+                throw TrackpadDriverEventLoggerError.unsupportedEventFieldLayout
+            case let .serializedEventUnavailable(captureIndex):
+                throw TrackpadDriverEventLoggerError.serializedEventUnavailable(captureIndex)
+            }
         }
-    }
-
-    private static func finiteValue(_ value: Double) -> Double? {
-        value.isFinite ? value : nil
-    }
-
-    private static var supportsRawFieldScan: Bool {
-        MemoryLayout<CGEventField>.size == MemoryLayout<UInt32>.size
-    }
-
-    private static func rawEventField(fieldNumber: Int) -> CGEventField {
-        // Swiftのfailable initializerを経由せず、公開C APIのuint32_tフィールド番号を同じビット表現で渡す。
-        unsafeBitCast(UInt32(fieldNumber), to: CGEventField.self)
-    }
-
-    private static func serializedEventBase64(event: CGEvent, captureIndex: UInt64) throws -> String {
-        guard let data = event.data else {
-            throw TrackpadDriverEventLoggerError.serializedEventUnavailable(captureIndex)
-        }
-        return (data as Data).base64EncodedString()
     }
 }
 
@@ -535,6 +687,8 @@ private struct TrackpadDriverEventLoggerConfiguration {
     var scenarioID: String?
     var deviceLabel: String?
     var repoHeadSHA: String?
+    var manifestPath: String?
+    var evidenceKind: TrackpadDriverEventEvidenceKind?
 }
 
 private struct CapturedTrackpadDriverEvent {
@@ -546,8 +700,19 @@ private struct CapturedTrackpadDriverEvent {
 private enum TrackpadDriverEventLoggerError: LocalizedError {
     case unknownOption(String)
     case duplicateOption(String)
+    case invalidEvidenceKind(String)
+    case missingEvidenceKind
+    case manifestRequiresFileOutput
+    case evidenceKindRequiresManifest
+    case requiredEvidenceMetadataMissing(
+        evidenceKind: TrackpadDriverEventEvidenceKind,
+        option: String
+    )
+    case outputManifestPathConflict(String)
+    case manifestConfigurationUnavailable
     case unsupportedEventFieldLayout
     case operatingSystemBuildUnavailable(Int32)
+    case runningExecutableHashUnavailable(String)
     case metadataUnavailable
     case noEventsCaptured
     case captureIndexOverflow
@@ -557,6 +722,13 @@ private enum TrackpadDriverEventLoggerError: LocalizedError {
     case outputHandleUnavailable
     case outputWriteFailed(String)
     case outputFinalizationFailed(String)
+    case manifestPreparationFailed(String)
+    case finalizedLogReadFailed(String)
+    case finalizedLogInspectionFailed(String)
+    case finalizedLogEventCountMismatch(emitted: UInt64, finalized: UInt64)
+    case manifestValidationFailed(String)
+    case manifestWriteFailed(String)
+    case manifestRenameFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -564,10 +736,27 @@ private enum TrackpadDriverEventLoggerError: LocalizedError {
             return "trackpad-event-logで未対応のオプションです: \(option)"
         case let .duplicateOption(option):
             return "同じオプションを複数回指定できません: \(option)"
+        case let .invalidEvidenceKind(value):
+            let values = TrackpadDriverEventEvidenceKind.allCases.map(\.rawValue).joined(separator: ", ")
+            return "--evidence-kindが不正です: \(value)。指定可能値: \(values)"
+        case .missingEvidenceKind:
+            return "--outでcapture manifestを生成する場合は--evidence-kindが必要です。"
+        case .manifestRequiresFileOutput:
+            return "--manifest-outは--outと同時に指定してください。標準出力からmanifestは生成できません。"
+        case .evidenceKindRequiresManifest:
+            return "--evidence-kindは--outによるcapture manifest生成時だけ指定できます。"
+        case let .requiredEvidenceMetadataMissing(evidenceKind, option):
+            return "\(evidenceKind.rawValue)証跡には\(option)が必要です。"
+        case let .outputManifestPathConflict(path):
+            return "イベントログとcapture manifestを同じpathへ出力できません: \(path)"
+        case .manifestConfigurationUnavailable:
+            return "capture manifestの出力設定が完全ではありません。"
         case .unsupportedEventFieldLayout:
             return "この環境のCGEventField表現ではraw field scanを安全に実行できません。"
         case let .operatingSystemBuildUnavailable(code):
             return "OS build番号を取得できませんでした。errno=\(code)"
+        case let .runningExecutableHashUnavailable(details):
+            return "実行中logger executableのSHA-256を取得できませんでした: \(details)"
         case .metadataUnavailable:
             return "トラックパッド診断イベントのmetadataを準備できていません。"
         case .noEventsCaptured:
@@ -586,49 +775,20 @@ private enum TrackpadDriverEventLoggerError: LocalizedError {
             return "トラックパッド診断イベントログの書き込みに失敗しました: \(details)"
         case let .outputFinalizationFailed(details):
             return "トラックパッド診断イベントログのflushまたはcloseに失敗しました: \(details)"
-        }
-    }
-}
-
-private extension CGEventType {
-    var trackpadDriverStableName: String {
-        switch self {
-        case .null:
-            return "null"
-        case .leftMouseDown:
-            return "leftMouseDown"
-        case .leftMouseUp:
-            return "leftMouseUp"
-        case .rightMouseDown:
-            return "rightMouseDown"
-        case .rightMouseUp:
-            return "rightMouseUp"
-        case .mouseMoved:
-            return "mouseMoved"
-        case .leftMouseDragged:
-            return "leftMouseDragged"
-        case .rightMouseDragged:
-            return "rightMouseDragged"
-        case .keyDown:
-            return "keyDown"
-        case .keyUp:
-            return "keyUp"
-        case .flagsChanged:
-            return "flagsChanged"
-        case .scrollWheel:
-            return "scrollWheel"
-        case .tabletPointer:
-            return "tabletPointer"
-        case .tabletProximity:
-            return "tabletProximity"
-        case .otherMouseDown:
-            return "otherMouseDown"
-        case .otherMouseUp:
-            return "otherMouseUp"
-        case .otherMouseDragged:
-            return "otherMouseDragged"
-        default:
-            return "raw-\(rawValue)"
+        case let .manifestPreparationFailed(details):
+            return "capture開始前に旧manifest sidecarを無効化できませんでした: \(details)"
+        case let .finalizedLogReadFailed(details):
+            return "flush / close後のイベントログbytesを再読込できませんでした: \(details)"
+        case let .finalizedLogInspectionFailed(details):
+            return "flush / close後のイベントログを再集計できませんでした: \(details)"
+        case let .finalizedLogEventCountMismatch(emitted, finalized):
+            return "書き込み済みevent数と確定fileのevent数が一致しません。emitted=\(emitted) finalized=\(finalized)"
+        case let .manifestValidationFailed(details):
+            return "capture manifestの検証に失敗しました: \(details)"
+        case let .manifestWriteFailed(details):
+            return "capture manifest temporary fileの書き込みに失敗しました: \(details)"
+        case let .manifestRenameFailed(details):
+            return "capture manifestのatomic renameに失敗しました: \(details)"
         }
     }
 }

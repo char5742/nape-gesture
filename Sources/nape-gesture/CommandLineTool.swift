@@ -43,6 +43,8 @@ final class CommandLineTool {
             try logger.run()
         case "trackpad-event-log":
             try TrackpadDriverEventLogger(options: options).run()
+        case "analyze-trackpad-event-log":
+            try AnalyzeTrackpadEventLogCommand(options: options).run()
         case "analyze-log":
             try AnalyzeLogCommand(options: options).run()
         case "compare-log":
@@ -105,8 +107,11 @@ final class CommandLineTool {
               nape-gesture log [--duration <秒>] [--out <path>] [--exclude-generated|--only-generated]
                   グローバル入力イベントを JSON Lines で記録します。メタ情報は標準エラー、イベント本体は標準出力または --out に出します。
 
-              nape-gesture trackpad-event-log [--duration <秒>] [--out <path>] [--scenario-id <ID>] [--device-label <ラベル>] [--repo-head-sha <SHA>]
-                  純正トラックパッドの上位イベント契約を調査するため、listen-only の CGEvent tap で event type 0...63 と zero を含む raw field 0...255 を JSON Lines に記録します。OS version/build、logger version、scenario ID、device label、repo HEAD SHA を各 event に保存します。
+              nape-gesture trackpad-event-log [--duration <秒>] [--out <path>] [--manifest-out <path>] [--evidence-kind <synthetic|physicalTrackpad|generatedProduct>] [--scenario-id <ID>] [--device-label <ラベル>] [--repo-head-sha <SHA>]
+                  純正トラックパッドの上位イベント契約を調査するため、listen-only の CGEvent tap で event type 0...63 と zero を含む raw field 0...255 を JSON Lines に記録します。--out 指定時は evidence kind が必須で、確定 log の hash、件数、metadata、logger executable hash を sidecar manifest に保存します。
+
+              nape-gesture analyze-trackpad-event-log <log.jsonl> --manifest <manifest.json> [--provenance <trace.jsonl>] [--json]
+                  現行 raw schema、capture manifest、serialized CGEvent 再構築、generated product の system-wide 配送 provenance を検証します。不正時も report を出して非ゼロ終了します。
 
               nape-gesture analyze-log <path> [--json] [--assert-has-unmarked-passthrough-input] [--assert-has-unmarked-click] [--assert-has-unmarked-drag] [--assert-has-unmarked-wheel] [--assert-has-unmarked-click-drag-wheel] [--assert-kill-switch-shortcut] [--assert-gesture-before-kill-switch] [--assert-system-scenario <name>]
                   JSON Lines ログを解析し、しきい値候補を出します。--assert-has-unmarked-passthrough-input で未生成の移動またはスクロールがない場合、--assert-has-unmarked-click / --assert-has-unmarked-drag / --assert-has-unmarked-wheel で未生成の通常クリック / 通常ドラッグ / 通常ホイールがない場合、--assert-kill-switch-shortcut で未生成の Control + Option + Command + G keyDown / keyUp がない場合、--assert-gesture-before-kill-switch でキルスイッチ前の未生成ジェスチャー入力がない場合、--assert-system-scenario で system-test dry-run の期待イベント列を満たさない場合に失敗します。
