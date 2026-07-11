@@ -140,7 +140,7 @@ swift run nape-gesture init-config --vendor-id <ID> --product-id <ID> --usage-pa
 | `devices` | IOHID で認識できるマウス系または全 HID デバイスを一覧する |
 | `hid-log` / `analyze-hid-log` | Nape Pro などの HID 生入力を記録、解析する |
 | `log` / `analyze-log` / `compare-log` | 実デバイス、純正トラックパッド、生成イベントを JSON Lines で記録、解析、比較する |
-| `trackpad-event-log` | 純正trackpad driver上位出力のevent type、subtype、raw field 0...255、serialized event、capture順、OS / scenario metadataをlisten-onlyで記録し、`--out`指定時は確定logのcapture manifestを作る |
+| `trackpad-event-log` | 純正trackpad driver上位出力のevent type、subtype、raw field 0...255、serialized event、capture順、OS / scenario metadataをlisten-onlyで記録し、`--out`指定時は確定logのcapture manifestを作る。`--ready-file`とcapture固有の`--ready-token`で物理操作の開始を同期できる |
 | `analyze-trackpad-event-log` | 現行raw schema、capture manifest、serialized CGEvent再構築を検証する。generated productでは生成marker、actual event種別、target process field、system-wide配送provenanceを照合する。AX / PID / shortcut製品経路はsource境界guardと併せて禁止する |
 | `target` / `analyze-target-log` | AppKit が受け取った `scrollWheel` / `swipe` / `magnify` などを画面と JSON Lines で確認する。無人証跡では `--focus-capture-point` で capture view 中心へカーソルを移動し、`--assert-has-foreground-capture` で `globalMonitor` だけの弱い証跡を除外する |
 | `system-test` | 入力抑制、通常入力復帰、キルスイッチと旧出力baselineをdry-runまたは実行する。単純scroll / forced horizontal / shortcut scenarioは診断専用 |
@@ -175,8 +175,28 @@ swift run nape-gesture analyze-log Fixtures/sample-log.jsonl
 swift run nape-gesture compare-log Fixtures/sample-trackpad-scroll-log.jsonl Fixtures/sample-generated-scroll-log.jsonl
 
 repo_head_sha=$(git rev-parse HEAD)
-swift run nape-gesture trackpad-event-log --duration 8 --out trackpad-driver-space-right.jsonl --evidence-kind physicalTrackpad --scenario-id pure-trackpad-space-right --device-label built-in-trackpad --repo-head-sha "$repo_head_sha"
-swift run nape-gesture analyze-trackpad-event-log trackpad-driver-space-right.jsonl --manifest trackpad-driver-space-right.jsonl.manifest.json --json
+ready_token=$(uuidgen | tr '[:upper:]' '[:lower:]')
+ready_file="trackpad-driver-space-right.${ready_token}.ready.json"
+.build/debug/nape-gesture trackpad-event-log \
+  --duration 60 \
+  --out trackpad-driver-space-right.jsonl \
+  --ready-file "$ready_file" \
+  --ready-token "$ready_token" \
+  --evidence-kind physicalTrackpad \
+  --scenario-id pure-trackpad-space-right \
+  --device-label built-in-trackpad \
+  --repo-head-sha "$repo_head_sha" &
+logger_pid=$!
+ruby scripts/wait-for-trackpad-capture-ready.rb \
+  --file "$ready_file" \
+  --token "$ready_token" \
+  --pid "$logger_pid" \
+  --scenario pure-trackpad-space-right \
+  --repo-head-sha "$repo_head_sha" \
+  --timeout 10 \
+  --minimum-remaining 45
+wait "$logger_pid"
+.build/debug/nape-gesture analyze-trackpad-event-log trackpad-driver-space-right.jsonl --manifest trackpad-driver-space-right.jsonl.manifest.json --json
 
 swift run nape-gesture target
 swift run nape-gesture target --out target-events.jsonl
@@ -214,6 +234,12 @@ swift run nape-gesture-core-tests
 ```
 
 </details>
+
+物理操作のcaptureごとに新しいrun tokenを発行し、そのtokenをfile名に含む未使用ready pathを使います。loggerは権限確認前に`ready: false`の排他的leaseを作り、event受付開始時だけ`ready: true`、開始時刻、有限durationのdeadlineを原子的に公開します。`wait-for-trackpad-capture-ready.rb`がtoken、PID、scenario ID、repo HEAD SHA、deadline余裕、PID生存を安定化待機後に再検証し、成功時だけ操作案内を出します。fileの存在だけをready判定に使いません。loggerは受付停止より前にleaseを`ready: false`へ戻して`unlink`します。配送順は0始まりの`captureIndex`を正本とし、異なるevent family間のtimestamp局所逆行を理由に並べ替えません。manifest schema 2は取得開始・完了wall-clock、scenario、device、repo HEAD、確定logとlogger executableのSHA-256を固定します。`physicalTrackpad`へ生成markerが混ざったcaptureは失敗します。
+
+macOS 26.5.1（25F80）の物理観測値と未取得境界は[小型contract fixture](Fixtures/trackpad-contract/25F80/physical-observations.json)と[収録証跡](docs/evidence/2026-07-11-physical-trackpad-contract-capture.md)で確認できます。fixtureは現在`partial`で、NavigationSwipeの完結左右系列、pinch方向ラベル、DockSwipe反対方向 / cancel、Mission Control / App Exposéのready同期再captureが残っています。
+
+local原本を保持する環境では、`ruby scripts/verify-trackpad-physical-observations.rb --json`が8本とlegacy 1本からSHA、manifest、keyboard境界prefix、target件数、生成marker、scroll companionの順序保存phase対応を再計算し、公開fixtureとの不一致を非ゼロ終了します。raw logや入力内容は出力しません。
 
 ## 設定と安全性
 

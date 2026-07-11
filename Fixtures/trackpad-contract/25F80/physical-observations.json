@@ -1,0 +1,209 @@
+{
+  "schemaVersion": 1,
+  "status": "partial",
+  "osVersion": "26.5.1",
+  "osBuild": "25F80",
+  "deviceLabel": "built-in-trackpad",
+  "loggerRepoHeadSHA": "b50e607ddde8e23b5467f4997bb3e1f3ee0c139e",
+  "loggerExecutableSHA256": "00c4cbbc83bbc7c2568eae99cfd63edbb405c44c80294672e93416153a577fa3",
+  "captureOrderField": "captureIndex",
+  "privateClassifierRawField": 110,
+  "privacy": {
+    "containsSerializedEvents": false,
+    "containsPointerCoordinates": false,
+    "containsKeyboardData": false,
+    "containsDeviceIdentifiers": false,
+    "sourceRawLogsCommitted": false
+  },
+  "captures": [
+    {
+      "scenarioID": "pure-trackpad-vertical-scroll",
+      "sourceFile": "vertical-scroll.jsonl",
+      "status": "usable",
+      "sourceLogSHA256": "67e6d0bfa59d4ee256ceb2aa631047ce1e802af78b1721a0aabe557ed42995a9",
+      "sourceEventCount": 1228,
+      "contractPrefixEventCount": 1200,
+      "captureStartedAt": "2026-07-11T10:04:35.877Z",
+      "captureCompletedAt": "2026-07-11T10:05:05.881Z",
+      "targetCounts": {"scrollWheel": 329, "scrollCompanion": 250}
+    },
+    {
+      "scenarioID": "pure-trackpad-horizontal-scroll",
+      "sourceFile": "horizontal-scroll.jsonl",
+      "status": "usable",
+      "sourceLogSHA256": "791b2a8fa9c13b7b069de240300f551646da4f116d4fe03d777903fd4946c65f",
+      "sourceEventCount": 1565,
+      "contractPrefixEventCount": 1502,
+      "captureStartedAt": "2026-07-11T10:06:07.294Z",
+      "captureCompletedAt": "2026-07-11T10:06:52.301Z",
+      "targetCounts": {"scrollWheel": 521, "scrollCompanion": 390}
+    },
+    {
+      "scenarioID": "pure-trackpad-momentum-stop",
+      "sourceFile": "momentum-stop.jsonl",
+      "status": "usable",
+      "sourceLogSHA256": "84a863aa1d4f9f3f7271d132d941586415fcd91b93a2123845aa0275fe9ee927",
+      "sourceEventCount": 440,
+      "contractPrefixEventCount": 403,
+      "captureStartedAt": "2026-07-11T09:56:50.518Z",
+      "captureCompletedAt": "2026-07-11T09:57:35.526Z",
+      "targetCounts": {"scrollWheel": 148, "scrollCompanion": 29}
+    },
+    {
+      "scenarioID": "pure-trackpad-page-swipe-left-right",
+      "sourceFile": "page-swipe-left-right.jsonl",
+      "status": "candidate-only",
+      "sourceLogSHA256": "270b06097f625d81a089e396ac2945521e9ad450a13c0db58979c3a5d32ae5f3",
+      "sourceEventCount": 812,
+      "contractPrefixEventCount": 812,
+      "captureStartedAt": "2026-07-11T09:57:52.561Z",
+      "captureCompletedAt": "2026-07-11T09:58:37.566Z",
+      "targetCounts": {"scrollWheel": 382, "scrollCompanion": 78, "rawType30": 22},
+      "missing": ["completed raw type 31 NavigationSwipe series", "physical left/right labels"]
+    },
+    {
+      "scenarioID": "pure-trackpad-pinch-in-out",
+      "sourceFile": "pinch-in-out.jsonl",
+      "status": "candidate-only",
+      "sourceLogSHA256": "5c9a95a7b4da000ee3e4dca900f0d5f9d9e5c93f7856814d142f34c0204a5cd0",
+      "sourceEventCount": 1278,
+      "contractPrefixEventCount": 1066,
+      "captureStartedAt": "2026-07-11T09:58:47.646Z",
+      "captureCompletedAt": "2026-07-11T09:59:32.652Z",
+      "targetCounts": {"magnificationCandidate": 206, "gestureEnvelope": 179, "rawType30": 21},
+      "missing": ["physical pinch-in/pinch-out sign labels"]
+    },
+    {
+      "scenarioID": "pure-trackpad-spaces-left-right",
+      "sourceFile": "spaces-left-right.jsonl",
+      "status": "candidate-only",
+      "sourceLogSHA256": "374b477943e0975729c0d57f3b57a631c8f30751c18586499df4aec8edd5651e",
+      "sourceEventCount": 409,
+      "contractPrefixEventCount": 376,
+      "captureStartedAt": "2026-07-11T10:00:49.714Z",
+      "captureCompletedAt": "2026-07-11T10:01:49.716Z",
+      "targetCounts": {"dockSwipeCandidate": 9, "rawType30": 66},
+      "missing": ["opposite DockSwipe direction code", "cancel terminal"]
+    },
+    {
+      "scenarioID": "pure-trackpad-mission-control-app-expose",
+      "sourceFile": "mission-control-app-expose.jsonl",
+      "status": "capture-window-missed",
+      "sourceLogSHA256": "ff2d65cc9e5c0428b19c0478294e65c5364dd88ec9e4b1535f816bf78ae7daf7",
+      "sourceEventCount": 109,
+      "contractPrefixEventCount": 109,
+      "captureStartedAt": "2026-07-11T10:01:59.917Z",
+      "captureCompletedAt": "2026-07-11T10:02:59.923Z",
+      "targetCounts": {"dockSwipeCandidate": 0, "rawType30": 0},
+      "missing": ["Mission Control physical series", "App Expose physical series"]
+    },
+    {
+      "scenarioID": "pure-trackpad-cancel-reverse",
+      "sourceFile": "cancel-reverse.jsonl",
+      "status": "usable",
+      "sourceLogSHA256": "e92834b5a8dbf3eb91526a581559201e9c53124f3c9a9af045461fb0bd375762",
+      "sourceEventCount": 3143,
+      "contractPrefixEventCount": 2925,
+      "captureStartedAt": "2026-07-11T10:03:10.519Z",
+      "captureCompletedAt": "2026-07-11T10:04:10.526Z",
+      "targetCounts": {"scrollWheel": 552, "scrollCompanion": 496, "dockSwipeCandidate": 11, "rawType30": 324},
+      "observedRawType30Terminals": {"ended": 2, "cancelled": 3}
+    }
+  ],
+  "legacyDiscovery": {
+    "scenarioID": "pure-trackpad-horizontal-scroll",
+    "sourceFile": "horizontal-scroll.jsonl",
+    "status": "not-adoptable",
+    "reason": "manifest schema 1 has no captureStartedAt and series has no terminal",
+    "sourceLogSHA256": "e6bc5bf8adefa8ee5d46e38dba784dd0e2c3bcd0a222fc299e25f8a22daa9c5a",
+    "sourceEventCount": 524,
+    "rawType31Count": 21,
+    "rawType31PhaseCounts": {"began": 1, "changed": 20, "ended": 0, "cancelled": 0}
+  },
+  "observedContracts": {
+    "common": {
+      "typeRawField": 55,
+      "timestampRawField": 58,
+      "phaseRawField": 132,
+      "phaseValues": {"mayBegin": 128, "began": 1, "changed": 2, "ended": 4, "cancelled": 8},
+      "timestampMayRegressAcrossCaptureOrder": true
+    },
+    "scroll": {
+      "eventTypeRaw": 22,
+      "continuousRawField": 88,
+      "continuousValue": 1,
+      "scrollPhaseRawField": 99,
+      "scrollPhaseValues": [1, 2, 4, 128],
+      "momentumPhaseRawField": 123,
+      "momentumPhaseValues": [0, 1, 2, 3],
+      "momentumTerminalValue": 3,
+      "momentumTerminalHasZeroNamedDelta": true
+    },
+    "scrollCompanion": {
+      "eventTypeRaw": 29,
+      "classifierRawField": 110,
+      "classifierValue": 6,
+      "envelopeClassifierValue": 0,
+      "phaseRawField": 132,
+      "xMotionDoubleFields": [113, 114, 116, 118],
+      "xMotionFloatBitFields": [115, 117, 164],
+      "yMotionDoubleFields": [119, 139],
+      "yMotionFloatBitFields": [123, 165],
+      "constantRawFields": {"124": 0, "135": 1},
+      "associationRule": {
+        "preserveOrder": true,
+        "phaseMustMatch": true,
+        "maximumCaptureIndexDistance": 8,
+        "candidateSelection": "minimum-absolute-timestamp-difference-then-capture-index-distance",
+        "unmatchedScrollAllowed": true
+      },
+      "pairedSampleCount": 1165,
+      "captureIndexDeltaValues": [-1, 2, 3, 4],
+      "timestampEqualToScrollWheel": false
+    },
+    "navigationCandidate": {
+      "eventTypeRaw": 30,
+      "classifierRawField": 110,
+      "classifierValue": 23,
+      "phaseRawFields": [132, 134],
+      "progressRawField": 124,
+      "progressFloatBitAliasRawField": 135,
+      "motionRawField": 125,
+      "orthogonalMotionRawField": 126,
+      "terminalVelocityRawFields": [129, 130],
+      "constantRawFields": {"136": 1, "138": 3},
+      "classificationStatus": "candidate-only"
+    },
+    "magnificationCandidate": {
+      "eventTypeRaw": 29,
+      "classifierRawField": 110,
+      "classifierValue": 8,
+      "envelopeClassifierValue": 4,
+      "phaseRawField": 132,
+      "signedScaleDeltaDoubleFields": [113, 114, 116, 118],
+      "signedScaleDeltaFloatBitFields": [115, 117, 164],
+      "observedScaleDeltaRange": {"minimum": -0.1626434326171875, "maximum": 0.1302947998046875},
+      "terminalDeltaMustBeZero": false,
+      "classificationStatus": "candidate-only"
+    },
+    "dockSwipeCandidate": {
+      "eventTypeRaw": 29,
+      "classifierRawField": 110,
+      "classifierValue": 32,
+      "phaseRawField": 132,
+      "progressDoubleFields": [119, 139, 148],
+      "progressFloatBitFields": [123, 165],
+      "activeRawField": 143,
+      "observedDirectionCodeRawField": 144,
+      "observedDirectionCodeValues": [5],
+      "terminal": {"phase": 4, "progress": 0, "active": 0},
+      "classificationStatus": "single-direction-candidate"
+    }
+  },
+  "remainingPhysicalCaptures": [
+    "completed NavigationSwipe left and right series with action markers",
+    "magnification positive and negative series with pinch-in and pinch-out markers",
+    "DockSwipe opposite direction and cancel series",
+    "Mission Control and App Expose series after ready-file"
+  ]
+}

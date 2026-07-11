@@ -157,16 +157,19 @@ enum TrackpadAnalyzerDiagnosticTestSupport {
         let summary = try TrackpadDriverEventCaptureManifest.summarize(logData: logData)
         let executableSHA = String(repeating: "b", count: 64)
         let completedAt = Date(timeIntervalSince1970: 1_752_220_800.125)
+        let startedAt = completedAt.addingTimeInterval(-1)
         let syntheticManifest = TrackpadDriverEventCaptureManifest(
             evidenceKind: .synthetic,
             logSummary: summary,
             loggerExecutableSHA256: executableSHA,
+            captureStartedAt: startedAt,
             captureCompletedAt: completedAt
         )
         let generatedManifest = TrackpadDriverEventCaptureManifest(
             evidenceKind: .generatedProduct,
             logSummary: summary,
             loggerExecutableSHA256: executableSHA,
+            captureStartedAt: startedAt,
             captureCompletedAt: completedAt
         )
         var negativeEventLog = eventLog
@@ -179,6 +182,7 @@ enum TrackpadAnalyzerDiagnosticTestSupport {
             evidenceKind: .synthetic,
             logSummary: negativeSummary,
             loggerExecutableSHA256: executableSHA,
+            captureStartedAt: startedAt,
             captureCompletedAt: completedAt
         )
         let validProvenance = TrackpadOutputProvenanceRecord(

@@ -107,7 +107,7 @@ final class CommandLineTool {
               nape-gesture log [--duration <秒>] [--out <path>] [--exclude-generated|--only-generated]
                   グローバル入力イベントを JSON Lines で記録します。メタ情報は標準エラー、イベント本体は標準出力または --out に出します。
 
-              nape-gesture trackpad-event-log [--duration <秒>] [--out <path>] [--manifest-out <path>] [--evidence-kind <synthetic|physicalTrackpad|generatedProduct>] [--scenario-id <ID>] [--device-label <ラベル>] [--repo-head-sha <SHA>]
+              nape-gesture trackpad-event-log [--duration <秒>] [--out <path>] [--manifest-out <path>] [--ready-file <path> --ready-token <UUID>] [--evidence-kind <synthetic|physicalTrackpad|generatedProduct>] [--scenario-id <ID>] [--device-label <ラベル>] [--repo-head-sha <SHA>]
                   純正トラックパッドの上位イベント契約を調査するため、listen-only の CGEvent tap で event type 0...63 と zero を含む raw field 0...255 を JSON Lines に記録します。--out 指定時は evidence kind が必須で、確定 log の hash、件数、metadata、logger executable hash を sidecar manifest に保存します。
 
               nape-gesture analyze-trackpad-event-log <log.jsonl> --manifest <manifest.json> [--provenance <trace.jsonl>] [--json]

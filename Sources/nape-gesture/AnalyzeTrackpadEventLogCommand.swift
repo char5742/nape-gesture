@@ -347,6 +347,7 @@ final class AnalyzeTrackpadEventLogCommand {
         "repoHeadSHA",
         "loggerVersion",
         "loggerExecutableSHA256",
+        "captureStartedAt",
         "captureCompletedAt"
     ]
 

@@ -13,6 +13,7 @@ public struct TrackpadDriverEventCaptureLogSummary: Equatable, Sendable {
     public var eventCount: UInt64
     public var firstEventTimestamp: UInt64
     public var lastEventTimestamp: UInt64
+    public var firstGeneratedEventCaptureIndex: UInt64?
     public var metadata: TrackpadDriverEventLogMetadata
 
     public init(
@@ -21,6 +22,7 @@ public struct TrackpadDriverEventCaptureLogSummary: Equatable, Sendable {
         eventCount: UInt64,
         firstEventTimestamp: UInt64,
         lastEventTimestamp: UInt64,
+        firstGeneratedEventCaptureIndex: UInt64?,
         metadata: TrackpadDriverEventLogMetadata
     ) {
         self.logSHA256 = logSHA256
@@ -28,6 +30,7 @@ public struct TrackpadDriverEventCaptureLogSummary: Equatable, Sendable {
         self.eventCount = eventCount
         self.firstEventTimestamp = firstEventTimestamp
         self.lastEventTimestamp = lastEventTimestamp
+        self.firstGeneratedEventCaptureIndex = firstGeneratedEventCaptureIndex
         self.metadata = metadata
     }
 }
@@ -66,7 +69,6 @@ public enum TrackpadDriverEventCaptureManifestValidationError: LocalizedError, E
     case invalidLogSHA256
     case emptyLog
     case zeroEvents
-    case invalidTimestampRange
     case invalidOSVersion
     case invalidOSBuild
     case invalidScenarioID
@@ -77,7 +79,10 @@ public enum TrackpadDriverEventCaptureManifestValidationError: LocalizedError, E
     case missingRepoHeadSHA(evidenceKind: TrackpadDriverEventEvidenceKind)
     case invalidLoggerVersion
     case invalidLoggerExecutableSHA256
+    case invalidCaptureStartWallClock
     case invalidCaptureCompletionWallClock
+    case captureWallClockOutOfOrder
+    case generatedMarkerInPhysicalCapture(captureIndex: UInt64)
     case logMismatch(field: String)
 
     public var errorDescription: String? {
@@ -90,8 +95,6 @@ public enum TrackpadDriverEventCaptureManifestValidationError: LocalizedError, E
             return "capture manifestのlogByteCountは1以上である必要があります。"
         case .zeroEvents:
             return "capture manifestのeventCountは1以上である必要があります。"
-        case .invalidTimestampRange:
-            return "capture manifestのfirstEventTimestampがlastEventTimestampを超えています。"
         case .invalidOSVersion:
             return "capture manifestのosVersionが空です。"
         case .invalidOSBuild:
@@ -112,8 +115,14 @@ public enum TrackpadDriverEventCaptureManifestValidationError: LocalizedError, E
             return "capture manifestのloggerVersionは1以上である必要があります。"
         case .invalidLoggerExecutableSHA256:
             return "capture manifestのloggerExecutableSHA256が正規化済みSHA-256ではありません。"
+        case .invalidCaptureStartWallClock:
+            return "capture manifestのcaptureStartedAtがISO 8601 wall-clockではありません。"
         case .invalidCaptureCompletionWallClock:
             return "capture manifestのcaptureCompletedAtがISO 8601 wall-clockではありません。"
+        case .captureWallClockOutOfOrder:
+            return "capture manifestのcaptureStartedAtがcaptureCompletedAtを超えています。"
+        case let .generatedMarkerInPhysicalCapture(captureIndex):
+            return "physicalTrackpad証跡に生成event markerが混在しています。captureIndex=\(captureIndex)"
         case let .logMismatch(field):
             return "capture manifestと確定済みログが一致しません。field=\(field)"
         }
@@ -121,7 +130,7 @@ public enum TrackpadDriverEventCaptureManifestValidationError: LocalizedError, E
 }
 
 public struct TrackpadDriverEventCaptureManifest: Codable, Equatable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public var schemaVersion: Int
     public var evidenceKind: TrackpadDriverEventEvidenceKind
@@ -137,6 +146,7 @@ public struct TrackpadDriverEventCaptureManifest: Codable, Equatable, Sendable {
     public var repoHeadSHA: String?
     public var loggerVersion: Int
     public var loggerExecutableSHA256: String
+    public var captureStartedAt: String
     public var captureCompletedAt: String
 
     public init(
@@ -154,6 +164,7 @@ public struct TrackpadDriverEventCaptureManifest: Codable, Equatable, Sendable {
         repoHeadSHA: String? = nil,
         loggerVersion: Int,
         loggerExecutableSHA256: String,
+        captureStartedAt: String,
         captureCompletedAt: String
     ) {
         self.schemaVersion = schemaVersion
@@ -170,6 +181,7 @@ public struct TrackpadDriverEventCaptureManifest: Codable, Equatable, Sendable {
         self.repoHeadSHA = repoHeadSHA
         self.loggerVersion = loggerVersion
         self.loggerExecutableSHA256 = loggerExecutableSHA256
+        self.captureStartedAt = captureStartedAt
         self.captureCompletedAt = captureCompletedAt
     }
 
@@ -177,6 +189,7 @@ public struct TrackpadDriverEventCaptureManifest: Codable, Equatable, Sendable {
         evidenceKind: TrackpadDriverEventEvidenceKind,
         logSummary: TrackpadDriverEventCaptureLogSummary,
         loggerExecutableSHA256: String,
+        captureStartedAt: Date,
         captureCompletedAt: Date
     ) {
         let metadata = logSummary.metadata
@@ -194,6 +207,7 @@ public struct TrackpadDriverEventCaptureManifest: Codable, Equatable, Sendable {
             repoHeadSHA: metadata.repoHeadSHA,
             loggerVersion: metadata.loggerVersion,
             loggerExecutableSHA256: loggerExecutableSHA256,
+            captureStartedAt: Self.wallClockString(for: captureStartedAt),
             captureCompletedAt: Self.wallClockString(for: captureCompletedAt)
         )
     }
@@ -210,9 +224,6 @@ public struct TrackpadDriverEventCaptureManifest: Codable, Equatable, Sendable {
         }
         guard eventCount > 0 else {
             throw TrackpadDriverEventCaptureManifestValidationError.zeroEvents
-        }
-        guard firstEventTimestamp <= lastEventTimestamp else {
-            throw TrackpadDriverEventCaptureManifestValidationError.invalidTimestampRange
         }
         guard Self.hasContent(osVersion) else {
             throw TrackpadDriverEventCaptureManifestValidationError.invalidOSVersion
@@ -252,8 +263,14 @@ public struct TrackpadDriverEventCaptureManifest: Codable, Equatable, Sendable {
         guard Self.isCanonicalSHA256(loggerExecutableSHA256) else {
             throw TrackpadDriverEventCaptureManifestValidationError.invalidLoggerExecutableSHA256
         }
-        guard Self.wallClockDate(from: captureCompletedAt) != nil else {
+        guard let captureStart = Self.wallClockDate(from: captureStartedAt) else {
+            throw TrackpadDriverEventCaptureManifestValidationError.invalidCaptureStartWallClock
+        }
+        guard let captureCompletion = Self.wallClockDate(from: captureCompletedAt) else {
             throw TrackpadDriverEventCaptureManifestValidationError.invalidCaptureCompletionWallClock
+        }
+        guard captureStart <= captureCompletion else {
+            throw TrackpadDriverEventCaptureManifestValidationError.captureWallClockOutOfOrder
         }
     }
 
@@ -261,6 +278,13 @@ public struct TrackpadDriverEventCaptureManifest: Codable, Equatable, Sendable {
         try validate()
         let summary = try Self.summarize(logData: logData)
         let metadata = summary.metadata
+
+        if evidenceKind == .physicalTrackpad,
+           let captureIndex = summary.firstGeneratedEventCaptureIndex
+        {
+            throw TrackpadDriverEventCaptureManifestValidationError
+                .generatedMarkerInPhysicalCapture(captureIndex: captureIndex)
+        }
 
         try requireEqual(logSHA256, summary.logSHA256, field: "logSHA256")
         try requireEqual(logByteCount, summary.logByteCount, field: "logByteCount")
@@ -289,6 +313,7 @@ public struct TrackpadDriverEventCaptureManifest: Codable, Equatable, Sendable {
         var eventCount: UInt64 = 0
         var firstEventTimestamp: UInt64?
         var lastEventTimestamp: UInt64?
+        var firstGeneratedEventCaptureIndex: UInt64?
         var sharedMetadata: TrackpadDriverEventLogMetadata?
 
         for index in logData.indices where logData[index] == 0x0A {
@@ -329,6 +354,11 @@ public struct TrackpadDriverEventCaptureManifest: Codable, Equatable, Sendable {
                 firstEventTimestamp = record.timestamp
             }
             lastEventTimestamp = record.timestamp
+            if firstGeneratedEventCaptureIndex == nil,
+               record.sourceUserData == NapeGestureGeneratedEventMarker.value
+            {
+                firstGeneratedEventCaptureIndex = record.captureIndex
+            }
             lineStart = logData.index(after: index)
         }
 
@@ -347,6 +377,7 @@ public struct TrackpadDriverEventCaptureManifest: Codable, Equatable, Sendable {
             eventCount: eventCount,
             firstEventTimestamp: firstEventTimestamp,
             lastEventTimestamp: lastEventTimestamp,
+            firstGeneratedEventCaptureIndex: firstGeneratedEventCaptureIndex,
             metadata: sharedMetadata
         )
     }

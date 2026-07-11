@@ -70,7 +70,6 @@ public enum TrackpadOutputProvenanceIssueCode: String, Codable, Equatable, Senda
     case eventCountMismatch
     case captureIndexMismatch
     case logCaptureIndexMismatch
-    case timestampRegression
     case eventTimestampMismatch
     case missingSessionID
     case missingFamily
@@ -184,7 +183,6 @@ public enum TrackpadOutputProvenanceAnalyzer {
             )
         }
 
-        var previousTimestamp: UInt64?
         for (index, record) in records.enumerated() {
             if record.schemaVersion != TrackpadOutputProvenanceRecord.currentSchemaVersion {
                 append(
@@ -260,17 +258,6 @@ public enum TrackpadOutputProvenanceAnalyzer {
                     issues: &issues
                 )
             }
-            if let previousTimestamp, record.eventTimestamp < previousTimestamp {
-                append(
-                    .timestampRegression,
-                    index: index,
-                    record: record,
-                    message: "provenance event timestampが逆行しています。",
-                    to: &issues
-                )
-            }
-            previousTimestamp = record.eventTimestamp
-
             if record.sessionID == nil {
                 append(
                     .missingSessionID,

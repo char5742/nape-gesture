@@ -3,6 +3,7 @@ import NapeGestureCore
 
 private let manifestTestExecutableSHA256 = String(repeating: "b", count: 64)
 private let manifestTestRepoHeadSHA = String(repeating: "a", count: 40)
+private let manifestTestReadyRunToken = "11111111-2222-3333-4444-555555555555"
 
 private func manifestTestMetadata(
     scenarioID: String? = "space-right",
@@ -20,7 +21,8 @@ private func manifestTestMetadata(
 
 private func manifestTestLogData(
     timestamps: [UInt64] = [100, 120],
-    metadata: TrackpadDriverEventLogMetadata = manifestTestMetadata()
+    metadata: TrackpadDriverEventLogMetadata = manifestTestMetadata(),
+    sourceUserData: Int64 = 0
 ) throws -> Data {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys]
@@ -32,6 +34,7 @@ private func manifestTestLogData(
             timestamp: timestamp,
             typeRaw: 22,
             typeName: "scrollWheel",
+            sourceUserData: sourceUserData,
             serializedEventBase64: "AA=="
         )
         data.append(try encoder.encode(record))
@@ -46,11 +49,13 @@ private func manifestTestManifest(
 ) throws -> (TrackpadDriverEventCaptureManifest, Data) {
     let logData = try manifestTestLogData(metadata: metadata)
     let summary = try TrackpadDriverEventCaptureManifest.summarize(logData: logData)
+    let completedAt = Date(timeIntervalSince1970: 1_752_220_800.125)
     let manifest = TrackpadDriverEventCaptureManifest(
         evidenceKind: evidenceKind,
         logSummary: summary,
         loggerExecutableSHA256: manifestTestExecutableSHA256,
-        captureCompletedAt: Date(timeIntervalSince1970: 1_752_220_800.125)
+        captureStartedAt: completedAt.addingTimeInterval(-8),
+        captureCompletedAt: completedAt
     )
     return (manifest, logData)
 }
@@ -213,6 +218,69 @@ private func testCaptureManifestStoreRejectsSameAndSymlinkedLocations() {
             pathsMatch,
             "親directoryのsymlink aliasも同じlocationとして扱う"
         )
+
+        let parentDestination = directoryURL.appendingPathComponent("capture.manifest")
+        let nestedDestination = parentDestination.appendingPathComponent("ready.json")
+        let nestedPathsConflict = try store.fileDestinationPathsConflict(
+            parentDestination.path,
+            nestedDestination.path
+        )
+        expect(
+            nestedPathsConflict,
+            "file予定地とその子pathを開始前に競合として扱う"
+        )
+        do {
+            try store.validateDistinctLocations(
+                logPath: parentDestination.path,
+                manifestPath: nestedDestination.path
+            )
+            expect(false, "log / manifestの親子pathを拒否する")
+        } catch let error as TrackpadDriverEventCaptureManifestStoreError {
+            guard case .pathConflict = error else {
+                expect(false, "親子pathをpathConflictとして報告する: \(error)")
+                return
+            }
+            expect(true, "log / manifestの親子pathを拒否する")
+        }
+        let siblingPathsConflict = try store.fileDestinationPathsConflict(
+            parentDestination.path,
+            directoryURL.appendingPathComponent("capture.manifest-ready.json").path
+        )
+        expect(
+            !siblingPathsConflict,
+            "文字列prefixだけが一致するsibling fileは競合にしない"
+        )
+
+        let caseProbeURL = directoryURL.appendingPathComponent("CaseProbe", isDirectory: true)
+        try fileManager.createDirectory(
+            at: caseProbeURL,
+            withIntermediateDirectories: false
+        )
+        let volumeIsCaseInsensitive = fileManager.fileExists(
+            atPath: directoryURL.appendingPathComponent("caseprobe").path
+        )
+        try fileManager.removeItem(at: caseProbeURL)
+        let caseVariantConflict = try store.fileDestinationPathsConflict(
+            directoryURL.appendingPathComponent("CaptureManifest").path,
+            directoryURL.appendingPathComponent("capturemanifest/ready.json").path
+        )
+        expect(
+            caseVariantConflict == volumeIsCaseInsensitive,
+            "volumeのcase sensitivityに従って親子pathを判定する"
+        )
+
+        let composedParent = directoryURL.appendingPathComponent("caf\u{00E9}-manifest")
+        let decomposedChild = directoryURL.appendingPathComponent(
+            "cafe\u{0301}-manifest/ready.json"
+        )
+        let unicodeVariantConflict = try store.fileDestinationPathsConflict(
+            composedParent.path,
+            decomposedChild.path
+        )
+        expect(
+            unicodeVariantConflict,
+            "Unicode canonical等価なfile予定地の親子pathを拒否する"
+        )
     }
 }
 
@@ -365,9 +433,10 @@ private func testCaptureManifestCodableRoundTripPreservesEveryField() {
         )
 
         expect(decoded == manifest, "capture manifestの全fieldをCodable round-tripで保持する")
-        expect(decoded.schemaVersion == 1, "capture manifest schemaVersionを保持する")
+        expect(decoded.schemaVersion == 2, "capture manifest schemaVersionを保持する")
         expect(decoded.evidenceKind == .generatedProduct, "evidenceKindを保持する")
         expect(decoded.loggerExecutableSHA256 == manifestTestExecutableSHA256, "executable SHAを保持する")
+        expect(decoded.captureStartedAt.contains("T"), "capture開始wall-clockをISO 8601で保持する")
         expect(decoded.captureCompletedAt.contains("T"), "capture完了wall-clockをISO 8601で保持する")
     } catch {
         expect(false, "capture manifest Codable round-tripが成功する: \(error)")
@@ -387,6 +456,167 @@ private func testCaptureManifestEvidenceKindsHaveStrictRawValues() {
         expect(false, "未知のevidenceKindをdecodeで拒否する")
     } catch {
         expect(true, "未知のevidenceKindをdecodeで拒否する")
+    }
+}
+
+private func testCaptureReadyRecordRoundTripsWithoutOutputPath() {
+    let leaseCreatedAt = Date(timeIntervalSince1970: 1_752_220_799.125)
+    let captureStartedAt = Date(timeIntervalSince1970: 1_752_220_800.125)
+    let captureDeadlineAt = captureStartedAt.addingTimeInterval(30)
+    let record = TrackpadDriverEventCaptureReadyRecord(
+        ready: true,
+        pid: 123,
+        runToken: manifestTestReadyRunToken,
+        leaseCreatedAt: leaseCreatedAt,
+        captureStartedAt: captureStartedAt,
+        captureDeadlineAt: captureDeadlineAt,
+        scenarioID: "space-right",
+        repoHeadSHA: manifestTestRepoHeadSHA
+    )
+    let encoded = try? JSONEncoder().encode(record)
+    let decoded = encoded.flatMap {
+        try? JSONDecoder().decode(TrackpadDriverEventCaptureReadyRecord.self, from: $0)
+    }
+
+    expect(decoded == record, "capture ready recordをCodable round-tripする")
+    expect(record.schemaVersion == 1, "capture ready schemaVersionを固定する")
+    expect(record.ready, "capture ready状態をtrueに固定する")
+    expect(record.runToken == manifestTestReadyRunToken, "captureごとのrun tokenを保持する")
+    expect(record.leaseCreatedAt.contains("T"), "ready lease作成wall-clockを保持する")
+    expect(record.captureStartedAt?.contains("T") == true, "capture開始wall-clockを保持する")
+    expect(record.captureDeadlineAt?.contains("T") == true, "有限captureのdeadlineを保持する")
+}
+
+private func testCaptureReadyStoreReservesPublishesAndRevokesLease() {
+    withManifestStoreTestDirectory { directoryURL in
+        let fileManager = FileManager.default
+        let store = TrackpadDriverEventCaptureReadyStore()
+        let readyURL = directoryURL.appendingPathComponent(
+            "capture.\(manifestTestReadyRunToken).ready.json"
+        )
+        let leaseCreatedAt = Date(timeIntervalSince1970: 1_752_220_799.125)
+        let startedAt = Date(timeIntervalSince1970: 1_752_220_800.125)
+        let deadlineAt = startedAt.addingTimeInterval(30)
+        let lease = try store.reserve(
+            path: readyURL.path,
+            pid: 123,
+            runToken: manifestTestReadyRunToken,
+            leaseCreatedAt: leaseCreatedAt,
+            scenarioID: "space-right",
+            repoHeadSHA: manifestTestRepoHeadSHA
+        )
+        let pendingRecord = try store.readRecord(path: readyURL.path)
+        expect(!pendingRecord.ready, "event受付前は排他的leaseをready:falseで公開する")
+        expect(pendingRecord.captureStartedAt == nil, "受付前leaseにcapture開始時刻を入れない")
+
+        do {
+            _ = try store.reserve(
+                path: readyURL.path,
+                pid: 456,
+                runToken: manifestTestReadyRunToken,
+                leaseCreatedAt: leaseCreatedAt,
+                scenarioID: "second-run",
+                repoHeadSHA: manifestTestRepoHeadSHA
+            )
+            expect(false, "同じready pathの並行leaseを拒否する")
+        } catch let error as TrackpadDriverEventCaptureReadyStoreError {
+            guard case .destinationAlreadyReserved = error else {
+                expect(false, "並行leaseを構造化errorとして報告する: \(error)")
+                return
+            }
+            expect(true, "同じready pathの並行leaseを拒否する")
+        }
+
+        let readyRecord = try store.publish(
+            lease,
+            captureStartedAt: startedAt,
+            captureDeadlineAt: deadlineAt
+        )
+        let storedData = try Data(contentsOf: readyURL)
+        expect(storedData.last == 0x0A, "ready recordをLF終端する")
+        let storedRecord = try JSONDecoder().decode(
+            TrackpadDriverEventCaptureReadyRecord.self,
+            from: storedData
+        )
+        expect(storedRecord == readyRecord, "atomic publish後のready recordを保持する")
+        expect(storedRecord.ready, "event受付開始時だけready:trueへ昇格する")
+        expect(storedRecord.captureDeadlineAt != nil, "有限durationのdeadlineを公開する")
+
+        try store.revoke(lease)
+        expect(!fileManager.fileExists(atPath: readyURL.path), "受付停止前にready leaseを撤回する")
+    }
+}
+
+private func testCaptureReadyStoreRejectsExistingSymlinkWithoutTouchingTarget() {
+    withManifestStoreTestDirectory { directoryURL in
+        let fileManager = FileManager.default
+        let targetURL = directoryURL.appendingPathComponent("target.json")
+        let readyURL = directoryURL.appendingPathComponent(
+            "capture.\(manifestTestReadyRunToken).ready.json"
+        )
+        let targetData = Data("keep-target".utf8)
+        try targetData.write(to: targetURL)
+        try fileManager.createSymbolicLink(
+            atPath: readyURL.path,
+            withDestinationPath: targetURL.path
+        )
+
+        do {
+            _ = try TrackpadDriverEventCaptureReadyStore().reserve(
+                path: readyURL.path,
+                pid: 123,
+                runToken: manifestTestReadyRunToken,
+                leaseCreatedAt: Date(timeIntervalSince1970: 1_752_220_799.125),
+                scenarioID: "space-right",
+                repoHeadSHA: manifestTestRepoHeadSHA
+            )
+            expect(false, "既存ready symlinkを削除せずlease開始を拒否する")
+        } catch let error as TrackpadDriverEventCaptureReadyStoreError {
+            guard case .destinationAlreadyReserved = error else {
+                expect(false, "既存symlinkを予約済みerrorとして報告する: \(error)")
+                return
+            }
+            expect(true, "既存ready symlinkを削除せずlease開始を拒否する")
+        }
+        expect(
+            (try? fileManager.destinationOfSymbolicLink(atPath: readyURL.path)) != nil,
+            "拒否したready symlinkを保持する"
+        )
+        let storedTargetData = try Data(contentsOf: targetURL)
+        expect(storedTargetData == targetData, "ready symlinkのtargetを変更しない")
+    }
+}
+
+private func testCaptureReadyStoreRejectsExistingDirectory() {
+    withManifestStoreTestDirectory { directoryURL in
+        let readyDirectoryURL = directoryURL.appendingPathComponent(
+            "capture.ready.json",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: readyDirectoryURL,
+            withIntermediateDirectories: false
+        )
+        do {
+            _ = try TrackpadDriverEventCaptureReadyStore().reserve(
+                path: readyDirectoryURL.path,
+                pid: 123,
+                runToken: manifestTestReadyRunToken,
+                leaseCreatedAt: Date(timeIntervalSince1970: 1_752_220_799.125),
+                scenarioID: "space-right",
+                repoHeadSHA: manifestTestRepoHeadSHA
+            )
+            expect(false, "ready fileのdirectory destinationを拒否する")
+        } catch let error as TrackpadDriverEventCaptureReadyStoreError {
+            guard case .destinationAlreadyReserved = error else {
+                expect(false, "ready directoryを構造化errorとして報告する: \(error)")
+                return
+            }
+            expect(
+                FileManager.default.fileExists(atPath: readyDirectoryURL.path),
+                "ready destinationのdirectoryを削除しない"
+            )
+        }
     }
 }
 
@@ -458,13 +688,14 @@ private func testCaptureManifestRejectsInvalidOwnFields() {
         invalid.eventCount = 0
         expectManifestValidationError(.zeroEvents, manifest: invalid, "0 event manifestを拒否する")
 
-        invalid = validManifest
-        invalid.firstEventTimestamp = invalid.lastEventTimestamp + 1
-        expectManifestValidationError(
-            .invalidTimestampRange,
-            manifest: invalid,
-            "逆転したfirst / last timestampを拒否する"
-        )
+        var timestampRegressing = validManifest
+        timestampRegressing.firstEventTimestamp = timestampRegressing.lastEventTimestamp + 1
+        do {
+            try timestampRegressing.validate()
+            expect(true, "capture順のfirst / last timestamp逆行を許可する")
+        } catch {
+            expect(false, "capture順のfirst / last timestamp逆行を許可する: \(error)")
+        }
 
         invalid = validManifest
         invalid.loggerExecutableSHA256 = ""
@@ -475,11 +706,29 @@ private func testCaptureManifestRejectsInvalidOwnFields() {
         )
 
         invalid = validManifest
+        invalid.captureStartedAt = "not-a-wall-clock"
+        expectManifestValidationError(
+            .invalidCaptureStartWallClock,
+            manifest: invalid,
+            "不正なcapture開始wall-clockを拒否する"
+        )
+
+        invalid = validManifest
         invalid.captureCompletedAt = "not-a-wall-clock"
         expectManifestValidationError(
             .invalidCaptureCompletionWallClock,
             manifest: invalid,
             "不正なcapture完了wall-clockを拒否する"
+        )
+
+        invalid = validManifest
+        let originalStart = invalid.captureStartedAt
+        invalid.captureStartedAt = invalid.captureCompletedAt
+        invalid.captureCompletedAt = originalStart
+        expectManifestValidationError(
+            .captureWallClockOutOfOrder,
+            manifest: invalid,
+            "capture完了より後の開始wall-clockを拒否する"
         )
     } catch {
         expect(false, "manifest field validation fixtureを生成できる: \(error)")
@@ -518,6 +767,40 @@ private func testCaptureManifestDetectsFinalLogTampering() {
         }
     } catch {
         expect(false, "log tampering validation fixtureを生成できる: \(error)")
+    }
+}
+
+private func testCaptureManifestRejectsGeneratedMarkerInPhysicalEvidence() {
+    do {
+        let logData = try manifestTestLogData(
+            sourceUserData: NapeGestureGeneratedEventMarker.value
+        )
+        let summary = try TrackpadDriverEventCaptureManifest.summarize(logData: logData)
+        let completedAt = Date(timeIntervalSince1970: 1_752_220_800.125)
+        let physicalManifest = TrackpadDriverEventCaptureManifest(
+            evidenceKind: .physicalTrackpad,
+            logSummary: summary,
+            loggerExecutableSHA256: manifestTestExecutableSHA256,
+            captureStartedAt: completedAt.addingTimeInterval(-8),
+            captureCompletedAt: completedAt
+        )
+
+        do {
+            try physicalManifest.validate(logData: logData)
+            expect(false, "physicalTrackpad証跡の生成marker混入を拒否する")
+        } catch let error as TrackpadDriverEventCaptureManifestValidationError {
+            expect(
+                error == .generatedMarkerInPhysicalCapture(captureIndex: 0),
+                "最初の生成marker captureIndexを報告する: \(error)"
+            )
+        }
+
+        var syntheticManifest = physicalManifest
+        syntheticManifest.evidenceKind = .synthetic
+        try syntheticManifest.validate(logData: logData)
+        expect(true, "synthetic診断では生成markerを許可する")
+    } catch {
+        expect(false, "physicalTrackpad marker guard fixtureを検証できる: \(error)")
     }
 }
 
@@ -572,9 +855,14 @@ public func runTrackpadDriverEventCaptureManifestTests() {
     testCaptureManifestSummarizesFinalLogBytes()
     testCaptureManifestCodableRoundTripPreservesEveryField()
     testCaptureManifestEvidenceKindsHaveStrictRawValues()
+    testCaptureReadyRecordRoundTripsWithoutOutputPath()
+    testCaptureReadyStoreReservesPublishesAndRevokesLease()
+    testCaptureReadyStoreRejectsExistingSymlinkWithoutTouchingTarget()
+    testCaptureReadyStoreRejectsExistingDirectory()
     testCaptureManifestRequiresMetadataForAdoptableEvidence()
     testCaptureManifestRejectsInvalidOwnFields()
     testCaptureManifestDetectsFinalLogTampering()
+    testCaptureManifestRejectsGeneratedMarkerInPhysicalEvidence()
     testCaptureManifestRejectsIncompleteOrInconsistentJSONLines()
     testCaptureManifestStoreRemovesStaleSidecar()
     testCaptureManifestStoreRemovesSymlinkWithoutTouchingTarget()

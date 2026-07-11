@@ -38,7 +38,7 @@ cat > "$summary_file" <<EOF
 ## 注意
 
 このスクリプトで埋められるのは機械証跡だけです。
-Nape Pro 実機、純正トラックパッド、TCC、Spaces / Mission Control の画面挙動、公証、Developer ID 署名は未完了のままです。
+Nape Pro 実機、純正トラックパッドの残る4系列、TCC、Spaces / Mission Control の画面挙動、公証、Developer ID 署名は未完了のままです。
 
 ## コマンド結果
 
@@ -678,7 +678,7 @@ cat >> "$summary_file" <<EOF
 ## 未完了の証跡
 
 - Nape Pro 実機の接続、HID 識別、操作ログ
-- 純正トラックパッドでの実操作ログ
+- 純正トラックパッドのNavigationSwipe左右marker、pinch方向marker、DockSwipe反対方向 / cancel、Mission Control / App Exposé再収録
 - TCC のアクセシビリティ / 入力監視許可操作
 - Spaces / Mission Control の画面挙動実測
 - Issue #10 の Safari / 対応アプリでのページ戻る、進む、ズーム、横スクロール画面挙動実測
