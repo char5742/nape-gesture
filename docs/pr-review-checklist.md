@@ -78,8 +78,10 @@
 
 - raw loggerはcallback内をcopy・採番・bounded queue投入に限定し、0 event、queue飽和、write / flush / close失敗を成功扱いにしていない
 - raw fieldは`fieldNumber`の数値昇順でzeroとdouble bit patternを保持し、serialized eventをCoreGraphicsで再構築できる
-- `--out` captureはevidence kind、最終log SHA / bytes / event数 / timestamp範囲、metadata、logger executable SHA、完了wall-clockをmanifestへ固定し、失敗captureに旧sidecar、symlink、一時fileを残していない
-- 厳格analyzerはtyped decodeの既定値補完前にLF終端、空行、重複key、nesting上限、整数精度、required field、nullable subtype、metadata、capture順、timestamp、raw field順、bit pattern、Base64を検証している
+- `--out` captureはevidence kind、最終log SHA / bytes / event数 / capture順の先頭・末尾timestamp、metadata、logger executable SHA、開始・完了wall-clockをmanifestへ固定し、失敗captureに旧sidecar、symlink、一時fileを残していない
+- `--ready-file`はtokenをfile名に含むrun固有pathを必須とし、権限確認前に`ready:false`の排他的leaseを予約する。受付開始時だけdeadline付き`ready:true`へ昇格し、duration / SIGINT /内部errorの受付停止前に`ready:false`へ戻して`unlink`する。log / manifestとの同一・親子pathをcase / Unicode込みで拒否し、専用waiterは安定化後にもtoken / PID / scenario / repo SHA / deadline余裕 / PID生存を再検証できない限り操作案内を出さない
+- 厳格analyzerはtyped decodeの既定値補完前にLF終端、空行、重複key、nesting上限、整数精度、required field、nullable subtype、metadata、captureIndex順、raw field順、bit pattern、Base64を検証し、event family間のtimestamp局所逆行を理由にsortまたは失敗判定していない
+- `physicalTrackpad`証跡は生成marker混入を拒否し、公開fixtureへserialized event、keycode、pointer座標、不要なdevice identifierを残していない
 - unknown top-level / metadata fieldを捨てず、raw JSON表現とreportへ保持している
 - generated product captureは生成marker、actual event type、raw target process fieldとprovenanceのlog SHA / 件数 / 順序 / timestamp / type / output session / familyを照合し、製品source境界guardと併せてPID、AX、shortcut、key / pointer / button経路を拒否している
 - CoreGraphics再構築で保持されないraw field差分を捨てたり意味推測せず`rawFieldDifferences`へ分離し、type / timestamp / flags / subtype /公開named field不一致だけをPhase 1の再構築失敗にしている
@@ -91,7 +93,7 @@
 - `DiagnosticEventPoster`、`generate-scroll`、`system-test`の実投稿とdry-run logも`MonotonicEventClock`を使い、sequence先頭を投稿開始reference以下、元列を非減少として検証し、各実eventのtimestampを投稿直前の同一clock値から確定している
 - shortcutはdown/upを両方生成・検証してから投稿し、sequence途中失敗ではactiveなscroll / momentum terminal、`mouseUp`、`keyUp`へ収束する
 - `nape-gesture-diagnostic-output-tests`がboot外start、元timestamp回帰、未来予定offset、UInt64差分回帰、failure injection、全13 system scenario、全48 generate patternの現在boot上限・件数・offsetを直接検証し、`sh scripts/check-diagnostic-event-time.sh`も成功している
-- trackpad scrollではcontinuous scroll eventと対応するscroll gesture eventを同一timestamp系列で出す
+- trackpad scrollではcontinuous scroll eventと対応するcompanion eventを、純正fixtureのenvelope / phase / capture順上の局所系列として出す。timestamp同値や固定index差を仮定しない
 - scroll phaseとmomentum phaseを分離し、begin / change / end / cancelとmomentum begin / continue / endを完結させる
 - Spaces / Mission Controlはprogressとphaseを持つDockSwipe event系列として実装し、forced horizontal scrollやkeyboard shortcutで代替していない
 - page navigationはNavigationSwipe、zoomはmagnification / zoom eventとして実装している

@@ -13,6 +13,7 @@ public struct TrackpadDriverEventCaptureLogSummary: Equatable, Sendable {
     public var eventCount: UInt64
     public var firstEventTimestamp: UInt64
     public var lastEventTimestamp: UInt64
+    public var firstGeneratedEventCaptureIndex: UInt64?
     public var metadata: TrackpadDriverEventLogMetadata
 
     public init(
@@ -21,6 +22,7 @@ public struct TrackpadDriverEventCaptureLogSummary: Equatable, Sendable {
         eventCount: UInt64,
         firstEventTimestamp: UInt64,
         lastEventTimestamp: UInt64,
+        firstGeneratedEventCaptureIndex: UInt64?,
         metadata: TrackpadDriverEventLogMetadata
     ) {
         self.logSHA256 = logSHA256
@@ -28,6 +30,7 @@ public struct TrackpadDriverEventCaptureLogSummary: Equatable, Sendable {
         self.eventCount = eventCount
         self.firstEventTimestamp = firstEventTimestamp
         self.lastEventTimestamp = lastEventTimestamp
+        self.firstGeneratedEventCaptureIndex = firstGeneratedEventCaptureIndex
         self.metadata = metadata
     }
 }
@@ -79,6 +82,7 @@ public enum TrackpadDriverEventCaptureManifestValidationError: LocalizedError, E
     case invalidCaptureStartWallClock
     case invalidCaptureCompletionWallClock
     case captureWallClockOutOfOrder
+    case generatedMarkerInPhysicalCapture(captureIndex: UInt64)
     case logMismatch(field: String)
 
     public var errorDescription: String? {
@@ -117,6 +121,8 @@ public enum TrackpadDriverEventCaptureManifestValidationError: LocalizedError, E
             return "capture manifestのcaptureCompletedAtがISO 8601 wall-clockではありません。"
         case .captureWallClockOutOfOrder:
             return "capture manifestのcaptureStartedAtがcaptureCompletedAtを超えています。"
+        case let .generatedMarkerInPhysicalCapture(captureIndex):
+            return "physicalTrackpad証跡に生成event markerが混在しています。captureIndex=\(captureIndex)"
         case let .logMismatch(field):
             return "capture manifestと確定済みログが一致しません。field=\(field)"
         }
@@ -273,6 +279,13 @@ public struct TrackpadDriverEventCaptureManifest: Codable, Equatable, Sendable {
         let summary = try Self.summarize(logData: logData)
         let metadata = summary.metadata
 
+        if evidenceKind == .physicalTrackpad,
+           let captureIndex = summary.firstGeneratedEventCaptureIndex
+        {
+            throw TrackpadDriverEventCaptureManifestValidationError
+                .generatedMarkerInPhysicalCapture(captureIndex: captureIndex)
+        }
+
         try requireEqual(logSHA256, summary.logSHA256, field: "logSHA256")
         try requireEqual(logByteCount, summary.logByteCount, field: "logByteCount")
         try requireEqual(eventCount, summary.eventCount, field: "eventCount")
@@ -300,6 +313,7 @@ public struct TrackpadDriverEventCaptureManifest: Codable, Equatable, Sendable {
         var eventCount: UInt64 = 0
         var firstEventTimestamp: UInt64?
         var lastEventTimestamp: UInt64?
+        var firstGeneratedEventCaptureIndex: UInt64?
         var sharedMetadata: TrackpadDriverEventLogMetadata?
 
         for index in logData.indices where logData[index] == 0x0A {
@@ -340,6 +354,11 @@ public struct TrackpadDriverEventCaptureManifest: Codable, Equatable, Sendable {
                 firstEventTimestamp = record.timestamp
             }
             lastEventTimestamp = record.timestamp
+            if firstGeneratedEventCaptureIndex == nil,
+               record.sourceUserData == NapeGestureGeneratedEventMarker.value
+            {
+                firstGeneratedEventCaptureIndex = record.captureIndex
+            }
             lineStart = logData.index(after: index)
         }
 
@@ -358,6 +377,7 @@ public struct TrackpadDriverEventCaptureManifest: Codable, Equatable, Sendable {
             eventCount: eventCount,
             firstEventTimestamp: firstEventTimestamp,
             lastEventTimestamp: lastEventTimestamp,
+            firstGeneratedEventCaptureIndex: firstGeneratedEventCaptureIndex,
             metadata: sharedMetadata
         )
     }

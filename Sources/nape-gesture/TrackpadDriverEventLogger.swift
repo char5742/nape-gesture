@@ -10,6 +10,7 @@ final class TrackpadDriverEventLogger {
 
     private let encoder = JSONEncoder()
     private let manifestStore = TrackpadDriverEventCaptureManifestStore()
+    private let readyStore = TrackpadDriverEventCaptureReadyStore()
     private let options: [String]
     private let processingQueue = DispatchQueue(label: "com.napegesture.trackpad-event-log.processing")
     private let pendingEventSlots = DispatchSemaphore(value: maximumPendingEvents)
@@ -25,6 +26,8 @@ final class TrackpadDriverEventLogger {
     private var emittedEvents: UInt64 = 0
     private var loggingError: Error?
     private var acceptingEvents = false
+    private var activeReadyLease: TrackpadDriverEventCaptureReadyLease?
+    private var readyLifecycleError: Error?
 
     init(options: [String] = []) {
         self.options = options
@@ -38,6 +41,47 @@ final class TrackpadDriverEventLogger {
         }
 
         let configuration = try makeConfiguration()
+        stateLock.lock()
+        acceptingEvents = false
+        activeReadyLease = nil
+        readyLifecycleError = nil
+        stateLock.unlock()
+        if let readyFilePath = configuration.readyFilePath {
+            guard let readyRunToken = configuration.readyRunToken else {
+                throw TrackpadDriverEventLoggerError.readyConfigurationUnavailable
+            }
+            do {
+                let lease = try readyStore.reserve(
+                    path: readyFilePath,
+                    pid: ProcessInfo.processInfo.processIdentifier,
+                    runToken: readyRunToken,
+                    leaseCreatedAt: Date(),
+                    scenarioID: configuration.scenarioID,
+                    repoHeadSHA: configuration.repoHeadSHA
+                )
+                stateLock.lock()
+                activeReadyLease = lease
+                stateLock.unlock()
+            } catch {
+                throw TrackpadDriverEventLoggerError.readyFilePreparationFailed(
+                    error.localizedDescription
+                )
+            }
+        }
+        defer {
+            stop()
+            drainProcessingQueue()
+            removeInterruptHandler()
+            captureRunLoop = nil
+            runMetadata = nil
+            try? finalizeOutputHandle()
+            if let readyLifecycleError {
+                fputs(
+                    "ready leaseの終了処理に失敗しました。\(readyLifecycleError.localizedDescription)\n",
+                    stderr
+                )
+            }
+        }
         guard TrackpadDriverEventSnapshotFactory.supportsRawFieldScan else {
             throw TrackpadDriverEventLoggerError.unsupportedEventFieldLayout
         }
@@ -69,14 +113,6 @@ final class TrackpadDriverEventLogger {
             }
         }
         outputHandle = try makeOutputHandle(path: configuration.outputPath)
-        defer {
-            stop()
-            drainProcessingQueue()
-            removeInterruptHandler()
-            captureRunLoop = nil
-            runMetadata = nil
-            try? finalizeOutputHandle()
-        }
         installInterruptHandler()
 
         if configuration.outputPath == nil {
@@ -109,7 +145,16 @@ final class TrackpadDriverEventLogger {
         CFRunLoopAddSource(runLoop, source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
         let captureStartedAt = Date()
-        setAcceptingEvents(true)
+        do {
+            try startAcceptingEvents(
+                captureStartedAt: captureStartedAt,
+                duration: configuration.duration
+            )
+        } catch {
+            throw TrackpadDriverEventLoggerError.readyFileWriteFailed(
+                error.localizedDescription
+            )
+        }
 
         let scanRange = "\(TrackpadDriverEventLog.rawFieldScanLowerBound)...\(TrackpadDriverEventLog.maximumRawFieldNumber)"
         if let duration = configuration.duration {
@@ -129,6 +174,7 @@ final class TrackpadDriverEventLogger {
         stop()
         drainProcessingQueue()
         let capturedLoggingError = loggingError
+        let capturedReadyLifecycleError = currentReadyLifecycleError()
         do {
             try finalizeOutputHandle()
         } catch {
@@ -140,6 +186,11 @@ final class TrackpadDriverEventLogger {
             throw error
         }
         let captureCompletedAt = Date()
+        if let capturedReadyLifecycleError {
+            throw TrackpadDriverEventLoggerError.readyFileInvalidationFailed(
+                capturedReadyLifecycleError.localizedDescription
+            )
+        }
         if let capturedLoggingError {
             throw capturedLoggingError
         }
@@ -300,17 +351,53 @@ final class TrackpadDriverEventLogger {
         return acceptingEvents
     }
 
-    private func setAcceptingEvents(_ accepting: Bool) {
+    private func startAcceptingEvents(
+        captureStartedAt: Date,
+        duration: TimeInterval?
+    ) throws {
         stateLock.lock()
-        acceptingEvents = accepting
-        stateLock.unlock()
+        defer { stateLock.unlock() }
+        acceptingEvents = true
+        guard let activeReadyLease else {
+            return
+        }
+        do {
+            _ = try readyStore.publish(
+                activeReadyLease,
+                captureStartedAt: captureStartedAt,
+                captureDeadlineAt: duration.map {
+                    captureStartedAt.addingTimeInterval($0)
+                }
+            )
+        } catch {
+            acceptingEvents = false
+            throw error
+        }
     }
 
     private func stopAcceptingEvents() {
-        setAcceptingEvents(false)
+        stateLock.lock()
+        if let activeReadyLease {
+            do {
+                try readyStore.revoke(activeReadyLease)
+                self.activeReadyLease = nil
+            } catch {
+                if readyLifecycleError == nil {
+                    readyLifecycleError = error
+                }
+            }
+        }
+        acceptingEvents = false
+        stateLock.unlock()
         if let eventTap {
             CGEvent.tapEnable(tap: eventTap, enable: false)
         }
+    }
+
+    private func currentReadyLifecycleError() -> Error? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return readyLifecycleError
     }
 
     private func installInterruptHandler() {
@@ -344,6 +431,8 @@ final class TrackpadDriverEventLogger {
         var repoHeadSHA: String?
         var manifestPath: String?
         var evidenceKind: TrackpadDriverEventEvidenceKind?
+        var readyFilePath: String?
+        var readyRunToken: String?
         var seenOptions = Set<String>()
         var index = 0
         let supportedOptions = [
@@ -353,7 +442,9 @@ final class TrackpadDriverEventLogger {
             "--device-label",
             "--repo-head-sha",
             "--manifest-out",
-            "--evidence-kind"
+            "--evidence-kind",
+            "--ready-file",
+            "--ready-token"
         ]
 
         while index < options.count {
@@ -405,6 +496,16 @@ final class TrackpadDriverEventLogger {
                     throw TrackpadDriverEventLoggerError.invalidEvidenceKind(value)
                 }
                 evidenceKind = parsed
+            case "--ready-file":
+                guard !value.isEmpty else {
+                    throw ToolError.invalidValue(option, value)
+                }
+                readyFilePath = value
+            case "--ready-token":
+                guard let uuid = UUID(uuidString: value) else {
+                    throw ToolError.invalidValue(option, value)
+                }
+                readyRunToken = uuid.uuidString.lowercased()
             default:
                 break
             }
@@ -461,6 +562,40 @@ final class TrackpadDriverEventLogger {
             }
         }
 
+        if readyFilePath != nil, readyRunToken == nil {
+            throw TrackpadDriverEventLoggerError.readyFileRequiresToken
+        }
+        if readyRunToken != nil, readyFilePath == nil {
+            throw TrackpadDriverEventLoggerError.readyTokenRequiresFile
+        }
+
+        if let readyFilePath, let readyRunToken {
+            let readyFileName = URL(fileURLWithPath: readyFilePath).lastPathComponent.lowercased()
+            guard readyFileName.contains(readyRunToken) else {
+                throw TrackpadDriverEventLoggerError.readyFilePathRequiresToken(
+                    readyRunToken
+                )
+            }
+            for reservedPath in [outputPath, manifestPath].compactMap({ $0 }) {
+                do {
+                    guard try !manifestStore.fileDestinationPathsConflict(
+                        readyFilePath,
+                        reservedPath
+                    ) else {
+                        throw TrackpadDriverEventLoggerError.readyFilePathConflict(
+                            readyFilePath
+                        )
+                    }
+                } catch let error as TrackpadDriverEventLoggerError {
+                    throw error
+                } catch {
+                    throw TrackpadDriverEventLoggerError.readyFilePreparationFailed(
+                        error.localizedDescription
+                    )
+                }
+            }
+        }
+
         return TrackpadDriverEventLoggerConfiguration(
             duration: duration,
             outputPath: outputPath,
@@ -468,7 +603,9 @@ final class TrackpadDriverEventLogger {
             deviceLabel: deviceLabel,
             repoHeadSHA: repoHeadSHA,
             manifestPath: manifestPath,
-            evidenceKind: evidenceKind
+            evidenceKind: evidenceKind,
+            readyFilePath: readyFilePath,
+            readyRunToken: readyRunToken
         )
     }
 
@@ -642,7 +779,7 @@ final class TrackpadDriverEventLogger {
     private func printCommandHelp() {
         print(
             """
-            nape-gesture trackpad-event-log [--duration <秒>] [--out <path>] [--manifest-out <path>] [--evidence-kind <synthetic|physicalTrackpad|generatedProduct>] [--scenario-id <ID>] [--device-label <ラベル>] [--repo-head-sha <SHA>]
+            nape-gesture trackpad-event-log [--duration <秒>] [--out <path>] [--manifest-out <path>] [--ready-file <path> --ready-token <UUID>] [--evidence-kind <synthetic|physicalTrackpad|generatedProduct>] [--scenario-id <ID>] [--device-label <ラベル>] [--repo-head-sha <SHA>]
 
             純正トラックパッドがCoreGraphicsへ送るイベント契約を、listen-onlyのCGEvent tapでJSON Linesとして記録します。
             callbackではイベントのcopy・採番・bounded queue投入だけを行い、event type 0...63とzeroを含むraw field 0...255をfieldNumber昇順で保存します。
@@ -650,6 +787,7 @@ final class TrackpadDriverEventLogger {
             --repo-head-sha は40桁または64桁の完全な16進SHAを指定してください。診断中は対象外の入力を避けてください。
             --out指定時は--evidence-kindが必須です。--manifest-out省略時は<out>.manifest.jsonへsidecarを生成します。physicalTrackpad / generatedProductでは--scenario-id、--device-label、--repo-head-shaも必須です。
             manifestはcapture開始・完了wall-clockと、確定log fileのflush / close後に再読込した最終bytesを保存し、同じdirectoryのtemporary fileからatomic renameします。capture開始前に同じpathの旧sidecarを削除するため、失敗captureに旧manifestは残りません。
+            --ready-fileには呼び出し側が新規発行した--ready-token UUIDが必須で、file名にもtokenを含めます。権限確認前にready:falseの排他的leaseを作り、既存pathは削除せず失敗します。event受付開始時だけtoken、PID、開始wall-clock、有限durationのdeadline、scenario ID、repo HEAD SHAを持つready:trueへatomic更新し、受付停止前にready:falseへ戻してunlinkします。監視側は全field、deadline、PID生存を確認してから物理操作を開始してください。
             --out未指定時はJSON Linesを標準出力へ書き出しますが、完全性を証明できるfile bytesがないためmanifestを生成しません。--manifest-outまたは--evidence-kindだけの指定は失敗します。
             --duration未指定時はCtrl-Cまで継続し、SIGINT受信後にqueueをdrainしてflush / closeします。0 event、queue飽和、log write / flush / close、executable SHA取得、manifest write / renameの失敗は非ゼロ終了します。
             """
@@ -691,6 +829,8 @@ private struct TrackpadDriverEventLoggerConfiguration {
     var repoHeadSHA: String?
     var manifestPath: String?
     var evidenceKind: TrackpadDriverEventEvidenceKind?
+    var readyFilePath: String?
+    var readyRunToken: String?
 }
 
 private struct CapturedTrackpadDriverEvent {
@@ -711,6 +851,11 @@ private enum TrackpadDriverEventLoggerError: LocalizedError {
         option: String
     )
     case outputManifestPathConflict(String)
+    case readyFilePathConflict(String)
+    case readyFileRequiresToken
+    case readyTokenRequiresFile
+    case readyFilePathRequiresToken(String)
+    case readyConfigurationUnavailable
     case manifestConfigurationUnavailable
     case unsupportedEventFieldLayout
     case operatingSystemBuildUnavailable(Int32)
@@ -731,6 +876,9 @@ private enum TrackpadDriverEventLoggerError: LocalizedError {
     case manifestValidationFailed(String)
     case manifestWriteFailed(String)
     case manifestRenameFailed(String)
+    case readyFilePreparationFailed(String)
+    case readyFileWriteFailed(String)
+    case readyFileInvalidationFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -750,7 +898,17 @@ private enum TrackpadDriverEventLoggerError: LocalizedError {
         case let .requiredEvidenceMetadataMissing(evidenceKind, option):
             return "\(evidenceKind.rawValue)証跡には\(option)が必要です。"
         case let .outputManifestPathConflict(path):
-            return "イベントログとcapture manifestを同じpathへ出力できません: \(path)"
+            return "イベントログとcapture manifestを同じlocationや親子pathへ出力できません: \(path)"
+        case let .readyFilePathConflict(path):
+            return "ready fileをイベントログまたはcapture manifestと同じlocationや親子pathへ出力できません: \(path)"
+        case .readyFileRequiresToken:
+            return "--ready-fileには一意な--ready-token UUIDが必要です。"
+        case .readyTokenRequiresFile:
+            return "--ready-tokenは--ready-fileと同時に指定してください。"
+        case let .readyFilePathRequiresToken(token):
+            return "--ready-fileのfile名にはrun固有tokenを含めてください。token=\(token)"
+        case .readyConfigurationUnavailable:
+            return "ready fileのtoken設定が完全ではありません。"
         case .manifestConfigurationUnavailable:
             return "capture manifestの出力設定が完全ではありません。"
         case .unsupportedEventFieldLayout:
@@ -791,6 +949,12 @@ private enum TrackpadDriverEventLoggerError: LocalizedError {
             return "capture manifest temporary fileの書き込みに失敗しました: \(details)"
         case let .manifestRenameFailed(details):
             return "capture manifestのatomic renameに失敗しました: \(details)"
+        case let .readyFilePreparationFailed(details):
+            return "capture開始前にready leaseを排他的予約できませんでした: \(details)"
+        case let .readyFileWriteFailed(details):
+            return "event受付開始後のready file書き込みに失敗しました: \(details)"
+        case let .readyFileInvalidationFailed(details):
+            return "event受付停止前のready lease撤回に失敗しました: \(details)"
         }
     }
 }

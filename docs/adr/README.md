@@ -41,6 +41,8 @@
 | [ADR-0037](0037-separate-product-and-diagnostic-event-output.md) | 製品gesture出力と診断event出力を分離する | module境界、fail closed、monotonic clock、CI guard |
 | [ADR-0038](0038-trackpad-output-session-and-monotonic-clock.md) | trackpad出力sessionとmonotonic clockを共通化する | lifecycle、sequence、terminal、起動後時刻 |
 | [ADR-0039](0039-strict-trackpad-event-analysis-and-capture-manifest.md) | trackpad eventログを厳格解析しcapture manifestへ固定する | JSON Lines、manifest、provenance、host再構築 |
+| [ADR-0040](0040-capture-order-and-event-timestamp.md) | capture順とevent timestampを分離する | 純正trackpad実測、captureIndex、manifest開始・終了時刻 |
+| [ADR-0041](0041-physical-capture-readiness-and-fixture-privacy.md) | 物理captureのready同期と公開fixture境界を固定する | 排他的ready lease、安定化waiter、生成marker、fixture privacy、need:human |
 
 ## 置換済み
 

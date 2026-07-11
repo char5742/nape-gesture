@@ -70,15 +70,93 @@ jobs:
       - name: Run legacy diagnostic and safety smoke tests
         run: |
           sh -n scripts/collect-runtime-event-evidence.sh
+          sh -n scripts/collect-completion-evidence.sh
           sh -n scripts/check-product-output-boundary.sh
           sh -n scripts/check-diagnostic-event-time.sh
+          ruby -c scripts/verify-trackpad-physical-observations.rb
+          ruby -c scripts/wait-for-trackpad-capture-ready.rb
+          ruby -c scripts/test-wait-for-trackpad-capture-ready.rb
+          ruby scripts/test-wait-for-trackpad-capture-ready.rb
           target_stable_id="vendor=123;product=456;manufacturer=example;name=nape-pro-mouse;transport=bluetooth"
           .build/debug/nape-gesture trackpad-event-log --help | grep -q -- '--evidence-kind'
+          .build/debug/nape-gesture trackpad-event-log --help | grep -q -- '--ready-file'
+          .build/debug/nape-gesture trackpad-event-log --help | grep -q -- '--ready-token'
+          jq -e '
+            .schemaVersion == 1
+            and .status == "partial"
+            and .privacy.containsSerializedEvents == false
+            and .privacy.containsPointerCoordinates == false
+            and .privacy.containsKeyboardData == false
+            and .privacy.containsDeviceIdentifiers == false
+            and ([.captures[] | select(.status == "capture-window-missed")] | length) == 1
+            and (
+              [.. | objects | keys[] | ascii_downcase]
+              | map(select(. == "serializedeventbase64"
+                or . == "sourceuserdata"
+                or . == "rawfields"
+                or . == "keycode"
+                or . == "keyboardkeycode"
+                or . == "characters"
+                or . == "charactersignoringmodifiers"
+                or . == "pointercoordinates"
+                or . == "pointerx"
+                or . == "pointery"
+                or . == "mousex"
+                or . == "mousey"
+                or . == "locationx"
+                or . == "locationy"
+                or . == "locationid"
+                or . == "deviceidentifier"
+                or . == "deviceuniqueid"
+                or . == "registryentryid"
+                or . == "vendorid"
+                or . == "productid"
+                or . == "serialnumber"))
+              | length
+            ) == 0
+          ' Fixtures/trackpad-contract/25F80/physical-observations.json > /dev/null
           .build/debug/nape-gesture analyze-trackpad-event-log --help | grep -q 'generatedProduct'
           if .build/debug/nape-gesture trackpad-event-log --duration 0; then
             echo "trackpad-event-log が不正なdurationを受理しました" >&2
             exit 1
           fi
+          ready_token=11111111-2222-3333-4444-555555555555
+          if .build/debug/nape-gesture trackpad-event-log --duration 1 --out /tmp/trackpad-ready-missing-token --ready-file /tmp/trackpad-ready-missing-token.ready --evidence-kind synthetic; then
+            echo "trackpad-event-log がtokenなしのready fileを受理しました" >&2
+            exit 1
+          fi
+          if .build/debug/nape-gesture trackpad-event-log --duration 1 --ready-token "$ready_token"; then
+            echo "trackpad-event-log がready fileなしのtokenを受理しました" >&2
+            exit 1
+          fi
+          if .build/debug/nape-gesture trackpad-event-log --duration 1 --ready-file /tmp/trackpad-ready-without-token-in-name.json --ready-token "$ready_token"; then
+            echo "trackpad-event-log がtokenを含まないready file名を受理しました" >&2
+            exit 1
+          fi
+          ready_conflict_path="/tmp/trackpad-ready-$ready_token"
+          if .build/debug/nape-gesture trackpad-event-log --duration 1 --out "$ready_conflict_path" --ready-file "$ready_conflict_path" --ready-token "$ready_token" --evidence-kind synthetic; then
+            echo "trackpad-event-log がlogとready fileの同一locationを受理しました" >&2
+            exit 1
+          fi
+          ready_hierarchy_manifest="/tmp/trackpad-ready-$ready_token.manifest"
+          if .build/debug/nape-gesture trackpad-event-log --duration 1 --out /tmp/trackpad-ready-hierarchy.log --manifest-out "$ready_hierarchy_manifest" --ready-file "$ready_hierarchy_manifest/ready.$ready_token.json" --ready-token "$ready_token" --evidence-kind synthetic; then
+            echo "trackpad-event-log がmanifest予定file配下のready pathを受理しました" >&2
+            exit 1
+          fi
+          test ! -d "$ready_hierarchy_manifest"
+          case_probe="$RUNNER_TEMP/NapeCaseProbe"
+          mkdir "$case_probe"
+          if [ -d "$RUNNER_TEMP/napecaseprobe" ]; then
+            case_manifest="$RUNNER_TEMP/NapeCase-$ready_token"
+            case_ready="$RUNNER_TEMP/napecase-$ready_token/ready.$ready_token.json"
+            if .build/debug/nape-gesture trackpad-event-log --duration 1 --out "$RUNNER_TEMP/case-test.log" --manifest-out "$case_manifest" --ready-file "$case_ready" --ready-token "$ready_token" --evidence-kind synthetic; then
+              echo "trackpad-event-log がcase違いのmanifest親pathを受理しました" >&2
+              exit 1
+            fi
+            test ! -d "$case_manifest"
+            test ! -d "$RUNNER_TEMP/napecase-$ready_token"
+          fi
+          rmdir "$case_probe"
           printf '%s' '{"schemaVersion":2}' > /tmp/invalid-trackpad-event-log.jsonl
           printf '%s\n' '{}' > /tmp/invalid-trackpad-event-manifest.json
           if .build/debug/nape-gesture analyze-trackpad-event-log /tmp/invalid-trackpad-event-log.jsonl --manifest /tmp/invalid-trackpad-event-manifest.json --json > /tmp/invalid-trackpad-event-report.json; then

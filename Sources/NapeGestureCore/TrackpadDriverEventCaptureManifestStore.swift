@@ -29,7 +29,7 @@ public enum TrackpadDriverEventCaptureManifestStoreError: LocalizedError, Equata
     public var errorDescription: String? {
         switch self {
         case let .pathConflict(logPath, manifestPath):
-            return "イベントログとcapture manifestが同じlocationを参照しています。logPath=\(logPath) manifestPath=\(manifestPath)"
+            return "イベントログとcapture manifestが同じlocationまたはfile予定地の親子pathを参照しています。logPath=\(logPath) manifestPath=\(manifestPath)"
         case let .pathResolutionFailed(path, details):
             return "pathのsymlinkを安全に解決できませんでした。path=\(path) details=\(details)"
         case let .parentDirectoryMissing(path):
@@ -80,8 +80,42 @@ public struct TrackpadDriverEventCaptureManifestStore: Sendable {
         return firstIdentity == secondIdentity
     }
 
+    public func fileDestinationPathsConflict(
+        _ firstPath: String,
+        _ secondPath: String
+    ) throws -> Bool {
+        let firstURL = try Self.resolvedLocationURL(for: firstPath)
+        let secondURL = try Self.resolvedLocationURL(for: secondPath)
+        if firstURL.path == secondURL.path {
+            return true
+        }
+        if let firstIdentity = Self.fileIdentity(at: firstURL),
+           let secondIdentity = Self.fileIdentity(at: secondURL),
+           firstIdentity == secondIdentity
+        {
+            return true
+        }
+
+        let comparisonIsCaseSensitive = try Self.volumeSupportsCaseSensitiveNames(
+            at: firstURL
+        ) && Self.volumeSupportsCaseSensitiveNames(at: secondURL)
+        let firstComponents = Self.normalizedPathComponents(
+            firstURL.pathComponents,
+            caseSensitive: comparisonIsCaseSensitive
+        )
+        let secondComponents = Self.normalizedPathComponents(
+            secondURL.pathComponents,
+            caseSensitive: comparisonIsCaseSensitive
+        )
+        if firstComponents == secondComponents {
+            return true
+        }
+        return Self.isStrictPathPrefix(firstComponents, of: secondComponents)
+            || Self.isStrictPathPrefix(secondComponents, of: firstComponents)
+    }
+
     public func validateDistinctLocations(logPath: String, manifestPath: String) throws {
-        guard try !pathsReferToSameLocation(logPath, manifestPath) else {
+        guard try !fileDestinationPathsConflict(logPath, manifestPath) else {
             throw TrackpadDriverEventCaptureManifestStoreError.pathConflict(
                 logPath: logPath,
                 manifestPath: manifestPath
@@ -374,6 +408,53 @@ public struct TrackpadDriverEventCaptureManifestStore: Sendable {
 
     private static func standardizedFileURL(for path: String) -> URL {
         URL(fileURLWithPath: path).standardizedFileURL
+    }
+
+    private static func isStrictPathPrefix(
+        _ prefix: [String],
+        of components: [String]
+    ) -> Bool {
+        prefix.count < components.count
+            && Array(components.prefix(prefix.count)) == prefix
+    }
+
+    private static func normalizedPathComponents(
+        _ components: [String],
+        caseSensitive: Bool
+    ) -> [String] {
+        components.map { component in
+            let normalized = component.precomposedStringWithCanonicalMapping
+            guard !caseSensitive else {
+                return normalized
+            }
+            return normalized.folding(
+                options: [.caseInsensitive],
+                locale: Locale(identifier: "en_US_POSIX")
+            )
+        }
+    }
+
+    private static func volumeSupportsCaseSensitiveNames(at url: URL) throws -> Bool {
+        let fileManager = FileManager.default
+        var candidate = url
+        while !fileManager.fileExists(atPath: candidate.path) {
+            let parent = candidate.deletingLastPathComponent()
+            guard parent.path != candidate.path else {
+                break
+            }
+            candidate = parent
+        }
+        do {
+            let values = try candidate.resourceValues(
+                forKeys: [.volumeSupportsCaseSensitiveNamesKey]
+            )
+            return values.volumeSupportsCaseSensitiveNames ?? true
+        } catch {
+            throw TrackpadDriverEventCaptureManifestStoreError.pathResolutionFailed(
+                path: url.path,
+                details: "volume case-sensitivity: \(error.localizedDescription)"
+            )
+        }
     }
 
     private static func fileIdentity(at url: URL) -> FileIdentity? {
