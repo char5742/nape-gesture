@@ -160,8 +160,6 @@ struct BundleAppCommand {
         - AppKit
         - Carbon
         - IOKit
-
-        Mac Mouse Fix のソースコード、定数、状態遷移、調整値はこのプロジェクトへコピーしていません。
         """
     }
 }

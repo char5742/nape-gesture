@@ -445,24 +445,19 @@ public enum TrackpadOutputProvenanceAnalyzer {
         _ actualKind: ActualEventKind,
         matches record: TrackpadOutputProvenanceRecord
     ) -> Bool {
-        let requiresScroll = record.family == .scroll || record.eventKind == .scroll
-        let requiresGesture = record.family.map(isGestureFamily) == true || record.eventKind == .gesture
-
-        if requiresScroll, actualKind != .scroll {
-            return false
-        }
-        if requiresGesture, actualKind != .unclassified {
-            return false
-        }
-        return true
-    }
-
-    private static func isGestureFamily(_ family: TrackpadOutputEventFamily) -> Bool {
-        switch family {
+        switch record.eventKind {
         case .scroll:
-            false
-        case .dockSwipe, .navigationSwipe, .magnification:
-            true
+            return actualKind == .scroll
+        case .gesture:
+            guard actualKind == .unclassified else {
+                return false
+            }
+            if record.family == .scroll {
+                return record.eventTypeRaw == 29
+            }
+            return true
+        case .key, .pointer, .button, .unknown:
+            return false
         }
     }
 
@@ -472,7 +467,7 @@ public enum TrackpadOutputProvenanceAnalyzer {
     ) -> Bool {
         switch family {
         case .scroll:
-            eventKind == .scroll
+            eventKind == .scroll || eventKind == .gesture
         case .dockSwipe, .navigationSwipe, .magnification:
             eventKind == .gesture
         }

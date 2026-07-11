@@ -8,5 +8,3 @@ Nape Gesture は現在、サードパーティの Swift パッケージや外部
 - AppKit
 - Carbon
 - IOKit
-
-Mac Mouse Fix のソースコード、定数、状態遷移、調整値はこのプロジェクトへコピーしていません。

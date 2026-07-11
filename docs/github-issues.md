@@ -184,7 +184,7 @@ Labels: `area:core`, `area:verification`, `type:feature`, `priority:p0`
 Labels: `area:core`, `area:verification`, `type:research`, `priority:p1`
 
 目的:
-Mac Mouse Fix の係数を流用せず、実機ログから初期値を説明できるようにする。
+第三者プロジェクトの係数や調整値を流用せず、実機ログから初期値を説明できるようにする。
 
 完了条件:
 
@@ -261,7 +261,7 @@ mouse入力をtrackpad driverが上位へ出すscroll / gesture、DockSwipe、Na
 - 製品出力とlegacy診断出力がmodule境界とCI guardで分離されている
 - output sessionが単一のmonotonic clock、sequence ID、terminal stateを持つ
 - trackpad event系列の投稿遅延、drop、作成・投稿失敗を性能schemaで判定できる
-- Mac Mouse Fixのコード、field番号、定数、係数、状態遷移をコピーしていない
+- 第三者プロジェクトのコード、field番号、定数、状態遷移、係数、調整値をコピーしていない
 
 Sub-issues:
 

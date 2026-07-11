@@ -34,16 +34,23 @@ final class AnalyzeTrackpadEventLogCommand {
             expectedLogSHA256: manifest.value?.logSHA256 ?? logSHA256,
             expectedEvents: eventLogs
         )
+        let contractComparison = analyzeContract(
+            path: configuration.contractPath,
+            structure: coreReport,
+            manifest: manifest
+        )
 
         let report = TrackpadEventLogAnalysisReport(
             logPath: configuration.logPath,
             manifestPath: configuration.manifestPath,
             provenancePath: configuration.provenancePath,
+            contractPath: configuration.contractPath,
             logSHA256: logSHA256,
             structure: structure,
             manifest: manifest,
             hostReconstruction: host,
-            provenance: provenance
+            provenance: provenance,
+            contractComparison: contractComparison
         )
         printReport(report, json: configuration.json)
         fflush(stdout)
@@ -56,6 +63,7 @@ final class AnalyzeTrackpadEventLogCommand {
         var logPath: String?
         var manifestPath: String?
         var provenancePath: String?
+        var contractPath: String?
         var json = false
         var index = 0
         var seenOptions = Set<String>()
@@ -63,7 +71,7 @@ final class AnalyzeTrackpadEventLogCommand {
         while index < options.count {
             let option = options[index]
             switch option {
-            case "--manifest", "--provenance":
+            case "--manifest", "--provenance", "--contract":
                 guard seenOptions.insert(option).inserted else {
                     throw TrackpadEventLogAnalysisCommandError.duplicateOption(option)
                 }
@@ -76,8 +84,10 @@ final class AnalyzeTrackpadEventLogCommand {
                 }
                 if option == "--manifest" {
                     manifestPath = value
-                } else {
+                } else if option == "--provenance" {
                     provenancePath = value
+                } else {
+                    contractPath = value
                 }
                 index += 2
             case "--json":
@@ -108,7 +118,40 @@ final class AnalyzeTrackpadEventLogCommand {
             logPath: logPath,
             manifestPath: manifestPath,
             provenancePath: provenancePath,
+            contractPath: contractPath,
             json: json
+        )
+    }
+
+    private func analyzeContract(
+        path: String?,
+        structure: TrackpadDriverEventAnalyzerReport,
+        manifest: TrackpadEventManifestAnalysis
+    ) -> TrackpadScrollMomentumContractAnalysis? {
+        guard let path else {
+            return nil
+        }
+        let data: Data
+        do {
+            data = try readData(path: path, role: "scroll / momentum contract fixture")
+        } catch {
+            return .unavailable(message: error.localizedDescription)
+        }
+
+        let readReport = TrackpadScrollMomentumContractDocumentReader.read(data: data)
+        guard readReport.passed, let document = readReport.document else {
+            return .fixtureFailure(readReport)
+        }
+        guard structure.passed, manifest.passed, let manifestValue = manifest.value else {
+            return .blocked(
+                document: document,
+                message: "structureとcapture manifestの厳格検証が成功するまでcontract比較を実行しません。"
+            )
+        }
+        return TrackpadScrollMomentumContractAnalyzer.analyze(
+            documents: structure.documents,
+            manifest: manifestValue,
+            contract: document
         )
     }
 
@@ -294,6 +337,9 @@ final class AnalyzeTrackpadEventLogCommand {
         print("manifest: \(status(report.manifest.passed)) evidenceKind=\(report.manifest.value?.evidenceKind.rawValue ?? "不明") issues=\(report.manifest.issues.count)")
         print("CGEvent再構築: \(status(report.hostReconstruction.passed)) reconstructed=\(report.hostReconstruction.reconstructedEventCount)/\(report.hostReconstruction.eventCount) issues=\(report.hostReconstruction.issues.count) rawDifferences=\(report.hostReconstruction.rawFieldDifferences.count)")
         print("provenance: \(status(report.provenance.passed)) required=\(report.provenance.required) provided=\(report.provenance.provided) records=\(report.provenance.recordCount)")
+        if let contract = report.contractComparison {
+            print("scroll/momentum contract: \(status(contract.passed)) fixture=\(contract.fixtureID ?? "不明") scenario=\(contract.scenarioID ?? "不明") scroll=\(contract.scrollLifecycleCount) momentum=\(contract.momentumLifecycleCount) companions=\(contract.pairedCompanionCount)/\(contract.scrollCompanionCount)")
+        }
 
         for issue in report.structure.issues {
             print("- [structure/\(issue.code.rawValue)] line=\(issue.line.map(String.init) ?? "-") captureIndex=\(issue.captureIndex.map(String.init) ?? "-"): \(issue.message)")
@@ -313,6 +359,9 @@ final class AnalyzeTrackpadEventLogCommand {
         for issue in report.provenance.analysis?.issues ?? [] {
             print("- [provenance/\(issue.code.rawValue)] record=\(issue.recordIndex.map(String.init) ?? "-") captureIndex=\(issue.captureIndex.map(String.init) ?? "-"): \(issue.message)")
         }
+        for issue in report.contractComparison?.issues ?? [] {
+            print("- [contract/\(issue.code.rawValue)] captureIndex=\(issue.captureIndex.map(String.init) ?? "-"): \(issue.message)")
+        }
     }
 
     private func status(_ passed: Bool) -> String {
@@ -322,10 +371,11 @@ final class AnalyzeTrackpadEventLogCommand {
     private func printHelp() {
         print(
             """
-            nape-gesture analyze-trackpad-event-log <log.jsonl> --manifest <manifest.json> [--provenance <trace.jsonl>] [--json]
+            nape-gesture analyze-trackpad-event-log <log.jsonl> --manifest <manifest.json> [--provenance <trace.jsonl>] [--contract <scroll-momentum-contract.json>] [--json]
 
             trackpad-event-logの現行raw schema、capture manifest、serialized CGEvent再構築を検証します。
             evidenceKindがgeneratedProductの場合は--provenanceが必須です。生成marker、actual event type、raw target process field、配送provenanceを照合し、製品source境界guardと併せてPID、Accessibility、shortcut経路を禁止します。
+            --contract指定時は登録済みfixtureのID / SHA-256 / schema / OS buildを照合し、確定済みscroll / momentum lifecycle、terminal、scroll companionを比較します。NavigationSwipe、magnification、DockSwipeは未確定のため受理しません。
             合成eventの成功はlogger / analyzer経路の機械検証であり、純正trackpad contract値の完成証跡にはなりません。
             問題がある場合もreportを出力した後に非ゼロ終了します。
             """
@@ -371,6 +421,7 @@ private struct TrackpadEventLogAnalysisConfiguration {
     var logPath: String
     var manifestPath: String
     var provenancePath: String?
+    var contractPath: String?
     var json: Bool
 }
 
@@ -457,42 +508,86 @@ private struct TrackpadEventProvenanceSection: Codable, Equatable {
     }
 }
 
-private struct TrackpadEventLogAnalysisReport: Codable, Equatable {
-    static let currentSchemaVersion = 1
+private struct TrackpadEventLogAnalysisReport: Encodable, Equatable {
+    static let phaseOneSchemaVersion = 1
+    static let contractSchemaVersion = 2
 
-    var schemaVersion = currentSchemaVersion
+    var schemaVersion: Int
     var passed: Bool
     var logPath: String
     var manifestPath: String
     var provenancePath: String?
+    var contractPath: String?
     var logSHA256: String
     var structure: TrackpadEventStructureAnalysis
     var manifest: TrackpadEventManifestAnalysis
     var hostReconstruction: TrackpadDriverEventHostAnalysis
     var provenance: TrackpadEventProvenanceSection
+    var contractComparison: TrackpadScrollMomentumContractAnalysis?
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion
+        case passed
+        case logPath
+        case manifestPath
+        case provenancePath
+        case contractPath
+        case logSHA256
+        case structure
+        case manifest
+        case hostReconstruction
+        case provenance
+        case contractComparison
+    }
 
     init(
         logPath: String,
         manifestPath: String,
         provenancePath: String?,
+        contractPath: String?,
         logSHA256: String,
         structure: TrackpadEventStructureAnalysis,
         manifest: TrackpadEventManifestAnalysis,
         hostReconstruction: TrackpadDriverEventHostAnalysis,
-        provenance: TrackpadEventProvenanceSection
+        provenance: TrackpadEventProvenanceSection,
+        contractComparison: TrackpadScrollMomentumContractAnalysis?
     ) {
+        schemaVersion = contractPath == nil
+            ? Self.phaseOneSchemaVersion
+            : Self.contractSchemaVersion
         passed = structure.passed
             && manifest.passed
             && hostReconstruction.passed
             && provenance.passed
+            && (contractComparison?.passed ?? true)
         self.logPath = logPath
         self.manifestPath = manifestPath
         self.provenancePath = provenancePath
+        self.contractPath = contractPath
         self.logSHA256 = logSHA256
         self.structure = structure
         self.manifest = manifest
         self.hostReconstruction = hostReconstruction
         self.provenance = provenance
+        self.contractComparison = contractComparison
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
+        try container.encode(passed, forKey: .passed)
+        try container.encode(logPath, forKey: .logPath)
+        try container.encode(manifestPath, forKey: .manifestPath)
+        try container.encodeIfPresent(provenancePath, forKey: .provenancePath)
+        try container.encode(logSHA256, forKey: .logSHA256)
+        try container.encode(structure, forKey: .structure)
+        try container.encode(manifest, forKey: .manifest)
+        try container.encode(hostReconstruction, forKey: .hostReconstruction)
+        try container.encode(provenance, forKey: .provenance)
+        if schemaVersion == Self.contractSchemaVersion {
+            try container.encodeIfPresent(contractPath, forKey: .contractPath)
+            try container.encodeIfPresent(contractComparison, forKey: .contractComparison)
+        }
     }
 }
 

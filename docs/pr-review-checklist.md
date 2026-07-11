@@ -14,7 +14,7 @@
 - docs/config のみの変更では、変更対象に合った検証と Swift build を省略した理由が PR 本文に明記されている
 - ユーザーが見る挙動、GUI、権限導線、検証手順、完成状態、配布手順を変えた場合、README を更新している。更新不要の場合は PR 本文で理由を明記している
 - 未検証事項を「完了」と表現していない
-- Mac Mouse Fix のコード、定数、状態遷移、係数をコピーしていない
+- 第三者プロジェクトのコード、定数、field番号、状態遷移、係数、調整値をコピーしていない
 - 由来や配布物に影響する変更では `sh scripts/check-provenance.sh` が成功している
 - Grok CLIによる独立監査、補助レビュー、発散、PR差分レビューを実行していない
 - 外部モデルの出力を設計判断、PR review、完成判定、CI gate、runtime証跡に混ぜていない
@@ -52,6 +52,7 @@
 - 通常SDK非公開のevent contractがcompatibility adapter外へ漏れていない
 - 未知のmacOS versionまたはcontract不一致で誤ったeventを送らずfail closedになる
 - `supported`が登録済みfixture ID / SHA-256 / schema / contract ID / OS build / fixture実体の完全一致だけで生成される
+- 更新され続ける物理観測台帳と、SHA固定する確定済み実行contract fixtureを分離している
 - output contract未対応時はevent tapと入力抑制を開始せず、別方式へfallbackしない
 - ジェスチャー成立後の元入力漏れを増やしていない
 - 対象外デバイスの通常クリック、ドラッグ、ホイールを改変しない
@@ -94,11 +95,13 @@
 - shortcutはdown/upを両方生成・検証してから投稿し、sequence途中失敗ではactiveなscroll / momentum terminal、`mouseUp`、`keyUp`へ収束する
 - `nape-gesture-diagnostic-output-tests`がboot外start、元timestamp回帰、未来予定offset、UInt64差分回帰、failure injection、全13 system scenario、全48 generate patternの現在boot上限・件数・offsetを直接検証し、`sh scripts/check-diagnostic-event-time.sh`も成功している
 - trackpad scrollではcontinuous scroll eventと対応するcompanion eventを、純正fixtureのenvelope / phase / capture順上の局所系列として出す。timestamp同値や固定index差を仮定しない
+- scroll / momentum contract比較はfixture登録を再検証し、document raw bytesとmanifestを再結合してstrict parser / capture index検証をやり直した後だけ実行する。`--contract`なしのPhase 1 schema 1を維持し、terminal 9 deltaの`+0.0` bit pattern、phase遷移、generated type 29 classifier `0 / 6`、companion motion alias、必須phaseと実測coverageを終了codeで判定する
+- 専用scroll contract、公開観測台帳、採用4 sourceのSHA / 件数 / prefix /解析開始index / wall-clockが機械的に結合され、local原本があるcompletion evidenceでは同じsource bytesとmanifestまで再検証する
 - scroll phaseとmomentum phaseを分離し、begin / change / end / cancelとmomentum begin / continue / endを完結させる
 - Spaces / Mission Controlはprogressとphaseを持つDockSwipe event系列として実装し、forced horizontal scrollやkeyboard shortcutで代替していない
 - page navigationはNavigationSwipe、zoomはmagnification / zoom eventとして実装している
 - 純正trackpad logとtype、subtype、field、順序、timestamp、phase、momentumを同一schemaで比較している
-- Mac Mouse Fix由来のfield番号、定数、係数、状態遷移をコピーせず、Apple公式資料、Apple OSS、自前ログから導出した根拠がある
+- 第三者プロジェクト由来のコード、field番号、定数、状態遷移、係数、調整値をコピーせず、Apple公式資料、Apple OSS、自前ログから導出した根拠がある
 - `generate-scroll` / `system-test`の旧単純CGEvent結果をtrackpad driver出力の完成証跡にしていない
 - Finder、Safari、Mission Control、Spacesでsystem-wide配送の実機検証が明記されている
 
@@ -134,5 +137,5 @@
 - 実機が必要な検証を dry-run だけで完了扱いにしている
 - 入力安全性に影響する変更でテストまたはログがない
 - 旧名、新名、bundle ID、設定パスの混在が増えている
-- Mac Mouse Fix 由来のコードや係数を持ち込んでいる
+- 第三者プロジェクト由来のコード、field番号、定数、状態遷移、係数、調整値を持ち込んでいる
 - CI やローカル検証の失敗を後回しにしている

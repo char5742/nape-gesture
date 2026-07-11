@@ -43,6 +43,7 @@
 | [ADR-0039](0039-strict-trackpad-event-analysis-and-capture-manifest.md) | trackpad eventログを厳格解析しcapture manifestへ固定する | JSON Lines、manifest、provenance、host再構築 |
 | [ADR-0040](0040-capture-order-and-event-timestamp.md) | capture順とevent timestampを分離する | 純正trackpad実測、captureIndex、manifest開始・終了時刻 |
 | [ADR-0041](0041-physical-capture-readiness-and-fixture-privacy.md) | 物理captureのready同期と公開fixture境界を固定する | 排他的ready lease、安定化waiter、生成marker、fixture privacy、need:human |
+| [ADR-0042](0042-versioned-scroll-momentum-contract-comparison.md) | 25F80 scroll / momentum契約を独立fixtureで比較する | version fixture、lifecycle、terminal、scroll companion、CLI差分report |
 
 ## 置換済み
 

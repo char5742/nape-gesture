@@ -1,0 +1,161 @@
+{
+  "schemaVersion": 1,
+  "fixtureID": "trackpad-scroll-momentum-25F80-v1",
+  "contractID": "trackpad-scroll-momentum-v1",
+  "status": "confirmed",
+  "scope": "scroll-momentum",
+  "osVersion": "26.5.1",
+  "osBuild": "25F80",
+  "referenceDeviceLabel": "built-in-trackpad",
+  "captureOrderField": "captureIndex",
+  "referenceLogger": {
+    "repoHeadSHA": "b50e607ddde8e23b5467f4997bb3e1f3ee0c139e",
+    "executableSHA256": "00c4cbbc83bbc7c2568eae99cfd63edbb405c44c80294672e93416153a577fa3"
+  },
+  "sourceCaptures": [
+    {
+      "scenarioID": "pure-trackpad-vertical-scroll",
+      "sourceFile": "vertical-scroll.jsonl",
+      "sourceLogSHA256": "67e6d0bfa59d4ee256ceb2aa631047ce1e802af78b1721a0aabe557ed42995a9",
+      "sourceEventCount": 1228,
+      "contractPrefixEventCount": 1200,
+      "analysisStartCaptureIndex": 10,
+      "captureStartedAt": "2026-07-11T10:04:35.877Z",
+      "captureCompletedAt": "2026-07-11T10:05:05.881Z"
+    },
+    {
+      "scenarioID": "pure-trackpad-horizontal-scroll",
+      "sourceFile": "horizontal-scroll.jsonl",
+      "sourceLogSHA256": "791b2a8fa9c13b7b069de240300f551646da4f116d4fe03d777903fd4946c65f",
+      "sourceEventCount": 1565,
+      "contractPrefixEventCount": 1502,
+      "analysisStartCaptureIndex": 622,
+      "captureStartedAt": "2026-07-11T10:06:07.294Z",
+      "captureCompletedAt": "2026-07-11T10:06:52.301Z"
+    },
+    {
+      "scenarioID": "pure-trackpad-momentum-stop",
+      "sourceFile": "momentum-stop.jsonl",
+      "sourceLogSHA256": "84a863aa1d4f9f3f7271d132d941586415fcd91b93a2123845aa0275fe9ee927",
+      "sourceEventCount": 440,
+      "contractPrefixEventCount": 403,
+      "analysisStartCaptureIndex": 38,
+      "captureStartedAt": "2026-07-11T09:56:50.518Z",
+      "captureCompletedAt": "2026-07-11T09:57:35.526Z"
+    },
+    {
+      "scenarioID": "pure-trackpad-cancel-reverse",
+      "sourceFile": "cancel-reverse.jsonl",
+      "sourceLogSHA256": "e92834b5a8dbf3eb91526a581559201e9c53124f3c9a9af045461fb0bd375762",
+      "sourceEventCount": 3143,
+      "contractPrefixEventCount": 2925,
+      "analysisStartCaptureIndex": 881,
+      "captureStartedAt": "2026-07-11T10:03:10.519Z",
+      "captureCompletedAt": "2026-07-11T10:04:10.526Z"
+    }
+  ],
+  "supportedScenarioIDs": [
+    "pure-trackpad-vertical-scroll",
+    "pure-trackpad-horizontal-scroll",
+    "pure-trackpad-momentum-stop",
+    "pure-trackpad-cancel-reverse"
+  ],
+  "common": {
+    "typeRawField": 55,
+    "timestampRawField": 58
+  },
+  "scroll": {
+    "eventTypeRaw": 22,
+    "continuousRawField": 88,
+    "continuousValue": 1,
+    "phaseRawField": 99,
+    "phaseValues": {
+      "mayBegin": 128,
+      "began": 1,
+      "changed": 2,
+      "ended": 4
+    },
+    "terminalNamedDeltasRequirePositiveZero": true,
+    "requiresCompletedLifecycle": true,
+    "type22TimestampNondecreasingWithinLifecycle": true
+  },
+  "momentum": {
+    "phaseRawField": 123,
+    "phaseValues": {
+      "inactive": 0,
+      "began": 1,
+      "continued": 2,
+      "ended": 3
+    },
+    "scrollAndMomentumPhasesAreMutuallyExclusive": true,
+    "beginsAfterScrollEnded": true,
+    "terminalNamedDeltasRequirePositiveZero": true,
+    "requiresCompletedLifecycle": true,
+    "type22TimestampNondecreasingWithinLifecycle": true
+  },
+  "scrollCompanion": {
+    "eventTypeRaw": 29,
+    "classifierRawField": 110,
+    "classifierValue": 6,
+    "envelopeClassifierValue": 0,
+    "phaseRawField": 132,
+    "xMotionDoubleFields": [
+      113,
+      114,
+      116,
+      118
+    ],
+    "xMotionFloatBitFields": [
+      115,
+      117,
+      164
+    ],
+    "yMotionDoubleFields": [
+      119,
+      139
+    ],
+    "yMotionFloatBitFields": [
+      123,
+      165
+    ],
+    "constantRawFields": {
+      "124": 0,
+      "135": 1
+    },
+    "envelopeMustImmediatelyPrecede": true,
+    "envelopeTimestampMustMatch": true,
+    "associationRule": {
+      "preserveOrder": true,
+      "phaseMustMatch": true,
+      "maximumCaptureIndexDistance": 8,
+      "candidateSelection": "minimum-absolute-timestamp-difference-then-capture-index-distance",
+      "unmatchedCompanionAllowed": false,
+      "unmatchedScrollAllowed": true,
+      "requiredMatchedScrollPhaseValues": [
+        1,
+        4,
+        128
+      ],
+      "allowedUnmatchedScrollPhaseValues": [
+        2
+      ],
+      "minimumPairingCoverage": {
+        "paired": 29,
+        "pairableScroll": 30
+      },
+      "requiresScrollTimestampEquality": false,
+      "requiresFixedCaptureIndexDelta": false
+    },
+    "referenceStatistics": {
+      "pairedSampleCount": 1165,
+      "pairableScrollSampleCount": 1172,
+      "captureIndexDeltaValues": [
+        -1,
+        2,
+        3,
+        4
+      ],
+      "anyTimestampEqualToScrollWheel": false
+    }
+  }
+}
