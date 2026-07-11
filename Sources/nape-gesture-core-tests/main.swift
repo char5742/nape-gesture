@@ -1057,6 +1057,955 @@ func testTrackpadDriverEventLogJSONLinesPreserveCaptureOrder() {
     )
 }
 
+func monotonicTimestamp(_ nanosecondsSinceStartup: UInt64) -> MonotonicEventTimestamp {
+    guard let timestamp = MonotonicEventClock.timestamp(
+        nanosecondsSinceStartup: nanosecondsSinceStartup
+    ) else {
+        fatalError("test timestampが現在bootのuptimeを超えています。")
+    }
+    return timestamp
+}
+
+func makeTrackpadScrollInputEvent(
+    sessionID: TrackpadOutputSessionID,
+    captureOrder: UInt64,
+    timestamp: UInt64,
+    phase: TrackpadOutputInputPhase,
+    continuation: TrackpadOutputContinuation? = nil
+) -> TrackpadOutputSessionEvent {
+    .input(
+        TrackpadOutputInputFrame(
+            sessionID: sessionID,
+            captureOrder: captureOrder,
+            timestamp: monotonicTimestamp(timestamp),
+            phase: phase,
+            continuation: continuation,
+            payload: .scroll(deltaX: 1, deltaY: -2, velocityX: 10, velocityY: -20)
+        )
+    )
+}
+
+func makeTrackpadScrollMomentumEvent(
+    sessionID: TrackpadOutputSessionID,
+    captureOrder: UInt64,
+    timestamp: UInt64,
+    phase: TrackpadOutputMomentumPhase
+) -> TrackpadOutputSessionEvent {
+    .momentum(
+        TrackpadOutputMomentumFrame(
+            sessionID: sessionID,
+            captureOrder: captureOrder,
+            timestamp: monotonicTimestamp(timestamp),
+            phase: phase,
+            payload: .scroll(deltaX: 0.5, deltaY: -1, velocityX: 5, velocityY: -10)
+        )
+    )
+}
+
+func makeTrackpadCancellationEvent(
+    sessionID: TrackpadOutputSessionID,
+    captureOrder: UInt64,
+    timestamp: UInt64,
+    family: TrackpadOutputEventFamily,
+    reason: TrackpadOutputCancellationReason,
+    payload: TrackpadOutputPayload?
+) -> TrackpadOutputSessionEvent {
+    .cancellation(
+        TrackpadOutputCancellationFrame(
+            sessionID: sessionID,
+            captureOrder: captureOrder,
+            timestamp: monotonicTimestamp(timestamp),
+            family: family,
+            reason: reason,
+            payload: payload
+        )
+    )
+}
+
+func testMonotonicEventClockUsesStartupNanoseconds() {
+    let timestamp: UInt64 = 1_234_567
+    let seconds = MonotonicEventClock.seconds(fromTimestampNanoseconds: timestamp)
+    let roundTripped = MonotonicEventClock.timestamp(fromSecondsSinceStartup: seconds)
+
+    expectApproximatelyEqual(seconds, 0.001234567, "起動後ナノ秒を起動後秒へ変換する")
+    expect(
+        roundTripped.map { abs(Int64($0.nanosecondsSinceStartup) - Int64(timestamp)) <= 1 } == true,
+        "起動後秒をナノ秒へ戻す"
+    )
+    expect(
+        MonotonicEventClock.timestamp(fromSecondsSinceStartup: -1) == nil,
+        "負の時刻を起動後時刻へ変換しない"
+    )
+    expect(
+        MonotonicEventClock.timestamp(fromSecondsSinceStartup: .infinity) == nil,
+        "非有限時刻を起動後時刻へ変換しない"
+    )
+    expect(
+        MonotonicEventClock.timestamp(fromSecondsSinceStartup: 1_700_000_000) == nil,
+        "Unix epoch秒を現在bootの起動後時刻として受理しない"
+    )
+    expect(
+        MonotonicEventClock.timestamp(
+            nanosecondsSinceStartup: 1_700_000_000_000_000_000
+        ) == nil,
+        "Unix epochナノ秒からMonotonicEventTimestampを作らない"
+    )
+    expectApproximatelyEqual(
+        MonotonicEventClock.elapsedSeconds(from: 4.5, to: 5),
+        0.5,
+        "単調時刻の経過秒を計算する"
+    )
+    expect(MonotonicEventClock.elapsedSeconds(from: 5, to: 4.5) == nil, "時刻逆行を拒否する")
+    expect(MonotonicEventClock.now.nanosecondsSinceStartup > 0, "共通clockが起動後時刻を返す")
+}
+
+func testTrackpadOutputSessionSequenceDoesNotReuseIDs() {
+    let sequence = TrackpadOutputSessionSequence(startingAt: 7)
+    let first = try? sequence.next()
+    let second = try? sequence.next()
+
+    expect(first == TrackpadOutputSessionID(rawValue: 7), "session sequenceの開始IDを保持する")
+    expect(second == TrackpadOutputSessionID(rawValue: 8), "session sequenceを単調増加させる")
+
+    let finalSequence = TrackpadOutputSessionSequence(startingAt: UInt64.max)
+    let finalID = try? finalSequence.next()
+    var exhaustion: TrackpadOutputSessionSequenceError?
+    do {
+        _ = try finalSequence.next()
+    } catch let error as TrackpadOutputSessionSequenceError {
+        exhaustion = error
+    } catch {
+        expect(false, "session sequence枯渇時に別種errorを返さない")
+    }
+    expect(finalID == TrackpadOutputSessionID(rawValue: UInt64.max), "最大session IDを一度だけ返す")
+    expect(exhaustion == .exhausted, "session IDをoverflowして再利用しない")
+}
+
+func testTrackpadOutputSessionSequenceIsUniqueAcrossConcurrentCallers() {
+    let sequence = TrackpadOutputSessionSequence(startingAt: 1)
+    let resultLock = NSLock()
+    let group = DispatchGroup()
+    let queue = DispatchQueue(label: "trackpad-output-session-sequence-test", attributes: .concurrent)
+    var rawValues: [UInt64] = []
+
+    for _ in 0..<1_000 {
+        group.enter()
+        queue.async {
+            let rawValue = try? sequence.next().rawValue
+            resultLock.lock()
+            if let rawValue {
+                rawValues.append(rawValue)
+            }
+            resultLock.unlock()
+            group.leave()
+        }
+    }
+    group.wait()
+
+    expect(rawValues.count == 1_000, "並列callerへ全session IDを返す")
+    expect(Set(rawValues).count == 1_000, "並列caller間でsession IDを再利用しない")
+    expect(rawValues.min() == 1 && rawValues.max() == 1_000, "session IDを欠落なく発行する")
+}
+
+func testTrackpadOutputSessionSeparatesInputAndMomentumLifecycles() {
+    let sessionID = TrackpadOutputSessionID(rawValue: 42)
+    var machine = TrackpadOutputSessionMachine(sessionID: sessionID, family: .scroll)
+
+    do {
+        try machine.accept(
+            makeTrackpadScrollInputEvent(
+                sessionID: sessionID,
+                captureOrder: 0,
+                timestamp: 100,
+                phase: .began
+            )
+        )
+        try machine.accept(
+            makeTrackpadScrollInputEvent(
+                sessionID: sessionID,
+                captureOrder: 1,
+                timestamp: 101,
+                phase: .changed
+            )
+        )
+        try machine.accept(
+            makeTrackpadScrollInputEvent(
+                sessionID: sessionID,
+                captureOrder: 2,
+                timestamp: 102,
+                phase: .ended,
+                continuation: .momentum
+            )
+        )
+        expect(machine.state == .awaitingMomentum, "input ended後にmomentum開始待ちを明示する")
+
+        try machine.accept(
+            makeTrackpadScrollMomentumEvent(
+                sessionID: sessionID,
+                captureOrder: 3,
+                timestamp: 102,
+                phase: .began
+            )
+        )
+        try machine.accept(
+            makeTrackpadScrollMomentumEvent(
+                sessionID: sessionID,
+                captureOrder: 4,
+                timestamp: 103,
+                phase: .continued
+            )
+        )
+        try machine.accept(
+            makeTrackpadScrollMomentumEvent(
+                sessionID: sessionID,
+                captureOrder: 5,
+                timestamp: 104,
+                phase: .ended
+            )
+        )
+    } catch {
+        expect(false, "正しいinput / momentum lifecycleを受理する: \(error)")
+    }
+
+    let terminal = try? machine.requireTerminal()
+    expect(terminal?.kind == .momentumEnded, "momentum endedをsession terminalとして保持する")
+    expect(terminal?.finalPayload?.family == .scroll, "momentum terminalに最終scroll payloadを保持する")
+    expect(machine.lastCaptureOrder == 5, "session全体でcapture orderを保持する")
+    expect(
+        machine.lastTimestamp == monotonicTimestamp(104),
+        "inputとmomentumで同じ起動後時刻domainを使う"
+    )
+}
+
+func testTrackpadOutputSessionPreservesGestureProgressAndDecision() {
+    let sessionID = TrackpadOutputSessionID(rawValue: 50)
+    var machine = TrackpadOutputSessionMachine(sessionID: sessionID, family: .navigationSwipe)
+    let began = TrackpadOutputSessionEvent.input(
+        TrackpadOutputInputFrame(
+            sessionID: sessionID,
+            captureOrder: 0,
+            timestamp: monotonicTimestamp(200),
+            phase: .began,
+            payload: .navigationSwipe(direction: .left, progress: 0.1, velocity: 0.2)
+        )
+    )
+    let ended = TrackpadOutputSessionEvent.input(
+        TrackpadOutputInputFrame(
+            sessionID: sessionID,
+            captureOrder: 1,
+            timestamp: monotonicTimestamp(201),
+            phase: .ended,
+            continuation: .complete,
+            terminalDecision: .commit,
+            payload: .navigationSwipe(direction: .left, progress: 0.9, velocity: 2.5)
+        )
+    )
+
+    do {
+        try machine.accept(began)
+        try machine.accept(ended)
+    } catch {
+        expect(false, "navigation swipeのprogress / terminalを受理する: \(error)")
+    }
+
+    let terminal = try? machine.requireTerminal()
+    expect(terminal?.kind == .inputEnded, "gesture input endedをterminalとして保持する")
+    expect(terminal?.decision == .commit, "gestureのcommit判断を保持する")
+    expect(terminal?.finalPayload?.family == .navigationSwipe, "gesture terminalに最終payloadを保持する")
+    if case let .input(endedFrame) = ended,
+       case let .navigationSwipe(direction, progress, velocity) = endedFrame.payload {
+        expect(direction == .left, "navigation swipeの方向を保持する")
+        expectApproximatelyEqual(progress, 0.9, "終了時progressを保持する")
+        expectApproximatelyEqual(velocity, 2.5, "終了時velocityを保持する")
+    } else {
+        expect(false, "navigation swipe payloadを別familyへ変換しない")
+    }
+
+    let encoded = try? JSONEncoder().encode(ended)
+    let decoded = encoded.flatMap { try? JSONDecoder().decode(TrackpadOutputSessionEvent.self, from: $0) }
+    expect(decoded == ended, "session eventをJSON round-tripする")
+}
+
+func testTrackpadOutputSessionSupportsDockSwipeAndMagnification() {
+    let dockID = TrackpadOutputSessionID(rawValue: 55)
+    var dockMachine = TrackpadOutputSessionMachine(sessionID: dockID, family: .dockSwipe)
+    let dockEvents: [TrackpadOutputSessionEvent] = [
+        .input(
+            TrackpadOutputInputFrame(
+                sessionID: dockID,
+                captureOrder: 0,
+                timestamp: monotonicTimestamp(250),
+                phase: .began,
+                payload: .dockSwipe(axis: .horizontal, progress: 0, velocity: 0)
+            )
+        ),
+        .input(
+            TrackpadOutputInputFrame(
+                sessionID: dockID,
+                captureOrder: 1,
+                timestamp: monotonicTimestamp(251),
+                phase: .ended,
+                continuation: .complete,
+                terminalDecision: .commit,
+                payload: .dockSwipe(axis: .horizontal, progress: 1, velocity: 2)
+            )
+        )
+    ]
+    for event in dockEvents {
+        do {
+            try dockMachine.accept(event)
+        } catch {
+            expect(false, "DockSwipeの正常sessionを受理する: \(error)")
+        }
+    }
+    expect((try? dockMachine.requireTerminal())?.decision == .commit, "DockSwipeのcommitを保持する")
+
+    let magnificationID = TrackpadOutputSessionID(rawValue: 56)
+    var magnificationMachine = TrackpadOutputSessionMachine(
+        sessionID: magnificationID,
+        family: .magnification
+    )
+    let magnificationEvents: [TrackpadOutputSessionEvent] = [
+        .input(
+            TrackpadOutputInputFrame(
+                sessionID: magnificationID,
+                captureOrder: 0,
+                timestamp: monotonicTimestamp(260),
+                phase: .began,
+                payload: .magnification(progress: 0, scaleDelta: 0, velocity: 0)
+            )
+        ),
+        .input(
+            TrackpadOutputInputFrame(
+                sessionID: magnificationID,
+                captureOrder: 1,
+                timestamp: monotonicTimestamp(261),
+                phase: .changed,
+                payload: .magnification(progress: 0.5, scaleDelta: 0.1, velocity: 1)
+            )
+        ),
+        .input(
+            TrackpadOutputInputFrame(
+                sessionID: magnificationID,
+                captureOrder: 2,
+                timestamp: monotonicTimestamp(262),
+                phase: .ended,
+                continuation: .complete,
+                terminalDecision: .cancel,
+                payload: .magnification(progress: 0.5, scaleDelta: 0, velocity: 0.2)
+            )
+        )
+    ]
+    for event in magnificationEvents {
+        do {
+            try magnificationMachine.accept(event)
+        } catch {
+            expect(false, "magnificationの正常sessionを受理する: \(error)")
+        }
+    }
+    expect((try? magnificationMachine.requireTerminal())?.decision == .cancel, "magnificationのcancelを保持する")
+}
+
+func testTrackpadOutputSessionEventCodableCoversEveryEventKind() {
+    let sessionID = TrackpadOutputSessionID(rawValue: 57)
+    let events: [TrackpadOutputSessionEvent] = [
+        makeTrackpadScrollInputEvent(
+            sessionID: sessionID,
+            captureOrder: 0,
+            timestamp: 270,
+            phase: .began
+        ),
+        makeTrackpadScrollMomentumEvent(
+            sessionID: sessionID,
+            captureOrder: 1,
+            timestamp: 271,
+            phase: .continued
+        ),
+        makeTrackpadCancellationEvent(
+            sessionID: sessionID,
+            captureOrder: 2,
+            timestamp: 272,
+            family: .scroll,
+            reason: .runtimeStop,
+            payload: .scroll(deltaX: 0, deltaY: 0, velocityX: 0, velocityY: 0)
+        )
+    ]
+
+    for event in events {
+        let encoded = try? JSONEncoder().encode(event)
+        let decoded = encoded.flatMap { try? JSONDecoder().decode(TrackpadOutputSessionEvent.self, from: $0) }
+        expect(decoded == event, "input / momentum / cancellationの各event kindをJSON round-tripする")
+    }
+}
+
+func testTrackpadOutputSessionRejectsInvalidOrderAndDoubleTerminalAtomically() {
+    let sessionID = TrackpadOutputSessionID(rawValue: 60)
+    var machine = TrackpadOutputSessionMachine(sessionID: sessionID, family: .scroll)
+    var receivedError: TrackpadOutputSessionError?
+
+    do {
+        try machine.accept(
+            makeTrackpadScrollInputEvent(
+                sessionID: sessionID,
+                captureOrder: 0,
+                timestamp: 300,
+                phase: .changed
+            )
+        )
+    } catch let error as TrackpadOutputSessionError {
+        receivedError = error
+    } catch {}
+    expect(
+        receivedError == .invalidTransition(state: .awaitingInput, event: .input(.changed)),
+        "began前のchangedを拒否する"
+    )
+    expect(machine.lastCaptureOrder == nil, "拒否eventでcapture orderを進めない")
+
+    try? machine.accept(
+        makeTrackpadScrollInputEvent(
+            sessionID: sessionID,
+            captureOrder: 0,
+            timestamp: 300,
+            phase: .began
+        )
+    )
+
+    receivedError = nil
+    do {
+        try machine.accept(
+            makeTrackpadScrollInputEvent(
+                sessionID: sessionID,
+                captureOrder: 2,
+                timestamp: 301,
+                phase: .changed
+            )
+        )
+    } catch let error as TrackpadOutputSessionError {
+        receivedError = error
+    } catch {}
+    expect(receivedError == .invalidCaptureOrder(expected: 1, actual: 2), "capture order欠落を拒否する")
+    expect(machine.lastCaptureOrder == 0, "順序違反でaccepted stateを変更しない")
+
+    receivedError = nil
+    do {
+        try machine.accept(
+            makeTrackpadScrollInputEvent(
+                sessionID: sessionID,
+                captureOrder: 1,
+                timestamp: 299,
+                phase: .changed
+            )
+        )
+    } catch let error as TrackpadOutputSessionError {
+        receivedError = error
+    } catch {}
+    expect(
+        receivedError == .timestampRegression(
+            previous: monotonicTimestamp(300),
+            actual: monotonicTimestamp(299)
+        ),
+        "session内の時刻逆行を拒否する"
+    )
+    expect(machine.lastCaptureOrder == 0, "時刻違反でcapture orderを消費しない")
+
+    try? machine.accept(
+        makeTrackpadScrollInputEvent(
+            sessionID: sessionID,
+            captureOrder: 1,
+            timestamp: 301,
+            phase: .ended,
+            continuation: .complete
+        )
+    )
+    let terminal = try? machine.requireTerminal()
+    receivedError = nil
+    do {
+        try machine.accept(
+            makeTrackpadScrollInputEvent(
+                sessionID: sessionID,
+                captureOrder: 2,
+                timestamp: 302,
+                phase: .ended,
+                continuation: .complete
+            )
+        )
+    } catch let error as TrackpadOutputSessionError {
+        receivedError = error
+    } catch {}
+    expect(
+        receivedError == terminal.map { .terminalAlreadyReached($0) },
+        "二重terminalを拒否する"
+    )
+    expect(machine.lastCaptureOrder == 1, "二重terminalでsessionを変更しない")
+}
+
+func testTrackpadOutputSessionRejectsStuckAndInvalidFamilyMetadata() {
+    let scrollID = TrackpadOutputSessionID(rawValue: 70)
+    var scrollMachine = TrackpadOutputSessionMachine(sessionID: scrollID, family: .scroll)
+    try? scrollMachine.accept(
+        makeTrackpadScrollInputEvent(
+            sessionID: scrollID,
+            captureOrder: 0,
+            timestamp: 400,
+            phase: .began
+        )
+    )
+    try? scrollMachine.accept(
+        makeTrackpadScrollInputEvent(
+            sessionID: scrollID,
+            captureOrder: 1,
+            timestamp: 401,
+            phase: .ended,
+            continuation: .momentum
+        )
+    )
+
+    var receivedError: TrackpadOutputSessionError?
+    do {
+        _ = try scrollMachine.requireTerminal()
+    } catch let error as TrackpadOutputSessionError {
+        receivedError = error
+    } catch {}
+    expect(receivedError == .sessionIncomplete(.awaitingMomentum), "momentum未開始のstuck sessionを完了扱いにしない")
+
+    receivedError = nil
+    do {
+        try scrollMachine.accept(
+            makeTrackpadScrollMomentumEvent(
+                sessionID: scrollID,
+                captureOrder: 2,
+                timestamp: 402,
+                phase: .continued
+            )
+        )
+    } catch let error as TrackpadOutputSessionError {
+        receivedError = error
+    } catch {}
+    expect(
+        receivedError == .invalidTransition(state: .awaitingMomentum, event: .momentum(.continued)),
+        "momentum began前のcontinuedを拒否する"
+    )
+
+    let dockID = TrackpadOutputSessionID(rawValue: 71)
+    var dockMachine = TrackpadOutputSessionMachine(sessionID: dockID, family: .dockSwipe)
+    let dockBegan = TrackpadOutputSessionEvent.input(
+        TrackpadOutputInputFrame(
+            sessionID: dockID,
+            captureOrder: 0,
+            timestamp: monotonicTimestamp(500),
+            phase: .began,
+            payload: .dockSwipe(axis: .vertical, progress: 0, velocity: 0)
+        )
+    )
+    let dockEndedWithoutDecision = TrackpadOutputSessionEvent.input(
+        TrackpadOutputInputFrame(
+            sessionID: dockID,
+            captureOrder: 1,
+            timestamp: monotonicTimestamp(501),
+            phase: .ended,
+            continuation: .complete,
+            payload: .dockSwipe(axis: .vertical, progress: 1, velocity: 3)
+        )
+    )
+    try? dockMachine.accept(dockBegan)
+    receivedError = nil
+    do {
+        try dockMachine.accept(dockEndedWithoutDecision)
+    } catch let error as TrackpadOutputSessionError {
+        receivedError = error
+    } catch {}
+    expect(receivedError == .invalidInputMetadata(phase: .ended), "gesture terminalのcommit / cancel欠落を拒否する")
+    expect(dockMachine.state == .inputActive, "metadata違反でgesture stateをterminalにしない")
+
+    let nonFinite = TrackpadOutputSessionEvent.input(
+        TrackpadOutputInputFrame(
+            sessionID: dockID,
+            captureOrder: 1,
+            timestamp: monotonicTimestamp(501),
+            phase: .changed,
+            payload: .dockSwipe(axis: .vertical, progress: .nan, velocity: 0)
+        )
+    )
+    receivedError = nil
+    do {
+        try dockMachine.accept(nonFinite)
+    } catch let error as TrackpadOutputSessionError {
+        receivedError = error
+    } catch {}
+    expect(receivedError == .nonFinitePayload, "非有限progressを拒否する")
+    expect(dockMachine.lastCaptureOrder == 0, "非有限payloadでcapture orderを消費しない")
+}
+
+func testTrackpadOutputSessionCancelsEveryNonterminalState() {
+    let awaitingInputID = TrackpadOutputSessionID(rawValue: 80)
+    var awaitingInput = TrackpadOutputSessionMachine(sessionID: awaitingInputID, family: .scroll)
+    try? awaitingInput.accept(
+        makeTrackpadCancellationEvent(
+            sessionID: awaitingInputID,
+            captureOrder: 0,
+            timestamp: 600,
+            family: .scroll,
+            reason: .runtimeStop,
+            payload: nil
+        )
+    )
+    let awaitingInputTerminal = try? awaitingInput.requireTerminal()
+    expect(awaitingInputTerminal?.kind == .sessionCancelled, "input開始前のsessionを明示cancelできる")
+    expect(awaitingInputTerminal?.cancellationReason == .runtimeStop, "runtime停止理由を保持する")
+    expect(awaitingInputTerminal?.finalPayload == nil, "input開始前のcancelで存在しないpayloadを捏造しない")
+
+    let inputActiveID = TrackpadOutputSessionID(rawValue: 81)
+    var inputActive = TrackpadOutputSessionMachine(sessionID: inputActiveID, family: .dockSwipe)
+    try? inputActive.accept(
+        .input(
+            TrackpadOutputInputFrame(
+                sessionID: inputActiveID,
+                captureOrder: 0,
+                timestamp: monotonicTimestamp(610),
+                phase: .began,
+                payload: .dockSwipe(axis: .vertical, progress: 0, velocity: 0)
+            )
+        )
+    )
+    let missingPayloadCancellation = makeTrackpadCancellationEvent(
+        sessionID: inputActiveID,
+        captureOrder: 1,
+        timestamp: 611,
+        family: .dockSwipe,
+        reason: .killSwitch,
+        payload: nil
+    )
+    var receivedError: TrackpadOutputSessionError?
+    do {
+        try inputActive.accept(missingPayloadCancellation)
+    } catch let error as TrackpadOutputSessionError {
+        receivedError = error
+    } catch {}
+    expect(
+        receivedError == .cancellationPayloadRequired(state: .inputActive),
+        "active sessionのcancelに最終payloadを必須にする"
+    )
+    expect(inputActive.lastCaptureOrder == 0, "cancel payload欠落でorderを消費しない")
+
+    let dockCancellation = makeTrackpadCancellationEvent(
+        sessionID: inputActiveID,
+        captureOrder: 1,
+        timestamp: 611,
+        family: .dockSwipe,
+        reason: .killSwitch,
+        payload: .dockSwipe(axis: .vertical, progress: 0, velocity: 0)
+    )
+    try? inputActive.accept(dockCancellation)
+    let dockTerminal = try? inputActive.requireTerminal()
+    expect(dockTerminal?.cancellationReason == .killSwitch, "input activeをkill switchで閉じる")
+    expect(dockTerminal?.finalPayload?.family == .dockSwipe, "DockSwipe cancelにaxis / progress / velocity payloadを保持する")
+
+    let awaitingMomentumID = TrackpadOutputSessionID(rawValue: 82)
+    var awaitingMomentum = TrackpadOutputSessionMachine(sessionID: awaitingMomentumID, family: .scroll)
+    try? awaitingMomentum.accept(
+        makeTrackpadScrollInputEvent(
+            sessionID: awaitingMomentumID,
+            captureOrder: 0,
+            timestamp: 620,
+            phase: .began
+        )
+    )
+    try? awaitingMomentum.accept(
+        makeTrackpadScrollInputEvent(
+            sessionID: awaitingMomentumID,
+            captureOrder: 1,
+            timestamp: 621,
+            phase: .ended,
+            continuation: .momentum
+        )
+    )
+    try? awaitingMomentum.accept(
+        makeTrackpadCancellationEvent(
+            sessionID: awaitingMomentumID,
+            captureOrder: 2,
+            timestamp: 622,
+            family: .scroll,
+            reason: .systemSleep,
+            payload: .scroll(deltaX: 0, deltaY: 0, velocityX: 10, velocityY: -20)
+        )
+    )
+    let awaitingMomentumTerminal = try? awaitingMomentum.requireTerminal()
+    expect(awaitingMomentumTerminal?.cancellationReason == .systemSleep, "momentum待ちをsleepで閉じる")
+    expect(awaitingMomentumTerminal?.finalPayload?.family == .scroll, "momentum待ちcancelに最終scroll payloadを保持する")
+
+    let momentumActiveID = TrackpadOutputSessionID(rawValue: 83)
+    var momentumActive = TrackpadOutputSessionMachine(sessionID: momentumActiveID, family: .scroll)
+    try? momentumActive.accept(
+        makeTrackpadScrollInputEvent(
+            sessionID: momentumActiveID,
+            captureOrder: 0,
+            timestamp: 630,
+            phase: .began
+        )
+    )
+    try? momentumActive.accept(
+        makeTrackpadScrollInputEvent(
+            sessionID: momentumActiveID,
+            captureOrder: 1,
+            timestamp: 631,
+            phase: .ended,
+            continuation: .momentum
+        )
+    )
+    try? momentumActive.accept(
+        makeTrackpadScrollMomentumEvent(
+            sessionID: momentumActiveID,
+            captureOrder: 2,
+            timestamp: 632,
+            phase: .began
+        )
+    )
+    let cancellation = makeTrackpadCancellationEvent(
+        sessionID: momentumActiveID,
+        captureOrder: 3,
+        timestamp: 633,
+        family: .scroll,
+        reason: .outputFailure,
+        payload: .scroll(deltaX: 0, deltaY: 0, velocityX: 5, velocityY: -10)
+    )
+    try? momentumActive.accept(cancellation)
+    let momentumTerminal = try? momentumActive.requireTerminal()
+    expect(momentumTerminal?.cancellationReason == .outputFailure, "momentum activeをoutput failureで閉じる")
+    expect(momentumTerminal?.finalPayload?.family == .scroll, "momentum cancelに最終scroll payloadを保持する")
+    let encoded = try? JSONEncoder().encode(cancellation)
+    let decoded = encoded.flatMap { try? JSONDecoder().decode(TrackpadOutputSessionEvent.self, from: $0) }
+    expect(decoded == cancellation, "session cancellationをJSON round-tripする")
+    let dockEncoded = try? JSONEncoder().encode(dockCancellation)
+    expect(encoded != dockEncoded, "familyが異なるcancellationを同一表現にしない")
+}
+
+func testTrackpadOutputSessionRejectsSessionAndFamilyMixing() {
+    let sessionID = TrackpadOutputSessionID(rawValue: 90)
+    var machine = TrackpadOutputSessionMachine(sessionID: sessionID, family: .scroll)
+    let wrongSessionID = TrackpadOutputSessionID(rawValue: 91)
+    var receivedError: TrackpadOutputSessionError?
+
+    do {
+        try machine.accept(
+            makeTrackpadScrollInputEvent(
+                sessionID: wrongSessionID,
+                captureOrder: 0,
+                timestamp: 700,
+                phase: .began
+            )
+        )
+    } catch let error as TrackpadOutputSessionError {
+        receivedError = error
+    } catch {}
+    expect(
+        receivedError == .sessionIDMismatch(expected: sessionID, actual: wrongSessionID),
+        "別session IDのevent混入を拒否する"
+    )
+
+    let wrongFamily = TrackpadOutputSessionEvent.input(
+        TrackpadOutputInputFrame(
+            sessionID: sessionID,
+            captureOrder: 0,
+            timestamp: monotonicTimestamp(700),
+            phase: .began,
+            payload: .navigationSwipe(direction: .right, progress: 0, velocity: 0)
+        )
+    )
+    receivedError = nil
+    do {
+        try machine.accept(wrongFamily)
+    } catch let error as TrackpadOutputSessionError {
+        receivedError = error
+    } catch {}
+    expect(
+        receivedError == .familyMismatch(expected: .scroll, actual: .navigationSwipe),
+        "session途中のevent family混入を拒否する"
+    )
+    expect(machine.state == .awaitingInput, "identity違反でsession stateを変更しない")
+
+    let mismatchedCancellationPayload = makeTrackpadCancellationEvent(
+        sessionID: sessionID,
+        captureOrder: 0,
+        timestamp: 700,
+        family: .scroll,
+        reason: .runtimeStop,
+        payload: .navigationSwipe(direction: .left, progress: 0, velocity: 0)
+    )
+    receivedError = nil
+    do {
+        try machine.accept(mismatchedCancellationPayload)
+    } catch let error as TrackpadOutputSessionError {
+        receivedError = error
+    } catch {}
+    expect(
+        receivedError == .familyMismatch(expected: .scroll, actual: .navigationSwipe),
+        "cancellationの明示familyとpayload familyの不一致を拒否する"
+    )
+    expect(machine.lastCaptureOrder == nil, "cancellation family違反でorderを消費しない")
+}
+
+func testTrackpadOutputSessionRejectsFutureBootTimeAndPreterminalOrderExhaustion() {
+    let epochJSON = """
+    {"nanosecondsSinceStartup":1700000000000000000}
+    """
+    let decodedEpoch = try? JSONDecoder().decode(
+        MonotonicEventTimestamp.self,
+        from: Data(epochJSON.utf8)
+    )
+    let decodedID = TrackpadOutputSessionID(rawValue: 97)
+    var decodedMachine = TrackpadOutputSessionMachine(sessionID: decodedID, family: .scroll)
+    var decodedTimestampRejected = false
+    if let decodedEpoch {
+        let decodedEvent = TrackpadOutputSessionEvent.input(
+            TrackpadOutputInputFrame(
+                sessionID: decodedID,
+                captureOrder: 0,
+                timestamp: decodedEpoch,
+                phase: .began,
+                payload: .scroll(deltaX: 0, deltaY: 0, velocityX: 0, velocityY: 0)
+            )
+        )
+        do {
+            try decodedMachine.accept(decodedEvent)
+        } catch TrackpadOutputSessionError.timestampOutsideCurrentBoot {
+            decodedTimestampRejected = true
+        } catch {}
+    }
+    expect(decodedEpoch != nil, "過去ログのtimestamp値をlosslessにdecodeする")
+    expect(decodedTimestampRejected, "decodeした未検証timestampをlive sessionで再検証する")
+    expect(decodedMachine.state == .awaitingInput, "decode値のboot違反でstateを変更しない")
+
+    let boundedID = TrackpadOutputSessionID(rawValue: 96)
+    var boundedMachine = TrackpadOutputSessionMachine(
+        sessionID: boundedID,
+        family: .scroll,
+        maximumCaptureOrder: 1
+    )
+    try? boundedMachine.accept(
+        makeTrackpadScrollInputEvent(
+            sessionID: boundedID,
+            captureOrder: 0,
+            timestamp: 900,
+            phase: .began
+        )
+    )
+    var receivedError: TrackpadOutputSessionError?
+    do {
+        try boundedMachine.accept(
+            makeTrackpadScrollInputEvent(
+                sessionID: boundedID,
+                captureOrder: 1,
+                timestamp: 901,
+                phase: .changed
+            )
+        )
+    } catch let error as TrackpadOutputSessionError {
+        receivedError = error
+    } catch {}
+    expect(
+        receivedError == .captureOrderExhaustedBeforeTerminal(maximum: 1),
+        "最終orderをnonterminal eventで消費しない"
+    )
+    expect(boundedMachine.lastCaptureOrder == 0, "order上限違反でaccepted stateを変更しない")
+    try? boundedMachine.accept(
+        makeTrackpadScrollInputEvent(
+            sessionID: boundedID,
+            captureOrder: 1,
+            timestamp: 901,
+            phase: .ended,
+            continuation: .complete
+        )
+    )
+    expect((try? boundedMachine.requireTerminal())?.kind == .inputEnded, "最終orderをterminal eventには使用できる")
+}
+
+func testMomentumTerminatesOnBackwardMonotonicTime() {
+    var engine = MomentumEngine(
+        configuration: MomentumConfiguration(
+            minimumStartVelocity: 1,
+            stopVelocity: 0.1,
+            decayPerSecond: 0.9,
+            frameInterval: 0.01
+        )
+    )
+    engine.start(
+        from: GestureCommand(
+            kind: .drag,
+            phase: .ended,
+            direction: .right,
+            deltaX: 0,
+            deltaY: 0,
+            velocityX: 10,
+            velocityY: 0,
+            timestamp: 10
+        )
+    )
+
+    let terminal = engine.tick(at: 9.9)
+    expect(terminal?.phase == .ended, "時刻逆行時もmomentum terminalを返す")
+    expect(terminal?.timestamp == 10, "時刻逆行値をterminal timestampへ使わない")
+    expect(engine.state == .idle, "時刻逆行時はmomentumを停止する")
+
+    engine.start(
+        from: GestureCommand(
+            kind: .drag,
+            phase: .ended,
+            direction: .right,
+            deltaX: 0,
+            deltaY: 0,
+            velocityX: 10,
+            velocityY: 0,
+            timestamp: 10
+        )
+    )
+    let epochTickTerminal = engine.tick(at: 1_700_000_000)
+    expect(epochTickTerminal?.phase == .ended, "Unix epoch tickでもmomentum terminalを返す")
+    expect(epochTickTerminal?.timestamp == 10, "Unix epoch tickをterminal timestampへ使わない")
+    expect(engine.state == .idle, "Unix epoch tickでmomentumを停止する")
+
+    engine.start(
+        from: GestureCommand(
+            kind: .drag,
+            phase: .ended,
+            direction: .right,
+            deltaX: 0,
+            deltaY: 0,
+            velocityX: 10,
+            velocityY: 0,
+            timestamp: .nan
+        )
+    )
+    expect(engine.state == .idle, "非有限timestampからmomentumを開始しない")
+
+    engine.start(
+        from: GestureCommand(
+            kind: .drag,
+            phase: .ended,
+            direction: .right,
+            deltaX: 0,
+            deltaY: 0,
+            velocityX: 10,
+            velocityY: 0,
+            timestamp: 1_700_000_000
+        )
+    )
+    expect(engine.state == .idle, "Unix epoch timestampからmomentumを開始しない")
+
+    engine.start(
+        from: GestureCommand(
+            kind: .drag,
+            phase: .ended,
+            direction: .right,
+            deltaX: 0,
+            deltaY: 0,
+            velocityX: .infinity,
+            velocityY: 0,
+            timestamp: 10
+        )
+    )
+    expect(engine.state == .idle, "非有限velocityからmomentumを開始しない")
+}
+
 func testProductGestureOutputFailsClosedWithoutVerifiedContract() {
     let adapter = TrackpadGestureOutputAdapter()
     let command = GestureCommand(
@@ -2478,6 +3427,19 @@ testTrackpadDriverEventLogDecodesLegacyRecordWithDefaults()
 testTrackpadDriverEventLogRawFieldsUseStableNumericOrder()
 testTrackpadDriverEventLogPreservesNonFiniteNamedDoubleBitPatterns()
 testTrackpadDriverEventLogJSONLinesPreserveCaptureOrder()
+testMonotonicEventClockUsesStartupNanoseconds()
+testTrackpadOutputSessionSequenceDoesNotReuseIDs()
+testTrackpadOutputSessionSequenceIsUniqueAcrossConcurrentCallers()
+testTrackpadOutputSessionSeparatesInputAndMomentumLifecycles()
+testTrackpadOutputSessionPreservesGestureProgressAndDecision()
+testTrackpadOutputSessionSupportsDockSwipeAndMagnification()
+testTrackpadOutputSessionEventCodableCoversEveryEventKind()
+testTrackpadOutputSessionRejectsInvalidOrderAndDoubleTerminalAtomically()
+testTrackpadOutputSessionRejectsStuckAndInvalidFamilyMetadata()
+testTrackpadOutputSessionCancelsEveryNonterminalState()
+testTrackpadOutputSessionRejectsSessionAndFamilyMixing()
+testTrackpadOutputSessionRejectsFutureBootTimeAndPreterminalOrderExhaustion()
+testMomentumTerminatesOnBackwardMonotonicTime()
 testProductGestureOutputFailsClosedWithoutVerifiedContract()
 testProductGestureOutputRequiresRegisteredFixtureAndInfersFailures()
 testInputLogAnalyzerComparesBaselineAndCandidate()

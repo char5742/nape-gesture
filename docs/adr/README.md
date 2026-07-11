@@ -39,6 +39,7 @@
 | [ADR-0035](0035-discontinue-grok-independent-audit.md) | Grokによる独立監査を廃止する | 独立監査、レビュー責任、サブエージェント |
 | [ADR-0036](0036-emulate-trackpad-driver-output-events.md) | trackpad driver上位出力eventを再現する | gesture event、scroll、DockSwipe、NavigationSwipe、magnification |
 | [ADR-0037](0037-separate-product-and-diagnostic-event-output.md) | 製品gesture出力と診断event出力を分離する | module境界、fail closed、monotonic clock、CI guard |
+| [ADR-0038](0038-trackpad-output-session-and-monotonic-clock.md) | trackpad出力sessionとmonotonic clockを共通化する | lifecycle、sequence、terminal、起動後時刻 |
 
 ## 置換済み
 

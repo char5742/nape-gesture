@@ -79,6 +79,10 @@
 - raw loggerはcallback内をcopy・採番・bounded queue投入に限定し、0 event、queue飽和、write / flush / close失敗を成功扱いにしていない
 - raw fieldは`fieldNumber`の数値昇順でzeroとdouble bit patternを保持し、serialized eventをCoreGraphicsで再構築できる
 - `--duration`なしのloggerはSIGINT後にevent受付を止め、queue drainとflush / closeを完了している
+- output sessionはsession ID、0始まりで欠落のないcapture order、非減少の起動後timestamp、terminal stateを保持する
+- input lifecycleとmomentum lifecycleを別型にし、input ended後のsession完了またはmomentum開始待ちを明示している
+- kill switch、runtime stop、sleep、device切断、権限変更、output failureで、input開始前を含む全nonterminal stateから明示cancelしてterminalへ収束し、active cancellationのfamilyと最終payloadを失わない
+- 製品gesture出力境界は`MonotonicEventClock`を使い、Unix wall clockや別のuptime取得を直接混在させていない
 - trackpad scrollではcontinuous scroll eventと対応するscroll gesture eventを同一timestamp系列で出す
 - scroll phaseとmomentum phaseを分離し、begin / change / end / cancelとmomentum begin / continue / endを完結させる
 - Spaces / Mission Controlはprogressとphaseを持つDockSwipe event系列として実装し、forced horizontal scrollやkeyboard shortcutで代替していない

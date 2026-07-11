@@ -95,7 +95,7 @@ final class NapeGestureDaemon {
     }
 
     fileprivate func handle(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
-        let callbackStartedAt = performanceRecorder == nil ? 0 : monotonicNanoseconds()
+        let callbackStartedAt = performanceRecorder == nil ? 0 : MonotonicEventClock.nowTimestampNanoseconds
 
         guard terminalError == nil else {
             return Unmanaged.passUnretained(event)
@@ -113,7 +113,9 @@ final class NapeGestureDaemon {
         }
 
         if KillSwitchShortcut.matches(type: type, event: event) {
-            let decision = emergencyStop(at: Double(event.timestamp) / 1_000_000_000.0)
+            let decision = emergencyStop(
+                at: MonotonicEventClock.seconds(fromTimestampNanoseconds: event.timestamp)
+            )
             return decision.shouldSuppressOriginalEvent ? nil : Unmanaged.passUnretained(event)
         }
 
@@ -140,7 +142,7 @@ final class NapeGestureDaemon {
                 source: .eventTap,
                 inputEventTimestampNanoseconds: event.timestamp,
                 tapCallbackStartedAtNanoseconds: callbackStartedAt,
-                recognizerFinishedAtNanoseconds: monotonicNanoseconds(),
+                recognizerFinishedAtNanoseconds: MonotonicEventClock.nowTimestampNanoseconds,
                 suppressedOriginal: decision.shouldSuppressOriginal
             )
         }
@@ -165,9 +167,9 @@ final class NapeGestureDaemon {
     ) -> Bool {
         for command in commands {
             let shouldRecordPerformance = performanceContext != nil
-            let postStartedAt = shouldRecordPerformance ? monotonicNanoseconds() : 0
+            let postStartedAt = shouldRecordPerformance ? MonotonicEventClock.nowTimestampNanoseconds : 0
             let postResult = actionExecutor.post(command: command)
-            let postFinishedAt = shouldRecordPerformance ? monotonicNanoseconds() : 0
+            let postFinishedAt = shouldRecordPerformance ? MonotonicEventClock.nowTimestampNanoseconds : 0
             recordRuntimePerformance(
                 command: command,
                 postResult: postResult,
@@ -216,7 +218,7 @@ final class NapeGestureDaemon {
             return
         }
 
-        guard let command = momentum.tick(at: ProcessInfo.processInfo.systemUptime) else {
+        guard let command = momentum.tick(at: MonotonicEventClock.nowSeconds) else {
             cancelMomentum()
             return
         }
@@ -225,7 +227,7 @@ final class NapeGestureDaemon {
         if performanceRecorder == nil {
             performanceContext = nil
         } else {
-            let now = monotonicNanoseconds()
+            let now = MonotonicEventClock.nowTimestampNanoseconds
             performanceContext = RuntimePerformanceContext(
                 operationID: nextPerformanceOperationID(source: .momentumTimer),
                 source: .momentumTimer,
@@ -336,9 +338,6 @@ final class NapeGestureDaemon {
         return "\(source.rawValue)-\(performanceOperationSequence)"
     }
 
-    private func monotonicNanoseconds() -> UInt64 {
-        DispatchTime.now().uptimeNanoseconds
-    }
 }
 
 private struct RuntimePerformanceContext {

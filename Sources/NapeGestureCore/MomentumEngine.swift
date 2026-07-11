@@ -9,7 +9,15 @@ public struct MomentumEngine: Sendable {
     }
 
     public mutating func start(from command: GestureCommand) {
-        guard configuration.isEnabled else {
+        guard configuration.isEnabled,
+              command.timestamp.isFinite,
+              command.timestamp >= 0,
+              command.velocityX.isFinite,
+              command.velocityY.isFinite,
+              MonotonicEventClock.timestamp(
+                  fromSecondsSinceStartup: command.timestamp
+              ) != nil
+        else {
             state = .idle
             return
         }
@@ -33,7 +41,22 @@ public struct MomentumEngine: Sendable {
             return nil
         }
 
-        let elapsed = max(time - lastTime, configuration.frameInterval)
+        guard MonotonicEventClock.timestamp(fromSecondsSinceStartup: time) != nil,
+              let measuredElapsed = MonotonicEventClock.elapsedSeconds(from: lastTime, to: time)
+        else {
+            state = .idle
+            return GestureCommand(
+                kind: .momentum,
+                phase: .ended,
+                direction: direction,
+                deltaX: 0,
+                deltaY: 0,
+                velocityX: 0,
+                velocityY: 0,
+                timestamp: lastTime
+            )
+        }
+        let elapsed = max(measuredElapsed, configuration.frameInterval)
         let decay = pow(configuration.decayPerSecond, elapsed)
         let nextVelocityX = velocityX * decay
         let nextVelocityY = velocityY * decay
