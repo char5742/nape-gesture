@@ -25,16 +25,23 @@ jobs:
       - name: Check product output boundary
         run: sh scripts/check-product-output-boundary.sh
 
+      - name: Check diagnostic event time
+        run: sh scripts/check-diagnostic-event-time.sh
+
       - name: Build debug
         run: swift build --scratch-path .build
 
       - name: Run core tests
         run: .build/debug/nape-gesture-core-tests
 
+      - name: Run diagnostic output and dry-run contract tests
+        run: .build/debug/nape-gesture-diagnostic-output-tests
+
       - name: Run legacy diagnostic and safety smoke tests
         run: |
           sh -n scripts/collect-runtime-event-evidence.sh
           sh -n scripts/check-product-output-boundary.sh
+          sh -n scripts/check-diagnostic-event-time.sh
           target_stable_id="vendor=123;product=456;manufacturer=example;name=nape-pro-mouse;transport=bluetooth"
           .build/debug/nape-gesture trackpad-event-log --help | grep -q -- '--evidence-kind'
           .build/debug/nape-gesture analyze-trackpad-event-log --help | grep -q 'generatedProduct'
@@ -168,6 +175,9 @@ jobs:
 
       - name: Build release
         run: swift build -c release --scratch-path .build
+
+      - name: Run release diagnostic output and dry-run contract tests
+        run: .build/release/nape-gesture-diagnostic-output-tests
 
       - name: Verify app bundle
         run: |

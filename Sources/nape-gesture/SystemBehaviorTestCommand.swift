@@ -132,44 +132,44 @@ struct SystemBehaviorTestCommand {
 
     private func execute(_ plan: SystemTestPlan) throws {
         let poster = DiagnosticEventPoster()
-        let now = Date().timeIntervalSince1970
+        let now = MonotonicEventClock.nowSeconds
 
         switch plan.scenario {
         case .spaceLeft:
-            postScrollCommands(
+            try postScrollCommands(
                 makeHorizontalCommands(sign: -1, plan: plan, now: now),
                 poster: poster,
                 mode: .forcedHorizontal(sign: -1),
                 interval: plan.interval
             )
         case .spaceRight:
-            postScrollCommands(
+            try postScrollCommands(
                 makeHorizontalCommands(sign: 1, plan: plan, now: now),
                 poster: poster,
                 mode: .forcedHorizontal(sign: 1),
                 interval: plan.interval
             )
         case .horizontalScroll:
-            postScrollCommands(
+            try postScrollCommands(
                 makeHorizontalCommands(sign: 1, plan: plan, now: now),
                 poster: poster,
                 mode: .horizontal,
                 interval: plan.interval
             )
         case .missionControl:
-            poster.postMissionControl()
+            try requireSuccessfulPost(poster.postMissionControl())
         case .pageBack:
-            poster.postPageBack()
+            try requireSuccessfulPost(poster.postPageBack())
         case .pageForward:
-            poster.postPageForward()
+            try requireSuccessfulPost(poster.postPageForward())
         case .zoomIn:
-            poster.postZoomIn()
+            try requireSuccessfulPost(poster.postZoomIn())
         case .zoomOut:
-            poster.postZoomOut()
+            try requireSuccessfulPost(poster.postZoomOut())
         case .killSwitch:
-            postUnmarkedInputEvents(unmarkedInputEvents(for: plan, startTime: now), to: nil)
+            try postUnmarkedInputEvents(unmarkedInputEvents(for: plan, startTime: now), to: nil)
         case .gestureDrag, .gestureWheel, .gestureWheelThenKillSwitch, .normalAfterRelease:
-            postUnmarkedInputEvents(unmarkedInputEvents(for: plan, startTime: now), to: plan.postToPid)
+            try postUnmarkedInputEvents(unmarkedInputEvents(for: plan, startTime: now), to: plan.postToPid)
         }
     }
 
@@ -205,7 +205,10 @@ struct SystemBehaviorTestCommand {
             commands.append(command)
         }
 
-        return commands
+        return DiagnosticEventPoster.terminallyCompleteScrollCommands(
+            commands,
+            interval: plan.interval
+        )
     }
 
     private func postScrollCommands(
@@ -213,21 +216,42 @@ struct SystemBehaviorTestCommand {
         poster: DiagnosticEventPoster,
         mode: ScrollPostMode,
         interval: TimeInterval
-    ) {
-        for command in commands {
-            poster.postScroll(command: command, mode: mode)
-            Thread.sleep(forTimeInterval: interval)
+    ) throws {
+        let result = poster.postScrollSequence(
+            commands: commands,
+            mode: mode,
+            interval: interval
+        )
+        try requireSuccessfulPost(result)
+        guard result.generatedEventCount == commands.count else {
+            throw ToolError.invalidValue("CGEvent sequence", "期待件数のscroll eventを投稿できませんでした。")
+        }
+    }
+
+    private func requireSuccessfulPost(_ result: DiagnosticEventPostResult) throws {
+        guard result.completedSuccessfully, result.generatedEventCount > 0 else {
+            throw ToolError.invalidValue(
+                "CGEvent sequence",
+                "event作成または投稿に失敗し、release / terminalへ完全収束できませんでした。"
+            )
         }
     }
 
     private func writeLogJSON(for plan: SystemTestPlan, to outputPath: String?) throws {
-        let records = logRecords(for: plan, startTime: Date().timeIntervalSince1970)
+        let now = MonotonicEventClock.now
+        let roundingMargin = 2 / TimeInterval(MonotonicEventClock.nanosecondsPerSecond)
+        guard plan.maximumPlannedOffset + roundingMargin <= now.secondsSinceStartup else {
+            throw ToolError.invalidValue(
+                "timestamp",
+                "system-testのoffsetが現在bootの起動後時刻上限を超えます。"
+            )
+        }
+        let startTime = now.secondsSinceStartup - plan.maximumPlannedOffset - roundingMargin
+        let records = try logRecords(for: plan, startTime: startTime)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        let lines = records.compactMap { record -> String? in
-            guard let data = try? encoder.encode(record) else {
-                return nil
-            }
+        let lines = try records.map { record -> String in
+            let data = try encoder.encode(record)
             return String(decoding: data, as: UTF8.self)
         }
         let output = lines.joined(separator: "\n") + (lines.isEmpty ? "" : "\n")
@@ -245,31 +269,32 @@ struct SystemBehaviorTestCommand {
         }
     }
 
-    private func logRecords(for plan: SystemTestPlan, startTime: TimeInterval) -> [InputLogRecord] {
-        let records: [InputLogRecord] = switch plan.scenario {
+    private func logRecords(for plan: SystemTestPlan, startTime: TimeInterval) throws -> [InputLogRecord] {
+        let records: [InputLogRecord]
+        switch plan.scenario {
         case .spaceLeft:
-            makeHorizontalCommands(sign: -1, plan: plan, now: startTime)
-                .map { scrollRecord(command: $0, mode: .forcedHorizontal(sign: -1)) }
+            records = try makeHorizontalCommands(sign: -1, plan: plan, now: startTime)
+                .map { try scrollRecord(command: $0, mode: .forcedHorizontal(sign: -1)) }
         case .spaceRight:
-            makeHorizontalCommands(sign: 1, plan: plan, now: startTime)
-                .map { scrollRecord(command: $0, mode: .forcedHorizontal(sign: 1)) }
+            records = try makeHorizontalCommands(sign: 1, plan: plan, now: startTime)
+                .map { try scrollRecord(command: $0, mode: .forcedHorizontal(sign: 1)) }
         case .horizontalScroll:
-            makeHorizontalCommands(sign: 1, plan: plan, now: startTime)
-                .map { scrollRecord(command: $0, mode: .horizontal) }
+            records = try makeHorizontalCommands(sign: 1, plan: plan, now: startTime)
+                .map { try scrollRecord(command: $0, mode: .horizontal) }
         case .missionControl:
-            shortcutRecords(keyCode: CGKeyCode(kVK_UpArrow), flags: .maskControl, startTime: startTime)
+            records = try shortcutRecords(keyCode: CGKeyCode(kVK_UpArrow), flags: .maskControl, startTime: startTime)
         case .pageBack:
-            shortcutRecords(keyCode: CGKeyCode(kVK_LeftArrow), flags: .maskCommand, startTime: startTime)
+            records = try shortcutRecords(keyCode: CGKeyCode(kVK_LeftArrow), flags: .maskCommand, startTime: startTime)
         case .pageForward:
-            shortcutRecords(keyCode: CGKeyCode(kVK_RightArrow), flags: .maskCommand, startTime: startTime)
+            records = try shortcutRecords(keyCode: CGKeyCode(kVK_RightArrow), flags: .maskCommand, startTime: startTime)
         case .zoomIn:
-            shortcutRecords(keyCode: CGKeyCode(kVK_ANSI_Equal), flags: .maskCommand, startTime: startTime)
+            records = try shortcutRecords(keyCode: CGKeyCode(kVK_ANSI_Equal), flags: .maskCommand, startTime: startTime)
         case .zoomOut:
-            shortcutRecords(keyCode: CGKeyCode(kVK_ANSI_Minus), flags: .maskCommand, startTime: startTime)
+            records = try shortcutRecords(keyCode: CGKeyCode(kVK_ANSI_Minus), flags: .maskCommand, startTime: startTime)
         case .killSwitch:
-            unmarkedInputEvents(for: plan, startTime: startTime).map { $0.logRecord() }
+            records = try unmarkedInputEvents(for: plan, startTime: startTime).map { try $0.logRecord() }
         case .gestureDrag, .gestureWheel, .gestureWheelThenKillSwitch, .normalAfterRelease:
-            unmarkedInputEvents(for: plan, startTime: startTime).map { $0.logRecord() }
+            records = try unmarkedInputEvents(for: plan, startTime: startTime).map { try $0.logRecord() }
         }
         return annotateSystemTestRecords(records, scenario: plan.scenario)
     }
@@ -286,11 +311,11 @@ struct SystemBehaviorTestCommand {
         }
     }
 
-    private func scrollRecord(command: GestureCommand, mode: ScrollPostMode) -> InputLogRecord {
+    private func scrollRecord(command: GestureCommand, mode: ScrollPostMode) throws -> InputLogRecord {
         let posted = mode.deltas(for: command)
         let phases = CGEventUtilities.phaseValues(for: command)
         return InputLogRecord(
-            timestamp: timestamp(command.timestamp),
+            timestamp: try timestamp(command.timestamp),
             typeName: "scrollWheel",
             typeRaw: Int(CGEventType.scrollWheel.rawValue),
             generatedByNapeGesture: true,
@@ -314,9 +339,9 @@ struct SystemBehaviorTestCommand {
         flags: CGEventFlags,
         startTime: TimeInterval,
         generatedByNapeGesture: Bool = true
-    ) -> [InputLogRecord] {
+    ) throws -> [InputLogRecord] {
         [
-            keyRecord(
+            try keyRecord(
                 typeName: "keyDown",
                 type: .keyDown,
                 keyCode: keyCode,
@@ -324,7 +349,7 @@ struct SystemBehaviorTestCommand {
                 time: startTime,
                 generatedByNapeGesture: generatedByNapeGesture
             ),
-            keyRecord(
+            try keyRecord(
                 typeName: "keyUp",
                 type: .keyUp,
                 keyCode: keyCode,
@@ -342,9 +367,9 @@ struct SystemBehaviorTestCommand {
         flags: CGEventFlags,
         time: TimeInterval,
         generatedByNapeGesture: Bool
-    ) -> InputLogRecord {
+    ) throws -> InputLogRecord {
         InputLogRecord(
-            timestamp: timestamp(time),
+            timestamp: try timestamp(time),
             typeName: typeName,
             typeRaw: Int(type.rawValue),
             generatedByNapeGesture: generatedByNapeGesture,
@@ -639,30 +664,54 @@ struct SystemBehaviorTestCommand {
         )
     }
 
-    private func postUnmarkedInputEvents(_ events: [UnmarkedInputEvent], to pid: pid_t?) {
+    private func postUnmarkedInputEvents(_ events: [UnmarkedInputEvent], to pid: pid_t?) throws {
+        guard !events.isEmpty,
+              events.allSatisfy({ $0.time.isFinite && $0.time >= 0 }),
+              zip(events, events.dropFirst()).allSatisfy({ pair in
+                  pair.0.time <= pair.1.time
+              })
+        else {
+            throw ToolError.invalidValue("CGEvent sequence", "未マーク入力列の時刻順序が不正です。")
+        }
+
         let source = CGEventSource(stateID: .hidSystemState)
         source?.setLocalEventsFilterDuringSuppressionState([], state: .eventSuppressionStateSuppressionInterval)
         var cursorPosition = currentPointerLocation()
         var previousTime: TimeInterval?
+        var preparedEvents: [DiagnosticPreparedEvent] = []
+        preparedEvents.reserveCapacity(events.count)
 
         for plannedEvent in events {
-            if let previousTime {
-                Thread.sleep(forTimeInterval: max(plannedEvent.time - previousTime, 0))
-            }
             guard let event = plannedEvent.makeCGEvent(source: source, cursorPosition: &cursorPosition) else {
-                previousTime = plannedEvent.time
-                continue
+                throw ToolError.invalidValue(
+                    "CGEvent sequence",
+                    "イベント列を投稿前に全件生成できませんでした。"
+                )
             }
-            post(event, to: pid)
+            let domains = plannedEvent.releaseDomains
+            preparedEvents.append(
+                DiagnosticPreparedEvent(
+                    event: event,
+                    delayAfterPrevious: previousTime.map { plannedEvent.time - $0 } ?? 0,
+                    opensReleaseDomains: domains.opens,
+                    closesReleaseDomains: domains.closes
+                )
+            )
             previousTime = plannedEvent.time
         }
-    }
 
-    private func post(_ event: CGEvent, to pid: pid_t?) {
-        if let pid {
-            event.postToPid(pid)
-        } else {
-            event.post(tap: .cghidEventTap)
+        let poster = DiagnosticEventPoster(postEvent: { event in
+            if let pid {
+                event.postToPid(pid)
+            } else {
+                event.post(tap: .cghidEventTap)
+            }
+            return true
+        })
+        let result = poster.postPreparedSequence(preparedEvents)
+        try requireSuccessfulPost(result)
+        guard result.generatedEventCount == preparedEvents.count else {
+            throw ToolError.invalidValue("CGEvent sequence", "期待件数の未マーク入力を投稿できませんでした。")
         }
     }
 
@@ -687,8 +736,11 @@ struct SystemBehaviorTestCommand {
         }
     }
 
-    private func timestamp(_ time: TimeInterval) -> UInt64 {
-        UInt64(max(time, 0) * 1_000_000_000)
+    private func timestamp(_ time: TimeInterval) throws -> UInt64 {
+        guard let timestamp = MonotonicEventClock.timestamp(fromSecondsSinceStartup: time) else {
+            throw ToolError.invalidValue("timestamp", "現在boot内の起動後時刻ではありません: \(time)")
+        }
+        return timestamp.nanosecondsSinceStartup
     }
 
     private func quantizeInt64(_ value: Double) -> Int64 {
@@ -748,7 +800,7 @@ struct SystemBehaviorTestCommand {
             return defaultValue
         }
         let raw = try requiredValue(name, in: options)
-        guard let value = Double(raw), value > 0 else {
+        guard let value = Double(raw), value.isFinite, value > 0 else {
             throw ToolError.invalidValue(name, raw)
         }
         return value
@@ -786,6 +838,25 @@ private struct SystemTestPlan {
     var postToPid: pid_t?
     var activationButtonNumber: Int64 {
         Int64(GestureConfiguration.default.activationButton.rawValue)
+    }
+
+    var maximumPlannedOffset: TimeInterval {
+        let intervalCount: TimeInterval
+        switch scenario {
+        case .spaceLeft, .spaceRight, .horizontalScroll:
+            intervalCount = steps == 1 ? 1 : max(Double(steps) - 1, 0)
+        case .missionControl, .pageBack, .pageForward, .zoomIn, .zoomOut:
+            return 0.01
+        case .killSwitch:
+            intervalCount = 1
+        case .gestureDrag, .gestureWheel:
+            intervalCount = Double(steps) + 1
+        case .gestureWheelThenKillSwitch:
+            intervalCount = Double(steps) + 3
+        case .normalAfterRelease:
+            intervalCount = Double(steps) + 7
+        }
+        return intervalCount * interval
     }
 
     init(
@@ -923,9 +994,12 @@ private struct UnmarkedInputEvent {
     var keyCode: Int64 = 0
     var flags: UInt64 = 0
 
-    func logRecord() -> InputLogRecord {
-        InputLogRecord(
-            timestamp: UInt64(max(time, 0) * 1_000_000_000),
+    func logRecord() throws -> InputLogRecord {
+        guard let timestamp = MonotonicEventClock.timestamp(fromSecondsSinceStartup: time) else {
+            throw ToolError.invalidValue("timestamp", "現在boot内の起動後時刻ではありません: \(time)")
+        }
+        return InputLogRecord(
+            timestamp: timestamp.nanosecondsSinceStartup,
             typeName: stableTypeName,
             typeRaw: Int(type.rawValue),
             generatedByNapeGesture: false,
@@ -984,7 +1058,36 @@ private struct UnmarkedInputEvent {
             event?.setIntegerValueField(.mouseEventDeltaY, value: deltaY)
         }
 
+        guard let event else {
+            return nil
+        }
         return event
+    }
+
+    var releaseDomains: (
+        opens: Set<DiagnosticEventReleaseDomain>,
+        closes: Set<DiagnosticEventReleaseDomain>
+    ) {
+        switch type {
+        case .keyDown:
+            return ([.key(keyCode)], [])
+        case .keyUp:
+            return ([], [.key(keyCode)])
+        case .leftMouseDown:
+            return ([.mouseButton(0)], [])
+        case .leftMouseUp:
+            return ([], [.mouseButton(0)])
+        case .rightMouseDown:
+            return ([.mouseButton(1)], [])
+        case .rightMouseUp:
+            return ([], [.mouseButton(1)])
+        case .otherMouseDown:
+            return ([.mouseButton(buttonNumber)], [])
+        case .otherMouseUp:
+            return ([], [.mouseButton(buttonNumber)])
+        default:
+            return ([], [])
+        }
     }
 
     private var stableTypeName: String {
