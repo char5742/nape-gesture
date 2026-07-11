@@ -1,80 +1,52 @@
 import Foundation
 import NapeGestureCore
+import NapeGestureProductOutput
 
 final class GestureActionExecutor {
     private let bindings: GestureBindings
-    private let poster: EventPoster
+    private let output: any ProductGestureOutput
 
-    init(bindings: GestureBindings, poster: EventPoster = EventPoster()) {
+    init(
+        bindings: GestureBindings,
+        output: any ProductGestureOutput = TrackpadGestureOutputAdapter()
+    ) {
         self.bindings = bindings
-        self.poster = poster
+        self.output = output
+    }
+
+    func ensureOutputAvailable() throws {
+        switch output.capability.status {
+        case .supported:
+            return
+        case .unsupported:
+            throw ToolError.trackpadOutputContractUnavailable(
+                output.capability.reason ?? "trackpad output contractが未対応です。"
+            )
+        case .contractMismatch:
+            throw ToolError.trackpadOutputContractMismatch(
+                output.capability.reason ?? "trackpad output contractが現在のOSと一致しません。"
+            )
+        }
     }
 
     func post(command: GestureCommand) -> GestureActionPostResult {
         let action = bindings.action(for: command)
 
-        switch action {
-        case .none:
-            return GestureActionPostResult(action: action, postResult: .none)
-        case .smoothScroll:
-            return GestureActionPostResult(action: action, postResult: poster.postScroll(command: command, mode: .free))
-        case .horizontalScroll:
-            return GestureActionPostResult(action: action, postResult: poster.postScroll(command: command, mode: .horizontal))
-        case .spaceLeft:
-            return GestureActionPostResult(
-                action: action,
-                postResult: poster.postScroll(command: command, mode: .forcedHorizontal(sign: -1))
-            )
-        case .spaceRight:
-            return GestureActionPostResult(
-                action: action,
-                postResult: poster.postScroll(command: command, mode: .forcedHorizontal(sign: 1))
-            )
-        case .missionControl:
-            return postDiscrete(action: action, command: command) {
-                poster.postMissionControl()
-            }
-        case .pageBack:
-            return postDiscrete(action: action, command: command) {
-                poster.postPageBack()
-            }
-        case .pageForward:
-            return postDiscrete(action: action, command: command) {
-                poster.postPageForward()
-            }
-        case .zoomIn:
-            return postDiscrete(action: action, command: command) {
-                poster.postZoomIn()
-            }
-        case .zoomOut:
-            return postDiscrete(action: action, command: command) {
-                poster.postZoomOut()
-            }
+        guard action != .none else {
+            return GestureActionPostResult(action: action)
         }
+        return GestureActionPostResult(
+            action: action,
+            productResult: output.post(action: action, command: command)
+        )
     }
 
     func supportsMomentum(for command: GestureCommand) -> Bool {
-        bindings.action(for: command).supportsMomentum
+        output.supportsMomentum(for: bindings.action(for: command))
     }
 
-    private func postDiscrete(
-        action: GestureAction,
-        command: GestureCommand,
-        post: () -> EventPostResult
-    ) -> GestureActionPostResult {
-        switch command.kind {
-        case .drag:
-            if command.phase == .began {
-                return GestureActionPostResult(action: action, postResult: post())
-            }
-        case .wheel:
-            if command.phase == .began || command.phase == .changed {
-                return GestureActionPostResult(action: action, postResult: post())
-            }
-        case .momentum:
-            break
-        }
-        return GestureActionPostResult(action: action, postResult: .none)
+    func cancelAll() {
+        output.cancelAll()
     }
 }
 
@@ -82,10 +54,19 @@ struct GestureActionPostResult: Equatable {
     var action: GestureAction
     var generatedEventCount: Int
     var failedEventCreationCount: Int
+    var outputFailure: ProductGestureOutputFailure?
 
-    init(action: GestureAction, postResult: EventPostResult) {
+    init(action: GestureAction) {
         self.action = action
-        generatedEventCount = postResult.generatedEventCount
-        failedEventCreationCount = postResult.failedEventCreationCount
+        generatedEventCount = 0
+        failedEventCreationCount = 0
+        outputFailure = nil
+    }
+
+    init(action: GestureAction, productResult: ProductGestureOutputResult) {
+        self.action = action
+        generatedEventCount = productResult.generatedEventCount
+        failedEventCreationCount = productResult.failedEventCreationCount
+        outputFailure = productResult.failure
     }
 }

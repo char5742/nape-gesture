@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import NapeGestureCore
+import NapeGestureDiagnosticOutput
 
 struct GenerateScrollCommand {
     private let options: [String]
@@ -64,7 +65,7 @@ struct GenerateScrollCommand {
         }
 
         try AccessibilityPermission.ensurePrompted()
-        let poster = EventPoster()
+        let poster = DiagnosticEventPoster()
         for (index, command) in commands.enumerated() {
             poster.postScroll(command: command, mode: mode)
             if index < commands.count - 1 {

@@ -10,6 +10,7 @@ final class NapeGestureRuntime {
     private(set) var isRunning = false
     private(set) var lastError: Error?
     private(set) var lastRecoveryFailureKind: RuntimeRecoveryFailureKind?
+    var onTerminalFailure: ((Error, RuntimeRecoveryFailureKind) -> Void)?
 
     func start(settings: NapeGestureSettings) {
         stop()
@@ -31,7 +32,10 @@ final class NapeGestureRuntime {
                 configuration: settings.gesture,
                 targetGate: newGate,
                 hidInputMonitor: newMonitor,
-                performanceRecorder: performanceRecorder
+                performanceRecorder: performanceRecorder,
+                onTerminalFailure: { [weak self] error in
+                    self?.handleTerminalFailure(error)
+                }
             )
             try newDaemon.start()
 
@@ -137,6 +141,22 @@ final class NapeGestureRuntime {
         return monitor
     }
 
+    private func handleTerminalFailure(_ error: Error) {
+        guard daemon != nil || isRunning else {
+            return
+        }
+        let failureKind = runtimeRecoveryFailureKind(for: error)
+        daemon?.stop()
+        monitor?.stop()
+        daemon = nil
+        monitor = nil
+        gate = nil
+        isRunning = false
+        lastError = error
+        lastRecoveryFailureKind = failureKind
+        onTerminalFailure?(error, failureKind)
+    }
+
     private func runtimeRecoveryFailureKind(for error: Error) -> RuntimeRecoveryFailureKind {
         guard let toolError = error as? ToolError else {
             return .unrecoverable
@@ -165,6 +185,12 @@ final class NapeGestureRuntime {
             return .invalidSettings
         case .targetDeviceMatcherRequired:
             return .targetDeviceMatcherMissing
+        case .trackpadOutputContractUnavailable:
+            return .outputContractUnsupported
+        case .trackpadOutputContractMismatch:
+            return .outputContractMismatch
+        case .trackpadOutputPostingFailed:
+            return .outputPostingFailed
         case .unknownCommand(_),
              .missingValue(_),
              .invalidValue(_, _),

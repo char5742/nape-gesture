@@ -1,6 +1,7 @@
 import Foundation
 import IOKit
 import NapeGestureCore
+import NapeGestureProductOutput
 
 struct DoctorCommand {
     private let options: [String]
@@ -58,6 +59,12 @@ struct DoctorCommand {
         }
 
         let inventory = makeInventory(settings: settings, findings: &findings)
+        let outputContract = DoctorOutputContractStatus(
+            capability: TrackpadGestureOutputAdapter().capability
+        )
+        if !outputContract.supported {
+            findings.append("trackpad driver出力contractは\(outputContract.status)です。入力抑制を開始せず安全停止します。")
+        }
         let probe = shouldProbeHID
             ? makeHIDProbe(settings: settings, matchedDevices: inventory.matchedDevices, findings: &findings)
             : DoctorHIDProbe(requested: false, succeeded: nil, error: nil, failureCode: nil, remediation: nil)
@@ -75,7 +82,8 @@ struct DoctorCommand {
             requireMatchingTargetDevice: settings.requireMatchingTargetDevice,
             configuredTargetMatchers: settings.targetDevices.count,
             matchedTargetDeviceCount: inventory.matchedDevices.count,
-            hidProbe: probe
+            hidProbe: probe,
+            outputContract: outputContract
         )
 
         if findings.isEmpty {
@@ -98,6 +106,7 @@ struct DoctorCommand {
             inventoryError: inventory.error,
             hidProbe: probe,
             tccStatus: tccStatus,
+            outputContract: outputContract,
             runtimeReadiness: runtimeReadiness,
             benchmark: benchmark,
             settingsValidationIssues: settingsValidationIssues,
@@ -264,6 +273,7 @@ struct DoctorCommand {
             "HIDデバイス数: \(formatOptional(report.allHIDDeviceCount))",
             "ポインティングデバイス数: \(formatOptional(report.pointingDeviceCount))",
             "一致対象デバイス数: \(report.matchedTargetDeviceCount)",
+            "trackpad output contract: \(report.outputContract.status)",
             "runtime ready: \(report.runtimeReadiness.ready ? "はい" : "いいえ")"
         ]
 
@@ -469,6 +479,7 @@ private struct DoctorReport: Codable {
     var inventoryError: String?
     var hidProbe: DoctorHIDProbe
     var tccStatus: DoctorTCCStatus
+    var outputContract: DoctorOutputContractStatus
     var runtimeReadiness: DoctorRuntimeReadiness
     var benchmark: BenchmarkReport
     var settingsValidationIssues: [SettingsValidationIssue]
@@ -490,7 +501,8 @@ private struct DoctorRuntimeReadiness: Codable {
         requireMatchingTargetDevice: Bool,
         configuredTargetMatchers: Int,
         matchedTargetDeviceCount: Int,
-        hidProbe: DoctorHIDProbe
+        hidProbe: DoctorHIDProbe,
+        outputContract: DoctorOutputContractStatus
     ) {
         var failures: [DoctorRuntimeReadinessFailure] = []
         if !settingsValidationIssues.isEmpty {
@@ -562,8 +574,45 @@ private struct DoctorRuntimeReadiness: Codable {
                 )
             )
         }
+        if !outputContract.supported {
+            let isMismatch = outputContract.status == ProductGestureOutputCapability.Status.contractMismatch.rawValue
+            failures.append(
+                DoctorRuntimeReadinessFailure(
+                    code: isMismatch ? "outputContract.contractMismatch" : "outputContract.unsupported",
+                    category: "outputContract",
+                    message: isMismatch
+                        ? "trackpad driver出力contractが現在のmacOS buildと一致しません。"
+                        : "このmacOS build用のtrackpad driver出力contractが未対応です。",
+                    remediation: "純正trackpad fixtureからcontractを導出し、対応OS buildとしてadapterを検証してください。"
+                )
+            )
+        }
         self.failures = failures
         ready = failures.isEmpty
+    }
+}
+
+private struct DoctorOutputContractStatus: Codable {
+    var status: String
+    var supported: Bool
+    var contractID: String?
+    var schemaVersion: Int?
+    var fixtureID: String?
+    var fixtureSHA256: String?
+    var osVersion: String?
+    var osBuild: String?
+    var reason: String?
+
+    init(capability: ProductGestureOutputCapability) {
+        status = capability.status.rawValue
+        supported = capability.isSupported
+        contractID = capability.contract?.contractID
+        schemaVersion = capability.contract?.schemaVersion
+        fixtureID = capability.contract?.fixtureID
+        fixtureSHA256 = capability.contract?.fixtureSHA256
+        osVersion = capability.contract?.osVersion
+        osBuild = capability.contract?.osBuild
+        reason = capability.reason
     }
 }
 

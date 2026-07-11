@@ -1,7 +1,8 @@
 # ADR-0029: Grok 運用知見を AGENTS.md と Codex skill に同期する
 
-- 状態: 採択
+- 状態: 置換済み
 - 日付: 2026-07-09
+- 置換先: [ADR-0035](0035-discontinue-grok-independent-audit.md)
 
 ## 背景
 

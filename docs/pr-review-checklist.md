@@ -16,8 +16,8 @@
 - 未検証事項を「完了」と表現していない
 - Mac Mouse Fix のコード、定数、状態遷移、係数をコピーしていない
 - 由来や配布物に影響する変更では `sh scripts/check-provenance.sh` が成功している
-- Grok CLI を使った補助レビューがある場合でも、指摘採否、テスト、CI、merge 判断はメインスレッドが責任を持つ
-- Grok 運用ルールを変えた場合、`AGENTS.md`、[ADR-0027](adr/0027-grok-cli-auxiliary-review.md)、[ADR-0029](adr/0029-grok-operational-surface.md)、必要なら `$grok-auxiliary-review` skill の同期を確認している
+- Grok CLIによる独立監査、補助レビュー、発散、PR差分レビューを実行していない
+- 外部モデルの出力を設計判断、PR review、完成判定、CI gate、runtime証跡に混ぜていない
 - computer-use で代替できる GUI 操作を `need:human` にしていない。OS セキュリティ設定を変更する UI 操作では直前確認を取っている
 - Mermaid 図やアプリキャプチャを使う場合、実装、docs、実際の画面証跡と矛盾していない
 
@@ -39,12 +39,20 @@
 - ジェスチャーボタン未押下時の入力通過を壊していない
 - デッドゾーン内の微小揺れをジェスチャー確定にしていない
 - ボタン解放後に必ず通常状態へ戻る
-- `began` / `changed` / `ended` / `cancelled` / `momentum` の意味が崩れていない
+- scrollの`began` / `changed` / `ended` / `cancelled`とmomentumの`began` / `continued` / `ended`を別のlifecycleとして扱っている
 - 方向ロック、加速度、キャンセル条件、慣性のテストが追加または更新されている
 
 ## Runtime / Event Tap 変更
 
 - 自前生成イベントを再解釈しない
+- 製品のgesture出力がtrackpad driver上位出力相当のevent adapterへ集約されている
+- 製品runtimeが`NapeGestureProductOutput`だけを参照し、`DiagnosticEventPoster`を参照していない
+- 旧単純scroll / shortcutは`NapeGestureDiagnosticOutput` targetにだけ存在し、許可したCLI command以外からimportされていない
+- AX scrollbar、対象PID配送、frontmost application分岐、keyboard shortcutをgesture出力に使っていない
+- 通常SDK非公開のevent contractがcompatibility adapter外へ漏れていない
+- 未知のmacOS versionまたはcontract不一致で誤ったeventを送らずfail closedになる
+- `supported`が登録済みfixture ID / SHA-256 / schema / contract ID / OS build / fixture実体の完全一致だけで生成される
+- output contract未対応時はevent tapと入力抑制を開始せず、別方式へfallbackしない
 - ジェスチャー成立後の元入力漏れを増やしていない
 - 対象外デバイスの通常クリック、ドラッグ、ホイールを改変しない
 - `doctor --json` の `targetDeviceDiagnostics` で、対象デバイス不一致時の matcher 条件差分を確認できる
@@ -66,13 +74,19 @@
 - `devices --all --json`、`hid-log`、`analyze-hid-log` のどれで証跡を取るか明記されている
 - 実機 Nape Pro が必要な項目をモックだけで完了扱いにしていない
 
-## 生成イベント / Spaces / Mission Control 変更
+## Trackpad driver出力 / Spaces / Mission Control変更
 
-- 通常スクロールのフェーズは `scrollPhase`、慣性は `momentumPhase` に分離されている
-- `generate-scroll --dry-run --log-json` で比較可能な JSON Lines を出せる
-- `system-test run --dry-run --log-json` で生成予定イベントを保存し、`systemTestScenario` / `sequenceIndex` つきで `analyze-log --json --assert-system-scenario <name>` によるシナリオ別機械判定を通している
-- `Ctrl + ←/→` などのショートカット送信を最終解として前提化していない
-- Finder、Safari、Mission Control、Spaces で必要な実機検証が明記されている
+- raw loggerはcallback内をcopy・採番・bounded queue投入に限定し、0 event、queue飽和、write / flush / close失敗を成功扱いにしていない
+- raw fieldは`fieldNumber`の数値昇順でzeroとdouble bit patternを保持し、serialized eventをCoreGraphicsで再構築できる
+- `--duration`なしのloggerはSIGINT後にevent受付を止め、queue drainとflush / closeを完了している
+- trackpad scrollではcontinuous scroll eventと対応するscroll gesture eventを同一timestamp系列で出す
+- scroll phaseとmomentum phaseを分離し、begin / change / end / cancelとmomentum begin / continue / endを完結させる
+- Spaces / Mission Controlはprogressとphaseを持つDockSwipe event系列として実装し、forced horizontal scrollやkeyboard shortcutで代替していない
+- page navigationはNavigationSwipe、zoomはmagnification / zoom eventとして実装している
+- 純正trackpad logとtype、subtype、field、順序、timestamp、phase、momentumを同一schemaで比較している
+- Mac Mouse Fix由来のfield番号、定数、係数、状態遷移をコピーせず、Apple公式資料、Apple OSS、自前ログから導出した根拠がある
+- `generate-scroll` / `system-test`の旧単純CGEvent結果をtrackpad driver出力の完成証跡にしていない
+- Finder、Safari、Mission Control、Spacesでsystem-wide配送の実機検証が明記されている
 
 ## UI / Doctor / 権限導線変更
 

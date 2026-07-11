@@ -62,6 +62,13 @@ final class StatusApp: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        runtime.onTerminalFailure = { [weak self] _, failureKind in
+            guard let self else {
+                return
+            }
+            _ = recoveryState.recordRuntimeFailure(failureKind, at: currentTime())
+            refreshMenu()
+        }
         installLaunchUIChrome()
         installLifecycleObservers()
         startRetryTimer()
@@ -79,6 +86,7 @@ final class StatusApp: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         retryTimer?.invalidate()
         NSWorkspace.shared.notificationCenter.removeObserver(self)
+        runtime.onTerminalFailure = nil
         runtime.stop()
         Self.retainedDelegate = nil
     }

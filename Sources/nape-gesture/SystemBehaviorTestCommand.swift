@@ -3,6 +3,7 @@ import Carbon.HIToolbox
 import CoreGraphics
 import Foundation
 import NapeGestureCore
+import NapeGestureDiagnosticOutput
 
 struct SystemBehaviorTestCommand {
     private let options: [String]
@@ -130,7 +131,7 @@ struct SystemBehaviorTestCommand {
     }
 
     private func execute(_ plan: SystemTestPlan) throws {
-        let poster = EventPoster()
+        let poster = DiagnosticEventPoster()
         let now = Date().timeIntervalSince1970
 
         switch plan.scenario {
@@ -209,7 +210,7 @@ struct SystemBehaviorTestCommand {
 
     private func postScrollCommands(
         _ commands: [GestureCommand],
-        poster: EventPoster,
+        poster: DiagnosticEventPoster,
         mode: ScrollPostMode,
         interval: TimeInterval
     ) {

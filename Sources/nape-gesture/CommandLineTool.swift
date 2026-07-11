@@ -41,6 +41,8 @@ final class CommandLineTool {
         case "log":
             let logger = EventLogger(options: options)
             try logger.run()
+        case "trackpad-event-log":
+            try TrackpadDriverEventLogger(options: options).run()
         case "analyze-log":
             try AnalyzeLogCommand(options: options).run()
         case "compare-log":
@@ -102,6 +104,9 @@ final class CommandLineTool {
 
               nape-gesture log [--duration <秒>] [--out <path>] [--exclude-generated|--only-generated]
                   グローバル入力イベントを JSON Lines で記録します。メタ情報は標準エラー、イベント本体は標準出力または --out に出します。
+
+              nape-gesture trackpad-event-log [--duration <秒>] [--out <path>] [--scenario-id <ID>] [--device-label <ラベル>] [--repo-head-sha <SHA>]
+                  純正トラックパッドの上位イベント契約を調査するため、listen-only の CGEvent tap で event type 0...63 と zero を含む raw field 0...255 を JSON Lines に記録します。OS version/build、logger version、scenario ID、device label、repo HEAD SHA を各 event に保存します。
 
               nape-gesture analyze-log <path> [--json] [--assert-has-unmarked-passthrough-input] [--assert-has-unmarked-click] [--assert-has-unmarked-drag] [--assert-has-unmarked-wheel] [--assert-has-unmarked-click-drag-wheel] [--assert-kill-switch-shortcut] [--assert-gesture-before-kill-switch] [--assert-system-scenario <name>]
                   JSON Lines ログを解析し、しきい値候補を出します。--assert-has-unmarked-passthrough-input で未生成の移動またはスクロールがない場合、--assert-has-unmarked-click / --assert-has-unmarked-drag / --assert-has-unmarked-wheel で未生成の通常クリック / 通常ドラッグ / 通常ホイールがない場合、--assert-kill-switch-shortcut で未生成の Control + Option + Command + G keyDown / keyUp がない場合、--assert-gesture-before-kill-switch でキルスイッチ前の未生成ジェスチャー入力がない場合、--assert-system-scenario で system-test dry-run の期待イベント列を満たさない場合に失敗します。
@@ -428,6 +433,9 @@ enum ToolError: LocalizedError {
     case targetApplicationNotFound(String)
     case benchmarkBaselineFailed(String)
     case guiSmokeFailed(String)
+    case trackpadOutputContractUnavailable(String)
+    case trackpadOutputContractMismatch(String)
+    case trackpadOutputPostingFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -466,6 +474,12 @@ enum ToolError: LocalizedError {
             return "benchmark の純粋ロジック基準を満たしていません。\n\(message)"
         case let .guiSmokeFailed(message):
             return "GUI smoke 検証に失敗しました。\n\(message)"
+        case let .trackpadOutputContractUnavailable(reason):
+            return "trackpad driver出力contractを利用できないため、入力抑制を開始しません。\n\(reason)"
+        case let .trackpadOutputContractMismatch(reason):
+            return "trackpad driver出力contractが現在のmacOSと一致しないため、入力抑制を開始しません。\n\(reason)"
+        case let .trackpadOutputPostingFailed(reason):
+            return "trackpad driver出力に失敗したため、元入力を通過させてruntimeを安全停止しました。\n\(reason)"
         }
     }
 }

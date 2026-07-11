@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import NapeGestureCore
+import NapeGestureProductOutput
 
 final class NapeGestureDaemon {
     private var recognizer: GestureRecognizer
@@ -10,23 +11,28 @@ final class NapeGestureDaemon {
     private let targetGate: SharedTargetDeviceGate?
     private let hidInputMonitor: HIDInputMonitor?
     private let performanceRecorder: RuntimePerformanceRecording?
+    private let onTerminalFailure: ((Error) -> Void)?
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var momentumTimer: DispatchSourceTimer?
     private var safetyState = RuntimeSafetyState()
     private var performanceOperationSequence = 0
+    private var terminalError: Error?
 
     init(
         configuration: GestureConfiguration,
         targetGate: SharedTargetDeviceGate? = nil,
         hidInputMonitor: HIDInputMonitor? = nil,
-        performanceRecorder: RuntimePerformanceRecording? = nil
+        performanceRecorder: RuntimePerformanceRecording? = nil,
+        productOutput: any ProductGestureOutput = TrackpadGestureOutputAdapter(),
+        onTerminalFailure: ((Error) -> Void)? = nil
     ) {
         self.configuration = configuration
         self.targetGate = targetGate
         self.hidInputMonitor = hidInputMonitor
         self.performanceRecorder = performanceRecorder
-        actionExecutor = GestureActionExecutor(bindings: configuration.bindings)
+        self.onTerminalFailure = onTerminalFailure
+        actionExecutor = GestureActionExecutor(bindings: configuration.bindings, output: productOutput)
         recognizer = GestureRecognizer(configuration: configuration)
         momentum = MomentumEngine(configuration: configuration.momentum)
     }
@@ -41,9 +47,14 @@ final class NapeGestureDaemon {
         writeOperationalLog("nape-gesture を開始しました。停止するには Ctrl-C を押してください。")
         writeOperationalLog("キルスイッチ: \(KillSwitchShortcut.displayName)")
         CFRunLoopRun()
+        if let terminalError {
+            throw terminalError
+        }
     }
 
     func start() throws {
+        terminalError = nil
+        try actionExecutor.ensureOutputAvailable()
         try AccessibilityPermission.ensurePrompted()
 
         let mask = CGEventUtilities.eventMask(for: CGEventUtilities.observedMouseEventTypes)
@@ -80,10 +91,15 @@ final class NapeGestureDaemon {
         eventTap = nil
         runLoopSource = nil
         cancelMomentum()
+        actionExecutor.cancelAll()
     }
 
     fileprivate func handle(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         let callbackStartedAt = performanceRecorder == nil ? 0 : monotonicNanoseconds()
+
+        guard terminalError == nil else {
+            return Unmanaged.passUnretained(event)
+        }
 
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             if let eventTap {
@@ -128,7 +144,11 @@ final class NapeGestureDaemon {
                 suppressedOriginal: decision.shouldSuppressOriginal
             )
         }
-        handle(commands: decision.commands, performanceContext: performanceContext)
+        let outputSucceeded = handle(commands: decision.commands, performanceContext: performanceContext)
+
+        guard outputSucceeded else {
+            return Unmanaged.passUnretained(event)
+        }
 
         if decision.shouldSuppressOriginal {
             return nil
@@ -137,11 +157,12 @@ final class NapeGestureDaemon {
         return Unmanaged.passUnretained(event)
     }
 
+    @discardableResult
     private func handle(
         commands: [GestureCommand],
         performanceContext: RuntimePerformanceContext? = nil,
         allowsMomentumStart: Bool = true
-    ) {
+    ) -> Bool {
         for command in commands {
             let shouldRecordPerformance = performanceContext != nil
             let postStartedAt = shouldRecordPerformance ? monotonicNanoseconds() : 0
@@ -155,12 +176,20 @@ final class NapeGestureDaemon {
                 postFinishedAtNanoseconds: postFinishedAt
             )
 
+            let outputFailure = postResult.outputFailure
+                ?? (postResult.failedEventCreationCount > 0 ? .eventCreationFailed : nil)
+            if let outputFailure {
+                transitionToTerminalFailure(outputFailure)
+                return false
+            }
+
             if allowsMomentumStart && command.phase == .ended && actionExecutor.supportsMomentum(for: command) {
                 startMomentumIfNeeded(from: command)
             } else if command.phase == .cancelled {
                 cancelMomentum()
             }
         }
+        return true
     }
 
     private func startMomentumIfNeeded(from command: GestureCommand) {
@@ -187,7 +216,7 @@ final class NapeGestureDaemon {
             return
         }
 
-        guard let command = momentum.tick(at: Date().timeIntervalSince1970) else {
+        guard let command = momentum.tick(at: ProcessInfo.processInfo.systemUptime) else {
             cancelMomentum()
             return
         }
@@ -206,11 +235,14 @@ final class NapeGestureDaemon {
                 suppressedOriginal: false
             )
         }
-        handle(
+        let outputSucceeded = handle(
             commands: [command],
             performanceContext: performanceContext,
             allowsMomentumStart: false
         )
+        guard outputSucceeded else {
+            return
+        }
         if command.phase == .ended {
             cancelMomentum()
         }
@@ -220,6 +252,29 @@ final class NapeGestureDaemon {
         momentumTimer?.cancel()
         momentumTimer = nil
         momentum = MomentumEngine(configuration: configuration.momentum)
+    }
+
+    private func transitionToTerminalFailure(_ failure: ProductGestureOutputFailure) {
+        guard terminalError == nil else {
+            return
+        }
+
+        let error = ToolError.trackpadOutputPostingFailed(failure.rawValue)
+        terminalError = error
+        if let eventTap {
+            CGEvent.tapEnable(tap: eventTap, enable: false)
+        }
+        cancelMomentum()
+        actionExecutor.cancelAll()
+        writeOperationalLog(error.localizedDescription)
+
+        if let onTerminalFailure {
+            DispatchQueue.main.async {
+                onTerminalFailure(error)
+            }
+        } else {
+            CFRunLoopStop(CFRunLoopGetCurrent())
+        }
     }
 
     private func emergencyStop(at time: TimeInterval) -> RuntimeSafetyDecision {
@@ -235,6 +290,7 @@ final class NapeGestureDaemon {
             let cancelDecision = recognizer.handle(.cancel(time: time))
             handle(commands: cancelDecision.commands)
         }
+        actionExecutor.cancelAll()
         if decision.didEnterStoppedState {
             writeOperationalLog("キルスイッチによりジェスチャーを無効化しました。再開するには常駐UIの停止/開始、またはプロセス再起動を行ってください。")
         }

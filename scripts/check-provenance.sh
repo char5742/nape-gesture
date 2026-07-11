@@ -52,7 +52,8 @@ report_matches() {
 code_like_matches=$(
   git grep -n -I -E 'MacMouseFix|macMouseFix|macmousefix|mac-mouse-fix|mac_mouse_fix|MouseFix|mousefix|com\.[[:alnum:]._-]*mouse[[:alnum:]._-]*fix' -- . \
     ':(exclude)scripts/check-provenance.sh' \
-    ':(exclude)docs/adr/0023-repo-local-provenance-guard.md' 2>/dev/null || true
+    ':(exclude)docs/adr/0023-repo-local-provenance-guard.md' \
+    ':(exclude)docs/adr/0036-emulate-trackpad-driver-output-events.md' 2>/dev/null || true
 )
 report_matches "禁止: Mac Mouse Fix 由来を示す code-like identifier が tracked files に含まれています。" "$code_like_matches"
 
