@@ -37,6 +37,8 @@ executablePath: /Users/fujino/Documents/mac-gesture/.build/NapeGesture.app/Conte
 `gesture-drag`、`gesture-wheel`、`kill-switch`、`gesture-wheel-then-kill-switch`、`normal-after-release`は、移行前prototypeのtarget ready diagnostics、foreground capture、`analyze-target-log`、runtime性能logで機械判定済みである。
 trackpad output event loggerは実装と合成event local smokeまで完了した。純正trackpad raw event contract、専用analyzer、trackpad scroll + companion gesture、DockSwipe、NavigationSwipe、magnification、macOS version adapter、Nape Pro実機比較、公証は未完了である。
 
+共通output session modelは、input lifecycleとmomentum lifecycleを別型にし、scroll / DockSwipe / NavigationSwipe / magnificationを同じsession ID、capture order、起動後ナノ秒、terminal stateで検証する。`nape-gesture-core-tests`は順序欠落、order上限のnonterminal消費、時刻逆行、現在boot外timestamp、二重terminal、momentum待ちまたはactiveのstuck、非有限payload、gesture terminal decision欠落、active cancellationのfamily / final payload欠落を失敗にする。progress範囲と非公開field値は純正fixture取得前に推測しない。
+
 ## 権限確認
 
 完成時の標準確認:

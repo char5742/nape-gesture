@@ -31,7 +31,7 @@ enum CGEventUtilities {
     }
 
     static func rawInput(from type: CGEventType, event: CGEvent) -> RawInputEvent? {
-        let timestamp = Double(event.timestamp) / 1_000_000_000.0
+        let timestamp = MonotonicEventClock.seconds(fromTimestampNanoseconds: event.timestamp)
 
         switch type {
         case .otherMouseDown:
