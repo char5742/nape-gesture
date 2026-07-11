@@ -83,6 +83,8 @@
 - input lifecycleとmomentum lifecycleを別型にし、input ended後のsession完了またはmomentum開始待ちを明示している
 - kill switch、runtime stop、sleep、device切断、権限変更、output failureで、input開始前を含む全nonterminal stateから明示cancelしてterminalへ収束し、active cancellationのfamilyと最終payloadを失わない
 - 製品gesture出力境界は`MonotonicEventClock`を使い、Unix wall clockや別のuptime取得を直接混在させていない
+- `DiagnosticEventPoster`、`generate-scroll`、`system-test`の実投稿とdry-run logも`MonotonicEventClock`を使い、現在boot外timestampをfail closedにしている
+- `nape-gesture-diagnostic-output-tests`と`sh scripts/check-diagnostic-event-time.sh`が成功している
 - trackpad scrollではcontinuous scroll eventと対応するscroll gesture eventを同一timestamp系列で出す
 - scroll phaseとmomentum phaseを分離し、begin / change / end / cancelとmomentum begin / continue / endを完結させる
 - Spaces / Mission Controlはprogressとphaseを持つDockSwipe event系列として実装し、forced horizontal scrollやkeyboard shortcutで代替していない

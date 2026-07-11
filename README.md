@@ -150,6 +150,7 @@ swift run nape-gesture init-config --vendor-id <ID> --product-id <ID> --usage-pa
 `system-test --post-to-pid` は Reference Target App の sink 診断専用です。
 製品gesture出力と完成証跡には使いません。`.cghidEventTap`経由であっても、旧単純scroll / forced horizontal / shortcut scenarioはtrackpad driver上位出力の完成証跡にしません。
 `system-test run --scenario kill-switch` は未マークの `Control + Option + Command + G` を interval 付きの `keyDown` / `keyUp` として投稿し、daemon 停止ログと target log 漏れなしを確認します。
+`generate-scroll`と`system-test`の実投稿およびdry-run logは、CoreGraphicsと同じmacOS起動後の単調時刻を使います。Unix epoch、負値、非有限値、現在bootの未来時刻はevent作成前に拒否し、wall-clock metadataとは混用しません。
 
 次のCLI例に含まれる`generate-scroll`と旧`system-test`出力は、公開scroll field、入力抑制、安全停止、移行前baselineの診断用です。trackpad driver出力contractの採否には`trackpad-event-log`とIssue #129で実装する専用analyzerを使います。
 

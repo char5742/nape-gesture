@@ -155,6 +155,12 @@ run_combined_success \
   sh scripts/check-product-output-boundary.sh
 
 run_combined_success \
+  "診断event時刻境界ガード" \
+  "$provenance_dir/check-diagnostic-event-time.log" \
+  "sh scripts/check-diagnostic-event-time.sh" \
+  sh scripts/check-diagnostic-event-time.sh
+
+run_combined_success \
   "debug build" \
   "$build_dir/swift-build.log" \
   "swift build --scratch-path .build" \
@@ -165,6 +171,12 @@ run_combined_success \
   "$build_dir/core-tests.log" \
   ".build/debug/nape-gesture-core-tests" \
   .build/debug/nape-gesture-core-tests
+
+run_combined_success \
+  "diagnostic output tests" \
+  "$build_dir/diagnostic-output-tests.log" \
+  ".build/debug/nape-gesture-diagnostic-output-tests" \
+  .build/debug/nape-gesture-diagnostic-output-tests
 
 run_combined_success \
   "release build" \
