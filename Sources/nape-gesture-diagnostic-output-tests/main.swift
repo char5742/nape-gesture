@@ -60,6 +60,34 @@ private let liveKeyEventFactory: DiagnosticKeyEventFactory = { source, keyCode, 
     CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: keyDown)
 }
 
+private func testTrackpadSnapshotDoesNotReadUnsafeNSEventSubtype() {
+    guard let event = CGEvent(keyboardEventSource: nil, virtualKey: 54, keyDown: true) else {
+        expect(false, "flagsChanged用CGEventを生成する")
+        return
+    }
+    event.type = .flagsChanged
+    let metadata = TrackpadDriverEventLogMetadata(
+        osVersion: "test",
+        osBuild: "test",
+        scenarioID: "flags-changed",
+        deviceLabel: "synthetic",
+        repoHeadSHA: String(repeating: "a", count: 40)
+    )
+
+    do {
+        let record = try TrackpadDriverEventSnapshotFactory.makeRecord(
+            event: event,
+            observedType: .flagsChanged,
+            captureIndex: 0,
+            metadata: metadata
+        )
+        expect(record.typeRaw == Int(CGEventType.flagsChanged.rawValue), "flagsChanged typeを保持する")
+        expect(record.eventSubtype == nil, "subtype非対応eventをnilとして保持する")
+    } catch {
+        expect(false, "flagsChanged snapshotが例外なく成功する: \(error)")
+    }
+}
+
 private struct PostedEventSnapshot {
     var type: CGEventType
     var timestamp: UInt64
@@ -778,6 +806,7 @@ for message in TrackpadAnalyzerDiagnosticTestSupport.run() {
     fputs("失敗: \(message)\n", stderr)
 }
 
+testTrackpadSnapshotDoesNotReadUnsafeNSEventSubtype()
 testScrollEventUsesCurrentBootTimestamp()
 testPostScrollFinalizesTimestampImmediatelyBeforePosting()
 testInvalidTimestampsFailClosed()

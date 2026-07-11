@@ -46,11 +46,13 @@ private func manifestTestManifest(
 ) throws -> (TrackpadDriverEventCaptureManifest, Data) {
     let logData = try manifestTestLogData(metadata: metadata)
     let summary = try TrackpadDriverEventCaptureManifest.summarize(logData: logData)
+    let completedAt = Date(timeIntervalSince1970: 1_752_220_800.125)
     let manifest = TrackpadDriverEventCaptureManifest(
         evidenceKind: evidenceKind,
         logSummary: summary,
         loggerExecutableSHA256: manifestTestExecutableSHA256,
-        captureCompletedAt: Date(timeIntervalSince1970: 1_752_220_800.125)
+        captureStartedAt: completedAt.addingTimeInterval(-8),
+        captureCompletedAt: completedAt
     )
     return (manifest, logData)
 }
@@ -365,9 +367,10 @@ private func testCaptureManifestCodableRoundTripPreservesEveryField() {
         )
 
         expect(decoded == manifest, "capture manifestの全fieldをCodable round-tripで保持する")
-        expect(decoded.schemaVersion == 1, "capture manifest schemaVersionを保持する")
+        expect(decoded.schemaVersion == 2, "capture manifest schemaVersionを保持する")
         expect(decoded.evidenceKind == .generatedProduct, "evidenceKindを保持する")
         expect(decoded.loggerExecutableSHA256 == manifestTestExecutableSHA256, "executable SHAを保持する")
+        expect(decoded.captureStartedAt.contains("T"), "capture開始wall-clockをISO 8601で保持する")
         expect(decoded.captureCompletedAt.contains("T"), "capture完了wall-clockをISO 8601で保持する")
     } catch {
         expect(false, "capture manifest Codable round-tripが成功する: \(error)")
@@ -458,13 +461,14 @@ private func testCaptureManifestRejectsInvalidOwnFields() {
         invalid.eventCount = 0
         expectManifestValidationError(.zeroEvents, manifest: invalid, "0 event manifestを拒否する")
 
-        invalid = validManifest
-        invalid.firstEventTimestamp = invalid.lastEventTimestamp + 1
-        expectManifestValidationError(
-            .invalidTimestampRange,
-            manifest: invalid,
-            "逆転したfirst / last timestampを拒否する"
-        )
+        var timestampRegressing = validManifest
+        timestampRegressing.firstEventTimestamp = timestampRegressing.lastEventTimestamp + 1
+        do {
+            try timestampRegressing.validate()
+            expect(true, "capture順のfirst / last timestamp逆行を許可する")
+        } catch {
+            expect(false, "capture順のfirst / last timestamp逆行を許可する: \(error)")
+        }
 
         invalid = validManifest
         invalid.loggerExecutableSHA256 = ""
@@ -475,11 +479,29 @@ private func testCaptureManifestRejectsInvalidOwnFields() {
         )
 
         invalid = validManifest
+        invalid.captureStartedAt = "not-a-wall-clock"
+        expectManifestValidationError(
+            .invalidCaptureStartWallClock,
+            manifest: invalid,
+            "不正なcapture開始wall-clockを拒否する"
+        )
+
+        invalid = validManifest
         invalid.captureCompletedAt = "not-a-wall-clock"
         expectManifestValidationError(
             .invalidCaptureCompletionWallClock,
             manifest: invalid,
             "不正なcapture完了wall-clockを拒否する"
+        )
+
+        invalid = validManifest
+        let originalStart = invalid.captureStartedAt
+        invalid.captureStartedAt = invalid.captureCompletedAt
+        invalid.captureCompletedAt = originalStart
+        expectManifestValidationError(
+            .captureWallClockOutOfOrder,
+            manifest: invalid,
+            "capture完了より後の開始wall-clockを拒否する"
         )
     } catch {
         expect(false, "manifest field validation fixtureを生成できる: \(error)")

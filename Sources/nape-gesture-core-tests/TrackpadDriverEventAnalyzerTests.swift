@@ -172,13 +172,21 @@ private func testTrackpadAnalyzerUsesRawRequiredKeys() {
     )
 }
 
-private func testTrackpadAnalyzerRejectsReorderedEventsAndRawFields() {
+private func testTrackpadAnalyzerUsesCaptureIndexForDeliveryOrder() {
     let eventReport = analyzerReport([
         makeAnalyzerEventObject(captureIndex: 1, timestamp: 101),
         makeAnalyzerEventObject(captureIndex: 0, timestamp: 100)
     ])
     expect(analyzerHasIssue(eventReport, .captureIndexMismatch), "reordered captureIndexを失敗にする")
-    expect(analyzerHasIssue(eventReport, .timestampOutOfOrder), "減少timestampを失敗にする")
+
+    let regressingTimestampReport = analyzerReport([
+        makeAnalyzerEventObject(captureIndex: 0, timestamp: 101),
+        makeAnalyzerEventObject(captureIndex: 1, timestamp: 100)
+    ])
+    expect(
+        regressingTimestampReport.passed,
+        "配送順をcaptureIndexで保持し、companion eventのtimestamp局所逆行を許可する"
+    )
 
     var object = makeAnalyzerEventObject()
     guard var rawFields = object["rawFields"] as? [[String: Any]] else {
@@ -299,7 +307,7 @@ public func runTrackpadDriverEventAnalyzerTests() {
     testTrackpadAnalyzerRejectsExcessiveNestingWithoutCrashing()
     testTrackpadAnalyzerAcceptsUnavailableEventSubtype()
     testTrackpadAnalyzerUsesRawRequiredKeys()
-    testTrackpadAnalyzerRejectsReorderedEventsAndRawFields()
+    testTrackpadAnalyzerUsesCaptureIndexForDeliveryOrder()
     testTrackpadAnalyzerRejectsMetadataMismatch()
     testTrackpadAnalyzerRejectsMissingAndDuplicateRawFields()
     testTrackpadAnalyzerRejectsRawFieldTypeAndBitPatternMismatch()

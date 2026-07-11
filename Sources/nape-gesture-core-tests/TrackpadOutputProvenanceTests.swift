@@ -4,7 +4,8 @@ import NapeGestureCore
 func runTrackpadOutputProvenanceTests() {
     testTrackpadOutputProvenanceAcceptsSystemWideGestureRecords()
     testTrackpadOutputProvenanceRejectsForbiddenDeliveryAndEventKinds()
-    testTrackpadOutputProvenanceRejectsOrderingHashAndFamilyMismatch()
+    testTrackpadOutputProvenanceRejectsCaptureOrderHashAndFamilyMismatch()
+    testTrackpadOutputProvenanceAcceptsTimestampRegression()
     testTrackpadOutputProvenanceRejectsCaptureLogMismatch()
     testTrackpadOutputProvenanceAcceptsActualScrollWithGeneratedMarker()
     testTrackpadOutputProvenanceRejectsActualKeyMasqueradingAsScroll()
@@ -135,7 +136,7 @@ private func testTrackpadOutputProvenanceRejectsForbiddenDeliveryAndEventKinds()
     expect(codes.contains(.forbiddenEventKind), "generated key eventを検出する")
 }
 
-private func testTrackpadOutputProvenanceRejectsOrderingHashAndFamilyMismatch() {
+private func testTrackpadOutputProvenanceRejectsCaptureOrderHashAndFamilyMismatch() {
     let expectedSHA = String(repeating: "c", count: 64)
     let records = [
         makeProvenanceRecord(
@@ -147,7 +148,7 @@ private func testTrackpadOutputProvenanceRejectsOrderingHashAndFamilyMismatch() 
         ),
         makeProvenanceRecord(
             captureIndex: 1,
-            timestamp: 199,
+            timestamp: 200,
             logSHA256: String(repeating: "d", count: 64)
         )
     ]
@@ -161,10 +162,28 @@ private func testTrackpadOutputProvenanceRejectsOrderingHashAndFamilyMismatch() 
 
     expect(codes.contains(.eventCountMismatch), "manifest event countとの不一致を検出する")
     expect(codes.contains(.captureIndexMismatch), "captureIndex欠落・重複を検出する")
-    expect(codes.contains(.timestampRegression), "provenance timestamp逆行を検出する")
     expect(codes.contains(.invalidLogSHA256), "不正なrecord SHA-256を検出する")
     expect(codes.contains(.logSHA256Mismatch), "別logを参照するrecordを検出する")
     expect(codes.contains(.familyEventKindMismatch), "familyとevent kindの不一致を検出する")
+}
+
+private func testTrackpadOutputProvenanceAcceptsTimestampRegression() {
+    let sha = String(repeating: "a", count: 64)
+    let records = [
+        makeProvenanceRecord(captureIndex: 0, timestamp: 101, logSHA256: sha),
+        makeProvenanceRecord(captureIndex: 1, timestamp: 100, logSHA256: sha)
+    ]
+
+    let analysis = TrackpadOutputProvenanceAnalyzer.analyze(
+        records: records,
+        expectedLogSHA256: sha,
+        expectedEventCount: records.count
+    )
+
+    expect(
+        analysis.passed,
+        "provenance順をcaptureIndexで保持し、actual event timestampの局所逆行を許可する"
+    )
 }
 
 private func testTrackpadOutputProvenanceRoundTrips() {

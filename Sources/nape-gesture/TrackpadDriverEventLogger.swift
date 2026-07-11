@@ -108,6 +108,7 @@ final class TrackpadDriverEventLogger {
         captureRunLoop = runLoop
         CFRunLoopAddSource(runLoop, source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
+        let captureStartedAt = Date()
         setAcceptingEvents(true)
 
         let scanRange = "\(TrackpadDriverEventLog.rawFieldScanLowerBound)...\(TrackpadDriverEventLog.maximumRawFieldNumber)"
@@ -174,6 +175,7 @@ final class TrackpadDriverEventLogger {
                 evidenceKind: evidenceKind,
                 logSummary: summary,
                 loggerExecutableSHA256: loggerExecutableSHA256,
+                captureStartedAt: captureStartedAt,
                 captureCompletedAt: captureCompletedAt
             )
             do {
@@ -647,7 +649,7 @@ final class TrackpadDriverEventLogger {
             serializedEventBase64を正本とし、OS version/build、logger version、scenario ID、device label、repo HEAD SHAを各eventへ保存します。
             --repo-head-sha は40桁または64桁の完全な16進SHAを指定してください。診断中は対象外の入力を避けてください。
             --out指定時は--evidence-kindが必須です。--manifest-out省略時は<out>.manifest.jsonへsidecarを生成します。physicalTrackpad / generatedProductでは--scenario-id、--device-label、--repo-head-shaも必須です。
-            manifestは確定log fileのflush / close後に最終bytesを再読込して生成し、同じdirectoryのtemporary fileからatomic renameします。capture開始前に同じpathの旧sidecarを削除するため、失敗captureに旧manifestは残りません。
+            manifestはcapture開始・完了wall-clockと、確定log fileのflush / close後に再読込した最終bytesを保存し、同じdirectoryのtemporary fileからatomic renameします。capture開始前に同じpathの旧sidecarを削除するため、失敗captureに旧manifestは残りません。
             --out未指定時はJSON Linesを標準出力へ書き出しますが、完全性を証明できるfile bytesがないためmanifestを生成しません。--manifest-outまたは--evidence-kindだけの指定は失敗します。
             --duration未指定時はCtrl-Cまで継続し、SIGINT受信後にqueueをdrainしてflush / closeします。0 event、queue飽和、log write / flush / close、executable SHA取得、manifest write / renameの失敗は非ゼロ終了します。
             """

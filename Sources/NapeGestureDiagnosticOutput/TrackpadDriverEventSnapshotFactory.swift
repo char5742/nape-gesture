@@ -51,7 +51,7 @@ public enum TrackpadDriverEventSnapshotFactory {
             timestamp: event.timestamp,
             typeRaw: Int(type.rawValue),
             typeName: stableTypeName(type),
-            eventSubtype: NSEvent(cgEvent: event).map { Int64($0.subtype.rawValue) },
+            eventSubtype: safeEventSubtype(event: event, observedType: type),
             flags: event.flags.rawValue,
             scrollDeltaX: event.getIntegerValueField(.scrollWheelEventDeltaAxis2),
             scrollDeltaY: event.getIntegerValueField(.scrollWheelEventDeltaAxis1),
@@ -94,6 +94,19 @@ public enum TrackpadDriverEventSnapshotFactory {
 
     private static func finiteValue(_ value: Double) -> Double? {
         value.isFinite ? value : nil
+    }
+
+    private static func safeEventSubtype(
+        event: CGEvent,
+        observedType: CGEventType
+    ) -> Int64? {
+        let appKitType = NSEvent.EventType(rawValue: UInt(observedType.rawValue))
+        switch appKitType {
+        case .appKitDefined, .systemDefined, .applicationDefined, .periodic:
+            return NSEvent(cgEvent: event).map { Int64($0.subtype.rawValue) }
+        default:
+            return nil
+        }
     }
 
     private static func rawEventField(fieldNumber: Int) -> CGEventField {

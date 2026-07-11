@@ -17,7 +17,6 @@ public enum TrackpadDriverEventAnalyzerIssueCode: String, Codable, Equatable, Se
     case metadataContractMismatch = "metadata_contract_mismatch"
     case metadataMismatch = "metadata_mismatch"
     case captureIndexMismatch = "capture_index_mismatch"
-    case timestampOutOfOrder = "timestamp_out_of_order"
     case rawFieldScanUpperBoundMismatch = "raw_field_scan_upper_bound_mismatch"
     case rawFieldCountMismatch = "raw_field_count_mismatch"
     case rawFieldOrderMismatch = "raw_field_order_mismatch"
@@ -98,9 +97,6 @@ public struct TrackpadDriverEventAnalyzer: Sendable {
         }
 
         var baselineMetadata: LosslessJSONObject?
-        var previousTimestamp: UInt64?
-        var previousTimestampLine: Int?
-
         for (lineOffset, lineSlice) in lineSlices.enumerated() {
             let line = lineOffset + 1
             let rawLineData = Data(lineSlice)
@@ -172,22 +168,6 @@ public struct TrackpadDriverEventAnalyzer: Sendable {
                 } else {
                     baselineMetadata = metadata
                 }
-            }
-
-            if let timestamp = values.timestamp {
-                if let previousTimestamp, timestamp < previousTimestamp {
-                    let previousLineText = previousTimestampLine.map(String.init) ?? "不明"
-                    issues.append(
-                        issue(
-                            .timestampOutOfOrder,
-                            line: line,
-                            captureIndex: captureIndex,
-                            message: "timestampが非減少順ではありません。直前line=\(previousLineText)"
-                        )
-                    )
-                }
-                previousTimestamp = timestamp
-                previousTimestampLine = line
             }
 
             do {
