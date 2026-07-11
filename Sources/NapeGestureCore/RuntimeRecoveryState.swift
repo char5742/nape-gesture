@@ -200,6 +200,9 @@ public enum RuntimeRecoveryFailureKind: Equatable, Sendable {
     case targetDeviceNotFound
     case invalidSettings
     case targetDeviceMatcherMissing
+    case outputContractUnsupported
+    case outputContractMismatch
+    case outputPostingFailed
     case unrecoverable
 
     public var isAutomaticallyRetryable: Bool {
@@ -211,6 +214,9 @@ public enum RuntimeRecoveryFailureKind: Equatable, Sendable {
             return true
         case .invalidSettings,
              .targetDeviceMatcherMissing,
+             .outputContractUnsupported,
+             .outputContractMismatch,
+             .outputPostingFailed,
              .unrecoverable:
             return false
         }

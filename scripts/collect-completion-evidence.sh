@@ -149,6 +149,12 @@ run_combined_success \
   sh scripts/check-provenance.sh
 
 run_combined_success \
+  "製品gesture出力境界ガード" \
+  "$provenance_dir/check-product-output-boundary.log" \
+  "sh scripts/check-product-output-boundary.sh" \
+  sh scripts/check-product-output-boundary.sh
+
+run_combined_success \
   "debug build" \
   "$build_dir/swift-build.log" \
   "swift build --scratch-path .build" \
@@ -254,10 +260,10 @@ run_split_success \
   .build/debug/nape-gesture doctor --config "$config_path" --benchmark-events 50000 --json
 
 run_combined_success \
-  "doctor JSON runtimeReadiness / tccStatus / permissionTarget / targetDeviceDiagnostics field check" \
+  "doctor JSON runtimeReadiness / tccStatus / permissionTarget / targetDeviceDiagnostics / outputContract field check" \
   "$doctor_dir/doctor-json-field-check.log" \
-  "grep -q runtimeReadiness $doctor_dir/doctor-debug.json && grep -q tccStatus $doctor_dir/doctor-debug.json && grep -q permissionTarget $doctor_dir/doctor-debug.json && grep -q grantRequired $doctor_dir/doctor-debug.json && grep -q targetDeviceDiagnostics $doctor_dir/doctor-debug.json" \
-  sh -c "grep -q '\"runtimeReadiness\"' '$doctor_dir/doctor-debug.json' && grep -q '\"tccStatus\"' '$doctor_dir/doctor-debug.json' && grep -q '\"permissionTarget\"' '$doctor_dir/doctor-debug.json' && grep -q '\"grantRequired\"' '$doctor_dir/doctor-debug.json' && grep -q '\"targetDeviceDiagnostics\"' '$doctor_dir/doctor-debug.json'"
+  "grep -q runtimeReadiness $doctor_dir/doctor-debug.json && grep -q tccStatus $doctor_dir/doctor-debug.json && grep -q permissionTarget $doctor_dir/doctor-debug.json && grep -q grantRequired $doctor_dir/doctor-debug.json && grep -q targetDeviceDiagnostics $doctor_dir/doctor-debug.json && grep -q outputContract $doctor_dir/doctor-debug.json" \
+  sh -c "grep -q '\"runtimeReadiness\"' '$doctor_dir/doctor-debug.json' && grep -q '\"tccStatus\"' '$doctor_dir/doctor-debug.json' && grep -q '\"permissionTarget\"' '$doctor_dir/doctor-debug.json' && grep -q '\"grantRequired\"' '$doctor_dir/doctor-debug.json' && grep -q '\"targetDeviceDiagnostics\"' '$doctor_dir/doctor-debug.json' && grep -q '\"outputContract\"' '$doctor_dir/doctor-debug.json'"
 
 run_split_success \
   "doctor HID probe JSON" \
@@ -267,10 +273,10 @@ run_split_success \
   .build/debug/nape-gesture doctor --config "$config_path" --probe-hid --benchmark-events 1000 --json
 
 run_combined_success \
-  "doctor HID probe JSON runtimeReadiness / tccStatus / permissionTarget / targetDeviceDiagnostics field check" \
+  "doctor HID probe JSON runtimeReadiness / tccStatus / permissionTarget / targetDeviceDiagnostics / outputContract field check" \
   "$doctor_dir/doctor-hid-probe-json-field-check.log" \
-  "grep -q runtimeReadiness $doctor_dir/doctor-hid-probe-debug.json && grep -q tccStatus $doctor_dir/doctor-hid-probe-debug.json && grep -q permissionTarget $doctor_dir/doctor-hid-probe-debug.json && grep -q grantRequired $doctor_dir/doctor-hid-probe-debug.json && grep -q targetDeviceDiagnostics $doctor_dir/doctor-hid-probe-debug.json" \
-  sh -c "grep -q '\"runtimeReadiness\"' '$doctor_dir/doctor-hid-probe-debug.json' && grep -q '\"tccStatus\"' '$doctor_dir/doctor-hid-probe-debug.json' && grep -q '\"permissionTarget\"' '$doctor_dir/doctor-hid-probe-debug.json' && grep -q '\"grantRequired\"' '$doctor_dir/doctor-hid-probe-debug.json' && grep -q '\"targetDeviceDiagnostics\"' '$doctor_dir/doctor-hid-probe-debug.json'"
+  "grep -q runtimeReadiness $doctor_dir/doctor-hid-probe-debug.json && grep -q tccStatus $doctor_dir/doctor-hid-probe-debug.json && grep -q permissionTarget $doctor_dir/doctor-hid-probe-debug.json && grep -q grantRequired $doctor_dir/doctor-hid-probe-debug.json && grep -q targetDeviceDiagnostics $doctor_dir/doctor-hid-probe-debug.json && grep -q outputContract $doctor_dir/doctor-hid-probe-debug.json" \
+  sh -c "grep -q '\"runtimeReadiness\"' '$doctor_dir/doctor-hid-probe-debug.json' && grep -q '\"tccStatus\"' '$doctor_dir/doctor-hid-probe-debug.json' && grep -q '\"permissionTarget\"' '$doctor_dir/doctor-hid-probe-debug.json' && grep -q '\"grantRequired\"' '$doctor_dir/doctor-hid-probe-debug.json' && grep -q '\"targetDeviceDiagnostics\"' '$doctor_dir/doctor-hid-probe-debug.json' && grep -q '\"outputContract\"' '$doctor_dir/doctor-hid-probe-debug.json'"
 
 run_split_expected_failure \
   "doctor assert-runtime-ready requires HID probe" \

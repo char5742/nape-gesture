@@ -1,5 +1,6 @@
 import Foundation
 import NapeGestureCore
+import NapeGestureProductOutput
 
 @discardableResult
 func expect(_ condition: @autoclosure () -> Bool, _ message: String, file: StaticString = #file, line: UInt = #line) -> Bool {
@@ -851,6 +852,255 @@ func testInputLogRecordEncodesSystemTestMetadataWhenPresent() {
     expect(encodedText.contains("systemTestScenario"), "system-test メタ情報がある場合だけ JSON に出す")
     expect(decoded?.systemTestScenario == "space-left", "systemTestScenario を round-trip する")
     expect(decoded?.sequenceIndex == 7, "sequenceIndex を round-trip する")
+}
+
+func testTrackpadDriverEventLogRoundTrips() {
+    let metadata = TrackpadDriverEventLogMetadata(
+        osVersion: "26.0.0",
+        osBuild: "25A123",
+        scenarioID: "two-finger-scroll",
+        deviceLabel: "built-in-trackpad",
+        repoHeadSHA: String(repeating: "a", count: 40)
+    )
+    let serializedEvent = Data([1, 2, 3, 4])
+    let record = TrackpadDriverEventLog(
+        metadata: metadata,
+        captureIndex: 17,
+        timestamp: 987_654_321,
+        typeRaw: 29,
+        typeName: "raw-29",
+        eventSubtype: 2,
+        flags: 1_048_576,
+        scrollDeltaX: -2,
+        scrollDeltaY: 3,
+        scrollDeltaZ: 4,
+        scrollFixedDeltaX: -2.5,
+        scrollFixedDeltaY: 3.5,
+        scrollFixedDeltaZ: 4.5,
+        scrollPointDeltaX: -20,
+        scrollPointDeltaY: 30,
+        scrollPointDeltaZ: 40,
+        scrollPhase: 2,
+        momentumPhase: 8,
+        isContinuous: 1,
+        sourceUserData: 1234,
+        rawFields: [
+            TrackpadDriverRawField(
+                fieldNumber: 42,
+                integerValue: 1234,
+                doubleValue: 1234,
+                doubleBitPattern: Double(1234).bitPattern
+            ),
+            TrackpadDriverRawField(
+                fieldNumber: 99,
+                integerValue: 2,
+                doubleValue: 2,
+                doubleBitPattern: Double(2).bitPattern
+            )
+        ],
+        serializedEventBase64: serializedEvent.base64EncodedString()
+    )
+    let encoded = try? JSONEncoder().encode(record)
+    let decoded = encoded.flatMap { try? JSONDecoder().decode(TrackpadDriverEventLog.self, from: $0) }
+    let decodedSerializedEvent = decoded?.serializedEventBase64.flatMap { Data(base64Encoded: $0) }
+
+    expect(decoded == record, "トラックパッド診断イベントを JSON round-trip する")
+    expect(decoded?.schemaVersion == TrackpadDriverEventLog.currentSchemaVersion, "現行 schemaVersion を保持する")
+    expect(decoded?.metadata == metadata, "OS・logger・scenario・device・repo metadata を保持する")
+    expect(
+        decoded?.metadata?.loggerVersion == TrackpadDriverEventLogMetadata.currentLoggerVersion,
+        "logger version を保持する"
+    )
+    expect(decoded?.captureIndex == 17, "captureIndex を保持する")
+    expect(decoded?.eventSubtype == 2, "取得可能なevent subtypeを保持する")
+    expect(decodedSerializedEvent == serializedEvent, "serializedEventBase64から正本event dataを復元できる")
+    expect(
+        decoded?.rawFieldScanUpperBound == TrackpadDriverEventLog.maximumRawFieldNumber,
+        "raw field scan 上限を保持する"
+    )
+}
+
+func testTrackpadDriverEventLogDecodesLegacyRecordWithDefaults() {
+    let json = """
+    {
+      "timestamp": 123,
+      "typeRaw": 30,
+      "typeName": "raw-30",
+      "flags": 256,
+      "scrollDeltaY": -3,
+      "rawFields": {
+        "42": { "integerValue": 7 }
+      }
+    }
+    """
+
+    let record = try? JSONDecoder().decode(TrackpadDriverEventLog.self, from: Data(json.utf8))
+
+    expect(record?.schemaVersion == 0, "schemaVersion 導入前の診断ログを schema 0 として読む")
+    expect(record?.metadata == nil, "旧診断ログにないmetadataを推測しない")
+    expect(record?.captureIndex == nil, "旧診断ログにないcaptureIndexを推測しない")
+    expect(record?.eventSubtype == nil, "旧診断ログにないevent subtypeを推測しない")
+    expect(record?.scrollDeltaY == -3, "旧診断ログに存在する公開 scroll 値を読む")
+    expect(record?.scrollFixedDeltaY == 0, "旧診断ログにない fixed delta は 0 へ補完する")
+    expect(record?.scrollPointDeltaY == 0, "旧診断ログにない point delta は 0 へ補完する")
+    expect(record?.sourceUserData == 0, "旧診断ログにない source userData は 0 へ補完する")
+    expect(record?.rawFieldScanUpperBound == nil, "旧診断ログにない raw field scan 上限を推測しない")
+    expect(record?.rawField(number: 42)?.integerValue == 7, "旧診断ログの raw field map を保持する")
+    expect(record?.serializedEventBase64 == nil, "旧診断ログにない serialized event は nil とする")
+}
+
+func testTrackpadDriverEventLogRawFieldsUseStableNumericOrder() {
+    let fieldNumbers = Array(
+        TrackpadDriverEventLog.rawFieldScanLowerBound...TrackpadDriverEventLog.maximumRawFieldNumber
+    )
+    let rawFields = fieldNumbers.map { fieldNumber in
+        let integerValue: Int64 = fieldNumber == 29 ? 7 : 0
+        let doubleValue: Double = fieldNumber == 29 ? -1.25 : 0
+        return TrackpadDriverRawField(
+            fieldNumber: fieldNumber,
+            integerValue: integerValue,
+            doubleValue: doubleValue,
+            doubleBitPattern: doubleValue.bitPattern
+        )
+    }
+    let record = TrackpadDriverEventLog(
+        metadata: TrackpadDriverEventLogMetadata(osVersion: "26.0.0", osBuild: "25A123"),
+        captureIndex: 0,
+        timestamp: 1,
+        typeRaw: 31,
+        typeName: "raw-31",
+        eventSubtype: 0,
+        rawFields: rawFields
+    )
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+    let encoded = try? encoder.encode(record)
+    let decoded = encoded.flatMap { try? JSONDecoder().decode(TrackpadDriverEventLog.self, from: $0) }
+    let reencoded = decoded.flatMap { try? encoder.encode($0) }
+    let decodedFieldNumbers = decoded?.rawFields.map(\.fieldNumber) ?? []
+
+    expect(decoded?.rawFields.count == 256, "raw field 0...255を全件保持する")
+    expect(decodedFieldNumbers == fieldNumbers, "raw fieldをfieldNumberの数値昇順で保持する")
+    expect(decoded?.rawField(number: 0)?.integerValue == 0, "integer fieldのzero値を捨てない")
+    expect(decoded?.rawField(number: 0)?.doubleValue == 0, "double fieldのzero値を捨てない")
+    expect(decoded?.rawField(number: 0)?.doubleBitPattern == Double(0).bitPattern, "double fieldのzero bit patternを保持する")
+    expect(
+        decoded?.metadata?.rawFieldScanPolicy == TrackpadDriverEventLogMetadata.allRawFieldValuesPolicy,
+        "全raw field値をzero込みで保存するpolicyを明示する"
+    )
+    expect(encoded == reencoded, "ordered raw field arrayを安定して再エンコードする")
+}
+
+func testTrackpadDriverEventLogPreservesNonFiniteNamedDoubleBitPatterns() {
+    let record = TrackpadDriverEventLog(
+        timestamp: 1,
+        typeRaw: 22,
+        typeName: "scrollWheel",
+        scrollFixedDeltaX: nil,
+        scrollFixedDeltaXBitPattern: Double.nan.bitPattern,
+        scrollPointDeltaY: nil,
+        scrollPointDeltaYBitPattern: Double.infinity.bitPattern
+    )
+    let encoded = try? JSONEncoder().encode(record)
+    let decoded = encoded.flatMap { try? JSONDecoder().decode(TrackpadDriverEventLog.self, from: $0) }
+
+    expect(encoded != nil, "非有限named doubleでもJSON encodeを失敗させない")
+    expect(decoded?.scrollFixedDeltaX == nil, "NaNの有限値を捏造しない")
+    expect(decoded?.scrollFixedDeltaXBitPattern == Double.nan.bitPattern, "NaNのbit patternを保持する")
+    expect(decoded?.scrollPointDeltaY == nil, "infinityの有限値を捏造しない")
+    expect(decoded?.scrollPointDeltaYBitPattern == Double.infinity.bitPattern, "infinityのbit patternを保持する")
+}
+
+func testTrackpadDriverEventLogJSONLinesPreserveCaptureOrder() {
+    let metadata = TrackpadDriverEventLogMetadata(
+        osVersion: "26.0.0",
+        osBuild: "25A123",
+        scenarioID: "ordered-capture",
+        deviceLabel: "built-in-trackpad",
+        repoHeadSHA: String(repeating: "b", count: 40)
+    )
+    var records: [TrackpadDriverEventLog] = []
+    for index in 0..<3 {
+        let serializedEventBase64 = Data([UInt8(index)]).base64EncodedString()
+        let record = TrackpadDriverEventLog(
+            metadata: metadata,
+            captureIndex: UInt64(index),
+            timestamp: UInt64(1_000 + index),
+            typeRaw: 29 + index,
+            typeName: "raw-\(29 + index)",
+            eventSubtype: Int64(index),
+            serializedEventBase64: serializedEventBase64
+        )
+        records.append(record)
+    }
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+    let lines: [Data] = records.compactMap { record in
+        try? encoder.encode(record)
+    }
+    let decoded: [TrackpadDriverEventLog] = lines.compactMap { line in
+        try? JSONDecoder().decode(TrackpadDriverEventLog.self, from: line)
+    }
+    let captureIndices = decoded.compactMap { $0.captureIndex }
+    let timestamps = decoded.map { $0.timestamp }
+
+    expect(lines.count == records.count, "各captureを1行のJSON Linesとしてencodeする")
+    expect(captureIndices == [0, 1, 2], "captureIndex順をJSON Linesで保持する")
+    expect(timestamps == [1_000, 1_001, 1_002], "capture順とevent timestampの対応を保持する")
+    expect(decoded.allSatisfy { $0.metadata == metadata }, "各eventへ同一run metadataを保存する")
+    expect(
+        decoded.allSatisfy {
+            $0.metadata?.canonicalEventRepresentation
+                == TrackpadDriverEventLogMetadata.defaultCanonicalEventRepresentation
+        },
+        "serializedEventBase64を各eventの正本として明示する"
+    )
+}
+
+func testProductGestureOutputFailsClosedWithoutVerifiedContract() {
+    let adapter = TrackpadGestureOutputAdapter()
+    let command = GestureCommand(
+        kind: .drag,
+        phase: .began,
+        direction: .right,
+        deltaX: 10,
+        deltaY: 0,
+        velocityX: 100,
+        velocityY: 0,
+        timestamp: 1
+    )
+    let result = adapter.post(action: .spaceRight, command: command)
+
+    expect(adapter.capability.unsupportedReason != nil, "未検証contractをsupportedとして扱わない")
+    expect(result.generatedEventCount == 0, "未検証contractではeventを生成しない")
+    expect(result.failedEventCreationCount == 0, "未検証contractをevent作成失敗と混同しない")
+    expect(result.failure == .unsupported, "未検証contractを明示的なunsupportedとして返す")
+    expect(!adapter.supportsMomentum(for: .smoothScroll), "未検証contractではmomentumを開始しない")
+}
+
+func testProductGestureOutputRequiresRegisteredFixtureAndInfersFailures() {
+    expect(
+        ProductGestureOutputCapability.registeredFixtureCount == 0,
+        "fixture未取得中はsupported contract registryを空に保つ"
+    )
+    expect(ProductGestureOutputSystemIdentity.current() != nil, "現在のmacOS version/buildを取得できる")
+
+    let creationFailure = ProductGestureOutputResult(
+        generatedEventCount: 1,
+        failedEventCreationCount: 1
+    )
+    expect(
+        creationFailure.failure == .eventCreationFailed,
+        "failedEventCreationCountがあればfailure省略時もterminal failureへ変換する"
+    )
+
+    let invalidCount = ProductGestureOutputResult(
+        generatedEventCount: -1,
+        failedEventCreationCount: -1
+    )
+    expect(invalidCount.generatedEventCount == 0, "負の生成event数を保持しない")
+    expect(invalidCount.failedEventCreationCount == 0, "負の作成失敗数を保持しない")
+    expect(invalidCount.failure == .eventCreationFailed, "負のevent countを成功扱いにしない")
 }
 
 func testInputLogAnalyzerComparesBaselineAndCandidate() {
@@ -1858,20 +2108,23 @@ func testRuntimeRecoveryRetriesRecoverableFailures() {
     }
 }
 
-func testRuntimeRecoveryDoesNotRetryHumanFixRequiredFailures() {
-    let humanFixRequiredFailures: [RuntimeRecoveryFailureKind] = [
+func testRuntimeRecoveryDoesNotRetryNonRetryableFailures() {
+    let nonRetryableFailures: [RuntimeRecoveryFailureKind] = [
         .invalidSettings,
         .targetDeviceMatcherMissing,
+        .outputContractUnsupported,
+        .outputContractMismatch,
+        .outputPostingFailed,
         .unrecoverable
     ]
 
-    for failure in humanFixRequiredFailures {
+    for failure in nonRetryableFailures {
         var state = RuntimeRecoveryState()
         _ = state.recordRuntimeFailure(failure, at: 10)
         let retry = state.retryIfReady(at: 10)
 
-        expect(state.pendingRetry == nil, "人間の修正が必要な失敗は自動再試行予定を作らない: \(failure)")
-        expect(!retry.shouldStartRuntime, "人間の修正が必要な失敗は自動再試行しない: \(failure)")
+        expect(state.pendingRetry == nil, "非retryable失敗は自動再試行予定を作らない: \(failure)")
+        expect(!retry.shouldStartRuntime, "非retryable失敗は自動再試行しない: \(failure)")
     }
 }
 
@@ -2220,6 +2473,13 @@ testSettingsValidatorRejectsInvalidTargetMatcherValues()
 testInputLogAnalyzerSuggestsDeadZone()
 testInputLogRecordDecodesLegacyGeneratedField()
 testInputLogRecordEncodesSystemTestMetadataWhenPresent()
+testTrackpadDriverEventLogRoundTrips()
+testTrackpadDriverEventLogDecodesLegacyRecordWithDefaults()
+testTrackpadDriverEventLogRawFieldsUseStableNumericOrder()
+testTrackpadDriverEventLogPreservesNonFiniteNamedDoubleBitPatterns()
+testTrackpadDriverEventLogJSONLinesPreserveCaptureOrder()
+testProductGestureOutputFailsClosedWithoutVerifiedContract()
+testProductGestureOutputRequiresRegisteredFixtureAndInfersFailures()
 testInputLogAnalyzerComparesBaselineAndCandidate()
 testInputLogAnalyzerCountsKeyEvents()
 testInputLogAnalyzerDoesNotTreatUnmarkedKeysAsPassthroughInput()
@@ -2262,7 +2522,7 @@ testRuntimeRecoveryStopsBeforeSleepAndDoesNotRetryDuringSleep()
 testRuntimeRecoverySchedulesDelayedWakeRetryOnlyWhenEnabled()
 testRuntimeRecoveryDoesNotScheduleWakeRetryAfterManualStop()
 testRuntimeRecoveryRetriesRecoverableFailures()
-testRuntimeRecoveryDoesNotRetryHumanFixRequiredFailures()
+testRuntimeRecoveryDoesNotRetryNonRetryableFailures()
 testRuntimeRecoveryManualStartAndSettingsSaveReenableAutoRetry()
 testRuntimeRecoveryManualStopCancelsPendingWakeRetry()
 testRuntimeRecoverySleepClearsExistingPendingRetry()

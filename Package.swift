@@ -14,9 +14,26 @@ let package = Package(
     ],
     targets: [
         .target(name: "NapeGestureCore"),
+        .target(
+            name: "NapeGestureProductOutput",
+            dependencies: ["NapeGestureCore"]
+        ),
+        .target(
+            name: "NapeGestureDiagnosticOutput",
+            dependencies: ["NapeGestureCore"],
+            linkerSettings: [
+                .linkedFramework("ApplicationServices"),
+                .linkedFramework("AppKit"),
+                .linkedFramework("Carbon")
+            ]
+        ),
         .executableTarget(
             name: "nape-gesture",
-            dependencies: ["NapeGestureCore"],
+            dependencies: [
+                "NapeGestureCore",
+                "NapeGestureProductOutput",
+                "NapeGestureDiagnosticOutput"
+            ],
             linkerSettings: [
                 .linkedFramework("ApplicationServices"),
                 .linkedFramework("AppKit"),
@@ -26,7 +43,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "nape-gesture-core-tests",
-            dependencies: ["NapeGestureCore"]
+            dependencies: ["NapeGestureCore", "NapeGestureProductOutput"]
         )
     ]
 )

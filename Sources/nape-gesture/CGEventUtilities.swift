@@ -4,7 +4,7 @@ import Foundation
 import NapeGestureCore
 
 enum CGEventUtilities {
-    static let generatedEventMarker: Int64 = 0x4D_47_53_54
+    static let generatedEventMarker = NapeGestureGeneratedEventMarker.value
 
     static let observedMouseEventTypes: [CGEventType] = [
         .leftMouseDown,
