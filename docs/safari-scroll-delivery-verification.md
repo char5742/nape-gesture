@@ -81,6 +81,8 @@ manifest schema 2 は候補commit、`dev.char5742.nape-gesture`のexecutable SHA
 実行済みrunは `executionStatus: executed` とし、pointer setup、before / after / atEnd、各operation exit codeを持つ。通常routingの事前条件がhost windowで成立しない場合だけ `executionStatus: precondition-blocked`、`invocation: null` とし、pointer setupとwindow owner証跡だけを保存する。操作後snapshotや成功exit codeを捏造して`blocked`にしない。
 probe schema 2はframeの`maxY`と`atEnd`を保存し、evaluatorが`atEnd == (y >= maxY)`を再計算する。固定pixel値だけで端到達を成功扱いしない。
 
+Codex host windowを一時退避する場合は、候補`.app`と同じTCC責任主体を維持するため、別launchd jobへ移さずCodexのforeground shell内で行う。`scripts/set-codex-host-visibility.swift hide`の後にSafariを前面化し、`scripts/capture-pointer-window-stack.swift`と候補操作を実行して、終了時はtrapから`activate`する。window stackでSafariがfrontmostかつポインタを含む最上位windowであることを確認する。
+
 - exit `0`: 全12 runが`pass`。最終証跡として採用可能
 - exit `1`: contract、hash、identity、artifact、状態遷移、exit codeの不一致
 - exit `2`: 通常routingの事前条件blocked。完成扱いせずIssue #105を継続
@@ -142,8 +144,8 @@ swift scripts/probe-cgevent-scroll-delivery.swift <variant> <Safari PID>
 2026-07-10 の比較では、PID 直接投稿は marker / source にかかわらず `wheel=0`、HID / session tap は `wheel=1` だが `inner=0 / outer=0`、annotated tap は `wheel=0` だった。
 HID / session tap と AX set の併用は採用しない。Web 側の `preventDefault()` を外部から判定できず、handler が止めた scroll を AX set が強制する可能性があるためである。
 
-## 最終再取得条件
+## 最終証跡
 
 Issue #102 の時刻 domain と `EventPoster` の timestamp / key API は ADR-0037 としてこの branch に統合済みである。
-PR #101 の最終 Safari / runtime 証跡は、その統合 commit と TCC 許可済み `.app` identity を固定して再取得する。
-`contract.json` の6 assertion / 12 run、通常 async、PID固定 sync / async、frame端到達、Computer Use の通常 wheel比較、生成 CGEvent log の `analyze-log --assert-current-uptime`、runtime performance completion を同じ commitで保存する。runtime evaluatorは`status=pass`、`failureCount=0`、`blockedCount=0`であることを必要条件とする。
+PR #101 の最終 Safari 証跡は `artifacts/completion/2026-07-11/pr101-final-safari`、runtime event / performanceは`pr101-final-runtime-event`へ保存する。同じ候補commitとTCC許可済み`.app` identityを使う。
+`contract.json` の6 assertion / 12 run、通常 async、PID固定 sync / async、frame端到達、Computer Use の通常 wheel比較をruntime evaluatorの`status=pass`、`failureCount=0`、`blockedCount=0`で判定する。`discrete/`にはページ戻る / 進むのURL遷移、ズーム前後のfixture幅、32 step横スクロールの画面差分と`--assert-current-uptime --assert-system-scenario`済み計画を保存する。AX fallbackはCGEvent tapにscroll eventを残さないため、横スクロールの実成立はoperation exitと画面snapshot、イベント列の時刻・構造はdry-run計画で分けて証明する。

@@ -194,6 +194,12 @@ run_combined_success \
   swiftc -typecheck scripts/probe-cgevent-scroll-delivery.swift
 
 run_combined_success \
+  "Codex host visibility helper typecheck" \
+  "$build_dir/set-codex-host-visibility-typecheck.log" \
+  "swiftc -typecheck scripts/set-codex-host-visibility.swift" \
+  swiftc -typecheck scripts/set-codex-host-visibility.swift
+
+run_combined_success \
   "release build" \
   "$build_dir/swift-build-release.log" \
   "swift build -c release --scratch-path .build" \
