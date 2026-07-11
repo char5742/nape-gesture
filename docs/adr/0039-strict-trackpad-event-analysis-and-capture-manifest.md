@@ -41,7 +41,7 @@
 ### Host再構築とCLI
 
 - analyzer CLIは`serializedEventBase64`からCoreGraphics eventを再構築し、type、timestamp、flags、取得済みsubtype、named field、raw fieldのinteger値とdouble bit patternをJSON recordと比較する。capture時にsubtypeを取得できず省略または`null`になったrecordへ、再構築時の値を事後補完しない。
-- CoreGraphics serializationはsource PID、source state、未公開fieldなど一部のraw fieldを別processへの再構築時に保持しない。type、timestamp、flags、subtype、公開named fieldの不一致は失敗にし、raw field差分は捨てずに独立した`rawFieldDifferences`へ保存する。raw field差分だけでPhase 1を失敗にせず、Phase 2の同一OS build fixture比較で意味と許容可否を確定する。
+- CoreGraphics serializationはsource PID、source state、生成markerを持つ`sourceUserData`、未公開fieldなど一部の値を別processへの再構築時に保持しない。type、timestamp、flags、取得済みsubtype、保持される公開named fieldの不一致は失敗にし、`sourceUserData`とraw field差分は捨てずに独立した`rawFieldDifferences`へ保存する。生成markerの有無はserialized eventではなくcapture時のactual recordで検査する。これらの差分だけでPhase 1を失敗にせず、Phase 2の同一OS build fixture比較で意味と許容可否を確定する。
 - 構造、manifest、host再構築、provenanceの各reportを1つの結果へまとめる。
 - 不正な入力でも可能な範囲のreportを標準出力へ出し、その後に非ゼロ終了する。`--json`なしでは人間が読める要約を出す。
 - `generatedProduct`以外へprovenanceを必須にしない。ただし指定されたprovenanceが不正な場合は無視せず失敗にする。

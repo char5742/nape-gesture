@@ -37,6 +37,36 @@ jobs:
       - name: Run diagnostic output and dry-run contract tests
         run: .build/debug/nape-gesture-diagnostic-output-tests
 
+      - name: Run trackpad analyzer contract tests
+        run: |
+          fixture_dir="$RUNNER_TEMP/trackpad-analyzer-fixtures"
+          rm -rf "$fixture_dir"
+          .build/debug/nape-gesture-diagnostic-output-tests --write-trackpad-analyzer-fixtures "$fixture_dir"
+
+          .build/debug/nape-gesture analyze-trackpad-event-log "$fixture_dir/host.jsonl" --manifest "$fixture_dir/host.manifest.json" --json > "$fixture_dir/host.report.json"
+          ruby -rjson -e 'r=JSON.parse(File.read(ARGV[0])); abort "host正常系が失敗" unless r["passed"] && r.dig("hostReconstruction", "passed")' "$fixture_dir/host.report.json"
+
+          .build/debug/nape-gesture analyze-trackpad-event-log "$fixture_dir/generated.jsonl" --manifest "$fixture_dir/generated.manifest.json" --provenance "$fixture_dir/generated.provenance.jsonl" --json > "$fixture_dir/generated.report.json"
+          ruby -rjson -e 'r=JSON.parse(File.read(ARGV[0])); abort "generatedProduct正常系が失敗" unless r["passed"] && r.dig("provenance", "passed")' "$fixture_dir/generated.report.json"
+
+          if .build/debug/nape-gesture analyze-trackpad-event-log "$fixture_dir/generated.jsonl" --manifest "$fixture_dir/generated.manifest.json" --json > "$fixture_dir/missing-provenance.report.json"; then
+            echo "generatedProductがprovenanceなしで成功しました" >&2
+            exit 1
+          fi
+          ruby -rjson -e 'r=JSON.parse(File.read(ARGV[0])); abort "provenance欠落を検出できない" unless !r["passed"] && r.dig("provenance", "required") && !r.dig("provenance", "provided")' "$fixture_dir/missing-provenance.report.json"
+
+          if .build/debug/nape-gesture analyze-trackpad-event-log "$fixture_dir/generated.jsonl" --manifest "$fixture_dir/generated.manifest.json" --provenance "$fixture_dir/pid.provenance.jsonl" --json > "$fixture_dir/pid.report.json"; then
+            echo "PID配送provenanceが成功しました" >&2
+            exit 1
+          fi
+          ruby -rjson -e 'r=JSON.parse(File.read(ARGV[0])); codes=r.dig("provenance", "analysis", "issues").map { |i| i["code"] }; abort "PID配送違反を検出できない" unless codes.include?("forbiddenDelivery")' "$fixture_dir/pid.report.json"
+
+          if .build/debug/nape-gesture analyze-trackpad-event-log "$fixture_dir/negative-raw.jsonl" --manifest "$fixture_dir/negative-raw.manifest.json" --json > "$fixture_dir/negative-raw.report.json"; then
+            echo "負のraw fieldが成功しました" >&2
+            exit 1
+          fi
+          ruby -rjson -e 'r=JSON.parse(File.read(ARGV[0])); codes=r.dig("structure", "issues").map { |i| i["code"] }; abort "負のraw fieldを構造化失敗にできない" unless codes.include?("raw_field_number_out_of_range")' "$fixture_dir/negative-raw.report.json"
+
       - name: Run legacy diagnostic and safety smoke tests
         run: |
           sh -n scripts/collect-runtime-event-evidence.sh

@@ -198,7 +198,7 @@ repo_head_sha=$(git rev-parse HEAD)
 
 各eventの`captureIndex`は0から欠落なく増加し、`rawFields`は`fieldNumber` 0...255の数値昇順でzeroとdouble bit patternを含む256件、`serializedEventBase64`はCoreGraphicsで再構築可能でなければならない。`eventSubtype`は取得不能時の省略または`null`を許可し、値がある場合は整数に限定する。analyzerは空file、LF終端なし、空行、重複JSON key、128段を超えるnesting、型違い、metadata差分、capture順、timestamp逆行、raw field欠落・並べ替え、bit pattern不一致、非canonical Base64を失敗にする。不明fieldはraw documentとreportへ保持する。
 
-CoreGraphics serializationはsource PID、source state、未公開fieldなど一部のraw fieldを別processへの再構築時に保持しない。そのためtype、timestamp、flags、capture時に取得済みのsubtype、公開named fieldの不一致は失敗にし、raw field差分は`hostReconstruction.rawFieldDifferences`へ保持してPhase 2の同一OS build fixture比較へ渡す。capture時に取得不能だったsubtypeを再構築値で補完せず、raw差分を捨てたり物理fixture取得前に意味を推測しない。
+CoreGraphics serializationはsource PID、source state、生成markerを持つ`sourceUserData`、未公開fieldなど一部の値を別processへの再構築時に保持しない。そのためtype、timestamp、flags、capture時に取得済みのsubtype、保持される公開named fieldの不一致は失敗にし、`sourceUserData`とraw field差分は`hostReconstruction.rawFieldDifferences`へ保持してPhase 2の同一OS build fixture比較へ渡す。生成markerはcapture時のactual recordで検査する。capture時に取得不能だったsubtypeを再構築値で補完せず、raw差分を捨てたり物理fixture取得前に意味を推測しない。
 
 `generatedProduct` manifestには`--provenance <trace.jsonl>`が必須である。provenanceはlog SHA、件数、capture index、timestamp、event type、output session、familyと一致し、capture eventには生成markerが必要になる。既知event typeとdeclared familyの不一致、raw target process fieldの非0、provenance上の対象PID、Accessibility、keyboard shortcut、key / pointer / button配送は非ゼロ終了する。AX APIの利用有無はraw CGEvent単体から復元できないため、製品sourceにAX / PID / shortcut経路がないことは`check-product-output-boundary.sh`でも固定する。
 

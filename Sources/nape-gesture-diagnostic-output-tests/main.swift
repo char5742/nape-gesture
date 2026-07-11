@@ -751,6 +751,33 @@ private func testDryRunRejectsCurrentBootOverflowAndOversizedCount() {
     expect(countOverflow.standardOutput.isEmpty, "件数上限失敗で部分JSON Linesを出さない")
 }
 
+let fixtureArguments = Array(CommandLine.arguments.dropFirst())
+if !fixtureArguments.isEmpty {
+    guard fixtureArguments.count == 2,
+          fixtureArguments[0] == "--write-trackpad-analyzer-fixtures"
+    else {
+        fputs(
+            "使い方: nape-gesture-diagnostic-output-tests --write-trackpad-analyzer-fixtures <directory>\n",
+            stderr
+        )
+        exit(2)
+    }
+    do {
+        let directoryURL = URL(fileURLWithPath: fixtureArguments[1], isDirectory: true)
+        try TrackpadAnalyzerDiagnosticTestSupport.writeFixtures(to: directoryURL)
+        print(directoryURL.path)
+        exit(0)
+    } catch {
+        fputs("trackpad analyzer fixture生成に失敗しました: \(error.localizedDescription)\n", stderr)
+        exit(1)
+    }
+}
+
+for message in TrackpadAnalyzerDiagnosticTestSupport.run() {
+    failureCount += 1
+    fputs("失敗: \(message)\n", stderr)
+}
+
 testScrollEventUsesCurrentBootTimestamp()
 testPostScrollFinalizesTimestampImmediatelyBeforePosting()
 testInvalidTimestampsFailClosed()

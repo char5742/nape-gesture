@@ -64,7 +64,12 @@ public enum TrackpadDriverEventHostAnalyzer {
 
             reconstructedEventCount += 1
             compareIdentity(record: record, event: event, issues: &issues)
-            compareNamedFields(record: record, event: event, issues: &issues)
+            compareNamedFields(
+                record: record,
+                event: event,
+                issues: &issues,
+                differences: &rawFieldDifferences
+            )
             compareRawFields(
                 record: record,
                 event: event,
@@ -130,7 +135,8 @@ public enum TrackpadDriverEventHostAnalyzer {
     private static func compareNamedFields(
         record: TrackpadDriverEventLog,
         event: CGEvent,
-        issues: inout [TrackpadDriverEventHostIssue]
+        issues: inout [TrackpadDriverEventHostIssue],
+        differences: inout [TrackpadDriverEventHostIssue]
     ) {
         let integerFields: [(String, Int64, CGEventField)] = [
             ("scrollDeltaX", record.scrollDeltaX, .scrollWheelEventDeltaAxis2),
@@ -138,8 +144,7 @@ public enum TrackpadDriverEventHostAnalyzer {
             ("scrollDeltaZ", record.scrollDeltaZ, .scrollWheelEventDeltaAxis3),
             ("scrollPhase", record.scrollPhase, .scrollWheelEventScrollPhase),
             ("momentumPhase", record.momentumPhase, .scrollWheelEventMomentumPhase),
-            ("isContinuous", record.isContinuous, .scrollWheelEventIsContinuous),
-            ("sourceUserData", record.sourceUserData, .eventSourceUserData)
+            ("isContinuous", record.isContinuous, .scrollWheelEventIsContinuous)
         ]
         for (name, expected, field) in integerFields {
             compare(
@@ -150,6 +155,14 @@ public enum TrackpadDriverEventHostAnalyzer {
                 issues: &issues
             )
         }
+
+        compare(
+            record: record,
+            field: "sourceUserData",
+            expected: String(record.sourceUserData),
+            actual: String(event.getIntegerValueField(.eventSourceUserData)),
+            issues: &differences
+        )
 
         let doubleFields: [(String, UInt64, CGEventField)] = [
             ("scrollFixedDeltaXBitPattern", record.scrollFixedDeltaXBitPattern, .scrollWheelEventFixedPtDeltaAxis2),
