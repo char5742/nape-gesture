@@ -173,7 +173,8 @@ Trackpad driver出力contractの正本:
 - Nape Gesture adapter生成時の`trackpad-event-log`
 - OS build、device label、scenario ID、logger build SHA、capture indexを含むmetadata
 - serialized CGEvent dataとraw fieldを保持したevent record
-- #129で実装する専用analyzerによる順序、field、phase、momentum、terminal stateの差分report
+- `analyze-trackpad-event-log`による厳格schema、manifest、CGEvent再構築、generated配送provenanceのreport
+- #125の純正fixture取得後に追加するphase、momentum、terminal state、event family contractの差分report
 
 raw contract取得例:
 
@@ -182,12 +183,26 @@ repo_head_sha=$(git rev-parse HEAD)
 .build/debug/nape-gesture trackpad-event-log \
   --duration 8 \
   --out trackpad-driver-space-right.jsonl \
+  --evidence-kind physicalTrackpad \
   --scenario-id pure-trackpad-space-right \
   --device-label built-in-trackpad \
   --repo-head-sha "$repo_head_sha"
+
+.build/debug/nape-gesture analyze-trackpad-event-log \
+  trackpad-driver-space-right.jsonl \
+  --manifest trackpad-driver-space-right.jsonl.manifest.json \
+  --json
 ```
 
-開始・終了メッセージは標準エラー、JSON Linesは`--out`へ分離する。各eventの`captureIndex`は0から欠落なく増加し、`rawFields`は`fieldNumber` 0...255の数値昇順でzeroとdouble bit patternを含む256件、`serializedEventBase64`は`CGEventCreateFromData`相当で再構築可能でなければならない。0 event、queue飽和、write / flush / close失敗は非ゼロ終了し、SIGINTでも受付停止後にqueueをdrainする。合成scrollによるsmokeはlogger経路の機械証跡にだけ使い、純正trackpad contractの正本にはしない。
+開始・終了メッセージは標準エラー、JSON Linesは`--out`へ分離する。`--out`指定時は`--evidence-kind`が必須で、既定では`<out>.manifest.json`へsidecarを作る。`physicalTrackpad`と`generatedProduct`ではscenario ID、device label、repo HEAD SHAも必須になる。manifestはlogのflush / close後の最終bytesとlogger executableをSHA-256へ固定し、失敗captureには生成しない。
+
+各eventの`captureIndex`は0から欠落なく増加し、`rawFields`は`fieldNumber` 0...255の数値昇順でzeroとdouble bit patternを含む256件、`serializedEventBase64`はCoreGraphicsで再構築可能でなければならない。`eventSubtype`は取得不能時の省略または`null`を許可し、値がある場合は整数に限定する。analyzerは空file、LF終端なし、空行、重複JSON key、128段を超えるnesting、型違い、metadata差分、capture順、timestamp逆行、raw field欠落・並べ替え、bit pattern不一致、非canonical Base64を失敗にする。不明fieldはraw documentとreportへ保持する。
+
+CoreGraphics serializationはsource PID、source state、生成markerを持つ`sourceUserData`、未公開fieldなど一部の値を別processへの再構築時に保持しない。そのためtype、timestamp、flags、capture時に取得済みのsubtype、保持される公開named fieldの不一致は失敗にし、`sourceUserData`とraw field差分は`hostReconstruction.rawFieldDifferences`へ保持してPhase 2の同一OS build fixture比較へ渡す。生成markerはcapture時のactual recordで検査する。capture時に取得不能だったsubtypeを再構築値で補完せず、raw差分を捨てたり物理fixture取得前に意味を推測しない。
+
+`generatedProduct` manifestには`--provenance <trace.jsonl>`が必須である。provenanceはlog SHA、件数、capture index、timestamp、event type、output session、familyと一致し、capture eventには生成markerが必要になる。既知event typeとdeclared familyの不一致、raw target process fieldの非0、provenance上の対象PID、Accessibility、keyboard shortcut、key / pointer / button配送は非ゼロ終了する。AX APIの利用有無はraw CGEvent単体から復元できないため、製品sourceにAX / PID / shortcut経路がないことは`check-product-output-boundary.sh`でも固定する。
+
+0 event、queue飽和、write / flush / close失敗は非ゼロ終了し、SIGINTでも受付停止後にqueueをdrainする。`synthetic`によるsmokeはlogger / analyzer経路の機械証跡にだけ使い、純正trackpad contractの正本にはしない。
 
 既存の公開field・入力安全性診断:
 

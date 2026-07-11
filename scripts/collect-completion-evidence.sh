@@ -136,6 +136,7 @@ provenance_dir="$artifact_root/provenance"
 doctor_dir="$artifact_root/doctor-and-performance"
 system_dir="$artifact_root/system-test-dry-run"
 fixtures_dir="$artifact_root/fixtures-analysis"
+trackpad_analyzer_dir="$artifact_root/trackpad-event-analyzer"
 hid_dir="$artifact_root/hid-inventory"
 
 config_path="$doctor_dir/nape-gesture.config.json"
@@ -171,6 +172,104 @@ run_combined_success \
   "$build_dir/core-tests.log" \
   ".build/debug/nape-gesture-core-tests" \
   .build/debug/nape-gesture-core-tests
+
+mkdir -p "$trackpad_analyzer_dir"
+
+run_combined_success \
+  "Trackpad analyzer fixture生成" \
+  "$trackpad_analyzer_dir/fixture-generation.log" \
+  ".build/debug/nape-gesture-diagnostic-output-tests --write-trackpad-analyzer-fixtures trackpad-event-analyzer" \
+  .build/debug/nape-gesture-diagnostic-output-tests \
+  --write-trackpad-analyzer-fixtures "$trackpad_analyzer_dir"
+
+run_split_success \
+  "Trackpad analyzer host正常系" \
+  "$trackpad_analyzer_dir/host.report.json" \
+  "$trackpad_analyzer_dir/host.stderr.log" \
+  ".build/debug/nape-gesture analyze-trackpad-event-log host.jsonl --manifest host.manifest.json --json" \
+  .build/debug/nape-gesture analyze-trackpad-event-log \
+  "$trackpad_analyzer_dir/host.jsonl" \
+  --manifest "$trackpad_analyzer_dir/host.manifest.json" \
+  --json
+
+run_split_success \
+  "Trackpad analyzer generatedProduct正常系" \
+  "$trackpad_analyzer_dir/generated.report.json" \
+  "$trackpad_analyzer_dir/generated.stderr.log" \
+  ".build/debug/nape-gesture analyze-trackpad-event-log generated.jsonl --manifest generated.manifest.json --provenance generated.provenance.jsonl --json" \
+  .build/debug/nape-gesture analyze-trackpad-event-log \
+  "$trackpad_analyzer_dir/generated.jsonl" \
+  --manifest "$trackpad_analyzer_dir/generated.manifest.json" \
+  --provenance "$trackpad_analyzer_dir/generated.provenance.jsonl" \
+  --json
+
+run_split_expected_failure \
+  "Trackpad analyzer provenance欠落" \
+  "$trackpad_analyzer_dir/missing-provenance.report.json" \
+  "$trackpad_analyzer_dir/missing-provenance.stderr.log" \
+  ".build/debug/nape-gesture analyze-trackpad-event-log generated.jsonl --manifest generated.manifest.json --json" \
+  .build/debug/nape-gesture analyze-trackpad-event-log \
+  "$trackpad_analyzer_dir/generated.jsonl" \
+  --manifest "$trackpad_analyzer_dir/generated.manifest.json" \
+  --json
+
+run_split_expected_failure \
+  "Trackpad analyzer PID配送拒否" \
+  "$trackpad_analyzer_dir/pid.report.json" \
+  "$trackpad_analyzer_dir/pid.stderr.log" \
+  ".build/debug/nape-gesture analyze-trackpad-event-log generated.jsonl --manifest generated.manifest.json --provenance pid.provenance.jsonl --json" \
+  .build/debug/nape-gesture analyze-trackpad-event-log \
+  "$trackpad_analyzer_dir/generated.jsonl" \
+  --manifest "$trackpad_analyzer_dir/generated.manifest.json" \
+  --provenance "$trackpad_analyzer_dir/pid.provenance.jsonl" \
+  --json
+
+run_split_expected_failure \
+  "Trackpad analyzer負raw field拒否" \
+  "$trackpad_analyzer_dir/negative-raw.report.json" \
+  "$trackpad_analyzer_dir/negative-raw.stderr.log" \
+  ".build/debug/nape-gesture analyze-trackpad-event-log negative-raw.jsonl --manifest negative-raw.manifest.json --json" \
+  .build/debug/nape-gesture analyze-trackpad-event-log \
+  "$trackpad_analyzer_dir/negative-raw.jsonl" \
+  --manifest "$trackpad_analyzer_dir/negative-raw.manifest.json" \
+  --json
+
+run_combined_success \
+  "Trackpad analyzer report契約確認" \
+  "$trackpad_analyzer_dir/report-contract-check.log" \
+  "Ruby JSON check for host/generated/missing/PID/negative reports" \
+  ruby -rjson -e '
+    root = ARGV.fetch(0)
+    read = ->(name) { JSON.parse(File.read(File.join(root, name))) }
+    abort "host正常系" unless read.call("host.report.json")["passed"]
+    abort "generated正常系" unless read.call("generated.report.json")["passed"]
+    missing = read.call("missing-provenance.report.json")
+    abort "provenance欠落" unless !missing["passed"] && missing.dig("provenance", "required") && !missing.dig("provenance", "provided")
+    pid = read.call("pid.report.json")
+    abort "PID配送" unless pid.dig("provenance", "analysis", "issues").any? { |issue| issue["code"] == "forbiddenDelivery" }
+    negative = read.call("negative-raw.report.json")
+    abort "負raw field" unless negative.dig("structure", "issues").any? { |issue| issue["code"] == "raw_field_number_out_of_range" }
+    puts "trackpad analyzer report contract passed"
+  ' "$trackpad_analyzer_dir"
+
+printf '%s' '{"schemaVersion":2}' > "$trackpad_analyzer_dir/invalid-log.jsonl"
+printf '%s\n' '{}' > "$trackpad_analyzer_dir/invalid-manifest.json"
+
+run_split_expected_failure \
+  "Trackpad raw analyzer不正入力" \
+  "$trackpad_analyzer_dir/invalid-report.json" \
+  "$trackpad_analyzer_dir/invalid-report.stderr.log" \
+  ".build/debug/nape-gesture analyze-trackpad-event-log invalid-log.jsonl --manifest invalid-manifest.json --json" \
+  .build/debug/nape-gesture analyze-trackpad-event-log \
+  "$trackpad_analyzer_dir/invalid-log.jsonl" \
+  --manifest "$trackpad_analyzer_dir/invalid-manifest.json" \
+  --json
+
+run_combined_success \
+  "Trackpad raw analyzer失敗report確認" \
+  "$trackpad_analyzer_dir/invalid-report-check.log" \
+  "grep -F '\"passed\" : false' invalid-report.json" \
+  grep -F '"passed" : false' "$trackpad_analyzer_dir/invalid-report.json"
 
 run_combined_success \
   "diagnostic output tests" \

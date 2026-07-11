@@ -75,8 +75,10 @@ fi
 diagnostic_import_matches=$(
   for file_path in Sources/nape-gesture/*.swift; do
     file_name=${file_path##*/}
-    if [ "$file_name" = "GenerateScrollCommand.swift" ] \
-      || [ "$file_name" = "SystemBehaviorTestCommand.swift" ]; then
+    if [ "$file_name" = "AnalyzeTrackpadEventLogCommand.swift" ] \
+      || [ "$file_name" = "GenerateScrollCommand.swift" ] \
+      || [ "$file_name" = "SystemBehaviorTestCommand.swift" ] \
+      || [ "$file_name" = "TrackpadDriverEventLogger.swift" ]; then
       continue
     fi
     grep -nEH \

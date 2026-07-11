@@ -40,6 +40,7 @@
 | [ADR-0036](0036-emulate-trackpad-driver-output-events.md) | trackpad driver上位出力eventを再現する | gesture event、scroll、DockSwipe、NavigationSwipe、magnification |
 | [ADR-0037](0037-separate-product-and-diagnostic-event-output.md) | 製品gesture出力と診断event出力を分離する | module境界、fail closed、monotonic clock、CI guard |
 | [ADR-0038](0038-trackpad-output-session-and-monotonic-clock.md) | trackpad出力sessionとmonotonic clockを共通化する | lifecycle、sequence、terminal、起動後時刻 |
+| [ADR-0039](0039-strict-trackpad-event-analysis-and-capture-manifest.md) | trackpad eventログを厳格解析しcapture manifestへ固定する | JSON Lines、manifest、provenance、host再構築 |
 
 ## 置換済み
 
