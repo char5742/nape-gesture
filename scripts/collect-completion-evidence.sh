@@ -129,6 +129,29 @@ run_split_expected_failure() {
   fi
 }
 
+run_split_expected_status() {
+  title=$1
+  stdout_path=$2
+  stderr_path=$3
+  display=$4
+  expected_status=$5
+  shift 5
+
+  mkdir -p "$(dirname -- "$stdout_path")" "$(dirname -- "$stderr_path")"
+  printf '$ %s > %s 2> %s\n' "$display" "$stdout_path" "$stderr_path" >> "$commands_file"
+  printf '%s\n' "実行中: $title"
+
+  "$@" > "$stdout_path" 2> "$stderr_path"
+  status=$?
+
+  if [ "$status" -eq "$expected_status" ]; then
+    append_summary "期待どおり失敗" "$title" "$status" "$stdout_path / $stderr_path"
+  else
+    append_summary "期待外の終了コード" "$title" "$status" "$stdout_path / $stderr_path"
+    remember_failure "$stdout_path / $stderr_path"
+  fi
+}
+
 build_dir="$artifact_root/build-and-tests"
 bundle_dir="$artifact_root/bundle"
 gui_dir="$artifact_root/gui-smoke"
@@ -203,6 +226,46 @@ run_split_success \
   --provenance "$trackpad_analyzer_dir/generated.provenance.jsonl" \
   --json
 
+contract_path="Fixtures/trackpad-contract/25F80/scroll-momentum-contract.json"
+
+run_split_success \
+  "Trackpad analyzer contract正常系" \
+  "$trackpad_analyzer_dir/contract-valid.report.json" \
+  "$trackpad_analyzer_dir/contract-valid.stderr.log" \
+  ".build/debug/nape-gesture analyze-trackpad-event-log contract-valid.jsonl --manifest contract-valid.manifest.json --provenance contract-valid.provenance.jsonl --contract $contract_path --json" \
+  .build/debug/nape-gesture analyze-trackpad-event-log \
+  "$trackpad_analyzer_dir/contract-valid.jsonl" \
+  --manifest "$trackpad_analyzer_dir/contract-valid.manifest.json" \
+  --provenance "$trackpad_analyzer_dir/contract-valid.provenance.jsonl" \
+  --contract "$contract_path" \
+  --json
+
+run_split_expected_status \
+  "Trackpad analyzer momentum terminal欠落contract" \
+  "$trackpad_analyzer_dir/contract-missing-momentum-terminal.report.json" \
+  "$trackpad_analyzer_dir/contract-missing-momentum-terminal.stderr.log" \
+  ".build/debug/nape-gesture analyze-trackpad-event-log contract-missing-momentum-terminal.jsonl --manifest contract-missing-momentum-terminal.manifest.json --provenance contract-missing-momentum-terminal.provenance.jsonl --contract $contract_path --json" \
+  1 \
+  .build/debug/nape-gesture analyze-trackpad-event-log \
+  "$trackpad_analyzer_dir/contract-missing-momentum-terminal.jsonl" \
+  --manifest "$trackpad_analyzer_dir/contract-missing-momentum-terminal.manifest.json" \
+  --provenance "$trackpad_analyzer_dir/contract-missing-momentum-terminal.provenance.jsonl" \
+  --contract "$contract_path" \
+  --json
+
+run_split_expected_status \
+  "Trackpad analyzer未確定type 29混入contract" \
+  "$trackpad_analyzer_dir/contract-unconfirmed-gesture.report.json" \
+  "$trackpad_analyzer_dir/contract-unconfirmed-gesture.stderr.log" \
+  ".build/debug/nape-gesture analyze-trackpad-event-log contract-unconfirmed-gesture.jsonl --manifest contract-unconfirmed-gesture.manifest.json --provenance contract-unconfirmed-gesture.provenance.jsonl --contract $contract_path --json" \
+  1 \
+  .build/debug/nape-gesture analyze-trackpad-event-log \
+  "$trackpad_analyzer_dir/contract-unconfirmed-gesture.jsonl" \
+  --manifest "$trackpad_analyzer_dir/contract-unconfirmed-gesture.manifest.json" \
+  --provenance "$trackpad_analyzer_dir/contract-unconfirmed-gesture.provenance.jsonl" \
+  --contract "$contract_path" \
+  --json
+
 run_split_expected_failure \
   "Trackpad analyzer provenance欠落" \
   "$trackpad_analyzer_dir/missing-provenance.report.json" \
@@ -241,16 +304,47 @@ run_combined_success \
   ruby -rjson -e '
     root = ARGV.fetch(0)
     read = ->(name) { JSON.parse(File.read(File.join(root, name))) }
-    abort "host正常系" unless read.call("host.report.json")["passed"]
-    abort "generated正常系" unless read.call("generated.report.json")["passed"]
+    host = read.call("host.report.json")
+    abort "host正常系またはPhase 1 schema互換性" unless host["schemaVersion"] == 1 && !host.key?("contractPath") && !host.key?("contractComparison") && host["passed"]
+    generated = read.call("generated.report.json")
+    abort "generated正常系またはPhase 1 schema互換性" unless generated["schemaVersion"] == 1 && !generated.key?("contractPath") && !generated.key?("contractComparison") && generated["passed"]
     missing = read.call("missing-provenance.report.json")
     abort "provenance欠落" unless !missing["passed"] && missing.dig("provenance", "required") && !missing.dig("provenance", "provided")
     pid = read.call("pid.report.json")
     abort "PID配送" unless pid.dig("provenance", "analysis", "issues").any? { |issue| issue["code"] == "forbiddenDelivery" }
     negative = read.call("negative-raw.report.json")
     abort "負raw field" unless negative.dig("structure", "issues").any? { |issue| issue["code"] == "raw_field_number_out_of_range" }
+    valid_contract = read.call("contract-valid.report.json")
+    valid_comparison = valid_contract["contractComparison"]
+    abort "contract正常系schema" unless valid_contract["schemaVersion"] == 2
+    abort "contract正常系section" unless valid_contract["passed"] && valid_contract.dig("structure", "passed") && valid_contract.dig("manifest", "passed") && valid_contract.dig("hostReconstruction", "passed") && valid_contract.dig("provenance", "passed")
+    abort "contract正常系比較" unless valid_comparison && valid_comparison["provided"] && valid_comparison["passed"]
+    invalid_contract = read.call("contract-missing-momentum-terminal.report.json")
+    invalid_comparison = invalid_contract["contractComparison"]
+    invalid_codes = Array(invalid_comparison && invalid_comparison["issues"]).map { |issue| issue["code"] }
+    abort "contract異常系schema" unless invalid_contract["schemaVersion"] == 2
+    abort "contract異常系section" unless !invalid_contract["passed"] && invalid_contract.dig("structure", "passed") && invalid_contract.dig("manifest", "passed") && invalid_contract.dig("hostReconstruction", "passed") && invalid_contract.dig("provenance", "passed")
+    abort "contract異常系比較" unless invalid_comparison && invalid_comparison["provided"] && !invalid_comparison["passed"] && invalid_codes.include?("missing_momentum_terminal")
+    unconfirmed_contract = read.call("contract-unconfirmed-gesture.report.json")
+    unconfirmed_comparison = unconfirmed_contract["contractComparison"]
+    unconfirmed_codes = Array(unconfirmed_comparison && unconfirmed_comparison["issues"]).map { |issue| issue["code"] }
+    abort "未確定type 29混入contract" unless unconfirmed_contract["schemaVersion"] == 2 && !unconfirmed_contract["passed"] && unconfirmed_contract.dig("structure", "passed") && unconfirmed_contract.dig("manifest", "passed") && unconfirmed_contract.dig("hostReconstruction", "passed") && unconfirmed_contract.dig("provenance", "passed") && unconfirmed_comparison && !unconfirmed_comparison["passed"] && unconfirmed_codes.include?("unconfirmed_gesture_event")
     puts "trackpad analyzer report contract passed"
   ' "$trackpad_analyzer_dir"
+
+run_split_success \
+  "公開trackpad fixture間identity照合" \
+  "$fixtures_dir/trackpad-contract-fixtures.json" \
+  "$fixtures_dir/trackpad-contract-fixtures.stderr.log" \
+  "ruby scripts/verify-trackpad-physical-observations.rb --fixtures-only --json" \
+  ruby scripts/verify-trackpad-physical-observations.rb --fixtures-only --json
+
+run_split_success \
+  "公開trackpad contractとlocal物理原本の照合" \
+  "$fixtures_dir/trackpad-contract-raw-verification.json" \
+  "$fixtures_dir/trackpad-contract-raw-verification.stderr.log" \
+  "ruby scripts/verify-trackpad-physical-observations.rb --json" \
+  ruby scripts/verify-trackpad-physical-observations.rb --json
 
 printf '%s' '{"schemaVersion":2}' > "$trackpad_analyzer_dir/invalid-log.jsonl"
 printf '%s\n' '{}' > "$trackpad_analyzer_dir/invalid-manifest.json"

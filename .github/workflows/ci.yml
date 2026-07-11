@@ -44,10 +44,38 @@ jobs:
           .build/debug/nape-gesture-diagnostic-output-tests --write-trackpad-analyzer-fixtures "$fixture_dir"
 
           .build/debug/nape-gesture analyze-trackpad-event-log "$fixture_dir/host.jsonl" --manifest "$fixture_dir/host.manifest.json" --json > "$fixture_dir/host.report.json"
-          ruby -rjson -e 'r=JSON.parse(File.read(ARGV[0])); abort "host正常系が失敗" unless r["passed"] && r.dig("hostReconstruction", "passed")' "$fixture_dir/host.report.json"
+          ruby -rjson -e 'r=JSON.parse(File.read(ARGV[0])); abort "host正常系またはPhase 1 schema互換性が失敗" unless r["schemaVersion"] == 1 && !r.key?("contractPath") && !r.key?("contractComparison") && r["passed"] && r.dig("hostReconstruction", "passed")' "$fixture_dir/host.report.json"
 
           .build/debug/nape-gesture analyze-trackpad-event-log "$fixture_dir/generated.jsonl" --manifest "$fixture_dir/generated.manifest.json" --provenance "$fixture_dir/generated.provenance.jsonl" --json > "$fixture_dir/generated.report.json"
-          ruby -rjson -e 'r=JSON.parse(File.read(ARGV[0])); abort "generatedProduct正常系が失敗" unless r["passed"] && r.dig("provenance", "passed")' "$fixture_dir/generated.report.json"
+          ruby -rjson -e 'r=JSON.parse(File.read(ARGV[0])); abort "generatedProduct正常系またはPhase 1 schema互換性が失敗" unless r["schemaVersion"] == 1 && !r.key?("contractPath") && !r.key?("contractComparison") && r["passed"] && r.dig("provenance", "passed")' "$fixture_dir/generated.report.json"
+
+          contract_path="Fixtures/trackpad-contract/25F80/scroll-momentum-contract.json"
+          .build/debug/nape-gesture analyze-trackpad-event-log "$fixture_dir/contract-valid.jsonl" --manifest "$fixture_dir/contract-valid.manifest.json" --provenance "$fixture_dir/contract-valid.provenance.jsonl" --contract "$contract_path" --json > "$fixture_dir/contract-valid.report.json"
+          ruby -rjson -e 'r=JSON.parse(File.read(ARGV[0])); c=r["contractComparison"]; abort "contract正常系が失敗" unless r["schemaVersion"] == 2 && r["passed"] && r.dig("structure", "passed") && r.dig("manifest", "passed") && r.dig("hostReconstruction", "passed") && r.dig("provenance", "passed") && c && c["provided"] && c["passed"]' "$fixture_dir/contract-valid.report.json"
+
+          contract_failure_status=0
+          if .build/debug/nape-gesture analyze-trackpad-event-log "$fixture_dir/contract-missing-momentum-terminal.jsonl" --manifest "$fixture_dir/contract-missing-momentum-terminal.manifest.json" --provenance "$fixture_dir/contract-missing-momentum-terminal.provenance.jsonl" --contract "$contract_path" --json > "$fixture_dir/contract-missing-momentum-terminal.report.json"; then
+            contract_failure_status=0
+          else
+            contract_failure_status=$?
+          fi
+          if [ "$contract_failure_status" -ne 1 ]; then
+            echo "momentum terminal欠落の終了コードが1ではありません: $contract_failure_status" >&2
+            exit 1
+          fi
+          ruby -rjson -e 'r=JSON.parse(File.read(ARGV[0])); c=r["contractComparison"]; codes=Array(c && c["issues"]).map { |i| i["code"] }; abort "contract異常系の失敗境界が不正" unless r["schemaVersion"] == 2 && !r["passed"] && r.dig("structure", "passed") && r.dig("manifest", "passed") && r.dig("hostReconstruction", "passed") && r.dig("provenance", "passed") && c && c["provided"] && !c["passed"] && codes.include?("missing_momentum_terminal")' "$fixture_dir/contract-missing-momentum-terminal.report.json"
+
+          unconfirmed_status=0
+          if .build/debug/nape-gesture analyze-trackpad-event-log "$fixture_dir/contract-unconfirmed-gesture.jsonl" --manifest "$fixture_dir/contract-unconfirmed-gesture.manifest.json" --provenance "$fixture_dir/contract-unconfirmed-gesture.provenance.jsonl" --contract "$contract_path" --json > "$fixture_dir/contract-unconfirmed-gesture.report.json"; then
+            unconfirmed_status=0
+          else
+            unconfirmed_status=$?
+          fi
+          if [ "$unconfirmed_status" -ne 1 ]; then
+            echo "未確定type 29混入の終了コードが1ではありません: $unconfirmed_status" >&2
+            exit 1
+          fi
+          ruby -rjson -e 'r=JSON.parse(File.read(ARGV[0])); c=r["contractComparison"]; codes=Array(c && c["issues"]).map { |i| i["code"] }; abort "未確定type 29混入をcontract異常系にできない" unless r["schemaVersion"] == 2 && !r["passed"] && r.dig("structure", "passed") && r.dig("manifest", "passed") && r.dig("hostReconstruction", "passed") && r.dig("provenance", "passed") && c && !c["passed"] && codes.include?("unconfirmed_gesture_event")' "$fixture_dir/contract-unconfirmed-gesture.report.json"
 
           if .build/debug/nape-gesture analyze-trackpad-event-log "$fixture_dir/generated.jsonl" --manifest "$fixture_dir/generated.manifest.json" --json > "$fixture_dir/missing-provenance.report.json"; then
             echo "generatedProductがprovenanceなしで成功しました" >&2
@@ -74,6 +102,7 @@ jobs:
           sh -n scripts/check-product-output-boundary.sh
           sh -n scripts/check-diagnostic-event-time.sh
           ruby -c scripts/verify-trackpad-physical-observations.rb
+          ruby scripts/verify-trackpad-physical-observations.rb --fixtures-only --json > /dev/null
           ruby -c scripts/wait-for-trackpad-capture-ready.rb
           ruby -c scripts/test-wait-for-trackpad-capture-ready.rb
           ruby scripts/test-wait-for-trackpad-capture-ready.rb
@@ -115,7 +144,16 @@ jobs:
               | length
             ) == 0
           ' Fixtures/trackpad-contract/25F80/physical-observations.json > /dev/null
+          jq -e '
+            .schemaVersion == 1
+            and .fixtureID == "trackpad-scroll-momentum-25F80-v1"
+            and .contractID == "trackpad-scroll-momentum-v1"
+            and .status == "confirmed"
+            and .osBuild == "25F80"
+          ' Fixtures/trackpad-contract/25F80/scroll-momentum-contract.json > /dev/null
+          test "$(shasum -a 256 Fixtures/trackpad-contract/25F80/scroll-momentum-contract.json | awk '{print $1}')" = "8e2a1841ef23a47fcb274c1c8e7c7c39be43e8ab7c8792caf2cd874242a61294"
           .build/debug/nape-gesture analyze-trackpad-event-log --help | grep -q 'generatedProduct'
+          .build/debug/nape-gesture analyze-trackpad-event-log --help | grep -q -- '--contract'
           if .build/debug/nape-gesture trackpad-event-log --duration 0; then
             echo "trackpad-event-log が不正なdurationを受理しました" >&2
             exit 1

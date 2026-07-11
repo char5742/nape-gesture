@@ -35,7 +35,7 @@ executablePath: /Users/fujino/Documents/mac-gesture/.build/NapeGesture.app/Conte
 
 `doctor` の TCC 状態は、`tccStatus.inputMonitoring.status: "granted"`、`tccStatus.accessibility.status: "granted"`、`hidProbe.succeeded: true` を示している。
 `gesture-drag`、`gesture-wheel`、`kill-switch`、`gesture-wheel-then-kill-switch`、`normal-after-release`は、移行前prototypeのtarget ready diagnostics、foreground capture、`analyze-target-log`、runtime性能logで機械判定済みである。
-trackpad output event logger、strict analyzer、manifest schema 2、生成event provenanceは実装済みである。macOS 26.5.1（25F80）の純正trackpad 8系列を収録し、scroll / momentum contractは採用可能な小型fixtureへ固定した。NavigationSwipe、magnification、DockSwipeはcandidateで、Mission Control / App Exposéは取得窓不成立のため、残る4系列の物理再収録までは#125を完了扱いにしない。OS build別adapter、生成event比較、Nape Pro実機比較、公証は未完了である。
+trackpad output event logger、strict analyzer、manifest schema 2、生成event provenanceは実装済みである。macOS 26.5.1（25F80）の純正trackpad 8系列を収録し、scroll / momentum contractは登録SHA付きの独立fixtureとCLI差分reportへ固定した。NavigationSwipe、magnification、DockSwipeはcandidateで、Mission Control / App Exposéは取得窓不成立のため、残る4系列の物理再収録までは#125を完了扱いにしない。OS build別adapter、Nape Pro実機比較、公証は未完了である。
 
 共通output session modelは、input lifecycleとmomentum lifecycleを別型にし、scroll / DockSwipe / NavigationSwipe / magnificationを同じsession ID、capture order、起動後ナノ秒、terminal stateで検証する。`nape-gesture-core-tests`は順序欠落、order上限のnonterminal消費、時刻逆行、現在boot外timestamp、二重terminal、momentum待ちまたはactiveのstuck、非有限payload、gesture terminal decision欠落、active cancellationのfamily / final payload欠落を失敗にする。progress範囲と非公開field値は25F80 fixtureの確定度に従い、candidateの方向・cancel・未取得値を推測しない。
 
@@ -208,6 +208,27 @@ wait "$logger_pid"
   --manifest trackpad-driver-space-right.jsonl.manifest.json \
   --json
 ```
+
+25F80で確定済みのvertical / horizontal scroll、momentum stop、cancel / reverseを比較する場合は、同じscenario IDのlogとmanifestへ専用fixtureを明示する。
+
+```sh
+.build/debug/nape-gesture analyze-trackpad-event-log \
+  generated-vertical-scroll.jsonl \
+  --manifest generated-vertical-scroll.jsonl.manifest.json \
+  --provenance generated-vertical-scroll.provenance.jsonl \
+  --contract Fixtures/trackpad-contract/25F80/scroll-momentum-contract.json \
+  --json
+```
+
+`contractComparison`はfixture ID / SHA-256 / schema / OS build、reference loggerとsource SHA、scroll / momentum完結数、companion対応数、実際のcaptureIndex差、timestamp同値組数、構造化issueを返す。Coreはcontract登録を再検証し、渡されたdocumentのraw line bytesをLF付きで再構成してmanifestへ照合し、strict parserとcapture index検証を再実行する。missing terminal、began前changed、同時phase、terminal deltaの非`+0.0`、未確定type 29 classifier、envelope欠落、companion phase / field alias / coverage不一致、manifestとdocument bytesの不一致、未登録fixture、未知build、未確定scenarioはreport出力後に非ゼロ終了する。`--contract`未指定時はPhase 1の構造・manifest・host・provenance検証だけを行い、report schema 1と従来のJSON shapeを維持する。指定時だけschema 2の`contractPath` / `contractComparison`を追加する。
+
+公開fixture同士の固定値はraw原本なしでも次で検証できる。
+
+```sh
+ruby scripts/verify-trackpad-physical-observations.rb --fixtures-only --json
+```
+
+local raw原本がある環境で`--fixtures-only`を外すと、専用contract、観測台帳、4 source SHA / manifest /解析境界、8 captureとlegacy capture、terminalのdouble bit patternまで一続きに再検証する。
 
 開始・終了メッセージは標準エラー、JSON Linesは`--out`へ分離する。`--ready-file`には呼び出し側が新規発行した`--ready-token <UUID>`が必須で、file名にもtokenを含める。loggerは権限確認前に`ready:false`の排他的leaseを`O_EXCL`で予約し、既存pathを削除しない。event受付開始時だけtoken、PID、開始wall-clock、有限durationのdeadline、scenario ID、repo HEAD SHAを持つ`ready:true`へatomic更新する。`wait-for-trackpad-capture-ready.rb`は同じrecordを安定化待機後に再読込し、全field、十分なdeadline残時間、PID生存を最終確認できた場合だけ操作案内を出す。SIGKILLで残ったstale ready、deadline直前、ready撤回後のmanifest後処理中は非ゼロ終了し、案内を出さない。duration満了、SIGINT、内部errorではevent受付をfalseへ変える前にleaseを`ready:false`へ戻して`unlink`する。`--out`指定時は`--evidence-kind`が必須で、既定では`<out>.manifest.json`へsidecarを作る。`physicalTrackpad`と`generatedProduct`ではscenario ID、device label、repo HEAD SHAも必須になる。manifest schema 2は開始・完了wall-clock、logのflush / close後の最終bytes、logger executableを固定し、失敗captureには生成しない。
 

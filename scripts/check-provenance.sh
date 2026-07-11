@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# Mac Mouse Fix 由来の識別子や説明が、許可した文書以外へ混入していないことを確認する。
+# 既知の第三者プロジェクト固有名と、第三者コード非取込方針の退行を確認する。
 # これは法的な完全証明ではなく、リポジトリ内の誤混入を早期に止めるための機械ガードです。
 # 実行ビットは不要です。`sh scripts/check-provenance.sh` で実行してください。
 
@@ -49,56 +49,32 @@ report_matches() {
   fi
 }
 
-code_like_matches=$(
-  git grep -n -I -E 'MacMouseFix|macMouseFix|macmousefix|mac-mouse-fix|mac_mouse_fix|MouseFix|mousefix|com\.[[:alnum:]._-]*mouse[[:alnum:]._-]*fix' -- . \
-    ':(exclude)scripts/check-provenance.sh' \
-    ':(exclude)docs/adr/0023-repo-local-provenance-guard.md' \
-    ':(exclude)docs/adr/0036-emulate-trackpad-driver-output-events.md' 2>/dev/null || true
-)
-report_matches "禁止: Mac Mouse Fix 由来を示す code-like identifier が tracked files に含まれています。" "$code_like_matches"
+name_part_1='[Mm][Aa][Cc]'
+name_part_2='[Mm][Oo][Uu][Ss][Ee]'
+name_part_3='[Ff][Ii][Xx]'
+name_separator='[[:space:]_-]*'
+full_name_pattern="${name_part_1}${name_separator}${name_part_2}${name_separator}${name_part_3}"
+short_name_pattern="${name_part_2}${name_separator}${name_part_3}"
+reverse_domain_pattern="com\\.[[:alnum:]._-]*${name_part_2}[[:alnum:]._-]*${name_part_3}"
 
-phrase_matches=$(
-  git grep -n -I 'Mac Mouse Fix' -- . \
-    ':(exclude)README.md' \
-    ':(exclude)THIRD_PARTY_NOTICES.md' \
-    ':(exclude)docs/**' \
-    ':(exclude).github/pull_request_template.md' \
-    ':(exclude)scripts/check-provenance.sh' \
-    ':(exclude)Sources/nape-gesture/BundleAppCommand.swift' 2>/dev/null || true
+specific_name_matches=$(
+  git grep -n -I -E "${full_name_pattern}|${short_name_pattern}|${reverse_domain_pattern}" -- . 2>/dev/null || true
 )
-report_matches "禁止: Mac Mouse Fix への言及は、許可した方針文書または配布通知だけに置いてください。" "$phrase_matches"
-
-implementation_phrase_matches=$(
-  git grep -n -I 'Mac Mouse Fix' -- \
-    Sources/NapeGestureCore \
-    Sources/nape-gesture \
-    ':(exclude)Sources/nape-gesture/BundleAppCommand.swift' 2>/dev/null || true
-)
-report_matches "禁止: 実装側に Mac Mouse Fix への言及を置かないでください。配布通知の同梱 fallback だけを例外にします。" "$implementation_phrase_matches"
+report_matches "禁止: 既知の第三者プロジェクト固有名が tracked files に含まれています。" "$specific_name_matches"
 
 require_text \
   "README.md" \
-  "Mac Mouse Fix のコードや調整値は取り込みません。" \
+  "第三者プロジェクトのコード、定数、field番号、状態遷移、係数、調整値は取り込みません。" \
   "README に由来方針を明記する"
 
 require_text \
-  "THIRD_PARTY_NOTICES.md" \
-  "Mac Mouse Fix のソースコード、定数、状態遷移、調整値はこのプロジェクトへコピーしていません。" \
-  "THIRD_PARTY_NOTICES にコピーなし方針を明記する"
-
-require_text \
-  "Sources/nape-gesture/BundleAppCommand.swift" \
-  "Mac Mouse Fix のソースコード、定数、状態遷移、調整値はこのプロジェクトへコピーしていません。" \
-  "バンドル fallback の THIRD_PARTY_NOTICES にコピーなし方針を含める"
-
-require_text \
   ".github/pull_request_template.md" \
-  "Mac Mouse Fix のコード、定数、状態遷移、係数をコピーしていない" \
+  "第三者プロジェクトのコード、定数、field番号、状態遷移、係数、調整値をコピーしていない" \
   "PR template に由来確認を残す"
 
 require_text \
   "docs/pr-review-checklist.md" \
-  "Mac Mouse Fix 由来のコードや係数を持ち込んでいる" \
+  "第三者プロジェクト由来のコード、field番号、定数、状態遷移、係数、調整値を持ち込んでいる" \
   "PR review checklist に由来混入の差し戻し基準を残す"
 
 if [ "$failure_count" -ne 0 ]; then

@@ -8,6 +8,7 @@ func runTrackpadOutputProvenanceTests() {
     testTrackpadOutputProvenanceAcceptsTimestampRegression()
     testTrackpadOutputProvenanceRejectsCaptureLogMismatch()
     testTrackpadOutputProvenanceAcceptsActualScrollWithGeneratedMarker()
+    testTrackpadOutputProvenanceAcceptsScrollFamilyCompanionGesture()
     testTrackpadOutputProvenanceRejectsActualKeyMasqueradingAsScroll()
     testTrackpadOutputProvenanceRejectsEveryKnownForbiddenActualType()
     testTrackpadOutputProvenanceRejectsRawTargetProcessFields()
@@ -239,6 +240,72 @@ private func testTrackpadOutputProvenanceAcceptsActualScrollWithGeneratedMarker(
 
     expect(analysis.passed, "generated marker付きactual scrollを受理する")
     expect(analysis.issues.isEmpty, "valid actual scrollにissueを追加しない")
+}
+
+private func testTrackpadOutputProvenanceAcceptsScrollFamilyCompanionGesture() {
+    let sha = String(repeating: "6", count: 64)
+    let records = [
+        makeProvenanceRecord(
+            captureIndex: 0,
+            timestamp: 100,
+            family: .scroll,
+            eventKind: .scroll,
+            logSHA256: sha,
+            eventTypeRaw: 22
+        ),
+        makeProvenanceRecord(
+            captureIndex: 1,
+            timestamp: 99,
+            family: .scroll,
+            eventKind: .gesture,
+            logSHA256: sha,
+            eventTypeRaw: 29
+        )
+    ]
+    let targetProcessFields = [
+        makeRawField(number: 39, integerValue: 0),
+        makeRawField(number: 40, integerValue: 0)
+    ]
+    let events = [
+        makeActualEvent(rawFields: targetProcessFields),
+        makeActualEvent(
+            captureIndex: 1,
+            timestamp: 99,
+            typeRaw: 29,
+            rawFields: targetProcessFields
+        )
+    ]
+
+    let analysis = TrackpadOutputProvenanceAnalyzer.analyze(
+        records: records,
+        expectedLogSHA256: sha,
+        expectedEvents: events
+    )
+
+    expect(analysis.passed, "scroll familyでtype 22 scrollとtype 29 companion gestureを受理する")
+    expect(analysis.issues.isEmpty, "正常なscroll companion provenanceにissueを追加しない")
+
+    let wrongGestureRecord = makeProvenanceRecord(
+        captureIndex: 0,
+        timestamp: 100,
+        family: .scroll,
+        eventKind: .gesture,
+        logSHA256: sha,
+        eventTypeRaw: 30
+    )
+    let wrongGesture = makeActualEvent(
+        typeRaw: 30,
+        rawFields: targetProcessFields
+    )
+    let wrongAnalysis = TrackpadOutputProvenanceAnalyzer.analyze(
+        records: [wrongGestureRecord],
+        expectedLogSHA256: sha,
+        expectedEvents: [wrongGesture]
+    )
+    expect(
+        wrongAnalysis.issues.contains(where: { $0.code == .actualEventKindMismatch }),
+        "scroll familyのgestureをtype 29以外で偽装できない"
+    )
 }
 
 private func testTrackpadOutputProvenanceRejectsActualKeyMasqueradingAsScroll() {
