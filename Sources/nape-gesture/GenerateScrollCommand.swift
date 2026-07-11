@@ -4,6 +4,8 @@ import NapeGestureCore
 import NapeGestureDiagnosticOutput
 
 struct GenerateScrollCommand {
+    private static let maximumGeneratedEventCount = 100_000
+
     private let options: [String]
 
     init(options: [String]) {
@@ -29,13 +31,19 @@ struct GenerateScrollCommand {
         guard interval.isFinite, interval > 0 else {
             throw ToolError.invalidValue("--interval", String(interval))
         }
+        guard deltaX.isFinite else {
+            throw ToolError.invalidValue("--x", String(deltaX))
+        }
+        guard deltaY.isFinite else {
+            throw ToolError.invalidValue("--y", String(deltaY))
+        }
         guard momentumSteps >= 0 else {
             throw ToolError.invalidValue("--momentum-steps", String(momentumSteps))
         }
-        guard (0...1).contains(momentumDecay) else {
+        guard momentumDecay.isFinite, (0...1).contains(momentumDecay) else {
             throw ToolError.invalidValue("--momentum-decay", String(momentumDecay))
         }
-        guard momentumScale >= 0 else {
+        guard momentumScale.isFinite, momentumScale >= 0 else {
             throw ToolError.invalidValue("--momentum-scale", String(momentumScale))
         }
 
@@ -50,14 +58,13 @@ struct GenerateScrollCommand {
             additionalCommandCount = 0
         }
         let (commandCount, commandCountOverflowed) = steps.addingReportingOverflow(additionalCommandCount)
-        guard !commandCountOverflowed else {
+        guard !commandCountOverflowed,
+              commandCount <= Self.maximumGeneratedEventCount
+        else {
             throw ToolError.invalidValue("--momentum-steps", "イベント数が上限を超えます。")
         }
-        let now = MonotonicEventClock.nowSeconds
-        let startTime = isDryRun
-            ? max(0, now - Double(max(commandCount - 1, 0)) * interval)
-            : now
-        let commands = ScrollGenerationPlanner.makeCommands(
+
+        let plannedCommands = ScrollGenerationPlanner.makeCommands(
             deltaX: deltaX,
             deltaY: deltaY,
             steps: steps,
@@ -66,8 +73,42 @@ struct GenerateScrollCommand {
             momentumSteps: momentumSteps,
             momentumDecay: momentumDecay,
             momentumScale: momentumScale,
-            startTime: startTime
+            startTime: 0
         )
+        guard plannedCommands.count == commandCount else {
+            throw ToolError.invalidValue("generate-scroll", "期待件数のイベント列を生成できませんでした。")
+        }
+
+        let relativeCommands = DiagnosticEventPoster.terminallyCompleteScrollCommands(
+            plannedCommands,
+            interval: interval
+        )
+        guard !relativeCommands.isEmpty,
+              relativeCommands.count <= Self.maximumGeneratedEventCount,
+              let maximumOffset = relativeCommands.last?.timestamp
+        else {
+            throw ToolError.invalidValue("generate-scroll", "terminalを含む安全なイベント列を生成できませんでした。")
+        }
+
+        let now = MonotonicEventClock.now
+        let roundingMargin = 2 / TimeInterval(MonotonicEventClock.nanosecondsPerSecond)
+        let startTime: TimeInterval
+        if isDryRun {
+            guard maximumOffset + roundingMargin <= now.secondsSinceStartup else {
+                throw ToolError.invalidValue(
+                    "timestamp",
+                    "イベント列のoffsetが現在bootの起動後時刻上限を超えます。"
+                )
+            }
+            startTime = now.secondsSinceStartup - maximumOffset - roundingMargin
+        } else {
+            startTime = now.secondsSinceStartup
+        }
+        let commands = relativeCommands.map { command -> GestureCommand in
+            var command = command
+            command.timestamp += startTime
+            return command
+        }
 
         if isDryRun {
             guard commands.allSatisfy({
@@ -81,7 +122,7 @@ struct GenerateScrollCommand {
             if outputLogJSON {
                 try printInputLog(commands, mode: mode)
             } else {
-                printPlan(commands, mode: mode)
+                try printPlan(commands, mode: mode)
             }
             return
         }
@@ -92,14 +133,18 @@ struct GenerateScrollCommand {
 
         try AccessibilityPermission.ensurePrompted()
         let poster = DiagnosticEventPoster()
-        for (index, command) in commands.enumerated() {
-            let result = poster.postScroll(command: command, mode: mode)
-            guard result.failedEventCreationCount == 0, result.generatedEventCount == 1 else {
-                throw ToolError.invalidValue("CGEvent timestamp", "現在boot内の起動後時刻ではありません。")
-            }
-            if index < commands.count - 1 {
-                Thread.sleep(forTimeInterval: interval)
-            }
+        let result = poster.postScrollSequence(
+            commands: commands,
+            mode: mode,
+            interval: interval
+        )
+        guard result.completedSuccessfully,
+              result.generatedEventCount == commands.count
+        else {
+            throw ToolError.invalidValue(
+                "CGEvent sequence",
+                "投稿失敗後のterminal収束を含め、イベント列を完了できませんでした。"
+            )
         }
     }
 
@@ -163,7 +208,7 @@ struct GenerateScrollCommand {
         }
     }
 
-    private func printPlan(_ commands: [GestureCommand], mode: ScrollPostMode) {
+    private func printPlan(_ commands: [GestureCommand], mode: ScrollPostMode) throws {
         let preview = commands.enumerated().map { index, command in
             let posted = mode.deltas(for: command)
             return ScrollCommandPreview(
@@ -183,9 +228,8 @@ struct GenerateScrollCommand {
         if options.contains("--json") {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            if let data = try? encoder.encode(preview) {
-                print(String(decoding: data, as: UTF8.self))
-            }
+            let data = try encoder.encode(preview)
+            print(String(decoding: data, as: UTF8.self))
             return
         }
 
@@ -202,6 +246,8 @@ struct GenerateScrollCommand {
     private func printInputLog(_ commands: [GestureCommand], mode: ScrollPostMode) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
+        var lines: [String] = []
+        lines.reserveCapacity(commands.count)
 
         for command in commands {
             guard let timestamp = MonotonicEventClock.timestamp(
@@ -229,9 +275,11 @@ struct GenerateScrollCommand {
                 keyCode: 0,
                 flags: 0
             )
-            if let data = try? encoder.encode(record) {
-                print(String(decoding: data, as: UTF8.self))
-            }
+            let data = try encoder.encode(record)
+            lines.append(String(decoding: data, as: UTF8.self))
+        }
+        if !lines.isEmpty {
+            print(lines.joined(separator: "\n"))
         }
     }
 

@@ -205,7 +205,10 @@ struct SystemBehaviorTestCommand {
             commands.append(command)
         }
 
-        return commands
+        return DiagnosticEventPoster.terminallyCompleteScrollCommands(
+            commands,
+            interval: plan.interval
+        )
     }
 
     private func postScrollCommands(
@@ -214,28 +217,41 @@ struct SystemBehaviorTestCommand {
         mode: ScrollPostMode,
         interval: TimeInterval
     ) throws {
-        for command in commands {
-            try requireSuccessfulPost(poster.postScroll(command: command, mode: mode))
-            Thread.sleep(forTimeInterval: interval)
+        let result = poster.postScrollSequence(
+            commands: commands,
+            mode: mode,
+            interval: interval
+        )
+        try requireSuccessfulPost(result)
+        guard result.generatedEventCount == commands.count else {
+            throw ToolError.invalidValue("CGEvent sequence", "期待件数のscroll eventを投稿できませんでした。")
         }
     }
 
     private func requireSuccessfulPost(_ result: DiagnosticEventPostResult) throws {
-        guard result.failedEventCreationCount == 0, result.generatedEventCount > 0 else {
-            throw ToolError.invalidValue("CGEvent timestamp", "現在boot内の起動後時刻ではありません。")
+        guard result.completedSuccessfully, result.generatedEventCount > 0 else {
+            throw ToolError.invalidValue(
+                "CGEvent sequence",
+                "event作成または投稿に失敗し、release / terminalへ完全収束できませんでした。"
+            )
         }
     }
 
     private func writeLogJSON(for plan: SystemTestPlan, to outputPath: String?) throws {
-        let now = MonotonicEventClock.nowSeconds
-        let startTime = max(0, now - plan.maximumPlannedOffset)
+        let now = MonotonicEventClock.now
+        let roundingMargin = 2 / TimeInterval(MonotonicEventClock.nanosecondsPerSecond)
+        guard plan.maximumPlannedOffset + roundingMargin <= now.secondsSinceStartup else {
+            throw ToolError.invalidValue(
+                "timestamp",
+                "system-testのoffsetが現在bootの起動後時刻上限を超えます。"
+            )
+        }
+        let startTime = now.secondsSinceStartup - plan.maximumPlannedOffset - roundingMargin
         let records = try logRecords(for: plan, startTime: startTime)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        let lines = records.compactMap { record -> String? in
-            guard let data = try? encoder.encode(record) else {
-                return nil
-            }
+        let lines = try records.map { record -> String in
+            let data = try encoder.encode(record)
             return String(decoding: data, as: UTF8.self)
         }
         let output = lines.joined(separator: "\n") + (lines.isEmpty ? "" : "\n")
@@ -649,31 +665,53 @@ struct SystemBehaviorTestCommand {
     }
 
     private func postUnmarkedInputEvents(_ events: [UnmarkedInputEvent], to pid: pid_t?) throws {
+        guard !events.isEmpty,
+              events.allSatisfy({ $0.time.isFinite && $0.time >= 0 }),
+              zip(events, events.dropFirst()).allSatisfy({ pair in
+                  pair.0.time <= pair.1.time
+              })
+        else {
+            throw ToolError.invalidValue("CGEvent sequence", "未マーク入力列の時刻順序が不正です。")
+        }
+
         let source = CGEventSource(stateID: .hidSystemState)
         source?.setLocalEventsFilterDuringSuppressionState([], state: .eventSuppressionStateSuppressionInterval)
         var cursorPosition = currentPointerLocation()
         var previousTime: TimeInterval?
+        var preparedEvents: [DiagnosticPreparedEvent] = []
+        preparedEvents.reserveCapacity(events.count)
 
         for plannedEvent in events {
-            if let previousTime {
-                Thread.sleep(forTimeInterval: max(plannedEvent.time - previousTime, 0))
-            }
             guard let event = plannedEvent.makeCGEvent(source: source, cursorPosition: &cursorPosition) else {
                 throw ToolError.invalidValue(
-                    "CGEvent timestamp",
-                    "現在boot内の起動後時刻ではないか、イベントを作成できませんでした。"
+                    "CGEvent sequence",
+                    "イベント列を投稿前に全件生成できませんでした。"
                 )
             }
-            post(event, to: pid)
+            let domains = plannedEvent.releaseDomains
+            preparedEvents.append(
+                DiagnosticPreparedEvent(
+                    event: event,
+                    delayAfterPrevious: previousTime.map { plannedEvent.time - $0 } ?? 0,
+                    opensReleaseDomains: domains.opens,
+                    closesReleaseDomains: domains.closes
+                )
+            )
             previousTime = plannedEvent.time
         }
-    }
 
-    private func post(_ event: CGEvent, to pid: pid_t?) {
-        if let pid {
-            event.postToPid(pid)
-        } else {
-            event.post(tap: .cghidEventTap)
+        let poster = DiagnosticEventPoster(postEvent: { event in
+            if let pid {
+                event.postToPid(pid)
+            } else {
+                event.post(tap: .cghidEventTap)
+            }
+            return true
+        })
+        let result = poster.postPreparedSequence(preparedEvents)
+        try requireSuccessfulPost(result)
+        guard result.generatedEventCount == preparedEvents.count else {
+            throw ToolError.invalidValue("CGEvent sequence", "期待件数の未マーク入力を投稿できませんでした。")
         }
     }
 
@@ -806,7 +844,7 @@ private struct SystemTestPlan {
         let intervalCount: TimeInterval
         switch scenario {
         case .spaceLeft, .spaceRight, .horizontalScroll:
-            intervalCount = max(Double(steps) - 1, 0)
+            intervalCount = steps == 1 ? 1 : max(Double(steps) - 1, 0)
         case .missionControl, .pageBack, .pageForward, .zoomIn, .zoomOut:
             return 0.01
         case .killSwitch:
@@ -1020,13 +1058,36 @@ private struct UnmarkedInputEvent {
             event?.setIntegerValueField(.mouseEventDeltaY, value: deltaY)
         }
 
-        guard let event,
-              let timestamp = MonotonicEventClock.timestamp(fromSecondsSinceStartup: time)
-        else {
+        guard let event else {
             return nil
         }
-        event.timestamp = CGEventTimestamp(timestamp.nanosecondsSinceStartup)
         return event
+    }
+
+    var releaseDomains: (
+        opens: Set<DiagnosticEventReleaseDomain>,
+        closes: Set<DiagnosticEventReleaseDomain>
+    ) {
+        switch type {
+        case .keyDown:
+            return ([.key(keyCode)], [])
+        case .keyUp:
+            return ([], [.key(keyCode)])
+        case .leftMouseDown:
+            return ([.mouseButton(0)], [])
+        case .leftMouseUp:
+            return ([], [.mouseButton(0)])
+        case .rightMouseDown:
+            return ([.mouseButton(1)], [])
+        case .rightMouseUp:
+            return ([], [.mouseButton(1)])
+        case .otherMouseDown:
+            return ([.mouseButton(buttonNumber)], [])
+        case .otherMouseUp:
+            return ([], [.mouseButton(buttonNumber)])
+        default:
+            return ([], [])
+        }
     }
 
     private var stableTypeName: String {
