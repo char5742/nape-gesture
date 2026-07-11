@@ -10,7 +10,11 @@ let package = Package(
     products: [
         .library(name: "NapeGestureCore", targets: ["NapeGestureCore"]),
         .executable(name: "nape-gesture", targets: ["nape-gesture"]),
-        .executable(name: "nape-gesture-core-tests", targets: ["nape-gesture-core-tests"])
+        .executable(name: "nape-gesture-core-tests", targets: ["nape-gesture-core-tests"]),
+        .executable(
+            name: "nape-gesture-diagnostic-output-tests",
+            targets: ["nape-gesture-diagnostic-output-tests"]
+        )
     ],
     targets: [
         .target(name: "NapeGestureCore"),
@@ -44,6 +48,10 @@ let package = Package(
         .executableTarget(
             name: "nape-gesture-core-tests",
             dependencies: ["NapeGestureCore", "NapeGestureProductOutput"]
+        ),
+        .executableTarget(
+            name: "nape-gesture-diagnostic-output-tests",
+            dependencies: ["NapeGestureCore", "NapeGestureDiagnosticOutput"]
         )
     ]
 )

@@ -25,6 +25,12 @@ public final class DiagnosticEventPoster {
     }
 
     public func makeScrollEvent(command: GestureCommand, mode: ScrollPostMode) -> CGEvent? {
+        guard let timestamp = MonotonicEventClock.timestamp(
+            fromSecondsSinceStartup: command.timestamp
+        ) else {
+            return nil
+        }
+
         let deltas = mode.deltas(for: command)
         let wheel1 = quantize(deltas.y)
         let wheel2 = quantize(deltas.x)
@@ -45,7 +51,7 @@ public final class DiagnosticEventPoster {
         event.setIntegerValueField(.scrollWheelEventScrollPhase, value: phases.scroll)
         event.setIntegerValueField(.scrollWheelEventMomentumPhase, value: phases.momentum)
         event.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
-        event.timestamp = CGEventTimestamp(max(command.timestamp, 0) * 1_000_000_000)
+        event.timestamp = CGEventTimestamp(timestamp.nanosecondsSinceStartup)
         return event
     }
 
@@ -81,11 +87,17 @@ public final class DiagnosticEventPoster {
         let events = [
             CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
             CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
-        ].compactMap { $0 }
-
-        for event in events {
+        ].compactMap { event -> CGEvent? in
+            guard let event else {
+                return nil
+            }
             setGeneratedMarker(on: event)
             event.flags = flags
+            event.timestamp = CGEventTimestamp(MonotonicEventClock.nowTimestampNanoseconds)
+            return event
+        }
+
+        for event in events {
             event.post(tap: .cghidEventTap)
         }
 

@@ -26,7 +26,7 @@ struct GenerateScrollCommand {
         guard steps > 0 else {
             throw ToolError.invalidValue("--steps", String(steps))
         }
-        guard interval > 0 else {
+        guard interval.isFinite, interval > 0 else {
             throw ToolError.invalidValue("--interval", String(interval))
         }
         guard momentumSteps >= 0 else {
@@ -39,6 +39,24 @@ struct GenerateScrollCommand {
             throw ToolError.invalidValue("--momentum-scale", String(momentumScale))
         }
 
+        let additionalCommandCount: Int
+        if momentumSteps > 0, momentumScale > 0 {
+            let (count, overflowed) = momentumSteps.addingReportingOverflow(1)
+            guard !overflowed else {
+                throw ToolError.invalidValue("--momentum-steps", "イベント数が上限を超えます。")
+            }
+            additionalCommandCount = count
+        } else {
+            additionalCommandCount = 0
+        }
+        let (commandCount, commandCountOverflowed) = steps.addingReportingOverflow(additionalCommandCount)
+        guard !commandCountOverflowed else {
+            throw ToolError.invalidValue("--momentum-steps", "イベント数が上限を超えます。")
+        }
+        let now = MonotonicEventClock.nowSeconds
+        let startTime = isDryRun
+            ? max(0, now - Double(max(commandCount - 1, 0)) * interval)
+            : now
         let commands = ScrollGenerationPlanner.makeCommands(
             deltaX: deltaX,
             deltaY: deltaY,
@@ -48,12 +66,20 @@ struct GenerateScrollCommand {
             momentumSteps: momentumSteps,
             momentumDecay: momentumDecay,
             momentumScale: momentumScale,
-            startTime: Date().timeIntervalSince1970
+            startTime: startTime
         )
 
         if isDryRun {
+            guard commands.allSatisfy({
+                MonotonicEventClock.timestamp(fromSecondsSinceStartup: $0.timestamp) != nil
+            }) else {
+                throw ToolError.invalidValue("timestamp", "現在boot内の起動後時刻へ変換できません。")
+            }
+        }
+
+        if isDryRun {
             if outputLogJSON {
-                printInputLog(commands, mode: mode)
+                try printInputLog(commands, mode: mode)
             } else {
                 printPlan(commands, mode: mode)
             }
@@ -67,7 +93,10 @@ struct GenerateScrollCommand {
         try AccessibilityPermission.ensurePrompted()
         let poster = DiagnosticEventPoster()
         for (index, command) in commands.enumerated() {
-            poster.postScroll(command: command, mode: mode)
+            let result = poster.postScroll(command: command, mode: mode)
+            guard result.failedEventCreationCount == 0, result.generatedEventCount == 1 else {
+                throw ToolError.invalidValue("CGEvent timestamp", "現在boot内の起動後時刻ではありません。")
+            }
             if index < commands.count - 1 {
                 Thread.sleep(forTimeInterval: interval)
             }
@@ -170,15 +199,20 @@ struct GenerateScrollCommand {
         }
     }
 
-    private func printInputLog(_ commands: [GestureCommand], mode: ScrollPostMode) {
+    private func printInputLog(_ commands: [GestureCommand], mode: ScrollPostMode) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
 
         for command in commands {
+            guard let timestamp = MonotonicEventClock.timestamp(
+                fromSecondsSinceStartup: command.timestamp
+            ) else {
+                throw ToolError.invalidValue("timestamp", "現在boot内の起動後時刻ではありません。")
+            }
             let posted = mode.deltas(for: command)
             let phases = CGEventUtilities.phaseValues(for: command)
             let record = InputLogRecord(
-                timestamp: UInt64(max(command.timestamp, 0) * 1_000_000_000),
+                timestamp: timestamp.nanosecondsSinceStartup,
                 typeName: "scrollWheel",
                 typeRaw: Int(CGEventType.scrollWheel.rawValue),
                 generatedByNapeGesture: true,
