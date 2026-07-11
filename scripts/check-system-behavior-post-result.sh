@@ -47,6 +47,19 @@ let creationFailureWithoutGeneratedEvents = SystemBehaviorPostResultSnapshot(
     generatedEventCount: 0,
     failedEventCreationCount: 2
 ).status
+let partialSequence = SystemBehaviorPostResultSnapshot.combined([
+    SystemBehaviorPostResultSnapshot(generatedEventCount: 1, failedEventCreationCount: 0),
+    SystemBehaviorPostResultSnapshot(generatedEventCount: 0, failedEventCreationCount: 0),
+    SystemBehaviorPostResultSnapshot(generatedEventCount: 2, failedEventCreationCount: 0),
+])
+let allNoChangeSequence = SystemBehaviorPostResultSnapshot.combined([
+    SystemBehaviorPostResultSnapshot(generatedEventCount: 0, failedEventCreationCount: 0),
+    SystemBehaviorPostResultSnapshot(generatedEventCount: 0, failedEventCreationCount: 0),
+])
+let sequenceWithCreationFailure = SystemBehaviorPostResultSnapshot.combined([
+    SystemBehaviorPostResultSnapshot(generatedEventCount: 1, failedEventCreationCount: 0),
+    SystemBehaviorPostResultSnapshot(generatedEventCount: 0, failedEventCreationCount: 2),
+])
 
 expect(success == .success, "生成成功を成功状態にする")
 expect(success.failureName == nil, "生成成功にエラー名を付けない")
@@ -77,6 +90,15 @@ expect(
     "生成0件の説明にtimestampを含めない"
 )
 
+expect(partialSequence.generatedEventCount == 3, "系列の生成イベント数を集約する")
+expect(partialSequence.failedEventCreationCount == 0, "成功系列に作成失敗を混入させない")
+expect(partialSequence.status == .success, "途中noChangeでも配送済み系列を成功にする")
+expect(allNoChangeSequence.status == .noGeneratedEvents, "全step noChangeの系列は失敗にする")
+expect(
+    sequenceWithCreationFailure.status == .eventCreationFailure(count: 2),
+    "系列内のCGEvent作成失敗を成功で覆い隠さない"
+)
+
 if failureCount != 0 {
     exit(1)
 }
@@ -96,4 +118,4 @@ if ! "$test_binary"; then
   exit 1
 fi
 
-printf '%s\n' "成功: system-test 投稿結果の生成成功・生成失敗・生成0件契約"
+printf '%s\n' "成功: system-test 投稿結果の単発・連続配送契約"

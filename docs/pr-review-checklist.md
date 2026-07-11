@@ -79,7 +79,7 @@
 - `generate-scroll` の value option は値欠落を拒否し、未知 option、重複 option、余分な positional argument の expected failure を CI / completion で確認している
 - `system-test run --dry-run --log-json` で生成予定イベントを保存し、`systemTestScenario` / `sequenceIndex` つきで `analyze-log --json --assert-system-scenario <name>` によるシナリオ別機械判定を通している
 - `system-test run` は256 step / 系列30秒上限、派生値と全 timestamp の投稿前検証、末尾 sleep なし、JSON Lines 全件 encode 後の原子出力を回帰検査している
-- `system-test run` の生成0件をtimestamp不正と誤報せず、CGEvent作成失敗、配送成功、配送不能または変化なしを別状態としてCI / completionで検査している
+- `system-test run` の生成0件をtimestamp不正と誤報せず、CGEvent作成失敗、配送成功、配送不能または変化なしを別状態としてCI / completionで検査している。連続scrollは途中`noChange`で打ち切らず、系列全体の配送数を集約し、全step 0件だけを失敗にする
 - `generate-scroll` / `system-test` の dry-run と取得直後の実投稿 CGEvent log に `analyze-log --assert-current-uptime` を通し、epoch fixture は expected failure になっている
 - `EventPoster` と system-test の全 CGEvent 種別が投稿直前に現在 uptime 近傍の timestamp を設定し、範囲外時刻を clamp せず失敗させる
 - `InputLogRecord.timestamp` を値域で秒 / ナノ秒へ分岐せず常にナノ秒として扱い、shortcutやsystem-testのイベント列は同一referenceでの時刻検証と全件生成後に全件または0件で投稿する

@@ -30,6 +30,17 @@ struct SystemBehaviorPostResultSnapshot: Equatable {
     var generatedEventCount: Int
     var failedEventCreationCount: Int
 
+    static func combined(_ snapshots: [Self]) -> Self {
+        snapshots.reduce(
+            Self(generatedEventCount: 0, failedEventCreationCount: 0)
+        ) { result, snapshot in
+            Self(
+                generatedEventCount: result.generatedEventCount + snapshot.generatedEventCount,
+                failedEventCreationCount: result.failedEventCreationCount + snapshot.failedEventCreationCount
+            )
+        }
+    }
+
     var status: SystemBehaviorPostResultStatus {
         if failedEventCreationCount > 0 {
             return .eventCreationFailure(count: failedEventCreationCount)

@@ -245,18 +245,32 @@ struct SystemBehaviorTestCommand {
         mode: ScrollPostMode,
         interval: TimeInterval
     ) throws {
+        var results: [SystemBehaviorPostResultSnapshot] = []
+        results.reserveCapacity(commands.count)
+
         for (index, command) in commands.enumerated() {
-            try requireSuccessfulPost(
+            let result = SystemBehaviorPostResultSnapshot(
                 poster.postScroll(command: command, mode: mode, axDelivery: .synchronous)
             )
+            if result.failedEventCreationCount > 0 {
+                try requireSuccessfulPost(result)
+            }
+            results.append(result)
             if index < commands.count - 1 {
                 Thread.sleep(forTimeInterval: interval)
             }
         }
+
+        // 端到達や一時的な noChange は系列内で起こり得る。系列全体で1件も配送できない場合だけ失敗する。
+        try requireSuccessfulPost(.combined(results))
     }
 
     private func requireSuccessfulPost(_ result: EventPostResult) throws {
-        let status = SystemBehaviorPostResultSnapshot(result).status
+        try requireSuccessfulPost(SystemBehaviorPostResultSnapshot(result))
+    }
+
+    private func requireSuccessfulPost(_ result: SystemBehaviorPostResultSnapshot) throws {
+        let status = result.status
         guard let failureName = status.failureName,
               let failureDescription = status.failureDescription
         else {
