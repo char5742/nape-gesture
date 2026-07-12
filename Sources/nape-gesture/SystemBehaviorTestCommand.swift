@@ -428,9 +428,11 @@ struct SystemBehaviorTestCommand {
             guard command.kind != .momentum, command.phase != .momentum else {
                 try failAfterClosingSession("input列へmomentum commandを混在できません。")
             }
+            var postingCommand = command
+            postingCommand.timestamp = MonotonicEventClock.nowSeconds
             let post = coordinator.post(
-                command: command,
-                continuation: command.phase == .ended ? .momentum : nil
+                command: postingCommand,
+                continuation: postingCommand.phase == .ended ? .momentum : nil
             )
             guard post.action == action,
                   post.result.failure == nil,

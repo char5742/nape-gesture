@@ -98,7 +98,7 @@ product output testsは、縦横delta、type 22 / 29順序、began / changed / e
 
 core testsとprovenance finalizer testsは、system-wide投稿後のcaptureでWindowServer解決済みraw field 39 / 40が非0でも受理し、trace側の`targetPID`、destination PID、AX、shortcut metadata、生成marker欠落、log / trace不一致を拒否する。
 
-runtime evidenceでは、`trackpad-event-log --evidence-kind generatedProduct --only-generated`、`system-test run --scenario vertical-scroll|horizontal-scroll --product-trace-out`、provenance finalizer、`analyze-trackpad-event-log --contract`を一続きに実行する。System Behavior Testも製品runtimeと同じsession coordinatorを通し、途中失敗時はtraceを書き出さず、active sessionのterminal cancellationを再試行する。Safari、Finder、Web content、nested scroll targetで同じbinaryとsystem-wide系列を使い、前面配送、phase完結、stuckなしを別々に保存する。
+runtime evidenceでは、`trackpad-event-log --evidence-kind generatedProduct --only-generated`、`system-test run --scenario vertical-scroll|horizontal-scroll --product-trace-out`、provenance finalizer、`analyze-trackpad-event-log --contract`を一続きに実行する。System Behavior Testも製品runtimeと同じsession coordinatorを通し、各input commandのtimestampを投稿直前のmonotonic時刻へ更新する。事前生成したplan時刻へ`Thread.sleep`の累積遅延が加わり、WindowServerが古いtimestampを正規化してtraceとcaptureが分離することを防ぐ。途中失敗時はtraceを書き出さず、active sessionのterminal cancellationを再試行する。Safari、Finder、Web content、nested scroll targetで同じbinaryとsystem-wide系列を使い、前面配送、phase完結、stuckなしを別々に保存する。
 
 ## 限界
 
