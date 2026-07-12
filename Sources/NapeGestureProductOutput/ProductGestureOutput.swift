@@ -203,7 +203,7 @@ public struct ProductGestureOutputCapability: Equatable, Sendable {
         return ProductGestureOutputCapability(
             status: .supported,
             contract: contract,
-            supportedFamilies: [.scroll],
+            supportedFamilies: Set(TrackpadOutputEventFamily.allCases),
             reason: nil
         )
     }

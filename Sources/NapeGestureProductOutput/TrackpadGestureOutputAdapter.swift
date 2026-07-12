@@ -418,6 +418,7 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
 
     private let model: TrackpadScrollOutputModel?
     private let builder: TrackpadScrollCGEventBuilder?
+    private let gestureBuilder: TrackpadGestureCandidateCGEventBuilder?
     private let postEvent: ProductEventPostOperation
     private let postedEventObserver: ProductPostedEventObserver?
     private let traceContext: ProductGestureOutputTraceContext?
@@ -469,6 +470,7 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
             )
             model = nil
             builder = nil
+            gestureBuilder = nil
             return
         }
 
@@ -504,6 +506,7 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
             }
             model = nil
             builder = nil
+            gestureBuilder = nil
             return
         }
 
@@ -514,13 +517,22 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
             scrollEventFactory: scrollEventFactory,
             baseEventFactory: baseEventFactory
         )
+        gestureBuilder = TrackpadGestureCandidateCGEventBuilder(
+            contract: document.fixture,
+            baseEventFactory: baseEventFactory
+        )
     }
 
     public func supports(_ family: TrackpadOutputEventFamily) -> Bool {
-        capability.isSupported
-            && capability.supportedFamilies.contains(family)
-            && model != nil
-            && builder != nil
+        guard capability.isSupported, capability.supportedFamilies.contains(family) else {
+            return false
+        }
+        switch family {
+        case .scroll:
+            return model != nil && builder != nil
+        case .dockSwipe, .navigationSwipe, .magnification:
+            return gestureBuilder != nil
+        }
     }
 
     public func post(_ event: TrackpadOutputSessionEvent) -> ProductGestureOutputResult {
@@ -567,11 +579,17 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
     private func postValidated(
         _ event: TrackpadOutputSessionEvent
     ) -> ProductGestureOutputResult {
-        guard supports(event.family), let model, let builder else {
+        guard supports(event.family) else {
             return .rejected(.unsupported)
         }
         guard postedEventObserver == nil || traceContext != nil else {
             return eventCreationFailure()
+        }
+        if event.family != .scroll {
+            return postCandidateGesture(event)
+        }
+        guard let model, let builder else {
+            return .rejected(.unsupported)
         }
 
         // 予約済みpostIndexと実投稿順を一致させるため、部分投稿の解消までは
@@ -616,6 +634,81 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
             rollbackRecord: existingRecord,
             model: model,
             builder: builder
+        )
+    }
+
+    private func postCandidateGesture(
+        _ event: TrackpadOutputSessionEvent
+    ) -> ProductGestureOutputResult {
+        guard let gestureBuilder,
+              let specification = TrackpadGestureCandidatePreparedEvent(event),
+              let preparedEvent = gestureBuilder.makeEvent(from: specification)
+        else {
+            return eventCreationFailure()
+        }
+
+        let existing = sessions[event.sessionID]
+        var machine: TrackpadOutputSessionMachine
+        if let existing {
+            guard existing.inFlight == nil else {
+                return .rejected(.invalidSession)
+            }
+            machine = existing.machine
+        } else if case let .input(frame) = event, frame.phase == .began {
+            machine = TrackpadOutputSessionMachine(
+                sessionID: event.sessionID,
+                family: event.family
+            )
+        } else {
+            return .rejected(.invalidSession)
+        }
+        do {
+            try machine.accept(event)
+        } catch {
+            return .rejected(.invalidSession)
+        }
+
+        let processSerialNumber = preparedEvent.getIntegerValueField(rawField(39))
+        let unixProcessID = preparedEvent.getIntegerValueField(rawField(40))
+        guard processSerialNumber == 0, unixProcessID == 0 else {
+            return eventCreationFailure()
+        }
+        let nextIndex = nextPostIndex.addingReportingOverflow(1)
+        guard !nextIndex.overflow else {
+            return .rejected(.eventPostFailed)
+        }
+        let trace: ProductGestureOutputPostedEventTrace?
+        if let traceContext, postedEventObserver != nil {
+            trace = ProductGestureOutputPostedEventTrace(
+                postIndex: nextPostIndex,
+                sessionID: event.sessionID,
+                family: event.family,
+                eventTimestamp: UInt64(preparedEvent.timestamp),
+                eventTypeRaw: Int(preparedEvent.type.rawValue),
+                delivery: .systemWide,
+                eventKind: .gesture,
+                traceContext: traceContext,
+                prePostTargetProcessSerialNumber: processSerialNumber,
+                prePostTargetUnixProcessID: unixProcessID
+            )
+        } else {
+            trace = nil
+        }
+        guard postEvent(preparedEvent) else {
+            return .rejected(.eventPostFailed)
+        }
+        nextPostIndex = nextIndex.partialValue
+        if case .terminal = machine.state {
+            sessions.removeValue(forKey: event.sessionID)
+        } else {
+            sessions[event.sessionID] = SessionRecord(machine: machine, inFlight: nil)
+        }
+        if let trace {
+            postedEventObserver?(trace)
+        }
+        return ProductGestureOutputResult(
+            generatedEventCount: 1,
+            failedEventCreationCount: 0
         )
     }
 

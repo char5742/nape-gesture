@@ -46,6 +46,7 @@
 | [ADR-0042](0042-versioned-scroll-momentum-contract-comparison.md) | 25F80 scroll / momentum契約を独立fixtureで比較する | version fixture、lifecycle、terminal、scroll companion、CLI差分report |
 | [ADR-0043](0043-trackpad-scroll-product-output.md) | 25F80 trackpad scrollを製品出力として構成する | 軸別odd quadratic、967 pair、type 22 / 29、system-wide、provenance、field 39 / 40 |
 | [ADR-0044](0044-atomic-app-bundle-installation.md) | 検証済みapp bundleを原子的に導入する | bundle-app、renameatx_np、fingerprint、既存bundle保持、strict CLI |
+| [ADR-0046](0046-trial-output-for-remaining-trackpad-families.md) | 残るtrackpad familyを25F80試用出力として有効化する | DockSwipe、NavigationSwipe、magnification、試用、25F80 |
 
 ## 置換済み
 

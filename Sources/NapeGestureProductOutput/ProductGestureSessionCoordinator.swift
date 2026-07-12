@@ -262,7 +262,12 @@ public final class ProductGestureSessionCoordinator {
                 captureOrder: active.nextCaptureOrder,
                 timestamp: timestamp,
                 phase: inputPhase,
-                continuation: inputPhase == .ended ? continuation : nil,
+                continuation: inputPhase == .ended
+                    ? (family == .scroll ? continuation : .complete)
+                    : nil,
+                terminalDecision: family == .scroll
+                    ? nil
+                    : (inputPhase == .cancelled ? .cancel : (inputPhase == .ended ? .commit : nil)),
                 payload: payload
             )
         )
@@ -352,8 +357,62 @@ public final class ProductGestureSessionCoordinator {
             let delta = useX ? command.deltaX : command.deltaY
             let velocity = useX ? command.velocityX : command.velocityY
             return .scroll(deltaX: delta, deltaY: 0, velocityX: velocity, velocityY: 0)
-        default:
+        case .missionControl:
+            return .dockSwipe(
+                axis: .vertical,
+                progress: normalizedProgress(-abs(command.deltaY)),
+                velocity: normalizedVelocity(-abs(command.velocityY))
+            )
+        case .spaceLeft:
+            return .dockSwipe(
+                axis: .horizontal,
+                progress: normalizedProgress(abs(command.deltaX)),
+                velocity: normalizedVelocity(abs(command.velocityX))
+            )
+        case .spaceRight:
+            return .dockSwipe(
+                axis: .horizontal,
+                progress: normalizedProgress(-abs(command.deltaX)),
+                velocity: normalizedVelocity(-abs(command.velocityX))
+            )
+        case .pageBack:
+            return .navigationSwipe(
+                direction: .right,
+                progress: normalizedProgress(abs(command.deltaX)),
+                velocity: normalizedVelocity(abs(command.velocityX))
+            )
+        case .pageForward:
+            return .navigationSwipe(
+                direction: .left,
+                progress: normalizedProgress(-abs(command.deltaX)),
+                velocity: normalizedVelocity(-abs(command.velocityX))
+            )
+        case .zoomIn:
+            return .magnification(
+                progress: normalizedProgress(abs(command.deltaY)),
+                scaleDelta: normalizedScale(abs(command.deltaY)),
+                velocity: normalizedVelocity(abs(command.velocityY))
+            )
+        case .zoomOut:
+            return .magnification(
+                progress: normalizedProgress(-abs(command.deltaY)),
+                scaleDelta: normalizedScale(-abs(command.deltaY)),
+                velocity: normalizedVelocity(-abs(command.velocityY))
+            )
+        case .none:
             return nil
         }
+    }
+
+    private static func normalizedProgress(_ value: Double) -> Double {
+        min(max(value / 300, -1), 1)
+    }
+
+    private static func normalizedVelocity(_ value: Double) -> Double {
+        min(max(value / 1_000, -4), 4)
+    }
+
+    private static func normalizedScale(_ value: Double) -> Double {
+        min(max(value / 400, -0.2), 0.2)
     }
 }
