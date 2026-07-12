@@ -1,34 +1,123 @@
 # リリース手順
 
-この文書は `.app` バンドル作成、署名、公証、配布前の権限付与確認をまとめる。Apple Developer ID と App Store Connect 認証情報がない環境では、公開配布用の署名と公証は実行しない。
+この文書は、固定されたbutton-to-finger-count製品モデルの受入、`.app`作成、署名、公証、配布判定をまとめる。
+package作成や公証が成功しても、event量保存、finger count、session terminal、passthrough、実機証跡、fail closedの必須ゲートが未達ならリリースしない。
+製品モデルの設計判断は[ADR-0049](adr/0049-fixed-button-to-finger-count-trackpad-input.md)を正とする。
 
-## Trackpad event compatibility
+## 現在のリリース状態
 
-[ADR-0036](adr/0036-emulate-trackpad-driver-output-events.md)により、製品出力はtrackpad driver上位出力相当のevent contractをsystem-wide streamへ送る。DriverKit System Extension、`.dext`、DriverKit entitlementは使わない。
-[ADR-0048](adr/0048-separate-input-mode-event-family-os-result-and-evidence.md)により、release gateでは入力mode、低レベルevent family、OS/App結果、証跡状態を分離する。
+改訂基準commit`55eb991`は、buttonごとの旧3 modeと`scroll` / `DockSwipe` / `magnification`の3経路を製品routingとして保持している。
+button 3 / 4 / 5を2 / 3 / 4本指へ固定する現行製品モデルと、その実機証跡がないため、現時点は**リリース不可**である。
 
-通常SDKに公開されていないevent contractをcompatibility adapterで扱うため、配布はDeveloper ID Application署名と公証による直接配布を正とし、Mac App Store提出を前提にしない。release buildでは次を検査する。
+旧mode test、`supportedFamilies` / `confirmedFamilies` / `trialFamilies`、個別familyの生成成功、旧runtime evidence、画面結果、公証のいずれもこの判定を上書きしない。
 
-- private contractがcompatibility adapter外へ漏れていない
-- binaryのobject、linked library、同梱resourceがbuild入力と依存通知の一覧に一致する
-- runtime / doctorがOS build、contract schema、fixture ID / SHA-256、supported / unsupported / contractMismatchと、`supportedFamilies` / `confirmedFamilies` / `trialFamilies`を表示する
-- 対応対象のmacOS buildで製品runtimeの`scroll`、`DockSwipe`、`magnification` 3経路のcontract smokeが成功する
-- `NavigationSwipe`候補をsupported capabilityまたは独立製品機能に数えず、candidate fixture / analyzerの調査結果として分離する
-- 縦横scroll、application navigation、Space切替、Mission Control、App Exposé、ZoomのOS/App結果を、署名・contract smokeとは別の受入証跡で判定する
-- 未知のOS version、symbol不在、fixture不一致ではevent投稿前にfail closedになる
-- AX、対象PID配送、application別分岐、keyboard shortcut fallbackを含まない
+## 製品モデル
 
-公証成功はevent contract互換性の証明ではない。署名・公証・Gatekeeper評価と、OS version別runtime証跡を別々のrelease gateとして保存する。
+release binaryは次だけを実装する。
 
-## ローカルで再現できる検証
+| mouse入力 | trackpad入力 |
+| --- | --- |
+| button 3押下中の連続event量 | 2本指 |
+| button 4押下中の連続event量 | 3本指 |
+| button 5押下中の連続event量 | 4本指 |
+| button 3 / 4 / 5未押下 | 通常mouseをそのまま通す |
 
-release build から `.app` を作成し、バンドル構造と同梱文書を検証する。
+結果別mode、方向別action、application別設定を含めない。
+`scroll`、`DockSwipe`、`NavigationSwipe`、`magnification`は低レベルcontractの観測語彙であり、ユーザーmode、独立製品機能、release capabilityではない。
+OS/Appが入力結果を解釈し、製品runtimeは結果に応じてAX、対象PID、frontmost application、keyboard shortcut、別familyへ切り替えない。
+同じsource event列を3 buttonへ与えた場合、同じ正規化入力の量、順序、時間間隔を使う。finger count固有の物理encoding差だけを登録contractで許容し、結果別またはfinger count別の変換係数は持たない。
 
-```sh
+## 必須release gate
+
+| gate | release条件 |
+| --- | --- |
+| event量保存 | source eventが欠落・重複・並べ替えなく1回だけ変換され、変換前量がbit一致し、trackpad量が単一versioned単位変換contractの許容差内。同一fixtureでは正規化入力の量、順序、時間間隔を変えない |
+| finger count | button 3 / 4 / 5が全frameとterminalで2 / 3 / 4本指に固定され、進行中の追加buttonでも切り替わらない |
+| session terminal | 正常終了と全異常終了がterminal 1件へ収束し、stuckとterminal後出力が0件 |
+| passthrough | 未押下、解放後、異常終了後の通常mouseが抑制・変更・再生成されない |
+| 実機証跡 | 純正trackpad 2 / 3 / 4本指とNape Pro button 3 / 4 / 5を同じOS build、schema、manifestで比較済み |
+| fail closed | unsupported条件で新規抑制・生成を開始せず、誤出力0件で安全停止し、fallbackを使わない |
+
+6 gateは全て現行release binaryのrepo SHA、binary SHA-256、OS buildへ結び付ける。
+1つでも未達、古いbinary、異なるrunの継ぎ合わせ、fixture不一致、未解決failureがあればreleaseを止める。
+
+## 低レベルcontract gate
+
+通常SDK非公開のevent contractは最小のcompatibility adapterへ隔離する。
+対応対象の各macOS buildについて次を検査する。
+
+- fixture schema、ID、SHA-256、contract ID、OS version / build、実体bytesが登録値と完全一致する
+- 2 / 3 / 4 finger countの表現を純正captureとgenerated captureで比較する
+- source event量、変換model入力、generated frameの対応を検証する
+- phase、terminal、補助event、順序、timestamp、session IDを検証する
+- source、generated capture、direct post trace、manifest、binaryのprovenanceが一致する
+- system-wide streamだけを使用する
+- unknown build、symbol不在、fixture不一致で投稿前にfail closedになる
+
+family名はreportの観測列に限る。familyごとの`supported`、`confirmed`、`trial`をrelease gateにせず、特定familyの成功を特定buttonの完成へ読み替えない。
+
+## OS/App結果gate
+
+OS/App結果は低レベルcontractと別report、別判定にする。
+
+- App名 / version、macOS build、gesture設定を保存する
+- button、finger count、event量、方向、速度、session IDを保存する
+- 対応する低レベルcontract reportを参照する
+- AppKit target logまたはsystem resultと画面観察を保存する
+- 結果の成否にかかわらずterminalとstuckなしを確認する
+- 実測していないApp、OS build、結果をrelease noteで主張しない
+
+縦横scroll、application navigation、Space切替、Mission Control、App Exposé、Zoomなどは観測結果である。
+低レベルcontract合格と結果不成立を同時に記録できる。画面結果が成立してもcontract不合格ならrelease gateは不合格である。
+
+## ローカル検証
+
+release候補と同じsourceからbuildし、全testとboundary guardを実行する。
+
+~~~sh
 sh scripts/check-provenance.sh
 sh scripts/test-check-provenance.sh
+ruby scripts/check-product-model-documentation.rb
+ruby scripts/check-finger-count-product-model.rb
 sh scripts/check-product-output-boundary.sh
+swift build --scratch-path .build
+.build/debug/nape-gesture-core-tests
+.build/debug/nape-gesture-product-output-tests
 swift build -c release --scratch-path .build
+~~~
+
+基準commitでは`check-finger-count-product-model.rb`が非ゼロ終了するためrelease gateを通らない。core / product testも旧3 mode / 3 family契約を含むため、そのまま成功しても現行release gateの合格にはならない。
+test、fixture、doctor、performance schema、evidence collectorが固定製品モデルへ更新され、旧product routingを拒否することを確認する。
+
+## release証跡
+
+release候補ごとに次を1つのrootへ保存する。
+
+~~~text
+artifacts/release/YYYY-MM-DD/<repo-sha>/
+~~~
+
+最低限の内容:
+
+- repo SHA、binary SHA-256、macOS version / build
+- debug / release buildと全testの終了コード
+- product / diagnostic boundary guard
+- event量、finger count、session、passthrough、fail-closed report
+- 純正trackpadとNape Proのfixture / manifest / analyzer report
+- 低レベルcontract report
+- OS/App結果report
+- runtime identity、TCC、device診断
+- performance report
+- bundle identity、同梱文書、署名、公証、Gatekeeper report
+- 既知の未対応OS build、未検証App、未成立結果
+
+異なるrepo SHAやbinaryの証跡をrelease packageへ混ぜない。
+
+## app bundle作成
+
+release buildから`.app`を作成し、構造と同梱文書を検証する。
+
+~~~sh
 .build/release/nape-gesture bundle-app --out .build/NapeGesture.app --replace
 .build/release/nape-gesture verify-bundle .build/NapeGesture.app
 /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' .build/NapeGesture.app/Contents/Info.plist | grep -Fx 'dev.char5742.nape-gesture'
@@ -38,74 +127,74 @@ swift build -c release --scratch-path .build
 /usr/libexec/PlistBuddy -c 'Print :LSUIElement' .build/NapeGesture.app/Contents/Info.plist | grep -Fx 'false'
 cmp LICENSE .build/NapeGesture.app/Contents/Resources/LICENSE.txt
 cmp THIRD_PARTY_NOTICES.md .build/NapeGesture.app/Contents/Resources/THIRD_PARTY_NOTICES.md
-```
+~~~
 
-`verify-bundle` は次を確認する。
+`bundle-app --replace`は同一filesystem上の一時bundleを完成・検証・`fsync`してから原子的に置換する。
+destinationがsymlink、Nape Gesture以外のdirectory、構築中にidentityまたはfingerprintが変化した場合は置換しない。
+構築または検証失敗時は既存bundleを保持し、失敗した新bundleをrelease候補にしない。
 
-- `Contents/Info.plist`
-- `LSUIElement=false`
-- `Contents/MacOS/nape-gesture`
-- `Contents/Resources/LICENSE.txt`
-- `Contents/Resources/THIRD_PARTY_NOTICES.md`
-- `codesign --verify --deep --strict --verbose=2` による署名状態
+通常の`verify-bundle`は未署名でも構造検証を続ける。公開配布gateでは`--require-signature`を付ける。
 
-`bundle-app --replace`は同一filesystem上の一時`.app`を完成・検証・`fsync`してから原子的に置換し、構築または検証失敗時は既存bundleを保持する。destination自体がsymlink、Nape Gesture以外のdirectory、構築中にidentityまたはfingerprintが変わった場合は置換しない。置換後の競合では安全でない自動rollbackを行わず、旧bundleのcleanupはdescriptor相対で実行する。詳細は[ADR-0044](adr/0044-atomic-app-bundle-installation.md)を正とする。
-通常の `verify-bundle` は署名が未完了でも構造検証を続行し、署名状態を表示する。公開配布前のゲートでは `--require-signature` を付け、署名検証失敗をエラーにする。
-`sh scripts/check-provenance.sh`はREADME / AGENTS / requirements / PR template / PR review checklistに一般化したrepo-local由来方針と識別子境界が残っていることを検査する。任意の外部固有名を自動判定するものではないため、実装上必要な実依存のimport名、module / API名、設定識別子と法定通知は許容し、README、実装、コメント、テスト名、ユーザー向け文書を含むtracked files全体から不要な外部固有名だけをrelease reviewで除外する。`sh scripts/check-product-output-boundary.sh`はproduct / diagnostic output target、許可import、fail-closed入口を検査する。前者は法的な完全証明ではなく、後者もruntime contract成立の代替ではない。
-`PlistBuddy` と `cmp` は、権限付与対象の identity と同梱文書の原本一致を機械的に固定する。
-`LSUIElement=false` は、`.app` が Dock に表示される通常 GUI アプリとして起動することを固定する。
+## 権限付き実機確認
 
-```sh
-.build/release/nape-gesture verify-bundle --require-signature .build/NapeGesture.app
-```
+配布する`.build/NapeGesture.app`へAccessibilityとInput Monitoringを付与し、同じbundle identityで確認する。
 
-## ローカル ad-hoc 署名
+~~~sh
+.build/NapeGesture.app/Contents/MacOS/nape-gesture doctor --probe-hid --json --assert-runtime-ready
+~~~
 
-Apple Developer ID 認証情報がない環境では、ローカル検証用に ad-hoc 署名を使える。
+終了コード0に加え、`runtimeIdentity`、bundle path、bundle ID、TCC permission target、対象device、OS build、contract fixtureがrelease manifestと一致することを確認する。
+standalone binaryのTCC状態を配布`.app`の代用にしない。
 
-```sh
+この実行主体で次を取得する。
+
+1. button 3 / 4 / 5のevent量、finger count、terminal。
+2. 未押下、正常解放後、異常終了後のpassthrough。
+3. kill switch、runtime stop、sleep、device切断、TCC喪失、unsupported contractのfail closed。
+4. 純正trackpad 2 / 3 / 4本指とのcontract比較。
+5. OS/App結果の独立report。
+6. 常駐CPU、tap-to-post、terminal遅延。
+
+## ローカルad-hoc署名
+
+Apple Developer ID認証情報がない環境では、ローカル整合性確認だけにad-hoc署名を使う。
+
+~~~sh
 codesign --force --deep --sign - .build/NapeGesture.app
 codesign --verify --deep --strict --verbose=2 .build/NapeGesture.app
 .build/release/nape-gesture verify-bundle --require-signature .build/NapeGesture.app
-```
+~~~
 
-ad-hoc 署名はローカルの署名整合性確認だけを目的にする。ad-hoc 署名では公証できず、公開配布の完了条件にはならない。
+ad-hoc署名は公証できず、公開配布の完了条件ではない。event contract、実機入力、OS/App結果の証明にもならない。
 
 ## 公開配布用の署名と公証
 
-公開配布では Developer ID Application 証明書で署名し、hardened runtime と timestamp を有効にする。証明書名は環境ごとに異なるため、`security find-identity -v -p codesigning` で確認した正式名を使う。
+公開配布ではDeveloper ID Application証明書で署名し、hardened runtimeとtimestampを有効にする。
 
-```sh
+~~~sh
 codesign --force --deep --options runtime --timestamp --sign "Developer ID Application: <Team Name> (<Team ID>)" .build/NapeGesture.app
 codesign --verify --deep --strict --verbose=2 .build/NapeGesture.app
 .build/release/nape-gesture verify-bundle --require-signature .build/NapeGesture.app
-```
-
-公証へ提出する成果物は zip または dmg にする。zip を使う場合の例は次のとおり。
-
-```sh
 ditto -c -k --keepParent .build/NapeGesture.app .build/NapeGesture.zip
 xcrun notarytool submit .build/NapeGesture.zip --keychain-profile <profile> --wait
 xcrun stapler staple .build/NapeGesture.app
 xcrun stapler validate .build/NapeGesture.app
 spctl --assess --type execute --verbose=4 .build/NapeGesture.app
-```
+~~~
 
-`xcrun notarytool submit --wait` は App Store Connect 認証情報または keychain profile が必要なため、このリポジトリの通常ローカル検証では実行しない。公証が成功したら stapler でチケットを `.app` へ添付し、`stapler validate` と `spctl --assess` の結果をリリース証跡に残す。
+公証、stapler、Gatekeeper評価は配布物の信頼性gateであり、低レベルcontract互換性やfinger countの証明ではない。
 
-## 配布前の権限付与確認
+## 最終判定
 
-配布前の動作確認では、権限付与対象を `.build/NapeGesture.app` に統一する。bundle ID は `dev.char5742.nape-gesture`。
+release ownerは次を全て確認する。
 
-システム設定の「プライバシーとセキュリティ」で、次の権限を `.build/NapeGesture.app` に付与する。
+- 6つの必須gateが現行release binaryで合格
+- low-level contractとOS/App結果が別々に判定済み
+- 性能基準がfinger count 2 / 3 / 4、passthrough、fail closedで合格
+- debug / release build、全test、boundary guardが成功
+- bundle、identity、同梱文書、Developer ID署名、公証、stapler、Gatekeeperが成功
+- README、completion、verification、performance、release noteの主張が一致
+- 未検証事項、未対応OS build、未成立OS/App結果を明記
+- 旧3 mode / 3 familyの完成主張を現在のreleaseへ含めていない
 
-- アクセシビリティ
-- 入力監視
-
-権限付与後に反映されない場合は、`NapeGesture.app` を終了して再起動する。確認には次を使う。
-
-```sh
-.build/NapeGesture.app/Contents/MacOS/nape-gesture doctor --probe-hid --json --assert-runtime-ready
-```
-
-終了コードが`0`であることに加え、JSONの`runtimeIdentity`に表示される実行ファイル、bundle path、bundle IDが、権限を付与した`.build/NapeGesture.app`と一致していることを確認する。standaloneの`.build/release/nape-gesture`を実行して配布`.app`のTCC状態を代用しない。
+1項目でも満たさない場合は`release blocked`とし、既知の問題として後回しにせず根本原因を修正して全証跡を取り直す。

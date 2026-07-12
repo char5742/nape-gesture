@@ -6,35 +6,79 @@
 
 - ユーザーに見える返答、通常コメント、doc comment、Issue / PR コメントは日本語で書く。ログなど英語が自然な出力はそのまま扱ってよい。
 - 問題が起きたら後回しにせず、根本原因から対応する。
-- テスト失敗、CI 失敗、検証不足を見過ごさない。完了扱いにする前に証跡を残す。
+- テスト失敗、CI 失敗、検証不足を見過ごさない。完了扱いにする前に再現可能な証跡を残す。
 - `chmod` は使わない。読み取り専用ファイルは編集しない。
 - Issue / PR コメント投稿、PR review、reply など GitHub 上の書き込みは、可能な限り `gh api` または GitHub app / MCP を使う。
+- 並行作業中は着手前と編集後に `git status` と対象差分を確認する。指定された所有範囲だけを編集し、他者の変更を取り消したり上書きしたりしない。
 
-## 独立モデル監査
+## 製品モデルの正本
 
+製品挙動については、この節、[README](README.md)、[ゴール要件](docs/requirements.md)、[ADR-0049](docs/adr/0049-fixed-button-to-finger-count-trackpad-input.md)が示す固定モデルを正本とする。実装、設定、テスト、ADR、検証文書をすべてこのモデルへ統一する。結果別modeやfamily別製品経路を正当化する誤ったADR、本文、図、リンクは現行treeから削除し、並存させない。
+
+| mouse入力 | 生成するtrackpad入力 |
+| --- | --- |
+| button 3押下中 | 2本指入力 |
+| button 4押下中 | 3本指入力 |
+| button 5押下中 | 4本指入力 |
+| button 3 / 4 / 5のいずれも未押下 | 通常mouse入力をそのまま通過 |
+
+- buttonとfinger countの対応は固定であり、ユーザー設定、既定値、application、移動方向、過去の設定値によって変えない。
+- 押下中の連続mouse event量を、対応するfinger countの連続trackpad入力量へ変換する。途中の方向転換を別action、別mode、別sessionとして再解釈しない。
+- 有効なsource sampleは欠落、重複、coalescing、並べ替えをせず、X/Y量、符号、timestampを個別に保持する。単一の計測済み単位変換以外に感度、加速度、dead zone、threshold、clampを適用しない。
+- button解放時は対応するtrackpad入力sessionを正しく終了し、通常mouse passthroughへ確実に戻す。
+- button未押下時の通常クリック、移動、ドラッグ、wheel、その他の通常mouse入力を、gesture変換のために変更、抑制、再配送しない。
+
+## レイヤー境界
+
+- ユーザーが選ぶ結果別modeは存在しない。button 3 / 4 / 5を結果名、機能名、event family名へ割り当てる設定を追加しない。
+- 上下左右などの方向別action、application別の有効・無効、感度、割り当て設定を製品surfaceへ追加しない。
+- `scroll`、`DockSwipe`、`NavigationSwipe`、`magnification`は、compatibility adapter、fixture、analyzer、runtime証跡で使う低レベルevent familyまたは観測語彙である。ユーザーmode、button割り当て、完成した結果機能として表示しない。
+- 実際のscroll、navigation、system gesture、拡大縮小などの結果は、連続trackpad入力を受け取ったmacOSまたは前面applicationが解釈する。Nape Gestureが結果を選ぶ、対象applicationへ命令する、特定結果を保証する設計にしない。
+- 製品配送にAX scrollbar、対象PIDへの直接投稿、keyboard shortcut代替、DriverKit virtual trackpadを使わない。
+- 診断専用の単純event投稿、AX、PID、shortcut経路が残る場合は、製品moduleと到達不能な境界で分離する。診断経路を製品fallback、runtime capability、完成証跡へ使わない。
+
+## 実装と移行
+
+- buttonごとの選択式mode、結果別action、方向別binding、application別設定が現行実装に残っている間は、製品モデル未達と扱う。
+- 固定finger-countモデルへの変更は、入力認識、session、出力、設定schema、設定UI、migration、状態表示、diagnostics、docs、testsを一貫して更新する。名称だけの変更や、廃止対象modeをfinger countへ読み替える互換処理では完了にしない。
+- 廃止対象の設定項目を削除する際は、結果別modeを新しい意味へ暗黙変換しない。固定対応を唯一のcanonical stateとして保存し、再起動後も廃止項目を復活させない。
+- 現行のADR、要件、README、検証文書、Issue、テスト名は固定button→finger countモデルだけを説明する。誤った設計の説明や参照が一つでも残る状態を文書移行完了にしない。
+- ユーザーが見る挙動、GUI、権限導線、検証手順、完成状態、配布手順を変える場合はREADMEを更新する。更新不要ならPR本文で理由を明記する。
+
+## 低レベルcontractと安全性
+
+- 通常SDKで公開されないevent contractは、最小のcompatibility adapterへ隔離する。
+- 未知のmacOS version / build、未登録fixture、schema不一致、contract ID不一致、SHA-256不一致、fixture実体不一致ではfail closedにする。入力抑制を始めてからfallbackへ切り替えない。
+- `supported`は、登録済みfixture ID、SHA-256、schema、contract ID、OS version / build、fixture実体、製品runtimeからの到達性がすべて一致するときだけ使う。
+- 低レベルeventを構築できること、dry-runが成功すること、画面が動くことだけでは、finger countの再現や製品完成の証拠にしない。
+- event tap、入力抑制、session終了、kill switch、通常入力復帰は一体で検証し、途中失敗でmouse操作を失わせない。
+
+## 完成判定
+
+- button 3 / 4 / 5から2 / 3 / 4本指入力への固定対応を、core test、product boundary test、設定UI test、migration testで固定する。
+- 押下開始、連続量、方向転換、button解放、cancel、停止、復帰を同一sessionのlifecycleとして検証する。
+- button未押下時とsession終了後の通常mouse passthroughを、イベント種別ごとのtarget logと実利用経路で検証する。
+- 製品sourceとbundleに結果別mode、方向別action、application別設定、AX / PID / shortcut配送がないことを機械検査する。
+- 純正trackpadの2 / 3 / 4本指物理capture、manifest、fixture、OS build、生成event、system-wide配送を対応付ける。
+- macOS / applicationの結果確認は低レベルcontractと分け、scenarioごとに記録する。
+- Nape Pro実機からの入力、TCC許可済み製品runtime、通常入力復帰までのend-to-end証跡が揃うまで完成としない。
+- Developer ID署名、公証、stapler、Gatekeeper評価が必要な配布状態は、その証跡が揃うまでリリース完了としない。
+- 現行実装が条件を満たさない場合、README、Issue、PR、status reportへ「未達」と残し、部分実装を完成済みと表現しない。
+
+## Computer Useとneed:human
+
+- 専用CLI、GitHub / browser / app plugin、スクリプトで完結する作業はそれらを優先する。
+- ローカルMacアプリの読み取り、クリック、入力、スクロール、ドラッグ、画面証跡取得が必要な場合はcomputer-useを使う。
+- `.app`起動、設定ウィンドウ、メニューバー、System Settings paneの表示確認はcomputer-useで前進させる。
+- TCC、アクセシビリティ、入力監視、VPN、OSセキュリティなどの設定変更直前には、具体的な操作内容とリスクを説明してユーザー確認を取る。
+- `need:human`は、computer-useでも代替できない物理trackpad操作、Nape Pro実機操作、本人認証、秘密情報入力、証明書操作などに限定する。レビュー待ちや判断待ちには使わない。
+- 画面証跡は、ログ、`doctor --json`、runtime evidence、fixture照合、CIの代替にしない。
+
+## 由来と独立監査
+
+- 第三者プロジェクト由来のコード、定数、状態遷移、係数をコピーしない。実装契約とパラメータはApple公式資料、Apple OSS、このリポジトリの純正trackpad / Nape Proログから再導出する。
+- 実装上必要な実依存の識別子と法定通知を除き、README、実装、コメント、テスト名、ユーザー向け文書へ不要な第三者プロジェクトの固有名、コンポーネント名、参照実装由来と読める表現を残さない。
 - Grok CLIによる独立監査、補助レビュー、UI / UX発散、文言確認、PR差分レビューは行わない。
 - Grokの実行結果を設計判断、Issue要件、PR review、完成判定、CI gate、runtime証跡へ使わない。
 - 設計、実装、レビュー、merge判断はメインスレッドが責任を持ち、並列化には通常のCodexサブエージェントだけを使う。
-- `artifacts/grok-review/`へ新しい監査証跡を追加しない。旧証跡が存在しても現在の判断根拠にはしない。
-- 詳細方針は[ADR-0035](docs/adr/0035-discontinue-grok-independent-audit.md)を正とする。
-
-## Computer Use
-
-- 専用 CLI、GitHub / browser / app plugin、スクリプトで完結する作業はそれらを優先する。
-- ローカル Mac アプリ UI の読み取り、クリック、入力、スクロール、ドラッグ、画面証跡取得が必要な場合は computer-use を積極的に使う。
-- `.app` 起動、設定ウィンドウ、メニューバー `NG`、System Settings pane の表示確認、スクリーンショット取得は computer-use で前進させる。
-- TCC、アクセシビリティ、入力監視、VPN、OS セキュリティなど local system settings の変更直前には、具体的な操作内容とリスクを説明してユーザー確認を取る。
-- computer-use で代替できる GUI 操作は `need:human` にしない。物理デバイス操作、ユーザー本人しか通せない認証、秘密情報入力など、エージェントが代替できない作業だけを `need:human` に残す。
-- computer-use の画面証跡は、ログ、`doctor --json`、runtime evidence、CI の代替にしない。詳細方針は [ADR-0030](docs/adr/0030-computer-use-gui-operation-evidence.md) を正とする。
-
-## Nape Gesture 固有制約
-
-- アプリごとの有効・無効、感度、割り当て設定は追加しない。特定ボタン未押下時は通常マウスとして振る舞う方針を維持する。
-- `need:human` は、computer-use と直前確認でも代替できない TCC 操作、純正トラックパッド操作、Nape Pro 実機操作、証明書操作など、人間が実作業しないと進められない項目だけに使う。レビュー待ちや判断待ちには使わない。
-- 第三者プロジェクト由来のコード、定数、状態遷移、係数をコピーしない。実装契約とパラメータはApple公式資料、Apple OSS、このリポジトリの純正trackpad / Nape Proログから再導出する。
-- 実装上必要な実依存の識別子と法定通知を除き、README、実装、コメント、テスト名、ユーザー向け文書へ不要な第三者プロジェクトの固有名、コンポーネント名、参照実装由来と読める表現を残さない。
-- 製品runtimeのgesture出力経路はtrackpad driver上位出力相当の`scroll`、`DockSwipe`、`magnification`に限定する。`NavigationSwipe`は2本指系列で観測された低レベル候補であり、独立したユーザー向けmode、製品機能、runtime capabilityとして扱わない。入力mode、低レベルevent family、macOS / applicationの結果、証跡状態は[ADR-0048](docs/adr/0048-separate-input-mode-event-family-os-result-and-evidence.md)に従って分離する。DriverKit virtual trackpad、AX scrollbar、対象PID配送、keyboard shortcutによるgesture代替は使わない。
-- 通常SDK非公開のevent contractは最小のcompatibility adapterへ隔離し、未知のmacOS versionやcontract不一致ではfail closedにする。詳細は[ADR-0036](docs/adr/0036-emulate-trackpad-driver-output-events.md)を正とする。
-- output contractの`supported`は登録済みfixture ID、SHA-256、schema、contract ID、OS version / build、fixture実体の完全一致でだけ生成する。未登録fixtureやhash不一致を文字列IDだけで通さない。
-- 製品gesture出力と旧単純scroll / shortcut /対象PID配送を含む診断出力はmodule境界で分離する。診断出力を製品fallbackやcompletion evidenceへ使わない。詳細は[ADR-0037](docs/adr/0037-separate-product-and-diagnostic-event-output.md)を正とする。
-- ユーザーが見る挙動、GUI、権限導線、検証手順、完成状態、配布手順を変える場合は README を更新する。更新不要なら PR 本文で理由を明記する。
+- `artifacts/grok-review/`へ新しい証跡を追加しない。旧証跡が存在しても現在の判断根拠にはしない。

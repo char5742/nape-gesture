@@ -1,5 +1,7 @@
 # 診断event単調時刻 local verification
 
+> 非規範証跡: この文書は診断eventのtimestampと投稿到達を記録したものであり、固定button / finger-count製品モデルの実装、低レベルcontract、OS / App受入、製品完成を証明しない。現在の採用条件は[証跡文書の扱い](README.md)を正とする。
+
 - 日付: 2026-07-11
 - 対象: `codex/diagnostic-monotonic-clock-v2`
 - 対象Issue: #102

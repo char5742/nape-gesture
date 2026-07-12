@@ -42,17 +42,6 @@ if [ -n "$gesture_action_matches" ]; then
   record_failure
 fi
 
-navigation_builder_matches=$(
-  grep -nEH 'eventTypeRaw[[:space:]]*=[[:space:]]*30|classifier[[:space:]]*=[[:space:]]*23|configureNavigationSwipe' \
-    Sources/NapeGestureProductOutput/*.swift 2>/dev/null || true
-)
-
-if [ -n "$navigation_builder_matches" ]; then
-  printf '%s\n' "禁止: NavigationSwipe候補を製品event builderへ再導入しないでください。" >&2
-  printf '%s\n' "$navigation_builder_matches" >&2
-  record_failure
-fi
-
 require_text() {
   file_path=$1
   required_text=$2
@@ -66,12 +55,26 @@ require_text() {
 }
 
 product_matches=$(
-  grep -nEH \
-    'keyboardEventSource|postToPid|CGEventPostToPid|CGEventPostToPSN|AXUIElement|forcedHorizontal|DiagnosticEvent|GenerateScrollCommand|SystemBehaviorTestCommand|kVK_[[:alnum:]_]+' \
-    Sources/NapeGestureProductOutput/*.swift \
-    Sources/nape-gesture/GestureOutputExecutor.swift \
-    Sources/nape-gesture/NapeGestureDaemon.swift \
-    Sources/nape-gesture/NapeGestureRuntime.swift 2>/dev/null || true
+  find Sources/NapeGestureProductOutput -type f -name '*.swift' -print |
+    while IFS= read -r file_path; do
+      grep -nEH \
+        'keyboardEventSource|postToPid|CGEventPostToPid|CGEventPostToPSN|AXUIElement|forcedHorizontal|DiagnosticEvent|GenerateScrollCommand|SystemBehaviorTestCommand|kVK_[[:alnum:]_]+' \
+        "$file_path" 2>/dev/null || true
+    done
+
+  for file_path in Sources/nape-gesture/*.swift; do
+    file_name=$(basename -- "$file_path")
+    if [ "$file_name" = "AnalyzeLogCommand.swift" ] \
+      || [ "$file_name" = "CommandLineTool.swift" ] \
+      || [ "$file_name" = "GenerateScrollCommand.swift" ] \
+      || [ "$file_name" = "SystemBehaviorTestCommand.swift" ]; then
+      continue
+    fi
+    # 製品runtimeの禁止識別子はcommentに書くだけでも境界を曖昧にするため検出する。
+    grep -nEH \
+      'keyboardEventSource|postToPid|CGEventPostToPid|CGEventPostToPSN|AXUIElement|forcedHorizontal|DiagnosticEvent|GenerateScrollCommand|SystemBehaviorTestCommand|kVK_[[:alnum:]_]+' \
+      "$file_path" 2>/dev/null || true
+  done
 )
 
 if [ -n "$product_matches" ]; then
@@ -81,12 +84,29 @@ if [ -n "$product_matches" ]; then
 fi
 
 product_time_matches=$(
-  grep -nEH \
-    'timeIntervalSince1970|timeIntervalSinceReferenceDate|timeIntervalSinceNow|CFAbsoluteTimeGetCurrent|CACurrentMediaTime|mach_absolute_time|mach_continuous_time|clock_gettime|ContinuousClock|SuspendingClock|Date[[:space:]]*\(|systemUptime|uptimeNanoseconds' \
-    Sources/NapeGestureProductOutput/*.swift \
-    Sources/nape-gesture/GestureOutputExecutor.swift \
-    Sources/nape-gesture/NapeGestureDaemon.swift \
-    Sources/nape-gesture/NapeGestureRuntime.swift 2>/dev/null || true
+  find Sources/NapeGestureProductOutput -type f -name '*.swift' -print |
+    while IFS= read -r file_path; do
+      grep -nEH \
+        'timeIntervalSince1970|timeIntervalSinceReferenceDate|timeIntervalSinceNow|CFAbsoluteTimeGetCurrent|CACurrentMediaTime|mach_absolute_time|mach_continuous_time|clock_gettime|ContinuousClock|SuspendingClock|Date[[:space:]]*\(|systemUptime|uptimeNanoseconds' \
+        "$file_path" 2>/dev/null || true
+    done
+
+  for file_path in Sources/nape-gesture/*.swift; do
+    file_name=$(basename -- "$file_path")
+    if [ "$file_name" = "AnalyzeLogCommand.swift" ] \
+      || [ "$file_name" = "BenchmarkCommand.swift" ] \
+      || [ "$file_name" = "CommandLineTool.swift" ] \
+      || [ "$file_name" = "GenerateScrollCommand.swift" ] \
+      || [ "$file_name" = "ReferenceTargetApp.swift" ] \
+      || [ "$file_name" = "StatusApp.swift" ] \
+      || [ "$file_name" = "SystemBehaviorTestCommand.swift" ] \
+      || [ "$file_name" = "TrackpadDriverEventLogger.swift" ]; then
+      continue
+    fi
+    grep -nEH \
+      'timeIntervalSince1970|timeIntervalSinceReferenceDate|timeIntervalSinceNow|CFAbsoluteTimeGetCurrent|CACurrentMediaTime|mach_absolute_time|mach_continuous_time|clock_gettime|ContinuousClock|SuspendingClock|Date[[:space:]]*\(|systemUptime|uptimeNanoseconds' \
+      "$file_path" 2>/dev/null || true
+  done
 )
 
 if [ -n "$product_time_matches" ]; then
@@ -180,7 +200,7 @@ require_text \
 require_text \
   "Sources/NapeGestureCore/TrackpadOutputSession.swift" \
   "public struct TrackpadOutputSessionMachine" \
-  "全event familyのsession lifecycleを共通modelへ集約する"
+  "2 / 3 / 4本指入力のsession lifecycleを共通modelへ集約する"
 
 require_text \
   "Sources/NapeGestureCore/MonotonicEventClock.swift" \
@@ -209,7 +229,7 @@ require_text \
 
 require_text \
   "docs/adr/0038-trackpad-output-session-and-monotonic-clock.md" \
-  "trackpad出力sessionとmonotonic clockを共通化する" \
+  "finger count付きtrackpad入力sessionとmonotonic clockを共通化する" \
   "output sessionと時刻domainのADRを維持する"
 
 if [ "$failure_count" -ne 0 ]; then

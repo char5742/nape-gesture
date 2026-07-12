@@ -1,32 +1,33 @@
-# ADR-0034: DriverKit virtual trackpad案を却下する
+# ADR-0034: DriverKit virtual trackpadを製品出力に使わない
 
-> 現行の入力mode、3つの製品runtime経路、NavigationSwipe候補、OS/App結果の用語境界は[ADR-0048](0048-separate-input-mode-event-family-os-result-and-evidence.md)を正とする。本ADRのDriverKit virtual trackpadを採用しない判断は維持する。
-
-- 状態: 却下
+- 状態: 採択
 - 日付: 2026-07-11
+- 更新日: 2026-07-12
 
 ## 背景
 
-AX scrollbar、対象PIDへのevent配送、keyboard shortcutによるgesture代替を却下した後、HIDDriverKitでvirtual trackpadのdigitizer contactを生成する案を検討した。
+通常mouse入力をtrackpad入力へ変換する方法として、HIDDriverKitでvirtual digitizer contactを生成する構成を検討できる。しかし、Nape Gestureが必要とするのは新しい物理touch surfaceの追加ではなく、対象mouseの連続イベント量を、buttonに対応するfinger countのtrackpad driver上位入力としてmacOSへ渡すことである。
 
-しかし、Nape Gestureの入力境界と目標挙動を整理すると、DriverKit System Extensionで物理touch surfaceを追加する必要はない。必要なのは、mouse入力をtrackpad driverの上位出力に相当するgesture event列へ変換し、scroll、Spaces、Mission Control、page navigation、magnificationをmacOSの標準gesture処理へ渡す構成である。
+DriverKit System Extensionを導入すると、`.dext`、entitlement、installation、approval、更新、uninstall、OS互換性という別の運用面が増える。現在の必要条件を満たすための最小境界ではない。
 
 ## 決定
 
-- DriverKit System Extensionとvirtual digitizer contactを製品出力の前提にしない。
-- `.dext`、DriverKit entitlement、virtual trackpad descriptorを完成要件へ追加しない。
-- Nape Pro入力の識別、通常入力通過、gesture button中の抑制は既存のIOHID / event tap境界を基礎にする。
-- 出力はtrackpad driverが上位へ出すgesture event contractを自前ログから再導出する。
-- AX、対象PID配送、keyboard shortcutによるgesture代替へ戻さない。
+- DriverKit System Extension、virtual digitizer、virtual trackpad descriptorを製品出力に使わない。
+- `.dext`とDriverKit entitlementをbuild、release、権限導線へ追加しない。
+- 対象device識別、通常入力passthrough、変換session中の元入力抑制はIOHIDとevent tap境界で扱う。
+- 出力は純正trackpadの物理captureから再導出したdriver上位event contractを、最小のcompatibility adapterでsystem-wideに投稿する。
+- button 3 / 4 / 5は2 / 3 / 4本指を固定し、結果別eventやvirtual touch形状を選ぶ設定を持たない。
+- AX、対象PID配送、keyboard shortcutを代替経路にしない。
+- 公開APIと自前計測で安全な上位event contractを確定できないOS buildでは、元入力抑制前にfail closedする。
 
 ## 影響
 
-- DriverKit toolchain、entitlement申請、System Extension lifecycleは不要になる。
-- 調査対象はdigitizer contactではなく、純正trackpad操作時のscroll / gesture event type、subtype、phase、momentum、field、event順序になる。
-- DriverKit案として作成したIssue #107から#116は、新しいevent contract方針へ置き換える。
+- 調査対象はvirtual digitizer contactではなく、2 / 3 / 4本指の純正trackpad上位eventにおけるX/Y量、finger count、phase、timestamp、session、terminalになる。
+- DriverKit固有のinstaller、approval、recoveryは不要になる。
+- compatibility adapterの非公開contractリスクは、fixture registry、OS build gate、strict analyzer、fail closedで管理する。
 
 ## 関連
 
+- [ADR-0036: finger-count付きtrackpad driver上位入力を再現する](0036-emulate-trackpad-driver-output-events.md)
+- [ADR-0049: buttonを指本数へ固定しイベント量をtrackpad入力へ置換する](0049-fixed-button-to-finger-count-trackpad-input.md)
 - [ゴール要件](../requirements.md)
-- [検証手順](../verification.md)
-- [repo-local由来ガード](0023-repo-local-provenance-guard.md)

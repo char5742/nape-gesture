@@ -20,10 +20,10 @@ Grok CLIをUI / UX発散、文言確認、第三者視点、PR差分レビュー
 
 ## 影響
 
-- [ADR-0027](0027-grok-cli-auxiliary-review.md)と[ADR-0029](0029-grok-operational-surface.md)は置換済みになる。
 - `AGENTS.md`、並列開発文書、PR review checklistからGrok実行手順を除く。
 - `$grok-auxiliary-review` skillが環境に存在しても、このリポジトリでは実行しない。
 - 完成判定は従来どおりbuild、tests、CI、runtime log、実機証跡で行う。
+- 旧Grok運用ADRと実行手順は誤実行を防ぐためリポジトリから削除し、本ADRだけを現行方針として残す。
 
 ## 関連
 

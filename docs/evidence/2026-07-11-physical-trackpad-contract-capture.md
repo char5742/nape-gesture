@@ -1,5 +1,7 @@
 # 純正トラックパッド物理captureとcontract再導出
 
+> 非規範証跡: この文書は物理captureのraw観測記録である。event family候補と画面scenarioはbutton assignmentまたは製品機能を意味せず、2 / 3 / 4本指とmouse event量の対応も未確定である。現在の採用条件は[証跡文書の扱い](README.md)を正とする。
+
 ## 目的
 
 Issue #125として、macOS 26.5.1（build 25F80）の純正トラックパッドから、scroll、momentum、page swipe、pinch、Spaces、Mission Control / App Exposé、途中反転の同一raw schema収録を試行した。Mission Control / App Exposéだけは取得窓不成立で識別payloadを得ていない。

@@ -32,6 +32,43 @@
 - 新規公開前の baseline として `NapeGesture` / `NapeGestureCore` / `nape-gesture` へ統一済み
 - 公開後は CLI 名や module 名の変更を破壊的変更として扱う
 
+## P0: 旧mode・tuning設定から固定finger countモデルへの移行
+
+設計正本は[ADR-0049](adr/0049-fixed-button-to-finger-count-trackpad-input.md)、実装追跡はIssue #148とする。
+
+移行後の製品モデル:
+
+- mouse button 3押下中の連続mouse event量は2本指trackpad入力へ変換する
+- mouse button 4押下中の連続mouse event量は3本指trackpad入力へ変換する
+- mouse button 5押下中の連続mouse event量は4本指trackpad入力へ変換する
+- button 3 / 4 / 5未押下時は通常mouse入力を変更せず通す
+
+この対応は設定項目ではない。結果別mode、方向別action、application別の有効・無効、感度、割り当てへ移行してはならない。
+
+旧設定として扱う項目:
+
+- `gesture.button3Mode`、`gesture.button4Mode`、`gesture.button5Mode`
+- `none`、`twoFingerSwipe`、`systemSwipe`、`pinch`
+- さらに古い`scrollAndNavigate`、`spacesAndMissionControl`、`zoom`
+- 方向別actionまたはapplication別bindingの旧key
+- `gesture.deadZonePoints`、`gesture.dragSensitivity`、`gesture.wheelSensitivity`、`gesture.acceleration`、`gesture.momentum`
+
+移行条件:
+
+- 旧mode値を製品runtimeの分岐に使わず、button番号からfinger countを一意に決める
+- `none`を含む旧mode値で固定mappingを無効化または変更しない
+- 旧mode / action / binding / tuning keyは読込時に検出し、対象device条件や安全停止条件など他の有効な設定を保持したままcanonical configから除去する
+- 単位変換contractはfixtureとOS buildから選び、旧感度、加速度、dead zone、momentum係数を移行または再保存しない
+- 旧key除去とcanonical config保存は原子的に行い、再起動を繰り返しても同じ結果になる
+- migration失敗時は元設定fileを保持し、固定mappingが確定しない状態でruntimeを開始しない
+- 未知または壊れた旧値を結果別modeへ推測変換せず、安全停止と復旧可能なエラーを使う
+- 設定UI、canonical JSON schema、runtime log、現行migration test fixtureに旧modeを現行設定として再出力しない
+- historical fixtureや証跡へ旧modeを残す場合は旧モデルの記録であることを明記し、現行期待値へ使わない
+
+`scroll`、`DockSwipe`、`NavigationSwipe`、`magnification`という名前は、低レベルevent familyまたは観測語彙として互換ログやfixtureに残せる。ただし、ユーザーmode、button割り当て、独立製品機能、完成状態を表す名前には使わない。OS/App結果は別項目として扱う。
+
+2026-07-12のbaseline `55eb991` は旧mode keyと選択UIを保持しているため、この移行は未完了である。旧設定のdecode成功や既定値へのrewriteだけでは完了とせず、Issue #148の設定、GUI、runtime、migration testが一体で合格するまで未達とする。
+
 ## P1: 設定パス
 
 移行後:
@@ -65,6 +102,7 @@
 - 新規出力は `generatedByNapeGesture` を使う
 - 旧ログ互換のため、decode 時は `generatedByMacGesture` も読む
 - encode 時は旧キーを出さない
+- 現行ログはbutton 3 / 4 / 5と2 / 3 / 4本指の固定対応を検証可能にし、低レベルevent familyやOS/App結果と混同しない
 
 ## P2: 配布文書
 
@@ -87,3 +125,5 @@
 注意点:
 
 - UI 名変更は権限導線と同じ検証で確認する
+- buttonごとのmode / family選択、方向別action、application別設定を表示しない
+- 固定button→finger count対応を表示する場合は説明用の読取専用表示とし、変更可能なcontrolにしない

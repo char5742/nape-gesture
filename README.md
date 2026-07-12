@@ -1,386 +1,151 @@
 # Nape Gesture
 
-Nape Gesture は、Nape Pro などの通常マウス入力を macOS 上でトラックパッド級のジェスチャー操作へ変換する常駐 GUI アプリです。
-特定ボタンを押している間だけジェスチャーモードへ入り、押していないときは通常のマウスとして振る舞います。
+Nape Gestureは、mouse buttonを押している間の連続mouse event量を、固定されたfinger countのtrackpad入力へ変換するmacOS常駐アプリです。button 3 / 4 / 5を押していない間は、通常mouse入力をそのまま通します。
 
-event contractとパラメータの正本は、Apple公式資料、Apple OSS、このリポジトリで取得した純正trackpad / Nape Proログです。各event構成と調整値を、対応する計測証跡まで追跡できる形で再導出します。
+> **現在の製品状態: 未達**
+>
+> 2026-07-12のbaseline `55eb991`で確認した現行実装には、buttonごとに結果系のmodeを選ぶ、固定製品モデルに反する経路が残っています。固定のbutton→finger count変換はend-to-endで実装・検証されていないため、現在のbinary、GUI、設定、既存テストをこの製品モデルの完成証跡にはできません。
 
-## いまの完成状態
+## 製品dashboard
 
-| 項目 | 実装・検証状態 | 確認先 |
+| 領域 | 必須状態 | 現在 |
 | --- | --- | --- |
-| 通常 GUI アプリ | 実装済み。`.app` identity、通常 GUI 設定、AppKit `gui-smoke`、computer-use による設定ウィンドウ表示、System Events による Dock item 観測は確認済み | `bundle-app` / `verify-bundle` / `gui-smoke`、[ADR-0024](docs/adr/0024-regular-gui-app-launch.md) |
-| メニューバー常駐 UI | 実装済み。AppKit `gui-smoke` で status item `NG`、状態、開始、緊急停止、停止、設定、権限導線の生成契約を検査する。SystemUIServer の AX name に出ない場合は `gui-smoke` を正とする | [docs/completion-checklist.md](docs/completion-checklist.md) |
-| 設定 UI | 実装済み。編集項目 catalog、JSON round-trip、computer-use による `.app` 設定表示と保存操作は確認済み。保存は設定ファイル更新までの証跡で、TCC 許可済み runtime と実イベントは completion matrix で管理する | [ADR-0021](docs/adr/0021-settings-ui-field-catalog.md)、[docs/completion-checklist.md](docs/completion-checklist.md) |
-| Runtime入力・安全性 | `.build/NapeGesture.app`のTCC許可済み経路で、gesture認識、元入力抑制、kill switch、通常入力復帰を機械判定済み。既存CGEvent出力の成功は最終gesture出力の完成証跡にはしない | [ADR-0032](docs/adr/0032-reference-target-foreground-capture.md)、[ADR-0033](docs/adr/0033-kill-switch-pending-release-suppression.md) |
-| Trackpad driver出力 | 25F80の製品runtimeは`scroll`、`DockSwipe`、`magnification`の3経路をsystem-wide投稿する。button 3 / 4 / 5ごとに`none`、`2本指スクロール / スワイプ`、`システムスワイプ`、`ピンチ`を選ぶ。結果の縦横scroll、ページ移動、Spaces / Mission Control / App Exposé、ZoomはmacOSまたは前面applicationで別に検証する | [ADR-0043](docs/adr/0043-trackpad-scroll-product-output.md)、[ADR-0048](docs/adr/0048-separate-input-mode-event-family-os-result-and-evidence.md) |
-| 通常入力通過 | 機械証跡あり。ジェスチャーボタン未押下時と解放後の通常クリック、ドラッグ、ホイールを AppKit target log で確認する | [ADR-0016](docs/adr/0016-normal-input-kind-assertions.md) |
-| 権限導線 | 実装済み。GUI と `doctor` が TCC 権限付与対象を表示し、System Settings を開く | [ADR-0020](docs/adr/0020-doctor-tcc-permission-target.md)、[ADR-0025](docs/adr/0025-gui-permission-recovery-actions.md) |
-| runtime 性能測定 | tap callback から投稿直前/直後までを JSON Lines で保存し、p95 / p99 を判定できる | [docs/performance-baseline.md](docs/performance-baseline.md) |
-| 実機完成判定 | 一部は人間作業待ち。純正トラックパッド操作、Nape Pro 実機操作、公証は自動化できない最後の手段として扱う。TCC 許可済み runtime event は機械証跡取得済み | [docs/completion-checklist.md](docs/completion-checklist.md) |
-| 署名・公証済みリリース | 未完了。Developer ID 署名、公証、stapler / Gatekeeper 評価の証跡が必要 | [docs/release.md](docs/release.md) |
+| 固定button対応 | button 3→2本指、button 4→3本指、button 5→4本指 | **未達**。選択式modeの実装が残る |
+| 連続入力変換 | 押下中の連続mouse event量を、同じfinger-count sessionの連続量として渡す | **未達**。finger countを正本にしたend-to-end契約がない |
+| 通常mouse passthrough | button 3 / 4 / 5未押下時とsession終了後に通常入力を無変更で通す | **一部証跡あり・再検証必須**。固定モデルへの移行後の回帰証跡は未取得 |
+| 製品surface | 結果別mode、方向別action、application別設定を持たない | **未達**。button別modeと設定UIが残る |
+| 製品配送 | system-wideなtrackpad相当入力だけを使い、AX / PID / shortcut配送を使わない | **境界検証が必要**。診断経路を含めた非到達性の再確認が必要 |
+| 低レベルcontract | 2 / 3 / 4本指の物理captureと生成eventをOS buildごとに照合する | **未完了**。既存familyの部分証跡だけではfinger count再現を証明しない |
+| OS / App結果 | trackpad入力後の結果をscenario単位で別途確認する | **未完了**。結果はNape Gestureのmodeやactionではない |
+| Nape Pro実機 | 実機入力から生成、配送、結果、通常入力復帰まで確認する | **未完了** |
+| 配布 | 署名、公証、stapler、Gatekeeper評価を完了する | **未完了** |
 
-`need:human` はレビュー待ちや判断待ちではなく、人間が実際に作業しないと進められない TCC 操作、物理デバイス操作、証明書操作などにだけ使います。
-自動化できる検証は先に自動化し、人間作業は最後の手段に限定します。
+このdashboardは、実装が存在することと製品要件を満たすことを分けて表示します。低レベルevent builder、fixture、dry-run、GUI、画面変化のいずれか一つだけで行を「完了」に変更してはいけません。
 
-## 全体像
+## 固定操作モデル
 
-25F80では`scroll`、`DockSwipe`、`magnification`の3経路を製品sessionへ接続します。`scroll`は確定済み、`DockSwipe`と`magnification`は試用段階です。`NavigationSwipe`は2本指系列で観測された低レベル候補であり、独立modeまたは製品runtime capabilityではありません。未知OS buildやcontract不一致ではevent tapと入力抑制を開始しません。
+buttonとfinger countの対応は製品仕様として固定です。ユーザーがmodeや割り当てを選ぶものではありません。
+
+詳細要件は[ゴール要件](docs/requirements.md)、設計決定は[ADR-0049](docs/adr/0049-fixed-button-to-finger-count-trackpad-input.md)を正とします。
+
+| 操作 | Nape Gestureの入力変換 |
+| --- | --- |
+| button 3を押しながらmouseを操作 | 連続した2本指trackpad入力 |
+| button 4を押しながらmouseを操作 | 連続した3本指trackpad入力 |
+| button 5を押しながらmouseを操作 | 連続した4本指trackpad入力 |
+| button 3 / 4 / 5を押していない | 通常mouse入力をそのまま通過 |
 
 ```mermaid
 flowchart LR
-    mouse["Nape Pro / 通常マウス"] --> tap["CGEvent tap"]
-    mouse --> hid["IOHID 入力監視"]
-    tap --> gate{"対象device<br/>特定button押下中?"}
-    hid --> gate
-    gate -->|いいえ| pass["通常入力を通過"]
-    gate -->|はい| recognize["gesture認識 / 元入力抑制"]
-
-    subgraph scroll["実装済み: 25F80 scroll family"]
-        recognize --> session["daemon + session coordinator<br/>began / changed / ended / cancel / momentum"]
-        session --> model["軸別odd quadratic model<br/>自前計測967 pair"]
-        model --> batch["type 22 scroll<br/>type 29 envelope + companion"]
-        batch --> post["system-wide post<br/>direct post trace"]
-    end
-
-    post --> stream["WindowServer / system-wide event stream"]
-    stream --> app["前面app / nested scroll target"]
-    pass --> app
-    session --> dock["25F80試用出力<br/>DockSwipe"]
-    session --> magnification["25F80試用出力<br/>magnification"]
-    dock --> post
-    magnification --> post
-    candidate["2本指物理系列の低レベル候補<br/>NavigationSwipe"] -.-> evidence["fixture / analyzer<br/>製品runtime capability外"]
-    recognize --> status["GUI状態 / doctor / runtime証跡"]
+    mouse["通常mouse入力"] --> gate{"button 3 / 4 / 5<br/>押下中?"}
+    gate -->|"いいえ"| passthrough["通常mouseとして通過"]
+    gate -->|"button 3"| two["連続した2本指trackpad入力"]
+    gate -->|"button 4"| three["連続した3本指trackpad入力"]
+    gate -->|"button 5"| four["連続した4本指trackpad入力"]
+    two --> system["system-wide event stream"]
+    three --> system
+    four --> system
+    system --> result["macOS / 前面applicationが結果を解釈"]
 ```
 
-scroll adapterは投稿前のraw field 39 / 40が`0`であることを検証します。system-wide投稿後のcaptureではWindowServerが前面配送先をfield 39 / 40へ付与できるため、capture側の非0だけを明示的PID投稿の証拠にはしません。投稿経路はdirect post trace、captureとのprovenance照合、製品source境界guardで検証します。
-縦横scroll、application navigation、Spaces / Mission Control / App Exposé、ZoomはNape Gestureの独立機能名ではなく、macOSまたは前面applicationで観測する結果です。event経路とOS/App結果を分けた完成判定は、[docs/completion-checklist.md](docs/completion-checklist.md)を正本にします。
-
-## 使い始める
-
-### GUI アプリとして起動する
-
-開発中に直接起動する場合:
-
-```sh
-swift run nape-gesture app
-```
+押下中の移動方向や途中の方向転換は、別actionを選ぶためのcommandではありません。mouse eventの連続量を保ったまま、buttonに対応するfinger countの同一sessionへ渡します。button解放時はsessionを正しく閉じ、通常mouse状態へ戻します。
 
-`.app` として起動する場合:
-
-```sh
-swift build -c release
-.build/release/nape-gesture bundle-app --out .build/NapeGesture.app --replace
-.build/release/nape-gesture verify-bundle .build/NapeGesture.app
-open .build/NapeGesture.app
-```
+button→finger count対応を変更する設定、無効化する`none`、結果名で選ぶmode、方向別bindingは製品モデルにありません。対象deviceの識別、権限、diagnostics、安全停止などの運用設定は、この固定対応を変更しない範囲で別レイヤーとして扱います。
 
-作成した `.build/NapeGesture.app` は、通常 GUI アプリとして Dock に表示され、起動時に設定ウィンドウを開きます。
-2026-07-10 の main `24f0f7f` では computer-use と System Events により、`.build/NapeGesture.app` の frontmost / running、`Nape Gesture 設定` ウィンドウ、主要 UI 要素、Dock item `NapeGesture` を確認済みです。
-2026-07-09 の main `f43e217` では computer-use により、`保存して再起動` の押下と設定ファイル更新、通常アプリメニューの権限導線を確認済みです。
-この権限導線確認は System Settings へ進む前の UI 確認であり、TCC 許可そのものではありません。
-`gui-smoke --json --assert` は runtime を開始せずに、active macOS GUI session 上の AppKit 内で `.regular` activation policy、設定ウィンドウ、status item `NG`、通常アプリメニュー、status menu の生成契約を機械検査します。
-SystemUIServer の Accessibility name に status item が出ない場合でも、この `gui-smoke` の AppKit 証跡を status item 生成契約の正とします。
-TCC 許可済み runtime の証跡は [docs/completion-checklist.md](docs/completion-checklist.md) で管理します。
-常駐状態の開始、停止、設定、権限確認はメニューバーの `NG` から操作できます。
-アクセシビリティと入力監視の許可は、実利用する `NapeGesture.app` に対して付与してください。bundle ID は `dev.char5742.nape-gesture` です。
-
-初回起動で詰まりやすい順序:
-
-1. `.build/NapeGesture.app` を作成して `open .build/NapeGesture.app` で起動する
-2. 設定ウィンドウまたは `init-config` で対象デバイス条件を保存する
-3. `NG` またはアプリメニューから「権限とデバイスを確認」を開く
-4. System Settings で `NapeGesture.app` にアクセシビリティと入力監視を許可する
-5. Nape Gesture を再起動する
-6. `NG` メニューから常駐処理を開始し、`doctor --json` の `runtimeIdentity` と許可対象が一致していることを確認する
-
-対象デバイス一致が必須のまま条件が空の場合、`app` と `run` は全デバイスへ誤適用しないよう開始前に停止します。
-
-### 権限とデバイスを確認する
-
-```sh
-swift run nape-gesture doctor --probe-hid --benchmark-events 50000 --json --assert-runtime-ready
-```
-
-GUI では、メニューバーの `NG` またはアプリメニューから「権限とデバイスを確認」を開きます。
-未許可または未判定の場合は「アクセシビリティ設定を開く」「入力監視設定を開く」から System Settings の該当画面を開き、許可後に Nape Gesture を再起動してください。
-
-`doctor --json` には実行ファイル、bundle ID、bundle path などの `runtimeIdentity` と、TCC 権限付与対象を構造化した `tccStatus.permissionTarget` が含まれます。
-権限が未許可のときは、この値でどの `.app` または実行ファイルを許可すべきか確認します。
-
-`run` と `log` はグローバル入力を扱うため、アクセシビリティ権限が必要です。
-`check-config --probe-hid` または対象デバイス設定つきの `run` は IOHID 入力を読むため、入力監視権限も必要です。
-`log` は `--duration <秒>` で自動停止、`--out <path>` で JSON Lines を保存します。
-開始・終了などのメタ情報は標準エラーに出し、イベント本体だけを標準出力または `--out` に出します。
-`--exclude-generated` は純正入力や実デバイス入力だけ、`--only-generated` は Nape Gesture が生成したイベントだけを記録します。
-
-### 設定ファイルを作る
-
-```sh
-swift run nape-gesture init-config --out nape-gesture.config.json
-swift run nape-gesture init-config --vendor-id <ID> --product-id <ID> --usage-page <ID> --usage <ID> --association-window 0.12 --out nape-gesture.config.json
-```
-
-`run`、`check-config`、`app` は `--config` を省略した場合、`~/Library/Application Support/NapeGesture/config.json` を使います。
-存在しない場合は Nape Pro 向けテンプレートを作成します。
-対象デバイス一致が必須のまま対象条件が空の場合は、全デバイスへ誤適用しないよう起動前に停止します。
-
-## GUI でできること
-
-- 設定ウィンドウでbutton 3 / 4 / 5ごとの`none`、`2本指スクロール / スワイプ`、`システムスワイプ`、`ピンチ`mode、感度、加速度、慣性、キャンセル条件、対象デバイス、対象入力の紐づけ秒を編集する
-- メニューバー常駐 UI から runtime を開始、停止、再開する
-- 権限付与対象、アクセシビリティ状態、入力監視状態、実行ファイル、bundle ID、HID デバイス数、対象一致数を確認する
-- アクセシビリティまたは入力監視の System Settings 画面を開く
-- 対象デバイス未検出、実行中のデバイス消失、権限未許可、スリープ復帰後の停止を検出し、手動停止するまで 5 秒間隔で自動再試行する
-
-上下左右の方向別またはアプリごとのジェスチャー割り当ては持ちません。代わりにbutton 3 / 4 / 5ごとに、通常mouseとして扱う`none`、`2本指スクロール / スワイプ`、`システムスワイプ`、`ピンチ`の入力modeを選びます。既定はbutton 3=`2本指スクロール / スワイプ`、button 4=`システムスワイプ`、button 5=`ピンチ`です。設定値はそれぞれ`none`、`twoFingerSwipe`、`systemSwipe`、`pinch`です。
-特定ボタンを押していない状態では通常マウスとして振る舞うため、アプリ別に通常入力へ戻す設定は不要です。
-`2本指スクロール / スワイプ`は押下中のmouse moveとwheelを連続した2次元`scroll`へ渡します。縦scroll、横scroll、nested target、ページ戻る/進むなどの結果はmacOSまたは前面application側で観測します。`NavigationSwipe`は2本指物理系列で観測された低レベル候補としてfixture / analyzerに保持しますが、独立modeや製品runtime capabilityには数えません。`システムスワイプ`は`DockSwipe`、`ピンチ`は`magnification`系列へ接続します。Space切替、Mission Control、App Exposé、Zoomはそれぞれの低レベル系列を受け取ったOS/App結果であり、mode名では保証しません。途中で方向が反転しても別modeや別sessionへ切り替えません。
-
-## コマンドの使い分け
-
-| コマンド | 用途 |
-| --- | --- |
-| `app` | 通常 GUI アプリモードで起動する |
-| `gui-smoke` | runtime を開始せずに通常 GUI activation policy、設定ウィンドウ、status item `NG`、通常アプリメニュー、status menu を JSON で検査する。`--config` 未指定時は一時 config を使う |
-| `run` | グローバルイベントタップで入力を読み、押下buttonのmodeに応じた製品sessionへ接続する。未知OS buildやcontract不一致では入力抑制前に停止する |
-| `doctor` | 権限、対象デバイス、HID probe、trackpad output contract、runtime ready、benchmarkを一括診断する |
-| `devices` | IOHID で認識できるマウス系または全 HID デバイスを一覧する |
-| `hid-log` / `analyze-hid-log` | Nape Pro などの HID 生入力を記録、解析する |
-| `log` / `analyze-log` / `compare-log` | 実デバイス、純正トラックパッド、生成イベントを JSON Lines で記録、解析、比較する |
-| `trackpad-event-log` | 純正trackpad driver上位出力のevent type、subtype、raw field 0...255、serialized event、capture順、OS / scenario metadataをlisten-onlyで記録し、`--out`指定時は確定logのcapture manifestを作る。`generatedProduct`では`--only-generated`で生成marker付きeventだけを採用できる |
-| `analyze-trackpad-event-log` | 現行raw schema、capture manifest、serialized CGEvent再構築を検証する。generated productではsystem-wide配送provenanceを照合する。`--contract`指定時は登録済み25F80 fixtureでscroll / momentum lifecycle、terminal、companionを比較する |
-| `target` / `analyze-target-log` | AppKit が受け取った `scrollWheel` / `swipe` / `magnify` などを画面と JSON Lines で確認する。無人証跡では `--focus-capture-point` で capture view 中心へカーソルを移動し、`--assert-has-foreground-capture` で `globalMonitor` だけの弱い証跡を除外する |
-| `system-test` | 入力抑制、通常入力復帰、キルスイッチを検証する。実投稿の`vertical-scroll` / `horizontal-scroll`は25F80 product adapterを使い、`--product-trace-out`とcapture共通のrun UUID / repo SHAでdirect post traceを保存する。旧単純scroll / forced horizontal / shortcut scenarioは診断専用 |
-| `benchmark` | 認識器とスクロール計画の純粋ロジック処理時間を測る |
-| `analyze-performance-log` | runtime 性能 JSON Lines から tap-to-post の p95 / p99 を判定する |
-| `bundle-app` / `verify-bundle` | `.app` を検証済み一時bundleから原子的に作成・置換し、Info.plist、署名、同梱contract / model、通常 GUI 設定を検証する。構築・検証失敗時は既存bundleを保持する |
-
-## 25F80 scroll製品出力
-
-25F80では、4つの自前captureから対応付けた986 pairのうちterminal 19 pairを除く967 pairを、X / Y軸別のline / fixed-point / point modelへ使います。連続値は`a*g + b*g*abs(g)`で導出し、tracked sampleからCIでmodel fixtureを再生成してbytes一致を検査します。contract / sample / modelのSHA-256、schema、ID、OS version / build、source identity、sample countのどれかが一致しなければ、adapterは`scroll`を有効化しません。
-
-inputの各frameは同一timestampの`type 22 scroll -> type 29 envelope -> type 29 companion`、momentumは`type 22`としてsystem-wideへ投稿します。scrollとmomentumのphaseを分離し、endedと明示cancelはline delta `0`、fixed-point / point delta `+0.0`へ収束します。daemonが慣性timerと停止理由、session coordinatorがactive mode / family、session ID、順序、continuationを管理します。
-
-25F80の製品runtime capabilityは`scroll`、`DockSwipe`、`magnification`の3経路です。`doctor`は`confirmedFamilies=[scroll]`と`trialFamilies=[dockSwipe,magnification]`を分けて表示します。`NavigationSwipe`は2本指物理系列のfixture / analyzer / session modelに残る解析候補であり、製品event builderとruntime capabilityからは除外しています。入力mode、低レベルevent family、OS/App結果、証跡状態の境界は[ADR-0048](docs/adr/0048-separate-input-mode-event-family-os-result-and-evidence.md)、`scroll`の確定contractは[ADR-0043](docs/adr/0043-trackpad-scroll-product-output.md)、candidate実装の履歴は[ADR-0046](docs/adr/0046-trial-output-for-remaining-trackpad-families.md)を参照してください。
-
-`system-test --post-to-pid` は Reference Target App の sink 診断専用です。
-製品gesture出力と完成証跡には使いません。`.cghidEventTap`経由であっても、旧単純scroll / forced horizontal / shortcut scenarioはtrackpad driver上位出力の完成証跡にしません。
-`system-test run --scenario kill-switch` は未マークの `Control + Option + Command + G` を interval 付きの `keyDown` / `keyUp` として投稿し、daemon 停止ログと target log 漏れなしを確認します。
-`generate-scroll`と`system-test`の実投稿およびdry-run logは、CoreGraphicsと同じmacOS起動後の単調時刻を使います。実投稿列は先頭予定timestampが投稿開始reference以下で元列が非減少であることを検証し、後続の未来予定offsetはsleep専用として許可します。全eventを先に生成・検証し、各eventのtimestampを投稿直前の`MonotonicEventClock`値で確定します。途中失敗時はactiveなscroll / momentum terminal、`mouseUp`、`keyUp`だけを即時投稿して入力状態を残しません。dry-runはUnix epoch、負値、非有限値、現在boot上限を超えるoffsetを拒否し、wall-clock metadataとは混用しません。
-
-次のCLI例に含まれる`generate-scroll`と旧`system-test`出力は、公開scroll field、入力抑制、安全停止、移行前baselineの診断用です。trackpad driver出力contractの採否には`trackpad-event-log`と`analyze-trackpad-event-log`を使います。
-
-<details>
-<summary>CLI 例を開く</summary>
-
-```sh
-swift run nape-gesture help
-swift run nape-gesture devices
-swift run nape-gesture devices --all --json
-swift run nape-gesture check-config
-swift run nape-gesture check-config --probe-hid
-
-swift run nape-gesture hid-log --duration 10
-swift run nape-gesture hid-log --vendor-id <ID> --product-id <ID> --usage-page <ID> --usage <ID> --duration 10
-swift run nape-gesture analyze-hid-log Fixtures/sample-hid-log.jsonl
-
-swift run nape-gesture log
-swift run nape-gesture log --duration 8 --out trackpad-space-right.jsonl --exclude-generated
-swift run nape-gesture analyze-log Fixtures/sample-log.jsonl
-swift run nape-gesture compare-log Fixtures/sample-trackpad-scroll-log.jsonl Fixtures/sample-generated-scroll-log.jsonl
-
-repo_head_sha=$(git rev-parse HEAD)
-ready_token=$(uuidgen | tr '[:upper:]' '[:lower:]')
-ready_file="trackpad-driver-space-right.${ready_token}.ready.json"
-.build/debug/nape-gesture trackpad-event-log \
-  --duration 60 \
-  --out trackpad-driver-space-right.jsonl \
-  --ready-file "$ready_file" \
-  --ready-token "$ready_token" \
-  --evidence-kind physicalTrackpad \
-  --scenario-id pure-trackpad-space-right \
-  --device-label built-in-trackpad \
-  --repo-head-sha "$repo_head_sha" &
-logger_pid=$!
-ruby scripts/wait-for-trackpad-capture-ready.rb \
-  --file "$ready_file" \
-  --token "$ready_token" \
-  --pid "$logger_pid" \
-  --scenario pure-trackpad-space-right \
-  --repo-head-sha "$repo_head_sha" \
-  --timeout 10 \
-  --minimum-remaining 45
-wait "$logger_pid"
-.build/debug/nape-gesture analyze-trackpad-event-log trackpad-driver-space-right.jsonl --manifest trackpad-driver-space-right.jsonl.manifest.json --json
-
-# 25F80で確定済みのscroll / momentum scenarioを比較する場合
-.build/debug/nape-gesture analyze-trackpad-event-log generated-vertical-scroll.jsonl \
-  --manifest generated-vertical-scroll.jsonl.manifest.json \
-  --provenance generated-vertical-scroll.provenance.jsonl \
-  --contract Fixtures/trackpad-contract/25F80/scroll-momentum-contract.json \
-  --json
-
-swift run nape-gesture target
-swift run nape-gesture target --out target-events.jsonl
-swift run nape-gesture target --out target-events.jsonl --duration 8 --ready-file target.ready.json --focus-capture-point
-swift run nape-gesture analyze-target-log Fixtures/sample-target-log.jsonl
-swift run nape-gesture analyze-target-log Fixtures/clean-target-log.jsonl --json --assert-no-leaks --assert-has-generated-event
-swift run nape-gesture analyze-target-log Fixtures/normal-input-target-log.jsonl --json --assert-has-unmarked-input
-swift run nape-gesture analyze-target-log Fixtures/gesture-target-log.jsonl --json --assert-has-gesture
-
-swift run nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/sample-association-event-log.jsonl --window 0.12
-swift run nape-gesture analyze-association Fixtures/sample-association-hid-log.jsonl Fixtures/clean-association-event-log.jsonl --window 0.12 --json --assert-valid-window
-
-swift run nape-gesture derive-parameters Fixtures/sample-tuning-trackpad-log.jsonl --json --assert-complete
-swift run nape-gesture generate-scroll --x 0 --y -480 --steps 24
-swift run nape-gesture generate-scroll --x 0 --y -480 --steps 24 --momentum-steps 12 --dry-run
-swift run nape-gesture generate-scroll --x 0 --y -480 --steps 24 --momentum-steps 12 --dry-run --log-json > generated-scroll.jsonl
-swift run nape-gesture generate-scroll --x 1200 --y 0 --steps 30 --mode space-right --phase auto --dry-run --json
-
-swift run nape-gesture system-test list
-swift run nape-gesture system-test run --scenario space-left --target finder --dry-run
-swift run nape-gesture system-test run --scenario space-left --target finder --dry-run --log-json --out system-space-left.jsonl
-swift run nape-gesture system-test run --scenario horizontal-scroll --dry-run --log-json --out system-horizontal-scroll.jsonl
-swift run nape-gesture system-test run --scenario normal-after-release --post-to-pid <Reference Target App PID>
-swift run nape-gesture analyze-log system-horizontal-scroll.jsonl --json
-
-swift run nape-gesture benchmark --events 200000 --json
-swift run nape-gesture doctor --probe-hid --benchmark-events 50000 --json --assert-runtime-ready
-swift run nape-gesture run
-swift run nape-gesture run --performance-log runtime-performance.jsonl
-swift run nape-gesture analyze-performance-log runtime-performance.jsonl --json --assert-baseline
-
-swift run nape-gesture bundle-app --out .build/NapeGesture.app --replace
-swift run nape-gesture verify-bundle .build/NapeGesture.app
-swift run nape-gesture-core-tests
-```
-
-</details>
-
-`analyze-trackpad-event-log`は`--contract`未指定時にPhase 1 report schema 1と従来のJSON shapeを維持します。`--contract`指定時だけschema 2の`contractPath` / `contractComparison`を追加し、manifestと解析document bytesの不一致、capture index不連続、未確定type 29 classifier、lifecycle / terminal / companion契約違反を非ゼロ終了にします。
-
-物理操作のcaptureごとに新しいrun tokenを発行し、そのtokenをfile名に含む未使用ready pathを使います。loggerは権限確認前に`ready: false`の排他的leaseを作り、event受付開始時だけ`ready: true`、開始時刻、有限durationのdeadlineを原子的に公開します。`wait-for-trackpad-capture-ready.rb`がtoken、PID、scenario ID、repo HEAD SHA、deadline余裕、PID生存を安定化待機後に再検証し、成功時だけ操作案内を出します。fileの存在だけをready判定に使いません。loggerは受付停止より前にleaseを`ready: false`へ戻して`unlink`します。配送順は0始まりの`captureIndex`を正本とし、異なるevent family間のtimestamp局所逆行を理由に並べ替えません。manifest schema 2は取得開始・完了wall-clock、scenario、device、repo HEAD、確定logとlogger executableのSHA-256を固定します。`physicalTrackpad`へ生成markerが混ざったcaptureは失敗します。
-
-macOS 26.5.1（25F80）の物理観測値と未取得境界は[観測台帳](Fixtures/trackpad-contract/25F80/physical-observations.json)、確定済みscroll / momentumの機械比較値は[versioned contract fixture](Fixtures/trackpad-contract/25F80/scroll-momentum-contract.json)、由来は[収録証跡](docs/evidence/2026-07-11-physical-trackpad-contract-capture.md)で確認できます。観測台帳は現在`partial`で、2本指系列のNavigationSwipe候補左右、pinch方向ラベル、DockSwipe反対方向 / cancel、Mission Control / App Exposéのready同期再captureが残っています。
-
-raw原本がない環境でも、`ruby scripts/verify-trackpad-physical-observations.rb --fixtures-only --json`が専用contractの固定SHAと、観測台帳にある4 sourceのfile名 / SHA / 件数 / prefix / 解析開始index / wall-clock、観測規則を照合します。local原本を保持する環境では、`ruby scripts/verify-trackpad-physical-observations.rb --json`がさらに8本とlegacy 1本からmanifest、keyboard境界prefix、target件数、生成marker、scroll / momentum lifecycle、terminal deltaの`+0.0` bit pattern、companion field aliasと順序保存phase対応を再計算します。不一致は非ゼロ終了し、raw logや入力内容は出力しません。
-
-## 設定と安全性
-
-設定ファイルは起動前に検証されます。
-感度、加速度、慣性、キャンセル条件、対象入力の紐づけ秒、対象デバイス条件に不正値がある場合、`run` と `check-config` は開始せず、`doctor --json` は `settingsValidationIssues` に問題箇所を出します。
-
-`targetDeviceAssociation.associationWindow` は、対象 HID 入力の直近時刻とイベントタップ入力を同一入力として扱う秒数です。
-デフォルトは `0.12` 秒です。
-短くすると対象外デバイスを巻き込みにくくなりますが、イベントタップ側の到達が遅い環境では Nape Pro 入力を取りこぼす可能性があります。
-長くすると取りこぼしに強くなる一方、別デバイス入力を誤って紐づけるリスクが上がります。
-
-`gesture.acceleration.isEnabled` は速度に応じた加速度倍率を有効化します。
-`thresholdVelocity` を超えた速度から倍率が上がり、`exponent` でカーブ、`maximumMultiplier` で最大倍率を調整します。
-デフォルトでは無効です。
-
-`gesture.momentum.isEnabled` はボタン解放後の慣性を有効化します。
-`minimumStartVelocity` で慣性開始速度、`stopVelocity` で終了速度、`decayPerSecond` で 1 秒あたりの減衰率、`frameInterval` で生成間隔を調整します。
-
-`gesture.cancellation.maximumDuration` はジェスチャー全体の最大秒数、`maximumInactivityInterval` は入力が途切れたときにキャンセルする秒数です。
-固定`DockSwipe`入力では途中の符号反転を同一sessionとして扱うため、方向別action lockや軸ずれによるキャンセルは製品入力経路で使いません。
-
-誤爆や暴走を感じた場合は `Control + Option + Command + G` を押してください。
-ジェスチャー生成と慣性を即座に停止し、再開は常駐 UI の停止/開始またはプロセス再起動で行います。
-発火後も通常クリック、ドラッグ、ホイールを勝手に抑制し続けません。
-
-## Nape Pro を識別する
-
-Nape Pro が通常の `devices` に出ない場合は、`devices --all --json` で全 HID デバイスを確認します。
-JSON には `stableID`、`vendorID`、`productID`、`primaryUsagePage`、`primaryUsage` が含まれます。
-
-対象らしい値が見つかったら、次のように Nape Pro を操作しながら HID 入力を記録します。
-
-```sh
-swift run nape-gesture hid-log --vendor-id <ID> --product-id <ID> --usage-page <ID> --usage <ID> --duration 10 --out nape-pro-hid.jsonl
-swift run nape-gesture analyze-hid-log nape-pro-hid.jsonl
-```
-
-取得した値は `init-config --vendor-id <ID> --product-id <ID> --usage-page <ID> --usage <ID> --association-window <秒> --out <path>` で設定ファイルへ反映できます。
-必要なら `--manufacturer-contains`、`--product-contains`、`--transport-contains` も併用できます。
-設定 UI でも vendor ID、product ID、usagePage、usage、対象入力の紐づけ秒などを編集できます。
-
-## アプリバンドルと配布
-
-`.app` として使う場合は、先に release build を作成してからバンドル化します。
-
-```sh
-swift build -c release
-.build/release/nape-gesture bundle-app --out .build/NapeGesture.app --replace
-.build/release/nape-gesture verify-bundle .build/NapeGesture.app
-```
-
-`bundle-app` は `Info.plist`、実行ファイル、`LICENSE.txt`、`THIRD_PARTY_NOTICES.md` を含む `.app` を作成し、作成直後に同じ検証を実行します。
-`verify-bundle` は既存の `.app` を再検証するためのコマンドで、通常 GUI アプリとして使うための `LSUIElement=false` とコード署名状態も表示します。
-公開配布前は `verify-bundle --require-signature .build/NapeGesture.app` で署名検証を必須にしてください。
-
-ローカル検証では ad-hoc 署名を使えます。
-
-```sh
-codesign --force --deep --sign - .build/NapeGesture.app
-codesign --verify --deep --strict --verbose=2 .build/NapeGesture.app
-.build/release/nape-gesture verify-bundle --require-signature .build/NapeGesture.app
-```
-
-ad-hoc 署名はローカル再現用です。
-公開配布では Developer ID Application 証明書で署名し、公証と stapler 検証まで完了してください。
-配布手順は [docs/release.md](docs/release.md) にまとめています。
-
-## 検証と完成判定
-
-完成判定の正本は [docs/completion-checklist.md](docs/completion-checklist.md) です。
-詳細な実機検証手順、既知の失敗条件、回復手順は [docs/verification.md](docs/verification.md) にまとめています。
-
-```mermaid
-flowchart TD
-    change["変更"] --> machine["先に自動証跡を取る"]
-    machine --> status{"status.json / doctor / analyzer"}
-    status -->|success| evidence["Issue / PR へ証跡リンクを残す"]
-    status -->|blocked| human["need:human は TCC / 実機 / 証明書など最後の手段だけ"]
-    status -->|failed| fix["根本原因を修正して再実行"]
-    human --> evidence
-    fix --> machine
-```
-
-代表的な検証コマンド:
-
-```sh
-swift build --scratch-path .build
-.build/debug/nape-gesture-core-tests
-swift run nape-gesture benchmark --events 200000 --json --assert-baseline
-swift run nape-gesture doctor --probe-hid --benchmark-events 50000 --json --assert-runtime-ready
-NAPE_RUNTIME_EVENT_USE_APP_BUNDLE=1 sh scripts/collect-runtime-event-evidence.sh
-```
-
-`benchmark` と `doctor` 内の benchmark は `measurementKind: "pureLogic"` の証跡であり、イベントタップから投稿、AppKit 受信、画面反映までの入力遅延実測ではありません。
-tap-to-post 遅延を完成証跡にする場合は、`run --performance-log` または `NAPE_RUNTIME_PERFORMANCE_LOG` で runtime 性能 JSON Lines を取り、`analyze-performance-log --json --assert-baseline` で判定します。
-性能レビューで見る JSON キー、CPU 使用率、入力遅延の合格基準は [docs/performance-baseline.md](docs/performance-baseline.md) にまとめています。
-
-## 開発運用
-
-`nape-gesture` の開発運用は次の文書を正とします。
-
-- [docs/repository-setup.md](docs/repository-setup.md): GitHub リポジトリ作成、初回 push、Issue 作成の手順
-- [docs/adr/README.md](docs/adr/README.md): 開発運用 ADR の索引と採択済み方針
-- [docs/github-issues.md](docs/github-issues.md): 初期 Issue の草案、依存関係、完了条件
-- [docs/parallel-development.md](docs/parallel-development.md): メインスレッドとサブエージェントの役割分担
-- [docs/pr-review-checklist.md](docs/pr-review-checklist.md): PR レビューとマージ判断のチェックリスト
-- [docs/naming-migration.md](docs/naming-migration.md): 旧 `Mac Gesture` 系の命名から `Nape Gesture` / `nape-gesture` へ移行した内容と残る互換項目
-
-README は製品入口兼状態ダッシュボードとして扱います。
-ユーザーが見る挙動、GUI、権限導線、検証手順、完成状態が変わる PR では、README 更新または更新不要の理由を PR に明記します。
-この方針は [ADR-0028](docs/adr/0028-readme-product-dashboard.md) に保存します。
-
-## ライセンス方針
+有効なsource sampleは欠落、重複、coalescing、並べ替えをせず、X/Y量、符号、timestampを個別に生成eventへ対応付けます。mouse単位とtrackpad単位の差だけを自前fixtureから導出した単一contractで変換し、感度、加速度、dead zone、threshold、clampをユーザー設定または結果別係数として追加しません。
+
+## 通常mouse passthrough
+
+button 3 / 4 / 5のいずれも押していないとき、Nape Gestureは通常mouseの振る舞いを変えません。
+
+- 通常クリック、pointer移動、drag、wheelなどをgesture eventへ変換しない。
+- applicationごとに「通常mouseへ戻す」設定を要求しない。
+- gesture sessionの終了、cancel、緊急停止、runtime停止後も通常入力を過剰抑制しない。
+- passthroughをfallbackや例外動作ではなく、製品の通常状態として検証する。
+
+## レイヤーの分離
+
+Nape Gestureが決めるのは、押下buttonに対応するfinger countと、その連続入力量までです。
+
+| レイヤー | 扱う内容 | 扱わない内容 |
+| --- | --- | --- |
+| ユーザー操作 | button 3 / 4 / 5、連続mouse event量 | 結果別mode、方向別action、application別割り当て |
+| 製品runtime | 2 / 3 / 4本指trackpad入力session、system-wide配送 | AX scrollbar、対象PIDへの直接投稿、keyboard shortcut代替 |
+| 低レベル互換層 | event contract、phase、field、fixture、OS build | ユーザー向け機能名、button設定、完成結果 |
+| macOS / application | 受け取ったtrackpad入力の解釈と画面結果 | Nape Gestureの設定値としての結果選択 |
+| 証跡 | 入力、生成、配送、結果、通常入力復帰の対応付け | 画面が動いたという観察だけの完成判定 |
+
+`scroll`、`DockSwipe`、`NavigationSwipe`、`magnification`は、低レベルevent familyまたは物理captureの観測語彙です。adapter、fixture、analyzer、runtime traceで使用できますが、ユーザーmode、button割り当て、独立した製品機能ではありません。
+
+実際のscroll、navigation、system gesture、拡大縮小などは、macOSまたは前面applicationがtrackpad入力を解釈した結果です。Nape Gestureはapplication別に結果を選択せず、特定結果をAX、PID配送、shortcutで成立させません。
+
+## 現行実装が未達である理由
+
+このREADME更新時点で、現行sourceには固定製品モデルに反する次の実装が残っています。
+
+- `button3Mode`、`button4Mode`、`button5Mode`という選択式設定がある。
+- `none`、2本指相当、system swipe相当、pinch相当をユーザーmodeとして扱う。
+- modeから`scroll`、`DockSwipe`、`magnification`へ接続するsession coordinatorと、その前提を固定するテストがある。
+- 設定UIがbuttonごとのmode選択を公開している。
+- button 4を3本指、button 5を4本指として一貫して表現するinput contract、migration、UI、runtime、fixture、end-to-end証跡が揃っていない。
+
+したがって、既存のmode別テストが成功しても、このREADMEの固定製品モデルが完成したことにはなりません。既存の低レベルadapter、capture、fixture、passthrough証跡は再利用できる可能性がありますが、固定finger-count経路から到達し、同じrunの入力・生成・配送・結果へ対応付けられるまで参考資料です。
+
+## 完了条件
+
+次の条件をすべて満たしたときだけ、製品モデルを完成扱いにできます。
+
+- source、設定schema、設定UI、保存済み設定、migrationから選択式button mode、結果別action、方向別binding、application別設定を除去する。
+- `ruby scripts/check-product-model-documentation.rb`と`ruby scripts/check-finger-count-product-model.rb`を成功させる。
+- button 3 / 4 / 5を2 / 3 / 4本指入力へ固定し、ユーザー設定や旧設定値で変更できないことをテストする。
+- 押下開始から解放またはcancelまで、連続mouse event量、timestamp、方向転換、session ID、phase、terminalを保持する。
+- button未押下時、session終了後、緊急停止後、runtime停止後の通常click、move、drag、wheel passthroughを実eventで確認する。
+- 製品runtimeからAX scrollbar、対象PID投稿、keyboard shortcut代替へ到達しないことをsource boundaryと実行証跡で確認する。
+- 純正trackpadの2 / 3 / 4本指captureを、manifest、fixture SHA-256、schema、contract ID、OS version / buildとともに固定する。
+- Nape Proの入力量と生成したtrackpad入力を同じrunで照合し、system-wide event streamへの投稿を確認する。
+- macOS / applicationの結果を低レベルcontractとは別のscenarioとして確認し、Nape Gestureのmodeやactionとして記録しない。
+- 未知OS build、fixture不一致、contract不一致では入力抑制前にfail closedし、診断出力へfallbackしない。
+- TCC許可済みの実利用`.app`でend-to-end証跡を取り、通常入力復帰、kill switch、復旧経路、性能基準を確認する。
+- Developer ID署名、公証、stapler、Gatekeeper評価まで完了し、配布物と検証対象のidentityを一致させる。
+- READMEのdashboard、詳細要件、完成checklist、検証手順、ADR、テスト名が同じ固定モデルを説明する。
+
+## 安全性と証跡
+
+通常SDKで公開されないevent contractは最小のcompatibility adapterへ隔離します。登録済みfixture ID、SHA-256、schema、contract ID、OS version / build、fixture実体が一致しない環境では、入力抑制を開始せずfail closedにします。
+
+製品gesture出力と診断出力はmodule境界で分離します。診断専用の単純event、AX、PID、shortcut経路を、製品fallback、`supported`、完成証跡へ使いません。
+
+完成証跡では、少なくとも次を別々に保存して対応付けます。
+
+- mouse / HID入力と対象device
+- 純正trackpad物理captureとfixture
+- 製品が生成したeventとdirect post trace
+- system-wide captureとtarget log
+- macOS / applicationの結果
+- session終了、通常入力復帰、kill switch
+- 実行binary、bundle identity、repo revision、OS version / build
+
+## 文書導線
+
+製品モデルに関しては、このREADME、[AGENTS.md](AGENTS.md)、[ゴール要件](docs/requirements.md)、[ADR-0049](docs/adr/0049-fixed-button-to-finger-count-trackpad-input.md)が現在の正本です。現行文書はすべて固定button→finger countモデルへ統一し、結果別mode、方向別action、application別設定、buttonごとのevent family割り当てを説明する文書やリンクを残しません。
+
+| 目的 | 文書 | 現在の扱い |
+| --- | --- | --- |
+| 製品入口・状態dashboard | [README.md](README.md) | 固定button→finger countモデルの正本 |
+| エージェント実装規約 | [AGENTS.md](AGENTS.md) | 固定モデル、禁止境界、完成主張の正本 |
+| 詳細要件 | [docs/requirements.md](docs/requirements.md) | 固定モデルの詳細な製品要件 |
+| 固定モデルの設計決定 | [ADR-0049](docs/adr/0049-fixed-button-to-finger-count-trackpad-input.md) | 固定mappingと連続入力contractの現行ADR |
+| 完成判定matrix | [docs/completion-checklist.md](docs/completion-checklist.md) | fixed finger-count経路の層別完成条件 |
+| 実機・runtime検証 | [docs/verification.md](docs/verification.md) | 低レベルcontractとOS / App結果を分ける検証手順 |
+| 性能基準 | [docs/performance-baseline.md](docs/performance-baseline.md) | 2 / 3 / 4本指経路のlatency / CPU基準 |
+| 配布 | [docs/release.md](docs/release.md) | 固定製品モデルの署名・公証・配布条件 |
+| ADR索引 | [docs/adr/README.md](docs/adr/README.md) | 現行ADR一覧の入口 |
+| 製品・診断出力の分離 | [ADR-0037](docs/adr/0037-separate-product-and-diagnostic-event-output.md) | 診断fallback禁止の境界 |
+| captureとmanifest | [ADR-0039](docs/adr/0039-strict-trackpad-event-analysis-and-capture-manifest.md) | fixture・解析証跡の条件 |
+| 物理capture | [ADR-0041](docs/adr/0041-physical-capture-readiness-and-fixture-privacy.md) | ready同期と公開fixtureの条件 |
+
+## ライセンス
+
+実装contractとパラメータは、公式資料、OSの公開ソース、このリポジトリで取得した純正trackpad / Nape Proログから再導出します。第三者成果物由来のコード、定数、状態遷移、係数を取り込みません。リポジトリのライセンスは[LICENSE](LICENSE)を参照してください。
 
 第三者プロジェクトのコード、定数、field番号、状態遷移、係数、調整値は取り込みません。
-実装contractとパラメータはApple公式資料、Apple OSS、このツールで取得した純正trackpad / Nape Proログから再導出します。
-このリポジトリのライセンスは [LICENSE](LICENSE)、依存通知は [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) に記載します。
-アプリバンドルにはそれぞれ `Contents/Resources/LICENSE.txt` と `Contents/Resources/THIRD_PARTY_NOTICES.md` として同梱します。

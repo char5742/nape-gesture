@@ -1,5 +1,7 @@
 # Scroll / momentum contract Phase 2 ローカル検証
 
+> 非規範証跡: この文書が確認したのは2本指scroll / momentum内部contractの一部であり、scrollという製品mode、button assignment、2 / 3 / 4本指変換、製品完成を示さない。現在の採用条件は[証跡文書の扱い](README.md)を正とする。
+
 ## 対象
 
 Issue #129 Phase 2のうち、macOS 26.5.1（build 25F80）で物理実測から確定したscroll、momentum、scroll companionだけを検証した。

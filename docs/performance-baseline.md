@@ -1,146 +1,192 @@
 # 性能測定基準
 
-この文書は Issue 14 の基準として、入力遅延と CPU 使用率を PR レビューで確認するための証跡を定義する。
-`benchmark`は純粋ロジックのベンチマークであり、event tapからtrackpad output event系列の投稿、AppKit受信、画面反映までの実測ではない。
+この文書は、button 3 / 4 / 5押下中の連続mouse event量を2 / 3 / 4本指trackpad入力へ変換する製品経路の性能と安全性を判定する。
+速さだけでなく、event量保存、finger count、session terminal、passthrough、実機証跡、fail closedを同じrunで満たすことを性能合格の前提とする。
+製品モデルの設計判断は[ADR-0049](adr/0049-fixed-button-to-finger-count-trackpad-input.md)を正とする。
 
-## 保存する証跡
+## 現在の状態
 
-PR には少なくとも次を添付または本文に要約する。
+改訂基準commit`55eb991`の`BenchmarkReport.schemaVersion == 3`は、旧recognizerと`scrollPlanner`の純粋ロジック、および旧mode / family別runtime countを対象にしている。
+2 / 3 / 4 finger countごとのsource-to-output量、terminal、未押下passthrough、fail-closed経路を計測していないため、現行benchmarkの成功だけでは**未達**である。
 
-```sh
+既存コマンドは回帰確認として継続利用できるが、新しい計測schemaと実機runがそろうまで製品性能の完成証跡にしない。
+
+## 測定単位
+
+性能recordは旧modeや低レベルevent familyではなく、次の単位で集計する。
+
+- run UUID
+- session ID
+- activation button
+- expected finger count
+- source event sequence
+- source kind、unit、phase、capture order
+- source event countとdelta合計
+- generated frame count
+- terminal種別
+- passthroughか変換対象か
+- successまたはfail-closed理由
+
+`scroll`、`DockSwipe`、`NavigationSwipe`、`magnification`は診断用の観測列として記録してよいが、性能bucket、ユーザーmode、製品capabilityのkeyにしない。
+
+## 必須の正確性指標
+
+次は速度指標より先に判定し、1件でも不一致なら性能run全体を不合格にする。
+
+| 指標 | 合格基準 |
+| --- | --- |
+| accepted source events | source logと変換器入力の件数が完全一致 |
+| source event量 | 変換前の`deltaX` / `deltaY`、順序、timestamp、累積量がbit単位で一致 |
+| model output量 | 登録済み純正fixtureから導出した単一versioned単位変換contractの許容差内 |
+| cross-button invariance | 同一source fixtureでは正規化入力の量、順序、時間間隔が一致し、finger count固有の物理encoding差だけが登録contractと一致 |
+| duplicate / dropped / reordered | すべて0件 |
+| finger count mismatch | button 3 / 4 / 5の2 / 3 / 4対応に対して0件 |
+| terminal missing / duplicate | すべて0件 |
+| terminal後のgenerated event | 0件 |
+| passthrough mutation / suppression / generation | button未押下時はすべて0件 |
+| logger drop / unflushed record | 0件 |
+| fail-closed後の誤出力 | 0件 |
+
+複数source sampleを1 sampleへcoalesceしない。batch投稿する場合も、各source sampleのdelta、timestamp、sample orderと生成eventの対応を保存する。
+正負が相殺されるため、最終delta合計だけの一致をevent量保存の証拠にしない。
+
+## 保存する機械証跡
+
+最低限、次を同じrepo SHAとbinaryで保存する。
+
+~~~sh
 swift build --scratch-path .build
 .build/debug/nape-gesture-core-tests
+.build/debug/nape-gesture-product-output-tests
 .build/debug/nape-gesture benchmark --events 200000 --json --assert-baseline
 .build/debug/nape-gesture doctor --benchmark-events 50000 --json
-```
+~~~
 
-`benchmark --json --assert-baseline` は `BenchmarkReport` 単体の証跡と基準照合の終了コード、`doctor --benchmark-events ... --json` は権限、対象デバイス、実行主体、同じ純粋ロジック benchmark をまとめた証跡として扱う。
-どちらも `benchmark.measurementKind` または `measurementKind` が `pureLogic` で、`includesEventTapAndPosting` が `false` であることを確認する。
-`BenchmarkReport.schemaVersion` は `3` とし、認識器とスクロール計画の batch p95 / p99 を含める。
-`--assert-baseline` は純粋ロジック benchmark の初期合格基準を満たさない場合に非ゼロ終了する。
-`doctor --json` の `runtimeReadiness` と `tccStatus` は測定主体の状態確認に使うが、純粋ロジック benchmark の合否そのものとは分けて扱う。
-CI では同じ基準として `benchmark --events 200000 --json --assert-baseline` と `doctor --benchmark-events 50000 --json` を実行し、短い smoke 用イベント数だけを性能証跡として扱わない。
+既存`benchmark`と`doctor`が出力する旧schemaは移行回帰に限る。完成証跡に採用するreportは、少なくとも次をfinger count 2 / 3 / 4ごとに返す。
 
-## 現時点で測れるもの
+- source event件数と変換器入力件数
+- duplicate、drop、reorder count
+- source event量照合結果
+- generated frame / event count
+- finger count mismatch count
+- session count、terminal count、stuck count
+- passthrough event count、mutation / suppression / generation count
+- fail-closed scenario countと誤出力count
+- 各区間のp50 / p95 / p99 / max
+- wall time、CPU time、1 core換算CPU
+- measurement kindと、event tap / postingを含むか
 
-`benchmark --json --assert-baseline` と `doctor --benchmark-events ... --json` で自動確認できるもの:
+純粋ロジックとruntime実測を同じ`measurementKind`へ混ぜない。
 
-- 認識器の wall 時間、CPU 時間、events/sec、平均 ns/event、CPU ns/event
-- スクロール計画の wall 時間、CPU 時間、commands/sec、平均 ns/command、CPU ns/command
-- 認識器とスクロール計画の固定 batch wall-clock 由来の p50 / p95 / p99 / max
-- 1 core 換算の CPU 使用率目安
-- `doctor --json` の `runtimeIdentity`、`runtimeReadiness`、`tccStatus`、対象デバイス検出状態
+## 純粋ロジック基準
 
-`cpuPercentOfOneCore` と `reviewMetrics.totalCpuPercentOfOneCore` は、短時間の一括処理で CPU をどれだけ使ったかの目安であり、常駐時 CPU 使用率ではない。
-`sampledNanosecondsPerEvent` と `sampledNanosecondsPerCommand` は純粋ロジックを固定 batch で測った wall-clock 分布であり、tap-to-post や AppKit 受信までの入力遅延ではない。
-常駐時 CPU 使用率は、実機で `run` を動かしたプロセスを外部サンプルで測る。
-tap-to-post は、権限済み実行主体で `--performance-log` または `NAPE_RUNTIME_PERFORMANCE_LOG` を有効にし、`analyze-performance-log --json --assert-baseline` で集計する。
-
-## 実機でしか測れないもの
-
-次は `benchmark` では完了扱いにしない。
-
-- IOHID または CGEvent tap へ入力が届くまでの遅延
-- tap callbackからtrackpad output adapterの最初のevent投稿までの処理時間
-- 同一frameのscroll + companion gesture、または製品runtimeのDockSwipe / magnification系列の投稿完了までの処理時間
-- NavigationSwipe candidate fixture / analyzerの処理時間。製品runtime latencyと混ぜず、候補調査の指標として分離する
-- 投稿イベントが AppKit や対象アプリに届くまでの遅延
-- WindowServer配送後の縦横scroll、application navigation、Space切替、Mission Control、App Exposé、Zoomの画面反映時間。低レベルevent投稿時間と別に測る
-- Nape Pro 実機の連続操作中 CPU 使用率
-- スリープ復帰、デバイス抜き差し、権限変更後の復旧時 CPU 使用率
-
-raw event loggerはtap callback内のcopy時間、callback外queue待ち、field scan / encode時間、queue depth、drop countを分離する。logger自身がevent timingを歪めていないことと、trackpad output系列の作成・投稿数が一致することはIssue #132でbaseline化する。
-
-tap-to-post は runtime 性能 JSON Lines から自動集計する。
-現行schema 2はユーザー入力の`mode`と実際に投稿した`outputFamily`を分け、`modeCounts`と`outputFamilyCounts`を別々に集計する。schema 1の旧`action`は読込時だけ移行する。
-この値を完了条件に含める PR では、イベントタップ受信時刻、投稿直前/直後時刻、投稿コマンド数を同じ操作 ID で記録した `RuntimePerformanceRecord` と、`analyze-performance-log --json --assert-baseline` の出力を添付する。
-投稿から AppKit 受信までの遅延と画面反映時間は runtime 性能ログだけでは算出できないため、Reference Target App の target log または同等の実測証跡を別途添付する。
-
-## 合格基準
-
-純粋ロジック benchmark の初期合格基準:
-
-| 項目 | 基準 |
-| --- | --- |
-| `measurementKind` | `pureLogic` |
-| `includesEventTapAndPosting` | `false` |
-| `recognizer.averageNanosecondsPerEvent` | 2,000 ns/event 以下 |
-| `recognizer.cpuNanosecondsPerEvent` | 2,000 ns/event 以下 |
-| `recognizer.sampledNanosecondsPerEvent.p95Nanoseconds` | 50,000 ns/event 以下 |
-| `recognizer.sampledNanosecondsPerEvent.p99Nanoseconds` | 250,000 ns/event 以下 |
-| `scrollPlanner.averageNanosecondsPerCommand` | 2,000 ns/command 以下 |
-| `scrollPlanner.cpuNanosecondsPerCommand` | 2,000 ns/command 以下 |
-| `scrollPlanner.sampledNanosecondsPerCommand.p95Nanoseconds` | 50,000 ns/command 以下 |
-| `scrollPlanner.sampledNanosecondsPerCommand.p99Nanoseconds` | 250,000 ns/command 以下 |
-| `doctor.settingsValidationIssues` | 空 |
-
-実機の常駐 CPU 使用率の合格基準:
-
-| 状態 | 基準 |
-| --- | --- |
-| アイドル 30 秒 | 平均 1% 以下 |
-| 連続ジェスチャー 30 秒 | 平均 15% 以下 |
-| 操作終了 5 秒後 | 1% 以下へ戻る |
-
-実機の入力遅延の合格基準:
+純粋ロジックは、event tap、実投稿、AppKit受信、画面反映を含まない。`includesEventTapAndPosting`は`false`でなければならない。
 
 | 区間 | 基準 |
 | --- | --- |
-| tap callbackから最初のtrackpad output event投稿まで | p95 8 ms以下、p99 16 ms以下 |
-| tap callbackから同一frame event系列の投稿完了まで | p95 8 ms以下、p99 16 ms以下 |
-| 投稿から AppKit 受信まで | p95 16 ms 以下 |
+| source event記録とbutton-to-finger-count判定 | 平均2,000 ns/event以下、CPU 2,000 ns/event以下 |
+| event量変換とframe計画 | 平均2,000 ns/event以下、CPU 2,000 ns/event以下 |
+| session state更新 | 平均2,000 ns/event以下、CPU 2,000 ns/event以下 |
+| 各区間のsample p95 | 50,000 ns/event以下 |
+| 各区間のsample p99 | 250,000 ns/event以下 |
 
-上記の実機基準は、アクセシビリティと入力監視が許可された日常利用と同じ `.app` または実行ファイルで測る。
-`doctor --json` の `runtimeIdentity` が、実際に許可した対象と一致していない測定は採用しない。
-tap callback から投稿までの基準は `analyze-performance-log --assert-baseline` で終了コード判定する。
-投稿なしrecord、予定event数と実投稿数の不一致、event作成失敗、`measurementKind != runtimeTapToPost`、`includesEventTapAndPosting != true`は不合格とする。
+test dataはbutton 3 / 4 / 5を同数含み、同一source fixtureのcross-button比較、正負X/Y、斜め、停止、方向反転、異なるtimestamp間隔、正常terminal、cancelを含める。
+未押下passthroughは別bucketで同数以上測り、変換対象eventだけを測って合格にしない。
 
-## tap-to-post 測定手順
+## runtime遅延基準
 
-CLI 実行主体で測る場合:
+runtime性能JSON Linesは、event tap受理、source量記録、最初のtrackpad event投稿、同frame投稿完了、terminal投稿完了を同じsession / source sequenceへ結び付ける。
 
-```sh
-.build/debug/nape-gesture run --config <設定ファイル> --performance-log <runtime-performance.jsonl>
-.build/debug/nape-gesture analyze-performance-log <runtime-performance.jsonl> --json --assert-baseline
-```
+| 区間 | 基準 |
+| --- | --- |
+| tap callbackから最初のtrackpad event投稿まで | p95 8 ms以下、p99 16 ms以下 |
+| tap callbackから同一source eventに対応するframe系列投稿完了まで | p95 8 ms以下、p99 16 ms以下 |
+| terminal原因受理からterminal投稿完了まで | p95 8 ms以下、p99 16 ms以下 |
+| 未押下passthroughの追加処理時間 | p95 1 ms以下、p99 2 ms以下 |
 
-GUI app 実行主体で測る場合:
+投稿なしrecord、予定数と実投稿数の不一致、event作成失敗、finger count不一致、terminal欠落をpercentileから除外して成功扱いにしない。
+失敗recordを含む正確性gateを先に判定し、その後で成功recordの遅延分布を出す。
 
-```sh
-NAPE_RUNTIME_PERFORMANCE_LOG=<runtime-performance.jsonl> .build/NapeGesture.app/Contents/MacOS/nape-gesture app --config <設定ファイル>
-.build/NapeGesture.app/Contents/MacOS/nape-gesture analyze-performance-log <runtime-performance.jsonl> --json --assert-baseline
-```
+## CPU基準
 
-`scripts/collect-runtime-event-evidence.sh` は、TCC 許可後の `gesture-drag`、`gesture-wheel`、`gesture-wheel-then-kill-switch` で runtime 性能ログを保存し、同じ基準を自動判定する。
-TCC 未許可で scenario が未実行の場合、runtime 性能ログも完成証跡として扱わない。
+日常利用する`.app`を実行し、次をfinger count別に30秒以上測る。
 
-## 実機 CPU 測定手順
+| 状態 | 基準 |
+| --- | --- |
+| アイドル | 平均1%以下 |
+| 未押下passthrough連続入力 | 平均10%以下 |
+| 2本指変換 | 平均15%以下 |
+| 3本指変換 | 平均15%以下 |
+| 4本指変換 | 平均15%以下 |
+| terminal後5秒 | 1%以下へ戻る |
+| fail closed待機 | 平均1%以下 |
 
-常駐プロセスを起動し、`doctor --json` の `runtimeIdentity` と同じ実行主体であることを確認する。
-別ターミナルで PID を特定し、1 秒間隔で CPU を採取する。
+loggerを同時実行する場合は、製品processとlogger processのCPUを別々に保存する。
+logger callback内copy、queue待ち、field scan / encode、flushを分離し、queue depthとdrop countを記録する。
 
-```sh
+## 実機測定
+
+純粋ロジックbenchmarkだけでは、次を完了扱いにしない。
+
+- Nape Proのsource eventがevent tapへ届くまで
+- 2 / 3 / 4 finger countを含むtrackpad event系列の実投稿
+- session terminal
+- 未押下passthrough
+- TCC、device、contract不一致時のfail closed
+- AppKit受信
+- OS/App画面結果
+
+実機runでは、純正trackpad 2 / 3 / 4本指fixtureと、Nape Pro button 3 / 4 / 5のruntime logを同じOS buildで取得する。
+各finger countについて短い列、長い列、高頻度列、方向反転、正常terminal、cancelを含める。
+
+常駐CPUは別terminalでPIDを固定して採取する。
+
+~~~sh
 pid=$(pgrep -x nape-gesture | head -n 1)
 top -l 30 -s 1 -pid "$pid" -stats pid,cpu,time,command
-```
+~~~
 
-アイドル、連続ジェスチャー、操作終了後の 3 区間を分けて保存する。
-連続ジェスチャー区間では、同時に `log --exclude-generated`、`log --only-generated`、`target --out` のいずれかを使い、操作が実際に発生していたことを残す。
+測定中の操作が成立していたことをsource log、generated log、session reportで示す。画面の動きだけを負荷区間の証拠にしない。
 
-## 超過時に調整する項目
+## OS/App結果の時間
 
-純粋ロジックの基準を超えた場合:
+低レベル投稿時間とOS/App結果の時間は別reportにする。
 
-- 認識器の状態遷移で不要な command 生成や抑制判定が増えていないか確認する
-- `deadZonePoints`、`directionLockRatio`、`dragSensitivity`、`wheelSensitivity` の変更がイベント数や command 数を増やしていないか確認する
-- `acceleration` のしきい値、指数、最大倍率が過剰な計算や過剰なイベント生成につながっていないか確認する
+| 区間 | 扱い |
+| --- | --- |
+| post完了からAppKit受信まで | target logで測り、p95 16 ms以下を初期基準とする |
+| AppKit受信から画面反映まで | Appごとの観測値として保存する |
+| system gestureの画面完了まで | OS buildと設定ごとの観測値として保存する |
 
-常駐 CPU または入力遅延の基準を超えた場合:
+OS/App結果の遅延が大きくても、結果別mode、方向別action、application別設定、AX/PID/shortcut fallbackを追加しない。
+低レベルcontractの遅延合格と、OS/App結果の遅延合格を別々に報告する。
 
-- 対象デバイス条件を絞り、対象外デバイスの入力を処理していないか確認する
-- `momentum.frameInterval`、`minimumStartVelocity`、`stopVelocity`、`decayPerSecond` が投稿頻度を増やしすぎていないか確認する
-- スクロール生成の steps、interval、momentum steps、momentum decay、momentum scale の組み合わせで投稿数が増えすぎていないか確認する
-- 自前生成イベントを再解釈していないか、`generatedByNapeGesture` のログで確認する
-- 権限未許可、対象デバイス未検出、古い `.app` のまま測っていないか `doctor --json` で確認する
+## fail closed性能
 
-調整後は、純粋ロジック benchmark と実機測定の両方を取り直す。
+unsupported OS/build、fixture改変、finger count不明、device不一致、TCC不足、現在boot外timestamp、source / contractにないtimestamp変換、部分投稿失敗をfailure injectionと実利用binaryで測る。
+
+合格条件:
+
+- readiness判定前にevent tapと抑制を開始しない
+- rejection決定後のgenerated eventが0件
+- active sessionはterminalまたは構造化された安全停止へ収束する
+- 物理解放後にpassthroughへ戻る
+- retry loopがCPU基準を超えない
+- AX、PID、shortcut、別familyへのfallbackが0件
+
+fail-closed経路をbenchmark対象から除外しない。
+
+## 採用条件
+
+性能証跡は次を全て満たす場合だけ採用する。
+
+- 日常利用する`.app`と`doctor.runtimeIdentity`が一致する
+- repo SHA、binary SHA-256、OS build、fixture identityがmanifestと一致する
+- finger count 2 / 3 / 4と未押下passthroughを同じ基準で測定している
+- 正確性指標が全て合格する
+- runtime遅延とCPUが基準内にある
+- 純正trackpadとNape Proの実機証跡がある
+- fail-closed scenarioに誤出力がない
+- OS/App結果時間を低レベル投稿時間へ混ぜていない
+
+閾値超過や正確性違反があれば根本原因を修正し、純粋ロジック、runtime、実機、fail closedの全runを取り直す。

@@ -34,12 +34,11 @@ for required_path in \
   Sources/NapeGestureProductOutput/TrackpadGestureOutputAdapter.swift \
   Sources/NapeGestureProductOutput/TrackpadScrollOutputModel.swift \
   Sources/nape-gesture-product-output-tests/main.swift \
+  scripts/check-product-model-documentation.rb \
+  scripts/check-finger-count-product-model.rb \
   scripts/derive-trackpad-scroll-output-model.rb \
   scripts/finalize-product-output-provenance.rb \
-  scripts/test-finalize-product-output-provenance.rb \
-  scripts/test-settings-mode-migration.sh \
-  scripts/verify-doctor-family-state.rb \
-  scripts/test-verify-doctor-family-state.rb
+  scripts/test-finalize-product-output-provenance.rb
 do
   if ! git ls-files --error-unmatch "$required_path" >/dev/null 2>&1; then
     printf '%s\n' "完成証跡の必須fileがGit管理下にありません: $required_path" >&2
@@ -209,10 +208,16 @@ run_combined_success \
   sh scripts/test-check-provenance.sh
 
 run_combined_success \
-  "doctor family state検証器回帰テスト" \
-  "$provenance_dir/test-verify-doctor-family-state.log" \
-  "ruby scripts/test-verify-doctor-family-state.rb" \
-  ruby scripts/test-verify-doctor-family-state.rb
+  "製品モデル文書ガード" \
+  "$provenance_dir/check-product-model-documentation.log" \
+  "ruby scripts/check-product-model-documentation.rb" \
+  ruby scripts/check-product-model-documentation.rb
+
+run_combined_success \
+  "固定finger-count製品モデルガード" \
+  "$provenance_dir/check-finger-count-product-model.log" \
+  "ruby scripts/check-finger-count-product-model.rb" \
+  ruby scripts/check-finger-count-product-model.rb
 
 run_combined_success \
   "製品gesture出力境界ガード" \
@@ -251,13 +256,7 @@ run_combined_success \
   .build/debug/nape-gesture-core-tests
 
 run_combined_success \
-  "旧mode設定canonical migration" \
-  "$build_dir/settings-mode-migration-tests.log" \
-  "sh scripts/test-settings-mode-migration.sh .build/debug/nape-gesture" \
-  sh scripts/test-settings-mode-migration.sh .build/debug/nape-gesture
-
-run_combined_success \
-  "product output tests" \
+  "移行前product output回帰test（完成判定外）" \
   "$build_dir/product-output-tests.log" \
   ".build/debug/nape-gesture-product-output-tests" \
   .build/debug/nape-gesture-product-output-tests
@@ -566,12 +565,6 @@ run_combined_success \
   "grep -q runtimeReadiness $doctor_dir/doctor-debug.json && grep -q tccStatus $doctor_dir/doctor-debug.json && grep -q permissionTarget $doctor_dir/doctor-debug.json && grep -q grantRequired $doctor_dir/doctor-debug.json && grep -q targetDeviceDiagnostics $doctor_dir/doctor-debug.json && grep -q outputContract $doctor_dir/doctor-debug.json" \
   sh -c "grep -q '\"runtimeReadiness\"' '$doctor_dir/doctor-debug.json' && grep -q '\"tccStatus\"' '$doctor_dir/doctor-debug.json' && grep -q '\"permissionTarget\"' '$doctor_dir/doctor-debug.json' && grep -q '\"grantRequired\"' '$doctor_dir/doctor-debug.json' && grep -q '\"targetDeviceDiagnostics\"' '$doctor_dir/doctor-debug.json' && grep -q '\"outputContract\"' '$doctor_dir/doctor-debug.json'"
 
-run_combined_success \
-  "doctor JSON product family state完全一致" \
-  "$doctor_dir/doctor-family-state.log" \
-  "ruby scripts/verify-doctor-family-state.rb $doctor_dir/doctor-debug.json" \
-  ruby scripts/verify-doctor-family-state.rb "$doctor_dir/doctor-debug.json"
-
 run_split_success \
   "doctor HID probe JSON" \
   "$doctor_dir/doctor-hid-probe-debug.json" \
@@ -584,12 +577,6 @@ run_combined_success \
   "$doctor_dir/doctor-hid-probe-json-field-check.log" \
   "grep -q runtimeReadiness $doctor_dir/doctor-hid-probe-debug.json && grep -q tccStatus $doctor_dir/doctor-hid-probe-debug.json && grep -q permissionTarget $doctor_dir/doctor-hid-probe-debug.json && grep -q grantRequired $doctor_dir/doctor-hid-probe-debug.json && grep -q targetDeviceDiagnostics $doctor_dir/doctor-hid-probe-debug.json && grep -q outputContract $doctor_dir/doctor-hid-probe-debug.json" \
   sh -c "grep -q '\"runtimeReadiness\"' '$doctor_dir/doctor-hid-probe-debug.json' && grep -q '\"tccStatus\"' '$doctor_dir/doctor-hid-probe-debug.json' && grep -q '\"permissionTarget\"' '$doctor_dir/doctor-hid-probe-debug.json' && grep -q '\"grantRequired\"' '$doctor_dir/doctor-hid-probe-debug.json' && grep -q '\"targetDeviceDiagnostics\"' '$doctor_dir/doctor-hid-probe-debug.json' && grep -q '\"outputContract\"' '$doctor_dir/doctor-hid-probe-debug.json'"
-
-run_combined_success \
-  "doctor HID probe JSON product family state完全一致" \
-  "$doctor_dir/doctor-hid-probe-family-state.log" \
-  "ruby scripts/verify-doctor-family-state.rb $doctor_dir/doctor-hid-probe-debug.json" \
-  ruby scripts/verify-doctor-family-state.rb "$doctor_dir/doctor-hid-probe-debug.json"
 
 run_split_expected_failure \
   "doctor assert-runtime-ready requires HID probe" \
@@ -637,73 +624,30 @@ run_combined_success \
   sh -c "grep -q '\"schemaVersion\"[[:space:]]*:[[:space:]]*3' '$doctor_dir/doctor-debug.json' && grep -q '\"sampledNanosecondsPerEvent\"' '$doctor_dir/doctor-debug.json' && grep -q '\"sampledNanosecondsPerCommand\"' '$doctor_dir/doctor-debug.json' && grep -q '\"p95Nanoseconds\"' '$doctor_dir/doctor-debug.json' && grep -q '\"p99Nanoseconds\"' '$doctor_dir/doctor-debug.json' && grep -q '\"recognizerP95NanosecondsPerEvent\"' '$doctor_dir/doctor-debug.json' && grep -q '\"scrollPlannerP99NanosecondsPerCommand\"' '$doctor_dir/doctor-debug.json'"
 
 run_combined_success \
-  "system-test list" \
-  "$system_dir/system-test-list.txt" \
-  ".build/debug/nape-gesture system-test list" \
-  .build/debug/nape-gesture system-test list
-
-for scenario in space-left space-right mission-control horizontal-scroll page-back page-forward zoom-in zoom-out kill-switch; do
-  if [ "$scenario" = "space-left" ] || [ "$scenario" = "space-right" ]; then
-    run_combined_success \
-      "system-test $scenario dry-run JSON Lines" \
-      "$system_dir/system-$scenario.log" \
-      ".build/debug/nape-gesture system-test run --scenario $scenario --target finder --dry-run --log-json --out $system_dir/system-$scenario.jsonl" \
-      .build/debug/nape-gesture system-test run --scenario "$scenario" --target finder --dry-run --log-json --out "$system_dir/system-$scenario.jsonl"
-  else
-    run_combined_success \
-      "system-test $scenario dry-run JSON Lines" \
-      "$system_dir/system-$scenario.log" \
-      ".build/debug/nape-gesture system-test run --scenario $scenario --dry-run --log-json --out $system_dir/system-$scenario.jsonl" \
-      .build/debug/nape-gesture system-test run --scenario "$scenario" --dry-run --log-json --out "$system_dir/system-$scenario.jsonl"
-  fi
-
-  run_split_success \
-    "system-test $scenario analyze-log assert-system-scenario" \
-    "$system_dir/system-$scenario-analysis.txt" \
-    "$system_dir/system-$scenario-analysis.stderr.log" \
-    ".build/debug/nape-gesture analyze-log $system_dir/system-$scenario.jsonl --json --assert-system-scenario $scenario" \
-    .build/debug/nape-gesture analyze-log "$system_dir/system-$scenario.jsonl" --json --assert-system-scenario "$scenario"
-done
-
-run_combined_success \
-  "system-test normal-after-release dry-run JSON Lines" \
+  "移行前normal-after-release診断（完成判定外）" \
   "$system_dir/system-normal-after-release.log" \
   ".build/debug/nape-gesture system-test run --scenario normal-after-release --dry-run --log-json --out $system_dir/system-normal-after-release.jsonl" \
   .build/debug/nape-gesture system-test run --scenario normal-after-release --dry-run --log-json --out "$system_dir/system-normal-after-release.jsonl"
 
 run_split_success \
-  "system-test normal-after-release analyze-log assert-has-unmarked-click-drag-wheel" \
+  "移行前normal-after-release解析（完成判定外）" \
   "$system_dir/system-normal-after-release-analysis.json" \
   "$system_dir/system-normal-after-release-analysis.stderr.log" \
   ".build/debug/nape-gesture analyze-log $system_dir/system-normal-after-release.jsonl --json --assert-system-scenario normal-after-release --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel" \
   .build/debug/nape-gesture analyze-log "$system_dir/system-normal-after-release.jsonl" --json --assert-system-scenario normal-after-release --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel
 
 run_combined_success \
-  "system-test gesture-wheel-then-kill-switch dry-run JSON Lines" \
+  "移行前kill-switch診断（完成判定外）" \
   "$system_dir/system-gesture-wheel-then-kill-switch.log" \
   ".build/debug/nape-gesture system-test run --scenario gesture-wheel-then-kill-switch --dry-run --log-json --out $system_dir/system-gesture-wheel-then-kill-switch.jsonl" \
   .build/debug/nape-gesture system-test run --scenario gesture-wheel-then-kill-switch --dry-run --log-json --out "$system_dir/system-gesture-wheel-then-kill-switch.jsonl"
 
 run_split_success \
-  "system-test gesture-wheel-then-kill-switch analyze-log assert-gesture-before-kill-switch" \
+  "移行前kill-switch解析（完成判定外）" \
   "$system_dir/system-gesture-wheel-then-kill-switch-analysis.json" \
   "$system_dir/system-gesture-wheel-then-kill-switch-analysis.stderr.log" \
   ".build/debug/nape-gesture analyze-log $system_dir/system-gesture-wheel-then-kill-switch.jsonl --json --assert-system-scenario gesture-wheel-then-kill-switch --assert-kill-switch-shortcut --assert-gesture-before-kill-switch" \
   .build/debug/nape-gesture analyze-log "$system_dir/system-gesture-wheel-then-kill-switch.jsonl" --json --assert-system-scenario gesture-wheel-then-kill-switch --assert-kill-switch-shortcut --assert-gesture-before-kill-switch
-
-run_split_success \
-  "generate-scroll space-right dry-run JSON Lines" \
-  "$system_dir/generated-space-right.jsonl" \
-  "$system_dir/generated-space-right.stderr.log" \
-  ".build/debug/nape-gesture generate-scroll --x 1200 --y 0 --steps 30 --mode space-right --phase auto --momentum-steps 8 --dry-run --log-json" \
-  .build/debug/nape-gesture generate-scroll --x 1200 --y 0 --steps 30 --mode space-right --phase auto --momentum-steps 8 --dry-run --log-json
-
-run_split_success \
-  "generate-scroll space-right analyze-log" \
-  "$system_dir/generated-space-right-analysis.txt" \
-  "$system_dir/generated-space-right-analysis.stderr.log" \
-  ".build/debug/nape-gesture analyze-log $system_dir/generated-space-right.jsonl" \
-  .build/debug/nape-gesture analyze-log "$system_dir/generated-space-right.jsonl"
 
 run_split_success \
   "sample scroll compare-log" \
@@ -880,10 +824,11 @@ cat >> "$summary_file" <<EOF
 ## 未完了の証跡
 
 - Nape Pro 実機の接続、HID 識別、操作ログ
-- 純正トラックパッドの2本指系列にあるNavigationSwipe候補左右marker、pinch方向marker、DockSwipe反対方向 / cancel、Mission Control / App Exposé再収録
+- 純正トラックパッドの2 / 3 / 4本指について、縦・横・斜め・軸変更・方向反転・速度差・terminalを同一schemaで収録
+- Nape Pro元mouse入力と生成eventのfinger count、X/Y量、符号、sample順、timestamp、phase、terminal対応を比較
 - TCC のアクセシビリティ / 入力監視許可操作
-- Space切替 / Mission Control / App ExposéのOS画面結果実測
-- Issue #10 のSafari / 対応applicationでのapplication navigation、Zoom、縦横scroll結果実測
+- 2 / 3 / 4本指入力を受けたmacOS / applicationの画面結果を、低レベルcontractとは別に実測
+- Issue #146でmagnificationが固定finger-countと単一X/Y量から表現可能かを判定
 - \`run\`、実イベント投稿、target 実測、常駐 CPU、入力遅延
 - Developer ID 署名、公証、stapler、Gatekeeper 評価
 
