@@ -76,6 +76,8 @@ GUIは次の固定対応を読み取り専用で表示します。
 
 buttonごとのmode selector、無効化、感度、方向別binding、application別設定はありません。保存済みの旧modeや調整値はmigration時にcanonical設定から除去し、移行失敗時は原本を保持してruntimeを開始しません。対象device条件、cancel時間、診断など、gestureの意味を変更しない運用項目だけを設定対象にします。「権限とデバイス」にはAccessibility、Input Monitoring、対象device、macOS version / build、output contract / fixture、必須family、runtime状態、fail-closed理由を表示します。
 
+`.app`内の実行ファイルをterminalから`doctor`として起動した場合、TCC判定はNape Gesture.appではなく実行元terminalまたは親applicationに帰属します。GUI本体の権限とruntime状態は、LaunchServices経由で起動したアプリ内の「権限とデバイスを確認」を正とします。ad-hoc署名を更新した後、権限一覧がONでも拒否される場合は、旧Nape Gesture登録を一覧から削除し、現在の`/Applications/Nape Gesture.app`を再追加してから再起動します。
+
 ## 現在位置
 
 | 領域 | 現在 |

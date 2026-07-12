@@ -53,6 +53,11 @@ struct DoctorCommand {
             findings.append("設定ファイルに不正な値があります。`check-config` で詳細を確認して修正してください。")
         }
         let accessibilityTrusted = AccessibilityPermission.isTrusted
+        if runtimeIdentity.isAppBundle && runtimeIdentity.launchContext == .commandLine {
+            findings.append(
+                "このdoctorは.app内の実行ファイルをCLIとして起動しています。TCC判定はNape Gesture.appではなく、実行元ターミナルまたは親アプリに帰属します。GUI本体の権限はアプリ内の「権限とデバイスを確認」で判定してください。"
+            )
+        }
         if !accessibilityTrusted {
             findings.append("アクセシビリティ権限が未許可です。`run`、`log`、実イベント投稿は開始できません。")
             findings.append("権限付与対象を確認してください: \(runtimeIdentity.permissionTargetDescription)")
@@ -285,6 +290,8 @@ struct DoctorCommand {
             "バンドルID: \(report.runtimeIdentity.bundleIdentifier ?? "なし")",
             "バンドルパス: \(report.runtimeIdentity.bundlePath)",
             "アプリバンドル実行: \(report.runtimeIdentity.isAppBundle ? "はい" : "いいえ")",
+            "起動経路: \(report.runtimeIdentity.launchContext.rawValue)",
+            "TCC判定対象: \(report.runtimeIdentity.tccAttribution)",
             "キルスイッチ: \(report.killSwitchShortcut)",
             "アクセシビリティ: \(report.accessibilityTrusted ? "許可済み" : "未許可")",
             "対象デバイス一致必須: \(report.requireMatchingTargetDevice ? "はい" : "いいえ")",
@@ -744,6 +751,8 @@ private struct DoctorTCCStatus: Codable {
 private struct DoctorTCCPermissionTarget: Codable {
     var description: String
     var preferredGrantTarget: String
+    var attribution: String
+    var launchContext: String
     var processName: String
     var executablePath: String
     var bundleIdentifier: String?
@@ -753,7 +762,10 @@ private struct DoctorTCCPermissionTarget: Codable {
 
     init(runtimeIdentity: RuntimeIdentity) {
         description = runtimeIdentity.permissionTargetDescription
-        preferredGrantTarget = runtimeIdentity.isAppBundle ? "appBundle" : "executable"
+        preferredGrantTarget =
+            runtimeIdentity.tccAttribution == "appBundle" ? "appBundle" : "invokingProcess"
+        attribution = runtimeIdentity.tccAttribution
+        launchContext = runtimeIdentity.launchContext.rawValue
         processName = runtimeIdentity.processName
         executablePath = runtimeIdentity.executablePath
         bundleIdentifier = runtimeIdentity.bundleIdentifier

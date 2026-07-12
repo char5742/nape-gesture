@@ -472,7 +472,7 @@ enum ToolError: LocalizedError {
                 .joined(separator: "\n")
             return "設定ファイルの値が不正です。\n\(details)"
         case .accessibilityPermissionRequired:
-            return "アクセシビリティ権限が必要です。システム設定でこの実行ファイルを許可してください。"
+            return "アクセシビリティ権限が必要です。システム設定でこの実行主体を許可してください。一覧がONでも拒否される場合は、署名更新前の登録を削除し、現在のNape Gesture.appを再追加してからアプリを再起動してください。"
         case .eventTapCreationFailed:
             return "イベントタップを作成できませんでした。権限、入力監視、または他プロセスによる制限を確認してください。"
         case .hidManagerOpenFailed(let code):
@@ -511,7 +511,7 @@ enum IOReturnDiagnostic {
         switch code {
         case kIOReturnNotPermitted:
             return
-                "入力監視が許可されていません。システム設定 > プライバシーとセキュリティ > 入力監視で、Codex、実行元ターミナル、または NapeGesture.app を許可してください。"
+                "入力監視が許可されていません。システム設定 > プライバシーとセキュリティ > 入力監視で実行主体を許可してください。一覧がONでも拒否される場合は、署名更新前のNape Gesture登録を削除し、現在のNape Gesture.appを再追加してからアプリを再起動してください。"
         case kIOReturnNotPrivileged:
             return "権限が不足しています。入力監視とアクセシビリティの許可状態を確認してください。"
         case kIOReturnNoDevice:
