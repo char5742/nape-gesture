@@ -53,6 +53,11 @@ struct DoctorCommand {
             findings.append("設定ファイルに不正な値があります。`check-config` で詳細を確認して修正してください。")
         }
         let accessibilityTrusted = AccessibilityPermission.isTrusted
+        if runtimeIdentity.isAppBundle && runtimeIdentity.launchContext == .commandLine {
+            findings.append(
+                "このdoctorは.app内の実行ファイルをCLIとして起動しています。TCC判定はNape Gesture.appではなく、実行元ターミナルまたは親アプリに帰属します。GUI本体の権限はアプリ内の「権限とデバイスを確認」で判定してください。"
+            )
+        }
         if !accessibilityTrusted {
             findings.append("アクセシビリティ権限が未許可です。`run`、`log`、実イベント投稿は開始できません。")
             findings.append("権限付与対象を確認してください: \(runtimeIdentity.permissionTargetDescription)")
@@ -60,13 +65,14 @@ struct DoctorCommand {
 
         let inventory = makeInventory(settings: settings, findings: &findings)
         let outputAdapter = TrackpadGestureOutputAdapter()
-        let outputCoordinator = ProductGestureSessionCoordinator(
-            enabledModes: settings.gesture.enabledModes,
-            output: outputAdapter
-        )
+        let requiredFamilies: Set<TrackpadOutputEventFamily> = [
+            .scroll,
+            .dockSwipe,
+            .dockSwipePinch,
+        ]
         let outputContract = DoctorOutputContractStatus(
             capability: outputAdapter.capability,
-            missingRequiredFamilies: outputCoordinator.unsupportedRequiredFamilies
+            requiredFamilies: requiredFamilies
         )
         if !outputContract.supported {
             findings.append(
@@ -284,6 +290,8 @@ struct DoctorCommand {
             "バンドルID: \(report.runtimeIdentity.bundleIdentifier ?? "なし")",
             "バンドルパス: \(report.runtimeIdentity.bundlePath)",
             "アプリバンドル実行: \(report.runtimeIdentity.isAppBundle ? "はい" : "いいえ")",
+            "起動経路: \(report.runtimeIdentity.launchContext.rawValue)",
+            "TCC判定対象: \(report.runtimeIdentity.tccAttribution)",
             "キルスイッチ: \(report.killSwitchShortcut)",
             "アクセシビリティ: \(report.accessibilityTrusted ? "許可済み" : "未許可")",
             "対象デバイス一致必須: \(report.requireMatchingTargetDevice ? "はい" : "いいえ")",
@@ -293,6 +301,8 @@ struct DoctorCommand {
             "ポインティングデバイス数: \(formatOptional(report.pointingDeviceCount))",
             "一致対象デバイス数: \(report.matchedTargetDeviceCount)",
             "trackpad output contract: \(report.outputContract.status)",
+            "固定必須family: \(report.outputContract.requiredFamilies.joined(separator: ", "))",
+            "不足family: \(report.outputContract.missingRequiredFamilies.isEmpty ? "なし" : report.outputContract.missingRequiredFamilies.joined(separator: ", "))",
             "確定family: \(report.outputContract.confirmedFamilies.joined(separator: ", "))",
             "試用family: \(report.outputContract.trialFamilies.joined(separator: ", "))",
             "runtime ready: \(report.runtimeReadiness.ready ? "はい" : "いいえ")",
@@ -647,14 +657,16 @@ private struct DoctorOutputContractStatus: Codable {
     var supportedFamilies: [String]
     var confirmedFamilies: [String]
     var trialFamilies: [String]
+    var requiredFamilies: [String]
     var missingRequiredFamilies: [String]
     var reason: String?
 
     init(
         capability: ProductGestureOutputCapability,
-        missingRequiredFamilies: Set<TrackpadOutputEventFamily> = []
+        requiredFamilies: Set<TrackpadOutputEventFamily>
     ) {
-        let missing = missingRequiredFamilies.map(\.rawValue).sorted()
+        let missingFamilies = requiredFamilies.subtracting(capability.supportedFamilies)
+        let missing = missingFamilies.map(\.rawValue).sorted()
         status =
             capability.isSupported && !missing.isEmpty
             ? "missingFamilies"
@@ -669,6 +681,7 @@ private struct DoctorOutputContractStatus: Codable {
         supportedFamilies = capability.supportedFamilies.map(\.rawValue).sorted()
         confirmedFamilies = capability.confirmedFamilies.map(\.rawValue).sorted()
         trialFamilies = capability.trialFamilies.map(\.rawValue).sorted()
+        self.requiredFamilies = requiredFamilies.map(\.rawValue).sorted()
         self.missingRequiredFamilies = missing
         reason = capability.reason
     }
@@ -738,6 +751,8 @@ private struct DoctorTCCStatus: Codable {
 private struct DoctorTCCPermissionTarget: Codable {
     var description: String
     var preferredGrantTarget: String
+    var attribution: String
+    var launchContext: String
     var processName: String
     var executablePath: String
     var bundleIdentifier: String?
@@ -747,7 +762,10 @@ private struct DoctorTCCPermissionTarget: Codable {
 
     init(runtimeIdentity: RuntimeIdentity) {
         description = runtimeIdentity.permissionTargetDescription
-        preferredGrantTarget = runtimeIdentity.isAppBundle ? "appBundle" : "executable"
+        preferredGrantTarget =
+            runtimeIdentity.tccAttribution == "appBundle" ? "appBundle" : "invokingProcess"
+        attribution = runtimeIdentity.tccAttribution
+        launchContext = runtimeIdentity.launchContext.rawValue
         processName = runtimeIdentity.processName
         executablePath = runtimeIdentity.executablePath
         bundleIdentifier = runtimeIdentity.bundleIdentifier

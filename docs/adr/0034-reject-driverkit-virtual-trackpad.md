@@ -2,32 +2,35 @@
 
 - 状態: 採択
 - 日付: 2026-07-11
-- 更新日: 2026-07-12
+- 更新日: 2026-07-13
 
 ## 背景
 
-通常mouse入力をtrackpad入力へ変換する方法として、HIDDriverKitでvirtual digitizer contactを生成する構成を検討できる。しかし、Nape Gestureが必要とするのは新しい物理touch surfaceの追加ではなく、対象mouseの連続イベント量を、buttonに対応するfinger countのtrackpad driver上位入力としてmacOSへ渡すことである。
+mouse入力を「2 / 3 / 4本指gesture」へ変換する要件を、raw digitizer contact数の生成と解釈すると、DriverKit System Extensionまたはvirtual HID deviceが必要に見える。
 
-DriverKit System Extensionを導入すると、`.dext`、entitlement、installation、approval、更新、uninstall、OS互換性という別の運用面が増える。現在の必要条件を満たすための最小境界ではない。
+しかし、Nape Gestureが再現するのはraw touch surfaceではない。物理trackpad driverがgestureを認識した後に上位へ生成するtype 22 scroll + type 29 companionと、認識済みtype 30 / IOHID `DockSwipe`のevent contractである。「2 / 3 / 4本指」は固定GestureClassをユーザーへ説明する意味であり、transport上のcontact countやgeneric `fingerCount` fieldではない。
+
+DriverKitを導入すると、`.dext`、entitlement、installation approval、更新、uninstall、OS互換性という別の運用面が増える一方、必要な上位event contractを直接表現する製品境界にはならない。
 
 ## 決定
 
-- DriverKit System Extension、virtual digitizer、virtual trackpad descriptorを製品出力に使わない。
+- DriverKit System Extension、virtual trackpad descriptor、virtual HID、raw digitizer contactを製品出力に使わない。
 - `.dext`とDriverKit entitlementをbuild、release、権限導線へ追加しない。
-- 対象device識別、通常入力passthrough、変換session中の元入力抑制はIOHIDとevent tap境界で扱う。
-- 出力は純正trackpadの物理captureから再導出したdriver上位event contractを、最小のcompatibility adapterでsystem-wideに投稿する。
-- button 3 / 4 / 5は2 / 3 / 4本指を固定し、結果別eventやvirtual touch形状を選ぶ設定を持たない。
-- AX、対象PID配送、keyboard shortcutを代替経路にしない。
-- 公開APIと自前計測で安全な上位event contractを確定できないOS buildでは、元入力抑制前にfail closedする。
+- 対象device識別、通常mouse passthrough、active sessionの元入力抑制はIOHIDとevent tap境界で扱う。
+- button 3 / 4 / 5は、それぞれ2本指scroll / swipe、3本指system swipe、4本指system pinchの上位GestureClassへ固定する。
+- 出力は2本指をtype 22 scroll + type 29 companion、3本指をtype 30 DockSwipe motion 1 / 2、4本指をtype 30 DockSwipe motion 4として最小compatibility adapterで構成し、system-wideへ投稿する。button 5はapplication magnification eventではない。
+- AX、対象PID配送、keyboard shortcut、application別分岐を代替経路にしない。
+- 25F80の認識済みDockSwipe template fixture ID、SHA-256、schema、contract ID、OS version / build、fixture実体を検証してIOHID値を更新する。scroll contract、model、templateのどれかを安全に確定できないOS buildでは、全ProductOutputを無効にして元入力抑制前にruntime全体をfail closedする。
 
 ## 影響
 
-- 調査対象はvirtual digitizer contactではなく、2 / 3 / 4本指の純正trackpad上位eventにおけるX/Y量、finger count、phase、timestamp、session、terminalになる。
+- 調査と検証の対象はraw contact形状ではなく、class別のevent type、subtype、field、phase、companion lifecycle、単位変換、timestamp、session、terminalとなる。
 - DriverKit固有のinstaller、approval、recoveryは不要になる。
-- compatibility adapterの非公開contractリスクは、fixture registry、OS build gate、strict analyzer、fail closedで管理する。
+- 通常SDK非公開のcontract riskは、fixture registry、OS build gate、strict analyzer、source boundary、fail closedで管理する。
+- 将来OSのcontractが変わってもvirtual deviceへfallbackせず、そのbuildをunsupportedとして通常mouse入力を保持する。
 
 ## 関連
 
-- [ADR-0036: finger-count付きtrackpad driver上位入力を再現する](0036-emulate-trackpad-driver-output-events.md)
-- [ADR-0049: buttonを指本数へ固定しイベント量をtrackpad入力へ置換する](0049-fixed-button-to-finger-count-trackpad-input.md)
+- [ADR-0036: trackpad driver上位eventを安全に再現する](0036-emulate-trackpad-driver-output-events.md)
+- [ADR-0049: buttonを固定GestureClassへ接続する](0049-fixed-button-to-finger-count-trackpad-input.md)
 - [ゴール要件](../requirements.md)

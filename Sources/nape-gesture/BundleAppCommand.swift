@@ -907,6 +907,17 @@ struct BundleAppCommand {
             to: trackpadResourcesURL.appendingPathComponent("scroll-output-model.json"),
             options: .atomic
         )
+        try requiredProductResourceData(
+            bundleRelativePath:
+                "TrackpadContracts/25F80/recognized-dockswipe-templates.json",
+            repositoryRelativePath:
+                "Fixtures/trackpad-contract/25F80/recognized-dockswipe-templates.json"
+        ).write(
+            to: trackpadResourcesURL.appendingPathComponent(
+                "recognized-dockswipe-templates.json"
+            ),
+            options: .atomic
+        )
     }
 
     private func requiredProductResourceData(

@@ -1,43 +1,52 @@
 import Foundation
 
 public enum SettingsMigration {
-    private static let canonicalModeKeys = [
+    private static let deprecatedGestureKeys: Set<String> = [
+        "acceleration",
+        "actions",
+        "activationButton",
+        "applicationBindings",
+        "applicationSettings",
+        "bindings",
         "button3Mode",
         "button4Mode",
         "button5Mode",
-    ]
-
-    private static let deprecatedModeValues: Set<String> = [
-        "scrollAndNavigate",
-        "spacesAndMissionControl",
-        "zoom",
-    ]
-
-    private static let deprecatedGestureKeys: Set<String> = [
-        "bindings",
+        "buttonAssignments",
+        "deadZonePoints",
+        "directionBindings",
         "directionLockRatio",
-        "activationButton"
+        "dragSensitivity",
+        "mode",
+        "momentum",
+        "wheelSensitivity",
     ]
 
     private static let deprecatedCancellationKeys: Set<String> = [
         "offAxisCancelRatio"
     ]
 
+    private static let deprecatedTopLevelKeys: Set<String> = [
+        "applicationBindings",
+        "applicationSettings",
+        "applicationOverrides",
+        "applications",
+    ]
+
     public static func requiresCanonicalRewrite(in data: Data) throws -> Bool {
-        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let gesture = root["gesture"] as? [String: Any]
-        else {
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return false
+        }
+        if !deprecatedTopLevelKeys.isDisjoint(with: root.keys) {
+            return true
+        }
+
+        guard let gestureValue = root["gesture"] else {
+            return false
+        }
+        guard let gesture = gestureValue as? [String: Any] else {
             return false
         }
         if !deprecatedGestureKeys.isDisjoint(with: gesture.keys) {
-            return true
-        }
-        if canonicalModeKeys.contains(where: { key in
-            guard let value = gesture[key] as? String else {
-                return false
-            }
-            return deprecatedModeValues.contains(value)
-        }) {
             return true
         }
         guard let cancellation = gesture["cancellation"] as? [String: Any] else {

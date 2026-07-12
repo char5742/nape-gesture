@@ -113,7 +113,7 @@ public struct ProductGestureOutputCapability: Equatable, Sendable {
     public static let defaultConfirmedFamilies: Set<TrackpadOutputEventFamily> = [.scroll]
     public static let defaultTrialFamilies: Set<TrackpadOutputEventFamily> = [
         .dockSwipe,
-        .magnification,
+        .dockSwipePinch,
     ]
     public static let runtimeFamilies = defaultConfirmedFamilies.union(defaultTrialFamilies)
 
@@ -259,11 +259,13 @@ public struct ProductGestureOutputResult: Equatable, Sendable {
     public private(set) var generatedEventCount: Int
     public private(set) var failedEventCreationCount: Int
     public private(set) var failure: ProductGestureOutputFailure?
+    public private(set) var failureDetails: String?
 
     public init(
         generatedEventCount: Int,
         failedEventCreationCount: Int,
-        failure: ProductGestureOutputFailure? = nil
+        failure: ProductGestureOutputFailure? = nil,
+        failureDetails: String? = nil
     ) {
         let hasInvalidCount = generatedEventCount < 0 || failedEventCreationCount < 0
         self.generatedEventCount = max(generatedEventCount, 0)
@@ -271,6 +273,7 @@ public struct ProductGestureOutputResult: Equatable, Sendable {
         self.failure =
             failure
             ?? ((hasInvalidCount || self.failedEventCreationCount > 0) ? .eventCreationFailed : nil)
+        self.failureDetails = failureDetails
     }
 
     public static func rejected(_ failure: ProductGestureOutputFailure)

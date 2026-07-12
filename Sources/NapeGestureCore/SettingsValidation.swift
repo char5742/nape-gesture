@@ -13,9 +13,17 @@ public struct SettingsValidationIssue: Codable, Equatable, Sendable {
 public enum SettingsValidator {
     public static func issues(for settings: NapeGestureSettings) -> [SettingsValidationIssue] {
         var issues: [SettingsValidationIssue] = []
-        validate(settings.gesture, issues: &issues)
+        validateCanonicalGesture(settings.gesture, issues: &issues)
         validate(settings.targetDeviceAssociation, issues: &issues)
         validateTargetDevices(settings, issues: &issues)
+        return issues
+    }
+
+    public static func migrationIssues(
+        for settings: NapeGestureSettings
+    ) -> [SettingsValidationIssue] {
+        var issues = issues(for: settings)
+        validateLegacyGesture(settings.gesture, issues: &issues)
         return issues
     }
 
@@ -23,19 +31,35 @@ public enum SettingsValidator {
         issues(for: settings).isEmpty
     }
 
-    private static func validate(_ gesture: GestureConfiguration, issues: inout [SettingsValidationIssue]) {
+    private static func validateCanonicalGesture(
+        _ gesture: GestureConfiguration,
+        issues: inout [SettingsValidationIssue]
+    ) {
+        let cancellation = gesture.cancellation
+        requireFinite(cancellation.maximumDuration, path: "gesture.cancellation.maximumDuration", message: "0以上の有限値にしてください。0で無効化できます。", issues: &issues) { $0 >= 0 }
+        requireFinite(cancellation.maximumInactivityInterval, path: "gesture.cancellation.maximumInactivityInterval", message: "0以上の有限値にしてください。0で無効化できます。", issues: &issues) { $0 >= 0 }
+    }
+
+    private static func validateLegacyGesture(
+        _ gesture: GestureConfiguration,
+        issues: inout [SettingsValidationIssue]
+    ) {
         requireFinite(gesture.deadZonePoints, path: "gesture.deadZonePoints", message: "0以上の有限値にしてください。", issues: &issues) { $0 >= 0 }
         requireFinite(gesture.dragSensitivity, path: "gesture.dragSensitivity", message: "0より大きい有限値にしてください。", issues: &issues) { $0 > 0 }
         requireFinite(gesture.wheelSensitivity, path: "gesture.wheelSensitivity", message: "0より大きい有限値にしてください。", issues: &issues) { $0 > 0 }
+
+        if let directionLockRatio = gesture.legacyDirectionLockRatio {
+            requireFinite(directionLockRatio, path: "gesture.directionLockRatio", message: "1以上の有限値にしてください。", issues: &issues) { $0 >= 1 }
+        }
 
         let acceleration = gesture.acceleration
         requireFinite(acceleration.thresholdVelocity, path: "gesture.acceleration.thresholdVelocity", message: "0以上の有限値にしてください。", issues: &issues) { $0 >= 0 }
         requireFinite(acceleration.exponent, path: "gesture.acceleration.exponent", message: "0以上の有限値にしてください。", issues: &issues) { $0 >= 0 }
         requireFinite(acceleration.maximumMultiplier, path: "gesture.acceleration.maximumMultiplier", message: "1以上の有限値にしてください。", issues: &issues) { $0 >= 1 }
 
-        let cancellation = gesture.cancellation
-        requireFinite(cancellation.maximumDuration, path: "gesture.cancellation.maximumDuration", message: "0以上の有限値にしてください。0で無効化できます。", issues: &issues) { $0 >= 0 }
-        requireFinite(cancellation.maximumInactivityInterval, path: "gesture.cancellation.maximumInactivityInterval", message: "0以上の有限値にしてください。0で無効化できます。", issues: &issues) { $0 >= 0 }
+        if let offAxisCancelRatio = gesture.cancellation.legacyOffAxisCancelRatio {
+            requireFinite(offAxisCancelRatio, path: "gesture.cancellation.offAxisCancelRatio", message: "0以上の有限値にしてください。", issues: &issues) { $0 >= 0 }
+        }
 
         let momentum = gesture.momentum
         requireFinite(momentum.minimumStartVelocity, path: "gesture.momentum.minimumStartVelocity", message: "0以上の有限値にしてください。", issues: &issues) { $0 >= 0 }

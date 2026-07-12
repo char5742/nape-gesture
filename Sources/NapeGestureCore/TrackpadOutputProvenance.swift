@@ -622,7 +622,7 @@ public enum TrackpadOutputProvenanceAnalyzer {
         switch family {
         case .scroll:
             eventKind == .scroll || eventKind == .gesture
-        case .dockSwipe, .navigationSwipe, .magnification:
+        case .dockSwipe, .dockSwipePinch:
             eventKind == .gesture
         }
     }

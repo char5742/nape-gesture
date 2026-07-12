@@ -27,6 +27,9 @@ enum BundleVerifier {
         let trackpadModelURL = resourcesURL.appendingPathComponent(
             TrackpadGestureOutputResources.modelRelativePath
         )
+        let recognizedDockSwipeTemplatesURL = trackpadBuildURL.appendingPathComponent(
+            "recognized-dockswipe-templates.json"
+        )
 
         var failures: [String] = []
         let fileManager = FileManager.default
@@ -63,6 +66,10 @@ enum BundleVerifier {
             modelURL: trackpadModelURL,
             failures: &failures
         )
+        verifyRecognizedDockSwipeTemplates(
+            at: recognizedDockSwipeTemplatesURL,
+            failures: &failures
+        )
         let signatureStatus = verifyCodeSignature(appURL: appURL)
         if requireSignature, !signatureStatus.isValid {
             failures.append("コード署名検証に失敗しました: \(signatureStatus.message)")
@@ -80,6 +87,7 @@ enum BundleVerifier {
             "Contents/Resources/THIRD_PARTY_NOTICES.md",
             "Contents/Resources/TrackpadContracts/25F80/scroll-momentum-contract.json",
             "Contents/Resources/TrackpadContracts/25F80/scroll-output-model.json",
+            "Contents/Resources/TrackpadContracts/25F80/recognized-dockswipe-templates.json",
             signatureStatus.displayLine
         ]
     }
@@ -199,6 +207,27 @@ enum BundleVerifier {
             contract: verifiedContract
         ) != nil else {
             failures.append("scroll output model resourceのSHA、式、sample count、source contractが一致しません。")
+            return
+        }
+    }
+
+    private static func verifyRecognizedDockSwipeTemplates(
+        at url: URL,
+        failures: inout [String]
+    ) {
+        guard isRegularFile(url),
+              let data = try? Data(contentsOf: url),
+              !data.isEmpty
+        else {
+            failures.append("recognized DockSwipe templates resourceが存在しないか空です。")
+            return
+        }
+        guard TrackpadDriverEventCaptureManifest.sha256HexDigest(of: data)
+            == "852c7d0b6e32ced7082ea5c06a65d05971d3868e6a36aaccfd6f422871bc32a6"
+        else {
+            failures.append(
+                "recognized DockSwipe templates resourceのSHA-256が登録済みfixtureと一致しません。"
+            )
             return
         }
     }

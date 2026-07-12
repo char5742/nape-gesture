@@ -34,7 +34,7 @@ final class CommandLineTool {
             let monitor = try makeHIDInputMonitor(
                 settings: settings, gate: gate, matchedDevices: matchedDevices)
             let daemon = NapeGestureDaemon(
-                configuration: settings.gesture,
+                cancellation: settings.gesture.cancellation,
                 targetGate: gate,
                 hidInputMonitor: monitor,
                 performanceRecorder: performanceRecorder
@@ -104,8 +104,8 @@ final class CommandLineTool {
                   runtime を開始せずに active macOS GUI session 上で通常 GUI activation policy、設定ウィンドウ、status item NG、通常アプリメニュー、status menu を AppKit 内で作成して検査します。--assert で期待 UI と一致しない場合に失敗します。--config 未指定時は一時 config を使います。
 
               nape-gesture run [--performance-log <path>]
-                  button 3 / 4 / 5の押下中入力を、設定した2本指スクロール / スワイプ、システムスワイプ、ピンチへ変換します。通常modeのbuttonは変換しません。
-                  --config <path> でbutton mode、対象デバイス、感度を読み込みます。--performance-log で runtime 性能 JSON Lines を保存します。
+                  button 3 / 4 / 5の押下中入力を、固定された2本指スクロール / スワイプ、3本指システムスワイプ、4本指システムピンチへ変換します。対象button未押下時は通常mouse入力をそのまま通します。
+                  --config <path> では対象デバイスと安全用キャンセル条件だけを読み込みます。--performance-log で runtime 性能 JSON Lines を保存します。
 
               nape-gesture log [--duration <秒>] [--out <path>] [--exclude-generated|--only-generated]
                   グローバル入力イベントを JSON Lines で記録します。メタ情報は標準エラー、イベント本体は標準出力または --out に出します。
@@ -472,7 +472,7 @@ enum ToolError: LocalizedError {
                 .joined(separator: "\n")
             return "設定ファイルの値が不正です。\n\(details)"
         case .accessibilityPermissionRequired:
-            return "アクセシビリティ権限が必要です。システム設定でこの実行ファイルを許可してください。"
+            return "アクセシビリティ権限が必要です。システム設定でこの実行主体を許可してください。一覧がONでも拒否される場合は、署名更新前の登録を削除し、現在のNape Gesture.appを再追加してからアプリを再起動してください。"
         case .eventTapCreationFailed:
             return "イベントタップを作成できませんでした。権限、入力監視、または他プロセスによる制限を確認してください。"
         case .hidManagerOpenFailed(let code):
@@ -501,7 +501,7 @@ enum ToolError: LocalizedError {
         case .trackpadOutputContractMismatch(let reason):
             return "trackpad driver出力contractが現在のmacOSと一致しないため、入力抑制を開始しません。\n\(reason)"
         case .trackpadOutputPostingFailed(let reason):
-            return "trackpad driver出力に失敗したため、元入力を通過させてruntimeを安全停止しました。\n\(reason)"
+            return "trackpad driver出力に失敗したため、対象入力を通常mouseへ漏らさずruntimeを安全停止しました。\n\(reason)"
         }
     }
 }
@@ -511,7 +511,7 @@ enum IOReturnDiagnostic {
         switch code {
         case kIOReturnNotPermitted:
             return
-                "入力監視が許可されていません。システム設定 > プライバシーとセキュリティ > 入力監視で、Codex、実行元ターミナル、または NapeGesture.app を許可してください。"
+                "入力監視が許可されていません。システム設定 > プライバシーとセキュリティ > 入力監視で実行主体を許可してください。一覧がONでも拒否される場合は、署名更新前のNape Gesture登録を削除し、現在のNape Gesture.appを再追加してからアプリを再起動してください。"
         case kIOReturnNotPrivileged:
             return "権限が不足しています。入力監視とアクセシビリティの許可状態を確認してください。"
         case kIOReturnNoDevice:

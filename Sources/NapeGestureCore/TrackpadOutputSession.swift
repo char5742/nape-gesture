@@ -40,8 +40,7 @@ public final class TrackpadOutputSessionSequence: @unchecked Sendable {
 public enum TrackpadOutputEventFamily: String, Codable, CaseIterable, Equatable, Hashable, Sendable {
     case scroll
     case dockSwipe
-    case navigationSwipe
-    case magnification
+    case dockSwipePinch
 }
 
 public enum TrackpadOutputInputPhase: String, Codable, Equatable, Sendable {
@@ -72,11 +71,6 @@ public enum TrackpadOutputAxis: String, Codable, Equatable, Sendable {
     case vertical
 }
 
-public enum TrackpadOutputNavigationDirection: String, Codable, Equatable, Sendable {
-    case left
-    case right
-}
-
 public enum TrackpadOutputCancellationReason: String, Codable, Equatable, Sendable {
     case inputLifecycle
     case killSwitch
@@ -89,9 +83,15 @@ public enum TrackpadOutputCancellationReason: String, Codable, Equatable, Sendab
 
 public enum TrackpadOutputPayload: Codable, Equatable, Sendable {
     case scroll(deltaX: Double, deltaY: Double, velocityX: Double, velocityY: Double)
-    case dockSwipe(axis: TrackpadOutputAxis, progress: Double, velocity: Double)
-    case navigationSwipe(direction: TrackpadOutputNavigationDirection, progress: Double, velocity: Double)
-    case magnification(progress: Double, scaleDelta: Double, velocity: Double)
+    case dockSwipe(
+        axis: TrackpadOutputAxis,
+        progress: Double,
+        motionX: Double,
+        motionY: Double,
+        terminalVelocityX: Double,
+        terminalVelocityY: Double
+    )
+    case dockSwipePinch(progress: Double, motion: Double, terminalVelocity: Double)
 
     public var family: TrackpadOutputEventFamily {
         switch self {
@@ -99,10 +99,8 @@ public enum TrackpadOutputPayload: Codable, Equatable, Sendable {
             .scroll
         case .dockSwipe:
             .dockSwipe
-        case .navigationSwipe:
-            .navigationSwipe
-        case .magnification:
-            .magnification
+        case .dockSwipePinch:
+            .dockSwipePinch
         }
     }
 
@@ -114,11 +112,17 @@ public enum TrackpadOutputPayload: Codable, Equatable, Sendable {
         switch self {
         case let .scroll(deltaX, deltaY, velocityX, velocityY):
             [deltaX, deltaY, velocityX, velocityY]
-        case let .dockSwipe(_, progress, velocity),
-             let .navigationSwipe(_, progress, velocity):
-            [progress, velocity]
-        case let .magnification(progress, scaleDelta, velocity):
-            [progress, scaleDelta, velocity]
+        case let .dockSwipe(
+            _,
+            progress,
+            motionX,
+            motionY,
+            terminalVelocityX,
+            terminalVelocityY
+        ):
+            [progress, motionX, motionY, terminalVelocityX, terminalVelocityY]
+        case let .dockSwipePinch(progress, motion, terminalVelocity):
+            [progress, motion, terminalVelocity]
         }
     }
 }
@@ -324,14 +328,17 @@ public struct TrackpadOutputSessionMachine: Sendable {
     public private(set) var lastTimestamp: MonotonicEventTimestamp?
     public private(set) var lastPayload: TrackpadOutputPayload?
     private let maximumCaptureOrder: UInt64
+    private let initialCaptureOrder: UInt64
 
     public init(
         sessionID: TrackpadOutputSessionID,
         family: TrackpadOutputEventFamily,
+        initialCaptureOrder: UInt64 = 0,
         maximumCaptureOrder: UInt64 = UInt64.max
     ) {
         self.sessionID = sessionID
         self.family = family
+        self.initialCaptureOrder = initialCaptureOrder
         self.maximumCaptureOrder = maximumCaptureOrder
     }
 
@@ -390,7 +397,7 @@ public struct TrackpadOutputSessionMachine: Sendable {
             }
             expectedCaptureOrder = increment.partialValue
         } else {
-            expectedCaptureOrder = 0
+            expectedCaptureOrder = initialCaptureOrder
         }
         guard event.captureOrder == expectedCaptureOrder else {
             throw TrackpadOutputSessionError.invalidCaptureOrder(

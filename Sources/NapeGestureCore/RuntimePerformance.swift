@@ -6,16 +6,16 @@ public enum RuntimePerformanceSource: String, Codable, Equatable, Sendable {
 }
 
 public struct RuntimePerformanceRecord: Codable, Equatable, Sendable {
-    public static let currentSchemaVersion = 2
+    public static let currentSchemaVersion = 3
 
     public var schemaVersion: Int
     public var operationID: String
     public var source: RuntimePerformanceSource
-    public var mode: TrackpadGestureMode
+    public var gestureClass: FixedGestureClass
     public var outputFamily: TrackpadOutputEventFamily?
-    public var commandKind: GestureCommandKind
-    public var commandPhase: GesturePhase
-    public var commandTimestamp: TimeInterval
+    public var sourceKind: GestureInputSourceKind
+    public var inputPhase: FixedGestureInputPhase
+    public var commandTimestampNanoseconds: UInt64
     public var inputEventTimestampNanoseconds: UInt64?
     public var tapCallbackStartedAtNanoseconds: UInt64
     public var recognizerFinishedAtNanoseconds: UInt64
@@ -28,11 +28,11 @@ public struct RuntimePerformanceRecord: Codable, Equatable, Sendable {
     public init(
         operationID: String,
         source: RuntimePerformanceSource,
-        mode: TrackpadGestureMode,
+        gestureClass: FixedGestureClass,
         outputFamily: TrackpadOutputEventFamily?,
-        commandKind: GestureCommandKind,
-        commandPhase: GesturePhase,
-        commandTimestamp: TimeInterval,
+        sourceKind: GestureInputSourceKind,
+        inputPhase: FixedGestureInputPhase,
+        commandTimestampNanoseconds: UInt64,
         inputEventTimestampNanoseconds: UInt64?,
         tapCallbackStartedAtNanoseconds: UInt64,
         recognizerFinishedAtNanoseconds: UInt64,
@@ -45,11 +45,11 @@ public struct RuntimePerformanceRecord: Codable, Equatable, Sendable {
         schemaVersion = Self.currentSchemaVersion
         self.operationID = operationID
         self.source = source
-        self.mode = mode
+        self.gestureClass = gestureClass
         self.outputFamily = outputFamily
-        self.commandKind = commandKind
-        self.commandPhase = commandPhase
-        self.commandTimestamp = commandTimestamp
+        self.sourceKind = sourceKind
+        self.inputPhase = inputPhase
+        self.commandTimestampNanoseconds = commandTimestampNanoseconds
         self.inputEventTimestampNanoseconds = inputEventTimestampNanoseconds
         self.tapCallbackStartedAtNanoseconds = tapCallbackStartedAtNanoseconds
         self.recognizerFinishedAtNanoseconds = recognizerFinishedAtNanoseconds
@@ -64,12 +64,11 @@ public struct RuntimePerformanceRecord: Codable, Equatable, Sendable {
         case schemaVersion
         case operationID
         case source
-        case mode
+        case gestureClass
         case outputFamily
-        case action
-        case commandKind
-        case commandPhase
-        case commandTimestamp
+        case sourceKind
+        case inputPhase
+        case commandTimestampNanoseconds
         case inputEventTimestampNanoseconds
         case tapCallbackStartedAtNanoseconds
         case recognizerFinishedAtNanoseconds
@@ -83,7 +82,7 @@ public struct RuntimePerformanceRecord: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let decodedSchemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
-        guard decodedSchemaVersion == 1 || decodedSchemaVersion == Self.currentSchemaVersion else {
+        guard decodedSchemaVersion == Self.currentSchemaVersion else {
             throw DecodingError.dataCorruptedError(
                 forKey: .schemaVersion,
                 in: container,
@@ -94,28 +93,17 @@ public struct RuntimePerformanceRecord: Codable, Equatable, Sendable {
         operationID = try container.decode(String.self, forKey: .operationID)
         source = try container.decode(RuntimePerformanceSource.self, forKey: .source)
 
-        if decodedSchemaVersion == Self.currentSchemaVersion {
-            mode = try container.decode(TrackpadGestureMode.self, forKey: .mode)
-            outputFamily = try container.decodeIfPresent(
-                TrackpadOutputEventFamily.self,
-                forKey: .outputFamily
-            )
-        } else {
-            let legacyAction = try container.decode(String.self, forKey: .action)
-            guard let migrated = Self.migrateLegacyAction(legacyAction) else {
-                throw DecodingError.dataCorruptedError(
-                    forKey: .action,
-                    in: container,
-                    debugDescription: "未対応の旧actionです: \(legacyAction)"
-                )
-            }
-            mode = migrated.mode
-            outputFamily = migrated.family
-        }
-
-        commandKind = try container.decode(GestureCommandKind.self, forKey: .commandKind)
-        commandPhase = try container.decode(GesturePhase.self, forKey: .commandPhase)
-        commandTimestamp = try container.decode(TimeInterval.self, forKey: .commandTimestamp)
+        gestureClass = try container.decode(FixedGestureClass.self, forKey: .gestureClass)
+        outputFamily = try container.decodeIfPresent(
+            TrackpadOutputEventFamily.self,
+            forKey: .outputFamily
+        )
+        sourceKind = try container.decode(GestureInputSourceKind.self, forKey: .sourceKind)
+        inputPhase = try container.decode(FixedGestureInputPhase.self, forKey: .inputPhase)
+        commandTimestampNanoseconds = try container.decode(
+            UInt64.self,
+            forKey: .commandTimestampNanoseconds
+        )
         inputEventTimestampNanoseconds = try container.decodeIfPresent(
             UInt64.self, forKey: .inputEventTimestampNanoseconds)
         tapCallbackStartedAtNanoseconds = try container.decode(
@@ -136,11 +124,14 @@ public struct RuntimePerformanceRecord: Codable, Equatable, Sendable {
         try container.encode(schemaVersion, forKey: .schemaVersion)
         try container.encode(operationID, forKey: .operationID)
         try container.encode(source, forKey: .source)
-        try container.encode(mode, forKey: .mode)
+        try container.encode(gestureClass, forKey: .gestureClass)
         try container.encodeIfPresent(outputFamily, forKey: .outputFamily)
-        try container.encode(commandKind, forKey: .commandKind)
-        try container.encode(commandPhase, forKey: .commandPhase)
-        try container.encode(commandTimestamp, forKey: .commandTimestamp)
+        try container.encode(sourceKind, forKey: .sourceKind)
+        try container.encode(inputPhase, forKey: .inputPhase)
+        try container.encode(
+            commandTimestampNanoseconds,
+            forKey: .commandTimestampNanoseconds
+        )
         try container.encodeIfPresent(
             inputEventTimestampNanoseconds, forKey: .inputEventTimestampNanoseconds)
         try container.encode(
@@ -154,23 +145,6 @@ public struct RuntimePerformanceRecord: Codable, Equatable, Sendable {
         try container.encode(suppressedOriginal, forKey: .suppressedOriginal)
     }
 
-    private static func migrateLegacyAction(
-        _ action: String
-    ) -> (mode: TrackpadGestureMode, family: TrackpadOutputEventFamily?)? {
-        switch action {
-        case "none": (.none, nil)
-        case "smoothScroll", "horizontalScroll":
-            (.twoFingerSwipe, .scroll)
-        case "pageBack", "pageForward":
-            (.twoFingerSwipe, .navigationSwipe)
-        case "missionControl", "spaceLeft", "spaceRight", "dockSwipe":
-            (.systemSwipe, .dockSwipe)
-        case "zoomIn", "zoomOut", "magnification":
-            (.pinch, .magnification)
-        default:
-            nil
-        }
-    }
 }
 
 public struct RuntimePerformanceReport: Codable, Equatable, Sendable {
@@ -185,7 +159,7 @@ public struct RuntimePerformanceReport: Codable, Equatable, Sendable {
     public var generatedEventCount: Int
     public var failedEventCreationCount: Int
     public var sourceCounts: [String: Int]
-    public var modeCounts: [String: Int]
+    public var gestureClassCounts: [String: Int]
     public var outputFamilyCounts: [String: Int]
     public var tapToFirstPostNanoseconds: RuntimePerformanceDistribution
     public var tapToPostFinishedNanoseconds: RuntimePerformanceDistribution
@@ -230,6 +204,7 @@ public enum RuntimePerformanceAnalyzer {
     public static func analyze(records: [RuntimePerformanceRecord]) -> RuntimePerformanceReport {
         let postedRecords = records.filter { $0.generatedEventCount > 0 }
         let eventTapPostedRecords = postedRecords.filter { $0.source == .eventTap }
+        let missingPostRecordCount = unexpectedMissingPostCount(records)
 
         return RuntimePerformanceReport(
             schemaVersion: RuntimePerformanceRecord.currentSchemaVersion,
@@ -239,11 +214,11 @@ public enum RuntimePerformanceAnalyzer {
             recordCount: records.count,
             postedRecordCount: postedRecords.count,
             eventTapPostedRecordCount: eventTapPostedRecords.count,
-            missingPostRecordCount: records.count - postedRecords.count,
+            missingPostRecordCount: missingPostRecordCount,
             generatedEventCount: records.reduce(0) { $0 + $1.generatedEventCount },
             failedEventCreationCount: records.reduce(0) { $0 + $1.failedEventCreationCount },
             sourceCounts: counts(records.map { $0.source.rawValue }),
-            modeCounts: counts(records.map { $0.mode.rawValue }),
+            gestureClassCounts: counts(records.map { $0.gestureClass.rawValue }),
             outputFamilyCounts: counts(records.compactMap { $0.outputFamily?.rawValue }),
             tapToFirstPostNanoseconds: RuntimePerformanceDistribution(
                 measurement: "tapCallbackToPostStartNanoseconds",
@@ -369,6 +344,54 @@ public enum RuntimePerformanceAnalyzer {
         values.reduce(into: [:]) { result, value in
             result[value, default: 0] += 1
         }
+    }
+
+    private static func unexpectedMissingPostCount(
+        _ records: [RuntimePerformanceRecord]
+    ) -> Int {
+        var activeGestureClass: FixedGestureClass?
+        var activeSessionHasPosted = false
+        var count = 0
+
+        for record in records {
+            let didPost = record.generatedEventCount > 0
+
+            switch record.inputPhase {
+            case .began:
+                activeGestureClass = record.gestureClass
+                activeSessionHasPosted = didPost
+                if record.gestureClass == .twoFingerScrollSwipe && !didPost {
+                    count += 1
+                }
+
+            case .changed:
+                let hasMatchingSession = activeGestureClass == record.gestureClass
+                let requiresPost =
+                    record.gestureClass == .twoFingerScrollSwipe
+                    || activeSessionHasPosted
+                    || !hasMatchingSession
+                if requiresPost && !didPost {
+                    count += 1
+                }
+                if didPost {
+                    activeSessionHasPosted = true
+                }
+
+            case .ended, .cancelled:
+                let hasMatchingSession = activeGestureClass == record.gestureClass
+                let requiresPost =
+                    record.gestureClass == .twoFingerScrollSwipe
+                    || activeSessionHasPosted
+                    || !hasMatchingSession
+                if requiresPost && !didPost {
+                    count += 1
+                }
+                activeGestureClass = nil
+                activeSessionHasPosted = false
+            }
+        }
+
+        return count
     }
 
     private static func positiveDifference(_ lhs: UInt64, _ rhs: UInt64) -> Double {

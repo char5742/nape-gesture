@@ -229,7 +229,7 @@ require_text \
 
 require_text \
   "docs/adr/0038-trackpad-output-session-and-monotonic-clock.md" \
-  "finger count付きtrackpad入力sessionとmonotonic clockを共通化する" \
+  "固定GestureClass sessionとmonotonic clockを共通化する" \
   "output sessionと時刻domainのADRを維持する"
 
 if [ "$failure_count" -ne 0 ]; then

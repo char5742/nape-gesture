@@ -1,158 +1,124 @@
 # 完成判定チェックリスト
 
-この文書は、Nape Gestureの製品完成を実測証跡で判定する正本である。
-build、単体test、GUI起動、個別の低レベルevent生成が成功しても、ここで定義する必須ゲートが1つでも未達なら製品完成とは扱わない。
-製品モデルの設計判断は[ADR-0049](adr/0049-fixed-button-to-finger-count-trackpad-input.md)を正とする。
+この文書は、Nape Gestureの製品完成を実測証跡で判定する正本である。build、test、GUI起動、`.app`生成、個別event投稿のどれか一つだけでは完成としない。製品モデルは[ADR-0049](adr/0049-fixed-button-to-finger-count-trackpad-input.md)を正とする。
 
-## 固定する製品モデル
+## 固定製品モデル
 
-製品モデルは次の1つだけである。
+| mouse入力 | 固定GestureClass | ProductOutput |
+| --- | --- | --- |
+| button 3押下中 | 2本指スクロール / スワイプ相当 | type 22 scrollとgesture companion lifecycle |
+| button 4押下中 | 3本指システムスワイプ相当 | type 30 `DockSwipe`、motion 1 / 2 |
+| button 5押下中 | 4本指system pinch相当 | type 30 `DockSwipe`、motion 4 |
+| button 3 / 4 / 5未押下 | 変換なし | 通常mouse入力をそのまま通す |
 
-| mouse入力 | 生成するtrackpad入力 |
-| --- | --- |
-| button 3押下中の連続mouse event量 | 2本指 |
-| button 4押下中の連続mouse event量 | 3本指 |
-| button 5押下中の連続mouse event量 | 4本指 |
-| button 3 / 4 / 5のいずれも未押下 | 元のmouse入力をそのまま通す |
+- 2 / 3 / 4本指はraw digitizer contact countやgeneric `fingerCount` fieldではなく上位gestureの固定GestureClassである。
+- classごとにevent type、field、phase、companion、単位変換が異なることを必須とする。
+- button mappingは固定し、mode selector、割り当て、感度、application別設定を持たない。
+- system-wide投稿だけを使い、AX、対象PID、keyboard shortcut、DriverKit、virtual HID、raw digitizerを使わない。
+- accepted source sampleは1 sampleから1 commandへ変換し、欠落、重複、coalescing、並べ替えを行わない。
+- 1 commandから生成する低レベルevent数はclass contractに従う。scroll companion batchをsample重複とは数えない。
+- gesture session中はmouseとcursorのQuartz連動を停止し、button解放、cancel、tap中断、runtime停止、出力失敗では通常のcursor追従へ戻す。
 
-- buttonごとに結果を選ぶユーザーmodeは設けない。
-- 方向ごとのaction、OS/App結果ごとのaction、application別設定は設けない。
-- AX scrollbar、対象PID配送、frontmost application分岐、keyboard shortcutを製品fallbackにしない。
-- `scroll`、`DockSwipe`、`NavigationSwipe`、`magnification`は低レベルevent familyまたは観測語彙であり、ユーザーmodeや独立した製品機能ではない。
-- 低レベル入力を受けて何が起きるかはOS/Appが解釈する。OS/App結果を先に選び、それに合わせて配送方式やevent familyを切り替えない。
-- 同じsource event列をbutton 3 / 4 / 5へ与えた場合、生成列は同じ正規化入力の量、順序、時間間隔を使う。finger count固有の物理encoding差だけを登録contractで許容し、結果別またはfinger count別の変換係数は持たない。
+## 現在位置
 
-## 現行実装の状態
+release buildの`/Applications/Nape Gesture.app`はインストール済みで、現在の署名identityへTCCを付与したGUI runtimeが稼働している。固定button認識から`scroll` / `dockSwipe` / `dockSwipePinch`をsystem-wideへ投稿する経路があり、Nape Pro実機では3 class合計23 session、generated event 5473件、作成失敗0件、欠落投稿0件、全sessionのsingle terminalを確認した。DockはSpace切替、Mission Control、motion 4のsystem control遷移を受理し、session後も通常操作へ復帰している。現在のmacOS設定ではApp Exposéがオフのため、その画面結果は未確認である。
 
-この文書の改訂基準commitは`55eb991`である。このcommitには`TrackpadGestureMode`、buttonごとのmode選択UI、`supportedFamilies` / `confirmedFamilies` / `trialFamilies`、modeから`scroll` / `DockSwipe` / `magnification`へ分岐する製品経路が残っている。
-したがって、基準commitの現行実装は上記の固定製品モデルに**未達**であり、リリース可能または製品完成とは判定しない。
-
-並行実装中の未commit差分や、旧modelのtestが成功しただけではこの状態を更新しない。次の全ゲートについて、変更後binaryと同じrepo SHAを持つ証跡がそろった時だけ状態を更新する。
+完成を妨げている最優先課題は、現行binaryと純正trackpad fixtureの最終比較、異常終了後passthroughの実機復旧、Developer ID署名と公証を同一release候補で完結することである。App ExposéはOS設定がオフのため、設定依存の画面結果として未確認である。
 
 ## 状態
 
 | 状態 | 意味 |
 | --- | --- |
-| `未達` | 固定製品モデルを満たす実装または証跡がない |
-| `基盤のみ` | logger、analyzer、fixtureなどを再利用できるが、必須ゲートの合格証跡ではない |
-| `実機待ち` | 機械testを完了し、純正trackpadまたはNape Proの物理操作だけが残る |
-| `完了` | 現行binaryについて必要な機械証跡と実機証跡がそろい、未検証事項がない |
-
-`完了`は行ごとの局所的な実装完了を表さない。6つの必須ゲートは相互に代用できず、全て`完了`でなければ製品完成にしない。
+| `未達` | 必須実装または採用可能な証跡がない |
+| `統合検証中` | 製品経路はあるが同じbinaryでの機械gateが完結していない |
+| `実機待ち` | 機械gateを通過し、物理device操作だけが残る |
+| `完了` | 現行配布binaryについて機械証跡と実機証跡がそろった |
 
 ## 証跡の共通要件
 
-証跡は次の形式でrunごとに分離する。
+各runを次の単位で分離する。
 
-~~~text
+```text
 artifacts/completion/YYYY-MM-DD/<repo-sha>/<scenario-id>/
-~~~
+```
 
-各runには最低限、次を保存する。
+最低限、次を保存する。
 
-- 実行コマンドと終了コード
-- repo SHA、binary SHA-256、macOS version / build、実行主体、TCC状態
-- run UUID、scenario ID、開始・終了時刻
-- 入力元、button番号、期待finger count
-- source eventのkind、単位、phase、capture order、timestamp、delta、件数、累積event量
-- 生成したtrackpad eventの順序、timestamp、finger count、低レベルfield、session ID
+- 実行commandとexit code
+- repo SHA、binary SHA-256、bundle identity、macOS version / build
+- run UUID、scenario ID、開始・終了時刻、実行主体、TCC状態
+- source device、button、期待GestureClass
+- source kind、X/Y量、符号、capture order、source timestamp
+- generated event type、subtype、field、phase、timestamp、family、session ID
+- source commandとgenerated batchの対応
 - terminal種別と理由
-- passthrough、抑制、生成、破棄の各件数
-- 使用したfixtureのschema、ID、SHA-256
-- manifestと各logのSHA-256
-- analyzer report、未検証事項、失敗時のfailure code
+- passthrough、抑制、生成、drop、retry件数
+- fixture schema、ID、SHA-256、contract ID、OS version / build。25F80の正負方向別DockSwipe templateはID `recognized-dockswipe-templates-25F80-v2`、SHA-256 `852c7d0b6e32ced7082ea5c06a65d05971d3868e6a36aaccfd6f422871bc32a6`
+- direct post trace、capture、manifest、analyzer reportのidentityとSHA-256
 
-目視メモやscreen recordingは補助証跡であり、manifest、raw log、analyzerの終了コードを代用しない。
-異なるrepo SHA、binary、OS build、scenarioのlogを1つの成功runとして継ぎ合わせない。
+異なるrepo SHA、binary、OS build、scenarioのlogを一つの成功runとして継ぎ合わせない。目視やscreen recordingは補助証跡であり、raw log、manifest、analyzerを代用しない。
 
 ## 必須完成ゲート
 
-| ゲート | 完成条件 | 必要な機械証跡 | 必要な実機証跡 | 現在状態 |
+| ゲート | 完成条件 | 機械証跡 | 物理証跡 | 現在 |
 | --- | --- | --- | --- | --- |
-| event量保存 | 押下中に受理した各source eventを欠落・重複・coalescing・順序変更なく1回だけ変換する。変換前の各sampleと累積量はbit単位で一致し、trackpad量は登録済みの単一versioned単位変換contractの許容差内に入る。同一fixtureでは正規化入力の量、順序、時間間隔を変えない | 正負、斜め、停止、方向反転、異なるevent間隔、長時間列、queue圧迫、部分投稿失敗のpure testとproperty test。3 button同一fixture比較とsource-to-output対応report | button 3 / 4 / 5それぞれのNape Pro連続操作logと、同じfinger countの純正trackpad比較 | `未達` |
-| finger count | button 3 / 4 / 5を2 / 3 / 4本指へ固定対応し、session途中で変化させない。進行中の追加buttonでもfinger countとsession IDを切り替えず、開始時に一意化できない入力から推測しない | 全button、全方向、方向反転、session中追加button、開始時の曖昧同時押下拒否、未知button拒否、設定migrationのtest。全出力frameのfinger count検証 | 純正2 / 3 / 4本指captureと、対応するNape Pro生成captureの比較 | `未達` |
-| session terminal | button押下から解放までを1 sessionとし、正常終了、cancel、kill switch、runtime stop、sleep、device切断、権限喪失、output failureの全経路が重複なしのterminalへ収束する。terminal後に同sessionの出力を続けない | session ID、順序、単調timestamp、terminal 1回、stuck 0件、部分投稿の収束、再入拒否のtest | 各buttonの正常解放と、少なくともkill switch、device切断、sleepまたは権限喪失の実測 | `未達` |
-| passthrough | button 3 / 4 / 5未押下時はclick、drag、move、wheelを抑制・変更・再生成しない。対象外deviceも常にそのまま通す。session終了後は物理解放を境に通常mouseへ戻る | event種別ごとのidentity、生成0件、抑制0件、変更0件、解放境界、対象外device、失敗後復帰のtest | Nape Proと通常mouseで未押下、各session直後、kill switch直後の前面App target log | `未達` |
-| 実機証跡 | 純正trackpad 2 / 3 / 4本指と、Nape Pro button 3 / 4 / 5のsource / generated logを同一schema、同一OS build、登録manifestで比較できる。fixtureの由来と公開範囲が追跡できる | logger readiness、strict parser、manifest、provenance、fixture登録、hash不一致のexpected failure | 純正trackpadとNape Proの物理capture。合成input、dry-run、画面移動だけでは代用不可 | `未達` |
-| fail closed | unsupported OS/build、fixture/hash/schema不一致、finger count不明、device不一致、TCC不足、現在boot外timestamp、source / contractにないtimestamp変換、session不整合、event作成・投稿失敗では新規抑制・生成を開始しない。active sessionは安全なterminalへ収束し、AX/PID/shortcutや別familyへfallbackしない | failure injection、未知build、明示path不正、fixture改変、開始時の曖昧同時button、部分投稿、terminal生成失敗、readiness gateのtest | unsupported条件またはTCC喪失を含む実利用binaryで、誤出力0件と通常入力復帰を確認 | `未達` |
+| 固定GestureClass | button 3 / 4 / 5が常に2本指scroll / 3本指system swipe / 4本指system pinch classを選び、session途中で変わらない | 全button、追加button、曖昧同時押下、旧設定migration、GUI read-only、doctorのtest | Nape Pro 3 classを23 session収録し、全sessionでbegan / endedが1対1 | `完了` |
+| source sample保存 | 各accepted move / wheel sampleがexact timestampとcapture orderを保つ1 commandになり、drop、duplicate、coalesce、reorderがない | 正負、斜め、停止、反転、異間隔、長時間、move / wheel混在、queue圧迫のtest | Nape Pro runtime log 3678 command、欠落投稿0件 | `完了` |
+| ProductOutput | 2本指はtype 22 scroll + type 29 companion、3本指はtype 30 DockSwipe motion 1 / 2、4本指はtype 30 DockSwipe motion 4をclass固有contractでsystem-wide投稿する | 3 classのfamily mapping、field、phase、単位、batch、system-wide direct post smoke | Nape Proから5473 eventを生成し、DockがSpace、Mission Control、motion 4を受理。純正trackpadとの最終比較は残る | `統合検証中` |
+| session terminal | 正常終了と全cancel原因がsingle terminalへ収束し、部分投稿後も順序を保って閉じる | release、cancel、kill switch、runtime stop、sleep、disconnect、TCC喪失、作成 / 投稿失敗、partial batch retry | 正常解放と少なくともkill switch、disconnect、sleepまたはTCC喪失 | `統合検証中` |
+| passthrough | 未押下、対象外button、対象外device、session終了後に通常click、move、drag、wheelを変更・抑制・再生成しない | event種別identity、生成0、抑制0、解放境界、failure後復帰 | 23 session後の通常操作復帰を確認。異常終了後の実機復帰は残る | `統合検証中` |
+| cursor固定 | gesture session中はmouseとcursorのQuartz連動を停止し、全terminalで通常追従へ戻す | began / ended / cancelled / stop / tap中断 / 出力失敗の連動状態遷移 | ユーザー受入により、Nape Pro操作中のcursor固定と解放後の通常追従を正常動作として確定 | `完了` |
+| fail closed | unsupported build、scroll contract / model / DockSwipe templateのfixture / hash / schema不一致、device不一致、TCC不足、session不整合、event失敗でruntime全体の新規抑制を開始せず、別経路へfallbackしない | failure injection、readiness、明示path不正、partial post、terminal retry、product boundary guard | 現行`.app`の正常経路は誤出力0。異常条件の実機復旧は残る | `統合検証中` |
+| 配布 | 日常利用するbinaryの署名、公証、stapler、Gatekeeper、performance、recoveryが合格する | release build、bundle identity、doctor identity、性能report | 配布物の初回起動、TCC導線、再起動、sleep、device抜き差し | `未達` |
 
-## 低レベルcontract判定
+全行が`完了`になるまで製品完成としない。`実機待ち`は機能不足を隠す状態ではなく、人間にしか行えない物理操作が残っていることを示す。
 
-低レベルcontractは、上記6ゲートを支える証跡としてfinger countごとに判定する。
+## class別低レベル判定
 
-| 判定対象 | 合格条件 |
+| GestureClass | 合格条件 |
 | --- | --- |
-| fixture登録 | schema、fixture ID、SHA-256、OS version / build、source identity、capture範囲が完全一致する |
-| event量 | source event件数、delta合計、順序、timestampと、変換modelへの入力が一致する |
-| finger count | 2 / 3 / 4の期待値が全frameとterminalで一貫する |
-| lifecycle | began / changed / terminalなど、実測contractが要求する系列が完結する |
-| provenance | source、generated capture、post trace、manifest、binaryが同じrun UUIDで結合する |
-| 配送境界 | system-wide streamだけを使用し、AX、対象PID、shortcut、application分岐がない |
+| 2本指scroll / swipe | type 22 scrollと必要なtype 29 envelope / companionが、別々のphase fieldとline / fixed / point / gesture motion単位を登録contractの順序、field、timestamp関係で完結する |
+| 3本指system swipe | type 30 / classifier 23のDockSwipeがphase fields 132 / 134の1 / 2 / 4 / 8、IOHID motion 1 / 2、source delta / 300の累積progressとXY position、source delta / 経過秒 / 300の終端XY velocityで完結する |
+| 4本指system pinch | type 30 / classifier 23のDockSwipeがphase fields 132 / 134の1 / 2 / 4 / 8、IOHID motion 4、Y優先のsigned source delta / 300の累積pinch progress、同じ符号規則のsource velocity / 300の終端Z velocityで完結する。application magnification eventを使わない |
 
-`scroll`、`DockSwipe`、`NavigationSwipe`、`magnification`という分類はreportの観測列として保持してよい。ただし、familyごとの`supported`、`confirmed`、`trial`を製品完成度として集計せず、family単体の成功をbutton 3 / 4 / 5の完成へ読み替えない。
+共通して、fixture identity、source-to-command 1対1、capture order、exact timestamp、session ID、single terminal、system-wide配送を検査する。class間でevent count、field、単位変換が同一であることは要求しない。
 
-## OS/App結果の別判定
+`NavigationSwipe`は物理captureまたはanalyzer上の観測語彙として保持できるが、独立button class、製品capability、ページ移動専用routingの完成根拠にはしない。
 
-OS/App結果は低レベルcontractと別のmatrixへ記録する。
+## OS / App結果の別判定
 
-| 記録項目 | 判定方法 |
+| 記録対象 | 判定 |
 | --- | --- |
-| 入力条件 | button、期待finger count、event量、方向、速度、session IDを記録する |
-| 低レベル成立 | contract analyzerの結果とfixture identityを参照する |
-| OS/App結果 | 前面App、OS設定、画面結果、AppKit target logをscenario単位で記録する |
-| terminal | 結果の有無にかかわらずsessionがterminalへ収束し、stuckしないことを確認する |
-| 主張範囲 | 実測したOS buildとApp versionだけを記載し、未測定結果を製品機能として主張しない |
+| 入力条件 | button、GestureClass、source量、方向、速度、session ID |
+| 低レベル成立 | class固有contract analyzerとfixture identity |
+| OS / App結果 | 前面App、OS設定、画面結果、system-wide受信log |
+| terminal | 結果の有無にかかわらずsingle terminalへ収束したか |
+| 体感 | 純正trackpadとNape Proの差を同じscenarioで記録 |
 
-縦横scroll、application navigation、Space切替、Mission Control、App Exposé、Zoomなどは結果例である。特定結果を得るためのmode、方向別action、application別設定、別配送fallbackを追加しない。
-低レベルcontractが合格してOS/App結果が不成立の場合は、contract合格と結果不成立を別々に記録する。画面が動いてもcontract不合格なら製品合格にしない。
+縦横scroll、ページ戻る・進む、Spaces、Mission Control、App Expose、DockSwipe motion 4のsystem pinch解釈は受入scenarioである。結果を成立させるため、application別routing、AX、対象PID、keyboard shortcutを追加しない。
 
-## 補助ゲート
+## 自動検証
 
-次は配布に必要だが、6つの必須ゲートを代用しない。
+同じworktreeとbinaryに対して最低限、次を成功させる。
 
-- debug / release buildと全test targetが成功する
-- product / diagnostic module境界guardが成功する
-- `.app`のbundle identity、同梱文書、署名、公証、stapler、Gatekeeper評価が成功する
-- `doctor`が実行主体、TCC、対象device、contract provenance、fail-closed理由を構造化して返す
-- 常駐CPU、tap-to-terminal遅延、logger drop countが性能基準内にある
-- READMEと配布文書が固定製品モデル、未達事項、実測済みOS/App結果と矛盾しない
-
-## 履歴証跡の扱い
-
-2026-07-11以前および基準commit`55eb991`までの次の証跡は、移行前実装の履歴またはlogger基盤としてのみ保持する。
-
-- buttonごとの`通常` / `2本指スクロール / スワイプ` / `システムスワイプ` / `ピンチ`選択
-- `scroll`をconfirmed、`DockSwipe` / `magnification`をtrialとする3 family状態
-- `NavigationSwipe`を候補familyとして製品routingと別管理した結果
-- forced horizontal scroll、単純pixel scroll、keyboard shortcutによる結果
-- AX、対象PID、frontmost application分岐を使った配送結果
-- 旧`gesture-*` scenario、旧mode別performance count、旧family別completion表
-
-これらのbuild、test、runtime、画面結果が成功していても、event量保存、2 / 3 / 4 finger count、session terminal、passthrough、現行実機証跡、fail closedの合格には使わない。
-既存のtrackpad event logger、strict analyzer、manifest、scroll fixtureは再利用可能な`基盤のみ`とし、新modelのrun UUIDと登録fixtureで再取得・再判定する。
-
-## 自動検証と実機作業
-
-自動化は先に実行し、失敗を残したまま実機作業へ進まない。
-
-~~~sh
+```sh
 ruby scripts/check-product-model-documentation.rb
 ruby scripts/check-finger-count-product-model.rb
 swift build --scratch-path .build
 .build/debug/nape-gesture-core-tests
 .build/debug/nape-gesture-product-output-tests
 sh scripts/check-product-output-boundary.sh
-~~~
+.build/debug/nape-gesture gui-smoke --json --assert
+.build/debug/nape-gesture doctor --probe-hid --json --assert-runtime-ready
+```
 
-基準commitでは`check-finger-count-product-model.rb`が廃止対象sourceを列挙して非ゼロ終了するため、`collect-completion-evidence.sh`も成功を返さない。core / product testは移行前契約を含み、成功しても新modelの完成証跡ではない。source、test、fixture、doctor、収集scriptを固定製品モデルへ更新し、両guardと変更後testが同じbinaryに対して成功して初めて採用する。
+guard file名に`finger-count`が残るのは履歴上のpath互換のためであり、guard内容は固定GestureClassモデルを検査する。
 
-最後に必要な物理作業は次のとおりである。
+## 最後の物理作業
 
-1. 純正trackpadで2 / 3 / 4本指の連続入力、方向反転、正常terminal、cancelを取得する。
-2. Nape Proでbutton 3 / 4 / 5を個別に押し、同じevent量系列を取得する。
-3. 未押下時、各button解放直後、異常終了直後のpassthroughを前面Appで取得する。
-4. kill switch、sleep、device切断、TCC喪失のterminalとfail closedを取得する。
-5. OS/App結果を低レベルcontractとは別scenarioで取得する。
-6. 公開配布時だけDeveloper ID署名、公証、stapler、Gatekeeper評価を取得する。
+1. 完了済みのNape Pro 23 sessionと、純正trackpadのscroll、system swipe、pinch fixtureを同じclass別contract reportで最終比較する。
+2. kill switch、device切断、sleepまたはTCC喪失後のpassthroughを現行release候補で取得する。
+3. App Exposéを有効にする場合だけ、その設定依存の画面結果を低レベルcontractとは別scenarioで記録する。
+4. 公開配布物でDeveloper ID署名、公証、stapler、Gatekeeper、初回起動を確認する。
 
-人間が観察した内容は必ず同じscenarioのraw log、manifest、analyzer reportへ結び付ける。目視だけの「動いた」は完成証跡にしない。
+computer-useで代替できない物理device操作だけを人間へ依頼し、それ以外は自動化する。
