@@ -71,7 +71,7 @@ struct AnalyzePerformanceLogCommand {
         イベントタップから投稿までを含む: \(report.includesEventTapAndPosting ? "はい" : "いいえ")
         レコード数: \(report.recordCount)
         投稿ありレコード数: \(report.postedRecordCount)
-        投稿なしレコード数: \(report.missingPostRecordCount)
+        説明不能な投稿欠落レコード数: \(report.missingPostRecordCount)
         生成イベント数: \(report.generatedEventCount)
         イベント作成失敗数: \(report.failedEventCreationCount)
         tap callback から投稿直前 p95: \(formatMilliseconds(report.tapToFirstPostNanoseconds.p95Nanoseconds)) ms

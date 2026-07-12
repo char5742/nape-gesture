@@ -160,16 +160,21 @@ func makeRuntimePerformanceRecord(
     tapToPostFinishedNanoseconds: UInt64,
     source: RuntimePerformanceSource = .eventTap,
     generatedEventCount: Int = 1,
-    failedEventCreationCount: Int = 0
+    failedEventCreationCount: Int = 0,
+    gestureClass: FixedGestureClass = .twoFingerScrollSwipe,
+    sourceKind: GestureInputSourceKind = .move,
+    inputPhase: FixedGestureInputPhase? = nil
 ) -> RuntimePerformanceRecord {
     let base = UInt64(1_000_000_000 + index * 100_000_000)
     return RuntimePerformanceRecord(
         operationID: "\(source.rawValue)-\(index)",
         source: source,
-        gestureClass: .twoFingerScrollSwipe,
-        outputFamily: .scroll,
-        sourceKind: .move,
-        inputPhase: index == 0 ? .began : .changed,
+        gestureClass: gestureClass,
+        outputFamily: gestureClass == .twoFingerScrollSwipe
+            ? .scroll
+            : (gestureClass == .threeFingerSystemSwipe ? .dockSwipe : .dockSwipePinch),
+        sourceKind: sourceKind,
+        inputPhase: inputPhase ?? (index == 0 ? .began : .changed),
         commandTimestampNanoseconds: base - 2_000,
         inputEventTimestampNanoseconds: source == .eventTap ? base - 1_000 : nil,
         tapCallbackStartedAtNanoseconds: base,
@@ -3843,6 +3848,97 @@ func testRuntimePerformanceAnalyzerRejectsMissingAndSlowPosts() {
     )
 }
 
+func testRuntimePerformanceAnalyzerAllowsDeferredRecognizedGestureStart() {
+    let records = [
+        makeRuntimePerformanceRecord(
+            index: 1,
+            tapToPostStartNanoseconds: 1_000,
+            tapToPostFinishedNanoseconds: 2_000,
+            generatedEventCount: 0,
+            gestureClass: .threeFingerSystemSwipe,
+            sourceKind: .buttonDown,
+            inputPhase: .began
+        ),
+        makeRuntimePerformanceRecord(
+            index: 2,
+            tapToPostStartNanoseconds: 1_000,
+            tapToPostFinishedNanoseconds: 2_000,
+            generatedEventCount: 0,
+            gestureClass: .threeFingerSystemSwipe,
+            sourceKind: .move,
+            inputPhase: .changed
+        ),
+        makeRuntimePerformanceRecord(
+            index: 3,
+            tapToPostStartNanoseconds: 1_000,
+            tapToPostFinishedNanoseconds: 2_000,
+            gestureClass: .threeFingerSystemSwipe,
+            sourceKind: .move,
+            inputPhase: .changed
+        ),
+        makeRuntimePerformanceRecord(
+            index: 4,
+            tapToPostStartNanoseconds: 1_000,
+            tapToPostFinishedNanoseconds: 2_000,
+            gestureClass: .threeFingerSystemSwipe,
+            sourceKind: .buttonUp,
+            inputPhase: .ended
+        ),
+    ]
+
+    let report = RuntimePerformanceAnalyzer.analyze(records: records)
+    let evaluation = RuntimePerformanceAnalyzer.evaluate(report)
+
+    expect(report.postedRecordCount == 2, "遅延開始前の空batchを投稿数へ含めない")
+    expect(report.missingPostRecordCount == 0, "軸確定前の空batchを投稿欠落と扱わない")
+    expect(evaluation.passed, "認識済みgestureの正規の遅延開始を性能基準で許容する")
+}
+
+func testRuntimePerformanceAnalyzerRejectsMissingPostAfterGestureStarted() {
+    let records = [
+        makeRuntimePerformanceRecord(
+            index: 1,
+            tapToPostStartNanoseconds: 1_000,
+            tapToPostFinishedNanoseconds: 2_000,
+            generatedEventCount: 0,
+            gestureClass: .pinch,
+            sourceKind: .buttonDown,
+            inputPhase: .began
+        ),
+        makeRuntimePerformanceRecord(
+            index: 2,
+            tapToPostStartNanoseconds: 1_000,
+            tapToPostFinishedNanoseconds: 2_000,
+            gestureClass: .pinch,
+            sourceKind: .move,
+            inputPhase: .changed
+        ),
+        makeRuntimePerformanceRecord(
+            index: 3,
+            tapToPostStartNanoseconds: 1_000,
+            tapToPostFinishedNanoseconds: 2_000,
+            generatedEventCount: 0,
+            gestureClass: .pinch,
+            sourceKind: .move,
+            inputPhase: .changed
+        ),
+        makeRuntimePerformanceRecord(
+            index: 4,
+            tapToPostStartNanoseconds: 1_000,
+            tapToPostFinishedNanoseconds: 2_000,
+            gestureClass: .pinch,
+            sourceKind: .buttonUp,
+            inputPhase: .ended
+        ),
+    ]
+
+    let report = RuntimePerformanceAnalyzer.analyze(records: records)
+    let evaluation = RuntimePerformanceAnalyzer.evaluate(report)
+
+    expect(report.missingPostRecordCount == 1, "gesture開始後の空batchを投稿欠落として数える")
+    expect(!evaluation.passed, "gesture開始後の投稿欠落を性能基準で失敗にする")
+}
+
 func testRuntimePerformanceAnalyzerDoesNotTreatMomentumAsTapToPost() {
     let records = [
         makeRuntimePerformanceRecord(
@@ -4260,6 +4356,8 @@ testRuntimePerformanceRecordEncodesFixedGestureContract()
 testRuntimePerformanceRecordDoesNotInferMissingOutputFamily()
 testRuntimePerformanceRecordRejectsMismatchedSchemaShape()
 testRuntimePerformanceAnalyzerRejectsMissingAndSlowPosts()
+testRuntimePerformanceAnalyzerAllowsDeferredRecognizedGestureStart()
+testRuntimePerformanceAnalyzerRejectsMissingPostAfterGestureStarted()
 testRuntimePerformanceAnalyzerDoesNotTreatMomentumAsTapToPost()
 
 if failures == 0 {

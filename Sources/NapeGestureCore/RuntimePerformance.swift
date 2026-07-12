@@ -204,6 +204,7 @@ public enum RuntimePerformanceAnalyzer {
     public static func analyze(records: [RuntimePerformanceRecord]) -> RuntimePerformanceReport {
         let postedRecords = records.filter { $0.generatedEventCount > 0 }
         let eventTapPostedRecords = postedRecords.filter { $0.source == .eventTap }
+        let missingPostRecordCount = unexpectedMissingPostCount(records)
 
         return RuntimePerformanceReport(
             schemaVersion: RuntimePerformanceRecord.currentSchemaVersion,
@@ -213,7 +214,7 @@ public enum RuntimePerformanceAnalyzer {
             recordCount: records.count,
             postedRecordCount: postedRecords.count,
             eventTapPostedRecordCount: eventTapPostedRecords.count,
-            missingPostRecordCount: records.count - postedRecords.count,
+            missingPostRecordCount: missingPostRecordCount,
             generatedEventCount: records.reduce(0) { $0 + $1.generatedEventCount },
             failedEventCreationCount: records.reduce(0) { $0 + $1.failedEventCreationCount },
             sourceCounts: counts(records.map { $0.source.rawValue }),
@@ -343,6 +344,54 @@ public enum RuntimePerformanceAnalyzer {
         values.reduce(into: [:]) { result, value in
             result[value, default: 0] += 1
         }
+    }
+
+    private static func unexpectedMissingPostCount(
+        _ records: [RuntimePerformanceRecord]
+    ) -> Int {
+        var activeGestureClass: FixedGestureClass?
+        var activeSessionHasPosted = false
+        var count = 0
+
+        for record in records {
+            let didPost = record.generatedEventCount > 0
+
+            switch record.inputPhase {
+            case .began:
+                activeGestureClass = record.gestureClass
+                activeSessionHasPosted = didPost
+                if record.gestureClass == .twoFingerScrollSwipe && !didPost {
+                    count += 1
+                }
+
+            case .changed:
+                let hasMatchingSession = activeGestureClass == record.gestureClass
+                let requiresPost =
+                    record.gestureClass == .twoFingerScrollSwipe
+                    || activeSessionHasPosted
+                    || !hasMatchingSession
+                if requiresPost && !didPost {
+                    count += 1
+                }
+                if didPost {
+                    activeSessionHasPosted = true
+                }
+
+            case .ended, .cancelled:
+                let hasMatchingSession = activeGestureClass == record.gestureClass
+                let requiresPost =
+                    record.gestureClass == .twoFingerScrollSwipe
+                    || activeSessionHasPosted
+                    || !hasMatchingSession
+                if requiresPost && !didPost {
+                    count += 1
+                }
+                activeGestureClass = nil
+                activeSessionHasPosted = false
+            }
+        }
+
+        return count
     }
 
     private static func positiveDifference(_ lhs: UInt64, _ rhs: UInt64) -> Double {
