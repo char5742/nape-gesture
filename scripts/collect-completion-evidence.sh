@@ -58,7 +58,7 @@ cat > "$summary_file" <<EOF
 
 - 証跡 root: \`$artifact_root\`
 - 実行日時: $(date '+%F %T %z')
-- repo HEAD: `$repo_head_sha`
+- repo HEAD: \`$repo_head_sha\`
 - tracked tree: clean
 - 対象: 実機、TCC 操作、実イベント投稿なしで取得できる機械証跡
 
