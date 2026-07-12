@@ -110,7 +110,7 @@ end
 
 required_snippets = {
   "README.md" => [
-    "> **現在の製品状態: 試用可能・物理受入未完了**",
+    "> **現在の製品状態: 試用可能・Nape Pro主要経路受入済み**",
     "| button 3を押しながらmouseを操作 | 2本指スクロール / スワイプ相当 |",
     "| button 4を押しながらmouseを操作 | 3本指システムスワイプ相当 | type 30 `DockSwipe`、motion 1 / 2 |",
     "| button 5を押しながらmouseを操作 | 4本指system pinch相当 | type 30 `DockSwipe`、motion 4 |",
@@ -118,8 +118,9 @@ required_snippets = {
     "1 sampleから1つのsource command",
     "recognized-dockswipe-templates-25F80-v2",
     "852c7d0b6e32ced7082ea5c06a65d05971d3868e6a36aaccfd6f422871bc32a6",
-    "`/Applications/Nape Gesture.app`をインストール済み",
-    "Nape Pro物理受入 | button 4 / 5が**未完了**"
+    "`/Applications/Nape Gesture.app`へインストール済み",
+    "Nape Pro物理受入 | 3 class合計23 session",
+    "gesture session中はmouse cursorが移動しない"
   ],
   "docs/requirements.md" => [
     "| button 3押下中 | 2本指スクロール / スワイプ相当 |",
@@ -131,14 +132,16 @@ required_snippets = {
     "phase fields 132 / 134 = began 1、changed 2、ended 4、cancelled 8",
     "application magnification event、generic finger count field、3本指classのmotion 1 / 2へ置き換えない",
     "eventはsystem-wideへだけ投稿する",
-    "runtime全体をfail closedする"
+    "runtime全体をfail closedする",
+    "mouseとcursorのQuartz連動を停止"
   ],
   "docs/completion-checklist.md" => [
     "| 固定GestureClass |",
     "| ProductOutput | 2本指はtype 22 scroll + type 29 companion、3本指はtype 30 DockSwipe motion 1 / 2、4本指はtype 30 DockSwipe motion 4",
     "class間でevent count、field、単位変換が同一であることは要求しない",
-    "Nape Pro実機",
-    "3本指の水平`DockSwipe`で左右のSpaceを切り替え",
+    "Nape Pro実機では3 class合計23 session",
+    "DockはSpace切替、Mission Control、motion 4のsystem control遷移を受理",
+    "| cursor固定 | gesture session中はmouseとcursorのQuartz連動を停止し",
     "App Exposéがオフ"
   ],
   "docs/adr/0036-emulate-trackpad-driver-output-events.md" => [
@@ -162,7 +165,7 @@ required_snippets = {
     "raw digitizer contact countでもgeneric `fingerCount` fieldでもない",
     "accepted move / wheel sampleごとに1つの`FixedGestureInputCommand`",
     "同じsource系列でもgenerated event type、event count、field、phase、unit conversionはclassごとに異なり得る",
-    "残る実機対象はNape Pro button 4 / 5"
+    "製品入力tapは、Nape ProのIOHID入力とCGEventの関連付け順序を維持できる`.cgSessionEventTap`"
   ]
 }.freeze
 

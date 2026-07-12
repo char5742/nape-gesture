@@ -15,6 +15,7 @@ final class NapeGestureDaemon {
     private var safetyState = RuntimeSafetyState()
     private var performanceOperationSequence = 0
     private var terminalError: Error?
+    private var isCursorMotionSuppressed = false
 
     init(
         cancellation: GestureCancellationConfiguration,
@@ -90,7 +91,11 @@ final class NapeGestureDaemon {
             reason: .runtimeStop,
             timestamp: MonotonicEventClock.now
         )
+        let cursorError = restoreCursorMotion()
         guard let failure = cancellation.failure else {
+            if let cursorError {
+                return cursorError
+            }
             return nil
         }
         let error = ToolError.trackpadOutputPostingFailed(failure.rawValue)
@@ -114,7 +119,11 @@ final class NapeGestureDaemon {
             return Unmanaged.passUnretained(event)
         }
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            if let eventTap {
+            let timestamp = MonotonicEventTimestamp(
+                nanosecondsSinceStartup: event.timestamp
+            )
+            cancelForTapInterruption(timestamp: timestamp)
+            if terminalError == nil, let eventTap {
                 CGEvent.tapEnable(tap: eventTap, enable: true)
             }
             return Unmanaged.passUnretained(event)
@@ -215,6 +224,21 @@ final class NapeGestureDaemon {
                 )
                 return false
             }
+
+            switch command.phase {
+            case .began:
+                if let error = suppressCursorMotion() {
+                    transitionToTerminalFailure(error)
+                    return false
+                }
+            case .ended, .cancelled:
+                if let error = restoreCursorMotion() {
+                    transitionToTerminalFailure(error)
+                    return false
+                }
+            case .changed:
+                break
+            }
         }
         return true
     }
@@ -236,6 +260,9 @@ final class NapeGestureDaemon {
         )
         if let failure = cancellation.failure {
             transitionToTerminalFailure(failure)
+        }
+        if let error = restoreCursorMotion() {
+            transitionToTerminalFailure(error)
         }
         if decision.didEnterStoppedState {
             writeOperationalLog("キルスイッチによりジェスチャーを無効化しました。再開するには常駐UIの停止/開始、またはプロセス再起動を行ってください。")
@@ -261,11 +288,13 @@ final class NapeGestureDaemon {
             reason: .outputFailure,
             timestamp: MonotonicEventClock.now
         )
-        writeOperationalLog(error.localizedDescription)
+        let reportedError = restoreCursorMotion() ?? error
+        terminalError = reportedError
+        writeOperationalLog(reportedError.localizedDescription)
 
         if let onTerminalFailure {
             DispatchQueue.main.async {
-                onTerminalFailure(error)
+                onTerminalFailure(reportedError)
             }
         } else {
             CFRunLoopStop(CFRunLoopGetCurrent())
@@ -306,6 +335,54 @@ final class NapeGestureDaemon {
     private func nextPerformanceOperationID(source: RuntimePerformanceSource) -> String {
         performanceOperationSequence += 1
         return "\(source.rawValue)-\(performanceOperationSequence)"
+    }
+
+    private func suppressCursorMotion() -> Error? {
+        guard !isCursorMotionSuppressed else {
+            return nil
+        }
+        let result = CGAssociateMouseAndMouseCursorPosition(boolean_t(0))
+        guard result == .success else {
+            return ToolError.trackpadOutputPostingFailed(
+                "gesture開始時にmouse cursor連動を停止できませんでした。CGError=\(result.rawValue)"
+            )
+        }
+        isCursorMotionSuppressed = true
+        return nil
+    }
+
+    private func restoreCursorMotion() -> Error? {
+        guard isCursorMotionSuppressed else {
+            return nil
+        }
+        let result = CGAssociateMouseAndMouseCursorPosition(boolean_t(1))
+        guard result == .success else {
+            return ToolError.trackpadOutputPostingFailed(
+                "gesture終了後にmouse cursor連動を復元できませんでした。CGError=\(result.rawValue)"
+            )
+        }
+        isCursorMotionSuppressed = false
+        return nil
+    }
+
+    private func cancelForTapInterruption(
+        timestamp: MonotonicEventTimestamp
+    ) {
+        if recognizer.activeSession != nil {
+            let decision = recognizer.handle(.cancel(timestamp: timestamp))
+            _ = post(commands: decision.commands)
+        }
+        let cancellation = outputExecutor.cancelActive(
+            reason: .inputLifecycle,
+            timestamp: timestamp
+        )
+        if let failure = cancellation.failure {
+            transitionToTerminalFailure(failure)
+            return
+        }
+        if let error = restoreCursorMotion() {
+            transitionToTerminalFailure(error)
+        }
     }
 
     private func writeOperationalLog(_ message: String) {

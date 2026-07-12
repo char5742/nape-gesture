@@ -2,9 +2,9 @@
 
 Nape Gestureは、Nape Proなどのmouse入力を、固定buttonに対応するmacOSの上位trackpad gestureへ変換する常駐GUIアプリです。button 3 / 4 / 5を押していない間は、通常mouse入力をそのまま通します。
 
-> **現在の製品状態: 試用可能・物理受入未完了**
+> **現在の製品状態: 試用可能・Nape Pro主要経路受入済み**
 >
-> release buildの`/Applications/Nape Gesture.app`をインストール済みです。CLI runtimeではbutton 3のscroll lifecycle、button 4のSpace切替、button 5のsystem control `0 → 1 → 0`をevent tapからsystem-wide出力まで確認済みです。再署名後のGUI runtimeはAccessibility / Input Monitoringの再登録待ちです。現在のmacOS設定ではApp Exposéがオフで、残るNape Pro物理受入はbutton 4 / 5の実入力、terminal、解放後passthroughです。
+> release buildの`/Applications/Nape Gesture.app`をインストールし、現在の署名identityへAccessibility / Input Monitoringを付与してGUI runtimeを稼働中です。Nape Pro実機では3 class合計23 sessionが全て1回ずつ正常終了し、5473 eventをsystem-wideへ生成して作成失敗0件、欠落投稿0件でした。button 4によるSpace切替とMission Control、button 5によるDock system controlの連続遷移を確認し、終了後も通常mouse操作へ復帰しています。現在のmacOS設定ではApp Exposéがオフのため、その画面結果は未確認です。
 
 ## 固定操作
 
@@ -42,6 +42,8 @@ flowchart LR
 source commandと低レベルeventの件数が同じである必要はありません。2本指scroll classでは、1 commandからtype 22 scrollと複数のtype 29 companion eventを1 batchとして生成できます。3本指system swipeはtype 30 `DockSwipe`のaxis、XY motion、progress、終端XY velocityへ、4本指system pinchは同じtype 30でもmotion 4、progress、終端Z velocityへ変換します。class固有encodingは、application別routingやユーザーmodeではありません。
 
 button解放、cancel、kill switch、runtime stop、sleep、device切断、権限喪失、event作成または投稿失敗では、active sessionを一度だけterminalへ収束させます。部分投稿が起きた場合は、未投稿offsetと順序を保持して同じsessionを閉じ、新しいsessionへすり替えません。
+
+対象buttonを押している間はmouseとcursorのQuartz連動を停止するため、元moveをgesture量として使用しても画面上のmouse cursorを移動させません。button解放、cancel、tap中断、runtime停止、出力失敗では連動を必ず復元し、通常のcursor追従へ戻ります。
 
 ## 製品経路
 
@@ -86,12 +88,12 @@ buttonごとのmode selector、無効化、感度、方向別binding、applicati
 | source sample保存 | exact timestamp、capture order、session ID、sample 1対1 command化を実装済み |
 | ProductOutput | `scroll`、`dockSwipe`、`dockSwipePinch`をsystem-wideへ投稿可能。pinchはDockSwipe motion 4 |
 | GUI / migration / doctor | 固定mappingへ更新済み。旧modeを製品surfaceへ公開しない |
-| release `.app` | `/Applications/Nape Gesture.app`へインストール済み。再署名後のGUI TCC再登録待ち |
-| system-test | daemon経由で3本指水平のSpace切替とmotion 4の正負両方向をDockが受理済み。App ExposéはmacOS設定でオフ |
-| Nape Pro物理受入 | button 4 / 5が**未完了**。実入力から生成、terminal、解放後passthroughを確認する必要あり |
+| release `.app` | `/Applications/Nape Gesture.app`へインストール済み。現在のad-hoc署名identityでGUI runtime稼働中 |
+| system-test | daemon経由で3本指水平のSpace切替、Mission Control、motion 4の正負両方向をDockが受理済み。App ExposéはmacOS設定でオフ |
+| Nape Pro物理受入 | 3 class合計23 session、5473生成event、作成失敗0件、欠落投稿0件。全sessionがsingle terminalで終了し、通常操作へ復帰 |
 | 公開配布 | Developer ID署名、公証、stapler、Gatekeeper評価は未完了 |
 
-build、test、GUI起動、direct post smoke、system-testのDock受理だけで製品完成とはしません。残るNape Pro button 4 / 5と純正trackpadの物理操作を同じOS buildで収録し、source、生成event、system-wide配送、画面結果、terminal、通常入力復帰を対応付けて初めて物理受入を完了します。
+build、test、GUI起動、direct post smokeだけで製品完成とはしません。Nape Proの主要経路は実機受入済みですが、純正trackpadとの最終比較、異常終了後の復旧、App Exposéの設定依存結果、Developer ID署名と公証を含む公開配布gateは引き続き別に判定します。実収録性能はtap callbackから投稿完了までp95 0.123 ms、p99 0.220 msで基準合格です。
 
 ## 完成条件
 
@@ -100,6 +102,7 @@ build、test、GUI起動、direct post smoke、system-testのDock受理だけで
 - 3 class固有のevent family、field、phase、単位変換を自前fixtureまで追跡できる。
 - normally pressed / changed / endedと全cancel経路がsingle terminalへ収束する。
 - button未押下時、session終了後、異常停止後に通常mouseへ戻る。
+- gesture session中はmouse cursorが移動しない。
 - 製品runtimeからsystem-wide以外の配送や診断fallbackへ到達しない。
 - 未知OS build、fixture不一致、権限不足、対象device不一致では抑制前にfail closedする。
 - Nape Proと純正trackpadで低レベルcontract、OS / App結果、体感差を別々に物理受入する。

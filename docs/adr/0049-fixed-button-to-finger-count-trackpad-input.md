@@ -71,6 +71,9 @@ GUIは固定mappingを読み取り専用で表示する。旧modeと調整値は
 - release、cancel、kill switch、runtime stop、sleep、disconnect、TCC喪失、作成 / 投稿失敗で一度だけterminalへ収束する。
 - partial batch後は未投稿offsetを保持し、同じterminalを再試行する。
 - terminal後は通常mouse状態へ戻る。
+- 製品入力tapは、Nape ProのIOHID入力とCGEventの関連付け順序を維持できる`.cgSessionEventTap`のhead insertを使う。
+- active session中だけQuartzのmouse-cursor associationを停止し、button解放、cancel、tap中断、runtime停止、出力失敗では必ず再連動する。cursor座標warpは使わない。
+- macOS SDKの`CGRemoteOperation.h`が定義する`CGAssociateMouseAndMouseCursorPosition`契約に従い、連動停止中は絶対cursor座標を一定に保ちながらX/Y deltaをgesture入力へ残す。
 
 ### 6. 抑制前にreadinessを確定する
 
@@ -85,9 +88,9 @@ GUIは固定mappingを読み取り専用で表示する。旧modeと調整値は
 - 3 classのevent type、field、phase、batch、単位変換とIOHID motion 1 / 2 / 4をregistered fixtureへ照合する。
 - GUIがmappingをread-only表示し、canonical設定に旧modeや感度が残らないことを検査する。
 - system-wide posting、禁止経路非到達、unknown build / fixture mismatchのfail closedを検査する。
-- Nape Proと純正trackpadでsource、generated event、OS / App結果、terminal、passthroughを物理受入する。残る実機対象はNape Pro button 4 / 5である。
+- Nape Proと純正trackpadでsource、generated event、OS / App結果、terminal、passthroughを物理受入する。
 
-release buildの`/Applications/Nape Gesture.app`はインストール済みでdoctor runtime readyであり、system-testではDockが3本指垂直とmotion 4の正負両方向を受理済みである。ただし、Nape Pro button 4 / 5の物理受入と公開配布署名が完了するまで製品完成とはしない。
+release buildの`/Applications/Nape Gesture.app`はインストール済みで、現在の署名identityに対するTCC付与後のGUI runtimeが稼働している。Nape Pro実機では3 class合計23 session、generated event 5473件、作成失敗0件、欠落投稿0件、全sessionのsingle terminalを確認し、DockはSpace切替、Mission Control、motion 4のsystem control遷移を受理した。純正trackpadとの最終比較、異常終了後の復旧、App Exposéの設定依存結果、公開配布署名が完了するまで製品完成とはしない。
 
 ## 影響
 
