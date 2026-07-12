@@ -1,243 +1,158 @@
 # 完成判定チェックリスト
 
-この文書は Issue #16「完成判定チェックリストを実測証跡で埋める」で使う証跡台帳です。
-最終完成判定では、この文書の matrix を正本として、各行に実測ログ、コマンド出力、PR、Issue コメントへのリンクを埋めます。
-Issue #16 は実機作業が残るため、この台帳を作っただけでは close しません。
+この文書は、Nape Gestureの製品完成を実測証跡で判定する正本である。
+build、単体test、GUI起動、個別の低レベルevent生成が成功しても、ここで定義する必須ゲートが1つでも未達なら製品完成とは扱わない。
+製品モデルの設計判断は[ADR-0049](adr/0049-fixed-button-to-finger-count-trackpad-input.md)を正とする。
 
-## 証跡保存場所
+## 固定する製品モデル
 
-証跡ログはリポジトリへ追加せず、次のようなディレクトリ名で保存します。
-`artifacts/` は `.gitignore` 対象とし、GitHub Issue / PR にはログ本体ではなく要約と保存先を残します。
+製品モデルは次の1つだけである。
 
-```text
-artifacts/completion/YYYY-MM-DD/<scenario>/
-```
+| mouse入力 | 生成するtrackpad入力 |
+| --- | --- |
+| button 3押下中の連続mouse event量 | 2本指 |
+| button 4押下中の連続mouse event量 | 3本指 |
+| button 5押下中の連続mouse event量 | 4本指 |
+| button 3 / 4 / 5のいずれも未押下 | 元のmouse入力をそのまま通す |
 
-例:
+- buttonごとに結果を選ぶユーザーmodeは設けない。
+- 方向ごとのaction、OS/App結果ごとのaction、application別設定は設けない。
+- AX scrollbar、対象PID配送、frontmost application分岐、keyboard shortcutを製品fallbackにしない。
+- `scroll`、`DockSwipe`、`NavigationSwipe`、`magnification`は低レベルevent familyまたは観測語彙であり、ユーザーmodeや独立した製品機能ではない。
+- 低レベル入力を受けて何が起きるかはOS/Appが解釈する。OS/App結果を先に選び、それに合わせて配送方式やevent familyを切り替えない。
+- 同じsource event列をbutton 3 / 4 / 5へ与えた場合、生成列は同じ正規化入力の量、順序、時間間隔を使う。finger count固有の物理encoding差だけを登録contractで許容し、結果別またはfinger count別の変換係数は持たない。
 
-- `artifacts/completion/2026-07-09/build-and-tests/`
-- `artifacts/completion/2026-07-09/doctor-app-runtime/`
-- `artifacts/completion/2026-07-09/nape-pro-hid-identification/`
-- `artifacts/completion/2026-07-09/spaces-mission-control/`
+## 現行実装の状態
 
-各 scenario には、実行コマンドを残す `commands.txt`、標準出力または JSON を残す `*.json` / `*.jsonl`、画面操作が必要だった場合の短い観察メモ `notes.md` を置きます。
-runtime event 証跡は、総合状態を機械判定するために `status.json` も置きます。
-PR や Issue へは、ログ本体ではなく、保存場所、主要コマンド、判定結果、未検証事項を証跡コメントとして残します。
+この文書の改訂基準commitは`55eb991`である。このcommitには`TrackpadGestureMode`、buttonごとのmode選択UI、`supportedFamilies` / `confirmedFamilies` / `trialFamilies`、modeから`scroll` / `DockSwipe` / `magnification`へ分岐する製品経路が残っている。
+したがって、基準commitの現行実装は上記の固定製品モデルに**未達**であり、リリース可能または製品完成とは判定しない。
 
-## 直近の証跡
+並行実装中の未commit差分や、旧modelのtestが成功しただけではこの状態を更新しない。次の全ゲートについて、変更後binaryと同じrepo SHAを持つ証跡がそろった時だけ状態を更新する。
 
-次の証跡は、最新の機械証跡は証跡取得対象 commit `e22aa52a4565743d1530e6da87f12c5e480515fc` の main、GUI 権限付与後の runtime event 最新成功証跡は `runtime-event-kill-switch-release-suppression`、最新 GUI computer-use / System Events 画面証跡は main `24f0f7f1026918caa85912ae52b441350f4edd4b` に対して採用します。
-GUI smoke 証跡は `gui-smoke` コマンド導入後の commit で採用し、PR merge 後の Issue コメントに対象 commit と CI run を残します。
-後続 PR で文書や証跡収集スクリプトだけを更新した場合、完成判定では証跡取得対象 commit と文書の最新 commit を分けて扱います。
-
-- 最新機械証跡 root: `artifacts/completion/2026-07-10/machine-evidence-main-e22aa52`
-- 最新機械証跡 summary: `artifacts/completion/2026-07-10/machine-evidence-main-e22aa52/summary.md`
-- 最新機械証跡 Issue コメント: https://github.com/char5742/nape-gesture/issues/16#issuecomment-4926823166
-- 機械証跡 root: `artifacts/completion/2026-07-09/machine-evidence-pr59-main-dddb583`
-- 機械証跡 summary: `artifacts/completion/2026-07-09/machine-evidence-pr59-main-dddb583/summary.md`
-- 機械証跡 Issue コメント: https://github.com/char5742/nape-gesture/issues/16#issuecomment-4919012451
-- runtime event 外部ブロッカー root: `artifacts/completion/2026-07-09/runtime-event-evidence-app-pr59-main-dddb583`
-- runtime event 外部ブロッカー summary: `artifacts/completion/2026-07-09/runtime-event-evidence-app-pr59-main-dddb583/summary.md`
-- runtime event 外部ブロッカー Issue コメント: https://github.com/char5742/nape-gesture/issues/16#issuecomment-4919020358
-- runtime event status JSON root: `artifacts/completion/2026-07-09/runtime-event-status-json`
-- runtime event status JSON: `artifacts/completion/2026-07-09/runtime-event-status-json/status.json`
-- runtime event preflight: `artifacts/completion/2026-07-09/runtime-event-status-json/preflight/`
-- doctor permission target root: `artifacts/completion/2026-07-09/doctor-permission-target`
-- doctor permission target summary: `artifacts/completion/2026-07-09/doctor-permission-target/summary.md`
-- settings UI field catalog root: `artifacts/completion/2026-07-09/settings-ui-field-catalog`
-- settings UI field catalog summary: `artifacts/completion/2026-07-09/settings-ui-field-catalog/summary.md`
-- benchmark percentile metrics root: `artifacts/completion/2026-07-09/benchmark-percentile-metrics`
-- benchmark percentile metrics summary: `artifacts/completion/2026-07-09/benchmark-percentile-metrics/summary.md`
-- 由来ガード root: `artifacts/completion/2026-07-09/provenance-guard`
-- 由来ガード summary: `artifacts/completion/2026-07-09/provenance-guard/summary.md`
-- GUI アプリ起動 root: `artifacts/completion/2026-07-09/gui-app-mode`
-- GUI アプリ起動 summary: `artifacts/completion/2026-07-09/gui-app-mode/summary.md`
-- GUI アプリ runtime event 最新 root: `artifacts/completion/2026-07-09/runtime-event-open-absolute-paths-final`
-- GUI アプリ runtime event 最新 summary: `artifacts/completion/2026-07-09/runtime-event-open-absolute-paths-final/summary.md`
-- GUI アプリ runtime event 最新 status: `artifacts/completion/2026-07-09/runtime-event-open-absolute-paths-final/status.json`
-- GUI アプリ runtime event 最新 doctor: `artifacts/completion/2026-07-09/runtime-event-open-absolute-paths-final/doctor/doctor-debug.json`
-- GUI アプリ runtime event 最新 Issue コメント: [#16](https://github.com/char5742/nape-gesture/issues/16#issuecomment-4926725190), [#6](https://github.com/char5742/nape-gesture/issues/6#issuecomment-4926725331), [#12](https://github.com/char5742/nape-gesture/issues/12#issuecomment-4926725580)
-- GUI アプリ runtime event 成功 root: `artifacts/completion/2026-07-09/runtime-event-kill-switch-release-suppression`
-- GUI アプリ runtime event 成功 summary: `artifacts/completion/2026-07-09/runtime-event-kill-switch-release-suppression/summary.md`
-- GUI アプリ runtime event 成功 status: `artifacts/completion/2026-07-09/runtime-event-kill-switch-release-suppression/status.json`
-- GUI アプリ runtime event 成功 doctor: `artifacts/completion/2026-07-09/runtime-event-kill-switch-release-suppression/doctor/doctor-debug.json`
-- GUI 権限復旧導線 root: `artifacts/completion/2026-07-09/gui-permission-recovery-actions`
-- GUI 権限復旧導線 summary: `artifacts/completion/2026-07-09/gui-permission-recovery-actions/summary.md`
-- GUI computer-use 最新 root: `artifacts/completion/2026-07-10/gui-computer-use-main-24f0f7f`
-- GUI computer-use 最新 summary: `artifacts/completion/2026-07-10/gui-computer-use-main-24f0f7f/summary.md`
-- GUI computer-use 最新 Dock AX log: `artifacts/completion/2026-07-10/gui-computer-use-main-24f0f7f/logs/dock-nape-gesture-items.txt`
-- GUI computer-use 最新 Issue コメント: https://github.com/char5742/nape-gesture/issues/16#issuecomment-4926976780
-- GUI computer-use 保存操作 root: `artifacts/completion/2026-07-09/gui-computer-use-main-f43e217`
-- GUI computer-use 保存操作 summary: `artifacts/completion/2026-07-09/gui-computer-use-main-f43e217/summary.md`
-- GUI computer-use doctor: `artifacts/completion/2026-07-09/gui-computer-use-main-f43e217/doctor/doctor-app.json`
-- GUI smoke script root: `artifacts/completion/2026-07-09/gui-smoke-script-check`
-- GUI smoke script JSON: `artifacts/completion/2026-07-09/gui-smoke-script-check/gui-smoke/gui-smoke-app.json`
-
-上記の `artifacts/` は Git 管理外です。再現する場合は、それぞれ次のコマンドを実行します。
-
-```sh
-NAPE_COMPLETION_ARTIFACT_ROOT=artifacts/completion/2026-07-10/machine-evidence-main-e22aa52 sh scripts/collect-completion-evidence.sh
-NAPE_COMPLETION_ARTIFACT_ROOT=artifacts/completion/2026-07-09/machine-evidence-pr59-main-dddb583 sh scripts/collect-completion-evidence.sh
-NAPE_RUNTIME_EVENT_USE_APP_BUNDLE=1 NAPE_RUNTIME_EVENT_ARTIFACT_ROOT=artifacts/completion/2026-07-09/runtime-event-evidence-app-pr59-main-dddb583 sh scripts/collect-runtime-event-evidence.sh
-NAPE_RUNTIME_EVENT_USE_APP_BUNDLE=1 NAPE_RUNTIME_EVENT_ARTIFACT_ROOT=artifacts/completion/2026-07-09/runtime-event-status-json sh scripts/collect-runtime-event-evidence.sh
-NAPE_COMPLETION_ARTIFACT_ROOT=artifacts/completion/2026-07-09/doctor-permission-target sh scripts/collect-completion-evidence.sh
-NAPE_COMPLETION_ARTIFACT_ROOT=artifacts/completion/2026-07-09/settings-ui-field-catalog sh scripts/collect-completion-evidence.sh
-NAPE_COMPLETION_ARTIFACT_ROOT=artifacts/completion/2026-07-09/benchmark-percentile-metrics sh scripts/collect-completion-evidence.sh
-NAPE_COMPLETION_ARTIFACT_ROOT=artifacts/completion/2026-07-09/provenance-guard sh scripts/collect-completion-evidence.sh
-NAPE_COMPLETION_ARTIFACT_ROOT=artifacts/completion/2026-07-09/gui-app-mode sh scripts/collect-completion-evidence.sh
-NAPE_RUNTIME_EVENT_USE_APP_BUNDLE=1 NAPE_RUNTIME_EVENT_ARTIFACT_ROOT=artifacts/completion/2026-07-09/runtime-event-open-absolute-paths-final sh scripts/collect-runtime-event-evidence.sh
-NAPE_RUNTIME_EVENT_USE_APP_BUNDLE=1 NAPE_RUNTIME_EVENT_ARTIFACT_ROOT=artifacts/completion/2026-07-09/runtime-event-kill-switch-release-suppression sh scripts/collect-runtime-event-evidence.sh
-NAPE_COMPLETION_ARTIFACT_ROOT=artifacts/completion/2026-07-09/gui-permission-recovery-actions sh scripts/collect-completion-evidence.sh
-NAPE_COMPLETION_ARTIFACT_ROOT=artifacts/completion/2026-07-09/gui-smoke-script-check sh scripts/collect-completion-evidence.sh
-```
-
-`machine-evidence-main-e22aa52/summary.md` では、由来ガード、debug / release build、core tests、`.app` 作成と検証、bundle identity、未署名 bundle の署名必須検証 expected failure、ad-hoc 署名、codesign verify、署名済み bundle 検証、license / third-party notices 同梱一致、AppKit `gui-smoke --json --assert`、`doctor` / `doctor --probe-hid` JSON、runtime readiness / TCC / permission target / targetDeviceDiagnostics field check、`doctor --assert-runtime-ready` の expected failure、benchmark p95 / p99 field check、`system-test` dry-run、fixtures 解析、`devices --all --json` が成功している。
-この機械証跡の `doctor-hid-probe-debug.json` は debug executable 経路であり、`.app` の TCC 許可済み runtime event 証跡とは分けて扱う。
-runtime event 証跡は、権限付与後の `.build/NapeGesture.app` で `doctor.runtimeReadiness.ready: true`、target ready diagnostics、foreground capture、元入力抑制、キルスイッチ、通常入力通過まで成功しました。`accessibility.missing` の外部ブロッカーではありません。
-`runtime-event-kill-switch-release-suppression/status.json` では `status: "success"`、`failureCount: 0` として機械判定できます。
-同じ artifact root の `doctor/doctor-debug.json` では `runtimeIdentity.isAppBundle: true`、`bundleIdentifier: "dev.char5742.nape-gesture"`、`tccStatus.inputMonitoring.status: "granted"`、`tccStatus.accessibility.status: "granted"`、`hidProbe.succeeded: true`、`runtimeReadiness.ready: true` を確認できます。
-この`runtimeReadiness.ready: true`はtrackpad output contract gate導入前の履歴である。現行branchでは`outputContract.unsupported`をready failureへ追加したため、権限済み証跡としては残すが現在のruntime ready証跡には使わない。
-同じ artifact root の `summary.md` では、`gesture-drag`、`gesture-wheel`、`kill-switch`、`gesture-wheel-then-kill-switch`、`normal-after-release` が成功し、gesture 系 runtime 性能ログも成功しています。
-`runtime-event-open-absolute-paths-final` は、Reference Target App の target log 空問題を示す過去の失敗証跡として残します。空 target log は完成証跡として扱いません。
-`gui-computer-use-main-24f0f7f/summary.md` では、computer-use による `.build/NapeGesture.app` の frontmost / running 観測、`Nape Gesture 設定` ウィンドウ、主要 UI 要素、System Events による `Nape Gesture` process と Dock item `NapeGesture` の観測を保存済みです。
-Terminal の `screencapture` は Screen Recording 権限境界で失敗したため、この artifact では computer-use と System Events の観測ログを画面証跡として採用します。
-`SystemUIServer` の Accessibility name 検索では status item が露出しなかったため、この結果だけで status item 不在とは判定しません。
-`gui-computer-use-main-f43e217/summary.md` では、computer-use による `保存して再起動` 押下と設定ファイル更新、通常アプリメニューの権限導線を確認済みです。
-`gui-smoke-script-check/gui-smoke/gui-smoke-app.json` では、active macOS GUI session 上の `.build/NapeGesture.app` 実行主体で AppKit 内に `activationPolicy: "regular"`、`statusItemTitle: "NG"`、設定ウィンドウ、通常アプリメニュー、status menu の状態、開始、緊急停止、停止、設定、権限導線が生成されることを `gui-smoke --config <artifact> --json --assert` で機械判定します。これは TCC 許可済み runtime、実イベント投稿、Nape Pro 実機操作の証跡ではありません。
-
-## 状態と分類
-
-状態は次の値で管理します。
+## 状態
 
 | 状態 | 意味 |
 | --- | --- |
-| `未着手` | 証跡がまだない |
-| `機械証跡待ち` | 実機なしで先に埋められる証跡が残っている |
-| `人間作業待ち` | 物理操作または macOS UI 操作が最後の手段として残っている |
-| `一部完了` | 証跡の一部はあるが、完成判定には不足がある |
-| `要更新` | 要件変更により既存証跡が古くなり、現行要件での再取得が必要 |
-| `完了` | 必要な証跡がそろい、未検証事項がない |
+| `未達` | 固定製品モデルを満たす実装または証跡がない |
+| `基盤のみ` | logger、analyzer、fixtureなどを再利用できるが、必須ゲートの合格証跡ではない |
+| `実機待ち` | 機械testを完了し、純正trackpadまたはNape Proの物理操作だけが残る |
+| `完了` | 現行binaryについて必要な機械証跡と実機証跡がそろい、未検証事項がない |
 
-`need:human` はレビュー待ち、承認待ち、確認依頼、人間による判断待ちを表しません。
-純正トラックパッド操作、Nape Pro 実機操作、スリープ、デバイス抜き差し、TCC 権限変更、システム設定の許可操作など、人間が手を動かして物理作業または macOS UI 操作を行う必要が最後の手段として残る項目だけに使います。
-computer-use で代替できる GUI 表示確認、クリック、保存操作、メニュー表示確認は `need:human` にしません。
-人間依存は最小化し、依頼前にdry-run、fixtures、Reference Target App、System Behavior Test、保存済みログ解析、権限済み環境でのsystem-wide event投稿で代替できる証跡を埋めます。ただし、純正trackpad driver output contractの正本は生成eventで代替せず、物理trackpad操作から取得します。
-`完了` は、その行の必要証跡が現行 main でそろい、人間作業も残っていない場合にだけ使います。
-`証跡リンク / 保存先` が `未設定` の行や、実機・TCC・公証などの外部作業が残る行は、状態にかかわらず最終完成扱いにしません。
+`完了`は行ごとの局所的な実装完了を表さない。6つの必須ゲートは相互に代用できず、全て`完了`でなければ製品完成にしない。
 
-## 完成判定 matrix
+## 証跡の共通要件
 
-2026-07-11以前の単純pixel scroll、forced horizontal scroll、keyboard shortcutによるruntime / system-test証跡は、入力認識、元入力抑制、GUI、診断toolの退行確認にだけ使います。[ADR-0036](adr/0036-emulate-trackpad-driver-output-events.md)のtrackpad driver上位出力event完成証跡には使いません。
+証跡は次の形式でrunごとに分離する。
 
-| 完成要件 | 必要な証跡 | 機械で先に埋める証跡 | 最後の手段として人間が必要な証跡 | 証跡リンク / 保存先 | 関連 Issue | 現在状態 |
-| --- | --- | --- | --- | --- | --- | --- |
-| debug / release build | `swift build` と `swift build -c release` の成功ログ | `swift build`、`swift build -c release` の stdout/stderr と終了コード | なし | `machine-evidence-pr59-main-dddb583/build-and-tests/`, [Issue #16 証跡コメント](https://github.com/char5742/nape-gesture/issues/16#issuecomment-4919012451) | #2, #15, #16 | `完了` |
-| core tests | `nape-gesture-core-tests` の成功ログ | コアテストの stdout/stderr と終了コード | なし | `machine-evidence-pr59-main-dddb583/build-and-tests/core-tests.log`, [Issue #16 証跡コメント](https://github.com/char5742/nape-gesture/issues/16#issuecomment-4919012451) | #2, #16 | `完了` |
-| app bundle / 署名 / 公証 | `.app` 作成、`verify-bundle`、bundle identity、通常 GUI app identity、署名検証、公証、stapler / Gatekeeper 評価のログ | `swift build -c release`、`bundle-app --replace`、`verify-bundle`、`CFBundleIdentifier` / `CFBundleExecutable` / `CFBundleName` / `CFBundleDisplayName` / `LSUIElement=false` の exact check、未署名時の `--require-signature` 期待失敗、ad-hoc 署名と署名必須検証、ライセンス同梱確認 | Developer ID 証明書、App Store Connect 認証情報、キーチェーン確認、公証提出が必要な場合の macOS UI または認証操作 | `machine-evidence-pr59-main-dddb583/bundle/`, `gui-app-mode/bundle/info-plist-identity-check.log`, [Issue #16 証跡コメント](https://github.com/char5742/nape-gesture/issues/16#issuecomment-4919012451) | #15, #16 | `一部完了` |
-| 設定 UI / button mode | `.app` 起動時に設定ウィンドウが開き、方向別割り当てやOS/App結果別actionを表示せず、button 3 / 4 / 5ごとに`none`、`2本指スクロール / スワイプ`、`システムスワイプ`、`ピンチ`を選択できる証跡。既定button 3 / 4 / 5がこの順であることと、旧binding / 旧mode設定の安全なmigrationを含む | `SettingsUIField.descriptors`が方向別bindingを含まず3 buttonのmodeを網羅するcore test、各modeの3 runtime経路へのrouting test、sessionを維持して符号反転するproduct test、旧設定の原子的migration、`GUIAppLaunchPresenter.regularGUIApp`、設定バリデーション、bundle identity、`gui-smoke --json --assert`、computer-useによるbutton mode表示 | なし。TCC許可、実イベント投稿、Nape Pro実機操作は別行で扱う | Issue #144 / PR #145のhistorical testと、ADR-0048対応後のmode / migration / GUI証跡を分けて保存する | #11, #16, #144 | `進行中` |
-| doctor 権限・runtimeIdentity | 実利用する `.app` または実行ファイルでの `doctor --probe-hid --benchmark-events ... --json --assert-runtime-ready` | `doctor --json` の `runtimeIdentity`、`runtimeReadiness`、`tccStatus`、`tccStatus.permissionTarget`、`grantRequired`、`targetDeviceDiagnostics`、`outputContract.supportedFamilies` / `confirmedFamilies` / `trialFamilies`、`settingsValidationIssues`、benchmark 部分、`--assert-runtime-ready` の期待失敗 code、`verify-doctor-family-state.rb`の完全一致検証と回帰test、`PermissionRecoveryPresenter` の権限別 System Settings 導線 core test | なし。2026-07-09 時点で `.build/NapeGesture.app` のアクセシビリティと入力監視は許可済み | 旧権限証跡は`machine-evidence-pr59-main-dddb583/doctor-and-performance/`など。3種類のfamily stateを含む再収録は未設定 | #11, #13, #15, #16, #74, #117, #122, #130 | `一部完了` |
-| Nape Pro HID 識別 | `devices --all --json`、Nape Pro 操作中の `hid-log`、`analyze-hid-log`、確定 matcher | `devices --all --json`、既存ログの解析、`analyze-hid-log`、`doctor --json` の `targetDeviceDiagnostics.bestEvaluation.mismatches` | Nape Pro 実機を接続して操作する物理作業 | `machine-evidence-pr59-main-dddb583/hid-inventory/devices-all.json`, `machine-evidence-pr59-main-dddb583/fixtures-analysis/analyze-sample-hid.txt`, [Issue #16 証跡コメント](https://github.com/char5742/nape-gesture/issues/16#issuecomment-4919012451) | #4, #16 | `人間作業待ち` |
-| targetDeviceAssociation 実測 | Nape Pro HID 入力とイベントタップ入力の時刻差分、`associationWindow` の採用根拠、巻き込みなし確認 | `analyze-association --json --assert-valid-window --target-stable-id <ID>`、互換 HID usage 判定、runtime 非対応 AC Pan expected failure、非互換 HID 近傍 expected failure、対象外デバイス単体 expected failure、複数 HID デバイス採用 expected failure、保存済み HID / CGEvent / target log の時刻差分解析、設定検証、境界値テスト | Nape Pro と通常入力デバイスを同じ環境で操作し、実測分布と巻き込み有無を取る作業 | `machine-evidence-pr59-main-dddb583/fixtures-analysis/*association*`, [PR #59 証跡コメント](https://github.com/char5742/nape-gesture/issues/16#issuecomment-4918994890), [再収集コメント](https://github.com/char5742/nape-gesture/issues/16#issuecomment-4919012451) | #5, #16 | `一部完了` |
-| 元入力抑制 | ジェスチャー成立後に未マークのクリック、ドラッグ、ホイール、キーが前面アプリへ漏れず、生成イベントが AppKit に届く target log | `scripts/collect-runtime-event-evidence.sh`、`target --out`、ready diagnostics、`system-test run`、`analyze-target-log --assert-no-leaks --assert-has-generated-event --assert-has-foreground-capture`、fixtures 回帰 | Nape Pro 実機で最終確認する場合は成立ジェスチャー操作 | `machine-evidence-pr59-main-dddb583/fixtures-analysis/*target-log*`, `runtime-event-kill-switch-release-suppression/summary.md`, `runtime-event-kill-switch-release-suppression/status.json`, `runtime-event-kill-switch-release-suppression/scenarios/gesture-*/analyze-target-log.json`, [#6 最新コメント](https://github.com/char5742/nape-gesture/issues/6#issuecomment-4926725331) | #6, #16 | `一部完了` |
-| 通常クリック / ドラッグ / ホイール通過 | ジェスチャーボタン未押下時と解放後に通常クリック、通常ドラッグ、通常ホイールが過剰抑制されない target log | `scripts/collect-runtime-event-evidence.sh`、`system-test run --scenario normal-after-release --dry-run --log-json`、`analyze-log --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel`、`analyze-target-log --json --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel --assert-has-foreground-capture`、欠落 fixture 回帰 | 実デバイスで通常クリック、ドラッグ、ホイールを最終確認する場合のみ物理操作 | `machine-evidence-pr59-main-dddb583/system-test-dry-run/system-normal-after-release*`, `runtime-event-kill-switch-release-suppression/preflight/normal-after-release/`, `runtime-event-kill-switch-release-suppression/scenarios/normal-after-release/analyze-target-log.json`, [#6 最新コメント](https://github.com/char5742/nape-gesture/issues/6#issuecomment-4926725331) | #6, #16 | `一部完了` |
-| Trackpad output event logger | 純正trackpadのevent type / subtype / raw field / serialized dataをJSON Linesへ保存し、確定captureをmanifestへ固定できる | `trackpad-event-log --duration --out --ready-file --ready-token --evidence-kind`、run固有pathの排他的ready lease、受付停止前のready撤回、deadline、安定化再検証する専用waiter、case / Unicodeを含むfile予定地の親子path拒否、captureIndex順、ordered raw field、非有限値bit pattern、bounded queue、SIGINT drain、0件期待失敗、開始 / 完了wall-clock、最終log / executable SHA、atomic manifest、physical生成marker拒否 | なし | [logger local smoke](evidence/2026-07-11-trackpad-event-logger-local-smoke.md)、[物理capture証跡](evidence/2026-07-11-physical-trackpad-contract-capture.md) | #117, #118, #125, #129, #132 | `logger完了` |
-| Trackpad raw analyzer / scroll Phase 2 | 現行JSON Lines、manifest、serialized event、generated配送に加え、25F80 scroll / momentum / companion contractを機械判定できる | Phase 1 schema 1互換、Phase 1厳格parser / host / provenance、登録fixture ID / SHA / schema / OS build、document bytesとmanifestの再結合、capture index再検証、公開観測台帳と4 source identity /解析境界の照合、raw type / timestamp / continuous、scroll `1 -> 2* -> 4`、momentum `1 -> 2* -> 3`、全9 terminal deltaの`+0.0` bit pattern、generated type 29 classifier `0 / 6` allowlist、envelope、motion alias、phase / 順序 / 距離 / coverage、CLI正常系とterminal欠落 /未確定gesture異常系の終了コード`1` | なし | [ADR-0042](adr/0042-versioned-scroll-momentum-contract-comparison.md)、[Phase 2ローカル検証](evidence/2026-07-11-scroll-momentum-contract-phase2-local-verification.md)。`DockSwipe` / `magnification` contractと2本指系列の`NavigationSwipe`候補は未確定のため#129全体は未完了 | #117, #125, #129 | `scroll Phase 2完了` |
-| Trackpad output session model | input / momentum lifecycle、session ID、capture order、起動後時刻、progress、終了速度、commit / cancel、terminalを製品3経路と低レベル候補で共通表現できる | `TrackpadOutputSessionMachine` pure testsで正常完結、順序欠落、上限直前のterminal、時刻逆行、現在boot外timestamp、began前change、二重terminal、stuck、非有限値、gesture decision欠落、familyと最終payload付きの明示cancelを判定する。候補familyの型表現をruntime capabilityと数えない | なし | [ADR-0038](adr/0038-trackpad-output-session-and-monotonic-clock.md)、[ADR-0048](adr/0048-separate-input-mode-event-family-os-result-and-evidence.md) | #117, #128, #130 | `モデル完了` |
-| 診断event時刻domain | `generate-scroll`、`system-test`、`DiagnosticEventPoster`がCGEventとdry-run logへmacOS起動後時刻だけを使い、投稿直前timestamp、shortcut全件生成、途中失敗時release / terminal収束を保証する | `nape-gesture-diagnostic-output-tests`のfailure injection、全13 system scenario、全48 generate patternの現在boot上限・件数・offset直接検証、`sh scripts/check-diagnostic-event-time.sh` | なし | [2026-07-11 local verification](evidence/2026-07-11-diagnostic-monotonic-clock-local-verification.md)。TCC付きevent tap到達はmain統合後に再取得する | #102 | `一部完了` |
-| 純正トラックパッド比較 | 純正trackpadと生成eventを同一schemaで保存したtype、subtype、field、phase、momentum、timestamp、順序の比較結果 | logger / analyzer、[25F80観測台帳](../Fixtures/trackpad-contract/25F80/physical-observations.json)、[scroll / momentum contract](../Fixtures/trackpad-contract/25F80/scroll-momentum-contract.json)、差分report | ready同期後に2本指系列のNavigationSwipe候補左右、pinch方向marker、DockSwipe反対方向 / cancel、Mission Control / App Exposéを追加収録する | [2026-07-11物理capture](evidence/2026-07-11-physical-trackpad-contract-capture.md)。scroll / momentumは登録fixture比較可能、`DockSwipe` / `magnification`とNavigationSwipe候補は未確定を明示 | #7, #8, #117, #118, #125, #129 | `一部完了` |
-| Trackpad scroll / momentum | continuous scroll eventとcompanion gesture eventのenvelope / phase / capture順上の局所対応、phase完結、momentum分離。timestamp同値や固定index差は要求しない | 25F80 fixture contract test、output model test、CGEvent contract test、Reference Targetの自動受信log | Nape Proと純正trackpadで最終体感比較する | [2026-07-11物理capture](evidence/2026-07-11-physical-trackpad-contract-capture.md)で純正scroll / momentum contractを固定。生成adapterとruntime比較は未完了 | #7, #117, #119, #125, #129 | `純正contract完了` |
-| `DockSwipe`製品経路 | `システムスワイプ`modeからmotion、progress、phase、終了速度、terminalを持つ`DockSwipe`をsystem-wide投稿する | candidate builder / adapter test、session / cancel test、direct post trace | 純正trackpadで反対方向 / cancelを再収録し、登録contractとNape Pro入力比較を行う | 1方向candidate。自動生成検証済みだが純正contract未確定 | #117, #122, #125, #126, #128, #130 | `一部完了` |
-| `magnification`製品経路 | `ピンチ`modeからsigned scale、phase、velocity、terminalを持つ`magnification`をsystem-wide投稿する | candidate builder / adapter test、session / cancel test、direct post trace | pinch-in / out方向markerを純正trackpadで再収録し、登録contractとNape Pro入力比較を行う | 自動生成検証済みだが純正contract未確定 | #117, #122, #125, #127, #128, #130 | `一部完了` |
-| `NavigationSwipe`低レベル候補 | 2本指物理系列で観測したtype / classifier / phase候補をfixture / analyzer / session modelで追跡する。製品event builder、独立mode、製品runtime capability、ページ移動の完成根拠にしない | candidate fixture、fixture検証、session model test、製品adapterのunsupported test | 左右action marker付き純正captureで候補の意味を再評価する | candidate-only。製品runtime対象外 | #10, #117, #125, #129 | `候補観測` |
-| OS/App結果: scroll / application navigation | 同じ`scroll`製品経路について、縦scroll、横scroll、nested target、applicationのページ戻る/進むまたはAppKit `swipe`受信をscenario別に記録する | Reference Target App、Safari等のtarget log、system-wide capture、scroll contract比較 | 純正trackpadとNape Proで同じscenarioの画面結果と体感を比較する | 横scrollの低レベルcontractは採用済み。application navigation結果は別途未完了 | #10, #117, #119, #125, #129 | `一部完了` |
-| OS結果: system gesture | 同じ`DockSwipe`製品経路について、Space切替、Mission Control、App Exposé、cancel、stuckなしをscenario別に記録する | system-wide output log、画面結果、session terminal | 純正trackpadとNape Proで各scenarioを最終比較する | Mission Control / App Exposéは取得窓不成立。forced scroll / shortcutは参考専用 | #9, #117, #122, #125, #126, #128, #130 | `一部完了` |
-| App結果: magnification | 同じ`magnification`製品経路について、前面applicationのZoom / キャンバス拡縮 / AppKit `magnify`受信をscenario別に記録する | Reference Target App、対応applicationのtarget logと画面結果 | 純正trackpadとNape Proでpinch-in / out結果と体感を比較する | event生成とApp結果を分離。App結果未完了 | #117, #122, #125, #127, #128, #130, #146 | `一部完了` |
-| macOS互換境界 | private contract隔離、supported / unsupported / contractMismatch、未知version fail closed | compatibility adapter test、OS build付きfixture、禁止symbol /依存方向guard | 新macOS実機で最終確認する場合のみ | 未設定 | #117, #122, #124 | `機械証跡待ち` |
-| キルスイッチ | `Control + Option + Command + G` で生成と慣性が止まり、再有効化条件が限定される証跡 | `RuntimeSafetyState` の回帰テスト、`system-test run --scenario kill-switch --dry-run --log-json`、`analyze-log --json --assert-kill-switch-shortcut`、`system-test run --scenario gesture-wheel-then-kill-switch --dry-run --log-json`、`analyze-log --json --assert-kill-switch-shortcut --assert-gesture-before-kill-switch`、`scripts/collect-runtime-event-evidence.sh`、daemon 停止ログ、target log、`analyze-target-log --assert-no-leaks --assert-has-generated-event --assert-has-foreground-capture`、activation button pending release 抑制 | 物理キーボード由来イベントまで含める場合のみ実操作 | `machine-evidence-pr59-main-dddb583/system-test-dry-run/system-kill-switch*`, `runtime-event-kill-switch-release-suppression/preflight/gesture-wheel-then-kill-switch/`, `runtime-event-kill-switch-release-suppression/scenarios/gesture-wheel-then-kill-switch/analyze-target-log.json`, `runtime-event-kill-switch-release-suppression/summary.md`, [#12 最新コメント](https://github.com/char5742/nape-gesture/issues/12#issuecomment-4926725580) | #12, #16 | `一部完了` |
-| スリープ復帰 / 抜き差し / 権限変更後復旧 | スリープ復帰、Nape Pro 抜き差し、TCC 権限変更後の停止、再試行、復旧ログ | `RuntimeRecoveryState` の回帰テスト、`RuntimeStatusPresenter` の UI 表示回帰テスト、`PermissionRecoveryPresenter` の権限別復旧導線テスト、`doctor --probe-hid --json`、設定検証、権限未許可時のエラー出力 | Mac のスリープ復帰、実デバイス抜き差し、システム設定での TCC 権限変更 | `machine-evidence-pr59-main-dddb583/build-and-tests/core-tests.log`, `runtime-event-open-absolute-paths-final/doctor/doctor-debug.json`, [runtime event 最新コメント](https://github.com/char5742/nape-gesture/issues/16#issuecomment-4926725190) | #13, #16, #74 | `人間作業待ち` |
-| 性能 | 純粋ロジックbenchmark、doctor benchmark、常駐CPU、tapからtrackpad event系列投稿完了までの遅延 | `benchmark --events ... --json --assert-baseline`、doctor、recognizer / output modelのbatch p95 / p99、adapter投稿数、作成失敗、tap-to-post p95 / p99 | AppKit画面反映と体感差分は実機操作が必要 | 既存tap-to-simple-CGEvent値は参考専用。trackpad output adapter測定は未設定 | #14, #16, #117, #119, #122, #126, #127 | `一部完了` |
-| ライセンス / 由来 | `LICENSE`、`THIRD_PARTY_NOTICES.md`、バンドル内同梱、実装contractとパラメータを資料・計測証跡まで追跡できる説明、実装上必要な実依存識別子と不要な外部参照の境界、repo-local 由来ガード | `verify-bundle`、ファイル存在確認、`cmp` による原本一致確認、依存通知確認、README / docs の説明確認、`sh scripts/check-provenance.sh`、`sh scripts/test-check-provenance.sh` | 公開配布物を最終成果物として目視確認する場合のみ | `machine-evidence-pr59-main-dddb583/bundle/license-cmp.log`, `machine-evidence-pr59-main-dddb583/bundle/third-party-notices-cmp.log`, `provenance-guard/provenance/check-provenance.log`, `provenance-guard/provenance/test-check-provenance.log`, [Issue #16 証跡コメント](https://github.com/char5742/nape-gesture/issues/16#issuecomment-4919012451) | #1, #15, #16 | `一部完了` |
+~~~text
+artifacts/completion/YYYY-MM-DD/<repo-sha>/<scenario-id>/
+~~~
 
-## 先に自動実行するコマンド束
+各runには最低限、次を保存する。
 
-実機や TCC 操作なしで先に埋められる機械証跡は、次のスクリプトを正とします。
-スクリプトは実行ビットなしで管理し、必ず `sh` 経由で実行します。
+- 実行コマンドと終了コード
+- repo SHA、binary SHA-256、macOS version / build、実行主体、TCC状態
+- run UUID、scenario ID、開始・終了時刻
+- 入力元、button番号、期待finger count
+- source eventのkind、単位、phase、capture order、timestamp、delta、件数、累積event量
+- 生成したtrackpad eventの順序、timestamp、finger count、低レベルfield、session ID
+- terminal種別と理由
+- passthrough、抑制、生成、破棄の各件数
+- 使用したfixtureのschema、ID、SHA-256
+- manifestと各logのSHA-256
+- analyzer report、未検証事項、失敗時のfailure code
 
-```sh
-sh scripts/collect-completion-evidence.sh
-```
+目視メモやscreen recordingは補助証跡であり、manifest、raw log、analyzerの終了コードを代用しない。
+異なるrepo SHA、binary、OS build、scenarioのlogを1つの成功runとして継ぎ合わせない。
 
-既定の証跡 root は `artifacts/completion/$(date +%F)/machine-evidence` です。
-保存先を変える場合は `NAPE_COMPLETION_ARTIFACT_ROOT` を指定します。
+## 必須完成ゲート
 
-```sh
-NAPE_COMPLETION_ARTIFACT_ROOT=/tmp/nape-completion-machine-evidence sh scripts/collect-completion-evidence.sh
-```
+| ゲート | 完成条件 | 必要な機械証跡 | 必要な実機証跡 | 現在状態 |
+| --- | --- | --- | --- | --- |
+| event量保存 | 押下中に受理した各source eventを欠落・重複・coalescing・順序変更なく1回だけ変換する。変換前の各sampleと累積量はbit単位で一致し、trackpad量は登録済みの単一versioned単位変換contractの許容差内に入る。同一fixtureでは正規化入力の量、順序、時間間隔を変えない | 正負、斜め、停止、方向反転、異なるevent間隔、長時間列、queue圧迫、部分投稿失敗のpure testとproperty test。3 button同一fixture比較とsource-to-output対応report | button 3 / 4 / 5それぞれのNape Pro連続操作logと、同じfinger countの純正trackpad比較 | `未達` |
+| finger count | button 3 / 4 / 5を2 / 3 / 4本指へ固定対応し、session途中で変化させない。進行中の追加buttonでもfinger countとsession IDを切り替えず、開始時に一意化できない入力から推測しない | 全button、全方向、方向反転、session中追加button、開始時の曖昧同時押下拒否、未知button拒否、設定migrationのtest。全出力frameのfinger count検証 | 純正2 / 3 / 4本指captureと、対応するNape Pro生成captureの比較 | `未達` |
+| session terminal | button押下から解放までを1 sessionとし、正常終了、cancel、kill switch、runtime stop、sleep、device切断、権限喪失、output failureの全経路が重複なしのterminalへ収束する。terminal後に同sessionの出力を続けない | session ID、順序、単調timestamp、terminal 1回、stuck 0件、部分投稿の収束、再入拒否のtest | 各buttonの正常解放と、少なくともkill switch、device切断、sleepまたは権限喪失の実測 | `未達` |
+| passthrough | button 3 / 4 / 5未押下時はclick、drag、move、wheelを抑制・変更・再生成しない。対象外deviceも常にそのまま通す。session終了後は物理解放を境に通常mouseへ戻る | event種別ごとのidentity、生成0件、抑制0件、変更0件、解放境界、対象外device、失敗後復帰のtest | Nape Proと通常mouseで未押下、各session直後、kill switch直後の前面App target log | `未達` |
+| 実機証跡 | 純正trackpad 2 / 3 / 4本指と、Nape Pro button 3 / 4 / 5のsource / generated logを同一schema、同一OS build、登録manifestで比較できる。fixtureの由来と公開範囲が追跡できる | logger readiness、strict parser、manifest、provenance、fixture登録、hash不一致のexpected failure | 純正trackpadとNape Proの物理capture。合成input、dry-run、画面移動だけでは代用不可 | `未達` |
+| fail closed | unsupported OS/build、fixture/hash/schema不一致、finger count不明、device不一致、TCC不足、現在boot外timestamp、source / contractにないtimestamp変換、session不整合、event作成・投稿失敗では新規抑制・生成を開始しない。active sessionは安全なterminalへ収束し、AX/PID/shortcutや別familyへfallbackしない | failure injection、未知build、明示path不正、fixture改変、開始時の曖昧同時button、部分投稿、terminal生成失敗、readiness gateのtest | unsupported条件またはTCC喪失を含む実利用binaryで、誤出力0件と通常入力復帰を確認 | `未達` |
 
-スクリプトは`commands.txt`と`summary.md`を出力し、由来ガードとその回帰テストを独立ログへ保存した上で、debug / release build、core tests、app bundle、GUI smoke、署名構造、doctor、benchmark、既存system-test / fixture解析、device inventoryを収集します。trackpad driver上位output adapter統合前のsystem-test /生成scroll結果は退行確認であり、#117の完成証跡にはしません。#118以降のlogger、contract fixture、adapter testを統合後にこのscriptへ追加します。
-`sh scripts/check-provenance.sh` はREADME / AGENTS / requirements / PR template / PR review checklistの一般化したrepo-local由来方針と識別子境界を確認し、`sh scripts/test-check-provenance.sh`は隔離fixtureで正常系と必須文言欠落時の失敗を検証します。特定の外部プロジェクトを識別するdenylistは保持せず、実装上必要な実依存のimport名、module / API名、設定識別子と法定通知は許容します。README、実装、コメント、テスト名、ユーザー向け文書を含むtracked files全体では、不要な外部固有名だけをレビューで除外します。`THIRD_PARTY_NOTICES.md`は実際に同梱する依存通知に限定します。このチェックは任意の固有名の自動検出や法的な完全証明ではなく、方針削除の早期検出ガードとして扱います。
-`Fixtures/clean-association-event-log.jsonl` の `analyze-association --assert-valid-window --target-stable-id <ID>` は、解析対象イベントがすべて `associationWindow` 内に収まることを記録します。
-`Fixtures/sample-association-event-log.jsonl` の `analyze-association --assert-valid-window --target-stable-id <ID>` は、window 外のイベントを検出して非ゼロ終了することを期待値として記録します。
-`Fixtures/empty-association-hid-log.jsonl`、`Fixtures/association-scroll-mismatch-*.jsonl`、`Fixtures/association-ac-pan-*.jsonl`、`Fixtures/association-button-mismatch-*.jsonl`、`Fixtures/association-non-target-*.jsonl`、`Fixtures/association-mixed-device-*.jsonl` は、空 HID、usage 不一致、runtime 非対応 AC Pan、対象外デバイス単体、複数 HID デバイス採用を有効な対象デバイス紐づけ証跡として扱わないことを expected failure として記録します。
-`Fixtures/leaky-target-log.jsonl` の `analyze-target-log --assert-no-leaks` は、漏れ候補を検出して非ゼロ終了することを期待値として記録します。
-`Fixtures/clean-target-log.jsonl` の `analyze-target-log --assert-has-generated-event` は、ジェスチャー生成シナリオで Nape Gesture 由来イベントが AppKit に届くことを記録します。
-`Fixtures/no-generated-target-log.jsonl` の `analyze-target-log --assert-no-leaks --assert-has-generated-event` は、漏れ候補がなくても生成イベントがない target log をジェスチャー生成成立証跡として扱わないことを期待値として記録します。
-`Fixtures/normal-input-target-log.jsonl` の `analyze-target-log --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel` は、通常クリック / 通常ドラッグ / 通常ホイールが AppKit に届くことを個別に記録します。
-`Fixtures/normal-input-missing-click-target-log.jsonl`、`Fixtures/normal-input-missing-drag-target-log.jsonl`、`Fixtures/normal-input-missing-wheel-target-log.jsonl` は、欠落した種類を expected failure として記録し、3種類の判定が同じカウントへ退行しないことを固定します。
-`system-test run --scenario normal-after-release --dry-run --log-json` と `analyze-log --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel` は、解放後の通常入力通過シナリオが未生成の通常クリック、通常ドラッグ、通常ホイールを含み、activation button やキルスイッチの未生成キーだけを通常入力通過証跡として扱わないことを記録します。
-`Fixtures/gesture-target-log.jsonl` の `analyze-target-log --assert-has-gesture` は、Reference Target App が `swipe`、`magnify`、`rotate` を同じ target log 形式で解析できることを記録します。
-`system-test run --scenario kill-switch --dry-run --log-json` と `analyze-log --assert-kill-switch-shortcut` は、物理キーボード操作なしで `Control + Option + Command + G` 相当の未生成 `keyDown` / `keyUp` と modifier flags を生成できることを記録します。実投稿時も同じ未マークイベント列を使い、`keyDown` / `keyUp` の間隔を `interval` で明示します。
-`system-test run --scenario gesture-wheel-then-kill-switch --dry-run --log-json` と `analyze-log --assert-kill-switch-shortcut --assert-gesture-before-kill-switch` は、未生成ホイール入力がある進行中ジェスチャー状態でキルスイッチを投入する前段証跡を記録します。
-`system-test run --scenario page-back/page-forward/zoom-in/zoom-out --dry-run --log-json`と`analyze-log --json --assert-system-scenario <name>`は、旧称を保持した移行前shortcut prototypeの退行確認だけに使います。現行の3製品経路、NavigationSwipe候補、OS/App結果の完成証跡には使いません。
-`SettingsUIField.descriptors` の core test は、設定 UI がbutton 3 / 4 / 5ごとの`none`、`2本指スクロール / スワイプ`、`システムスワイプ`、`ピンチ`mode、対象入力の紐づけ秒、感度、加速度、慣性、方向非依存のキャンセル条件、対象デバイスの設定パスを網羅し、方向別bindingやOS/App結果別actionを含まないこと、mode候補と既定値、control kind、表示名重複なし、設定パス重複なし、アプリ別設定なし、JSON round-trip を満たすことを記録します。
-`GUIAppLaunchPresenter.regularGUIApp` の core test は、通常 GUI activation policy、起動時設定ウィンドウ表示、Dock 再オープン時の再表示、メニューバー `NG` 常駐 UI 維持、`LSUIElement=false` の方針を固定します。`gui-smoke --config <artifact> --json --assert` は `.app` 実行主体で AppKit 内に同じ UI 契約が実際に生成されることを確認します。
-button modeの core / product test は、方向ではなく押下buttonのmodeで3つの製品経路を選ぶこと、`none`が通常入力を通すこと、button 3 / 4 / 5の既定値、X / Y入力が途中で方向転換しても別modeへ切り替わらず同じsession IDとlifecycleを維持することを記録します。`NavigationSwipe` candidate testは製品runtime capabilityやapplication navigationの完成証跡にしません。旧binding / 旧mode migration testは、廃止項目を取り除き、旧値を結果別actionへ流用せず、保存後の設定と製品surfaceに旧用語が残らないことを記録します。
-`Fixtures/sample-tuning-trackpad-log.jsonl` の `derive-parameters --json --assert-complete` は、純正トラックパッド実測ログ取得後に deadZone、加速度、慣性候補を同じ形式で保存し、未導出や警告がない場合だけ完了証跡として扱えることを記録します。
-`Fixtures/sample-log.jsonl` の `derive-parameters --json --assert-complete` は、移動速度、慣性、timestamp 品質が足りないログを完了証跡として扱わず非ゼロ終了することを期待値として記録します。
-`Fixtures/synthetic-timestamp-tuning-trackpad-log.jsonl` の `derive-parameters --json --assert-complete` は、候補値が出ていても合成 timestamp 警告が残るログを完了証跡として扱わず非ゼロ終了することを期待値として記録します。
-`doctor --probe-hid --json` は、入力監視プローブの実行有無、成否、復旧手順、`runtimeIdentity`、`runtimeReadiness`、`tccStatus`、`tccStatus.permissionTarget`、`grantRequired` を保存します。ただし、TCC や対象デバイスの外部状態が残る場合は完了扱いにしません。
-`doctor --json --assert-runtime-ready` は、HID probe 未実行や対象デバイス不一致など runtime 開始前提を満たさない診断を非ゼロ終了として記録します。期待失敗では `runtimeReadiness.failures[].code` に `inputMonitoring.notProbed` や `targetDevice.notFound` が含まれ、`targetDeviceDiagnostics.bestEvaluation` で matcher 不一致理由を確認できることも確認します。権限付与後の最終採否は、実利用主体で `--probe-hid --assert-runtime-ready` を併用した終了コードと `runtimeReadiness.ready` で行います。
-`RuntimeStatusPresenter` の core test は、常駐 UI が実行中、停止中、自動再試行中、スリープ待機中を表示し、開始 / 緊急停止 / 停止の有効状態を復旧状態に合わせることを記録します。
-`PermissionRecoveryPresenter` の core test は、アクセシビリティと入力監視の状態、System Settings URL、権限対象、権限変更後の再起動案内を分けて表示し、未許可または未判定の場合だけ該当設定を開く導線を必須表示することを記録します。
-その他のコマンド、または `devices --all --json` が失敗した場合、スクリプト全体は非ゼロ終了し、`summary.md` に確認すべきログを残します。
+## 低レベルcontract判定
 
-このスクリプト単体で埋められるのは機械証跡だけです。
-Nape Pro実機、純正トラックパッドの未確定contract、縦横scroll / application navigation / Space切替 / Mission Control / App Exposé / ZoomのOS/App結果、Developer ID署名、公証、stapler、Gatekeeper評価は別証跡がそろうまで完成扱いにしません。
-TCC 許可済み runtime event、`run`、target 実測、常駐 CPU、入力遅延は、`scripts/collect-runtime-event-evidence.sh` と runtime performance 証跡で別途採否します。
+低レベルcontractは、上記6ゲートを支える証跡としてfinger countごとに判定する。
 
-実イベント投稿や target log を使う半自動証跡は、アクセシビリティ許可済みの実行主体でのみ完成判定へ採用します。
-`doctor --json` の `runtimeIdentity` が日常利用する `.app` または実行ファイルと一致しない場合、その証跡は参考扱いです。
-Issue #6 / #12 の実 event tap 経路は、アクセシビリティ許可済み環境で次のスクリプトを正として収集します。
+| 判定対象 | 合格条件 |
+| --- | --- |
+| fixture登録 | schema、fixture ID、SHA-256、OS version / build、source identity、capture範囲が完全一致する |
+| event量 | source event件数、delta合計、順序、timestampと、変換modelへの入力が一致する |
+| finger count | 2 / 3 / 4の期待値が全frameとterminalで一貫する |
+| lifecycle | began / changed / terminalなど、実測contractが要求する系列が完結する |
+| provenance | source、generated capture、post trace、manifest、binaryが同じrun UUIDで結合する |
+| 配送境界 | system-wide streamだけを使用し、AX、対象PID、shortcut、application分岐がない |
 
-```sh
-sh scripts/collect-runtime-event-evidence.sh
-```
+`scroll`、`DockSwipe`、`NavigationSwipe`、`magnification`という分類はreportの観測列として保持してよい。ただし、familyごとの`supported`、`confirmed`、`trial`を製品完成度として集計せず、family単体の成功をbutton 3 / 4 / 5の完成へ読み替えない。
 
-実利用する `.build/NapeGesture.app` に TCC 権限を集約する場合は、次の環境変数で release build、`.app` 作成、bundle 検証、runtime event 証跡を一続きに実行します。
+## OS/App結果の別判定
 
-```sh
-NAPE_RUNTIME_EVENT_USE_APP_BUNDLE=1 sh scripts/collect-runtime-event-evidence.sh
-```
+OS/App結果は低レベルcontractと別のmatrixへ記録する。
 
-このスクリプトは `status.json`、`commands.txt`、`summary.md`、`doctor/doctor-debug.json`、`preflight/`、権限済みの場合の `scenarios/` を出力します。
-`status.json.status` は `success`、`blocked`、`failed` のいずれかで、TCC 外部ブロッカーは `blockerCode` で確認します。
-このスクリプトは `doctor --json` で `accessibilityTrusted: true` と HID 入力監視プローブ成功を確認してから、`run`、Reference Target App、未マーク `system-test`、`analyze-target-log` を組み合わせます。
-TCC 判定前に `gesture-wheel-then-kill-switch` と `normal-after-release` の dry-run preflight を保存するため、実イベント未実行時も計画イベント列の前段証跡は残ります。
-アクセシビリティ未許可または HID 入力監視プローブ未成功の場合は実イベントを投稿せず、外部ブロッカーとして `summary.md` に runtimeIdentity と該当診断を残します。
+| 記録項目 | 判定方法 |
+| --- | --- |
+| 入力条件 | button、期待finger count、event量、方向、速度、session IDを記録する |
+| 低レベル成立 | contract analyzerの結果とfixture identityを参照する |
+| OS/App結果 | 前面App、OS設定、画面結果、AppKit target logをscenario単位で記録する |
+| terminal | 結果の有無にかかわらずsessionがterminalへ収束し、stuckしないことを確認する |
+| 主張範囲 | 実測したOS buildとApp versionだけを記載し、未測定結果を製品機能として主張しない |
 
-## 最後に人間が必要な作業リスト
+縦横scroll、application navigation、Space切替、Mission Control、App Exposé、Zoomなどは結果例である。特定結果を得るためのmode、方向別action、application別設定、別配送fallbackを追加しない。
+低レベルcontractが合格してOS/App結果が不成立の場合は、contract合格と結果不成立を別々に記録する。画面が動いてもcontract不合格なら製品合格にしない。
 
-次の作業は、機械証跡を先に埋めても代替できない場合だけ実施します。
+## 補助ゲート
 
-- システム設定で、実利用する `.app` または実行ファイルへアクセシビリティと入力監視を許可する。
-- Nape Pro を接続し、`hid-log` 実行中にボタン、移動、ホイールなどを操作する。
-- 純正トラックパッドで`scroll`、`DockSwipe`、`magnification`と2本指系列のNavigationSwipe候補を追加収録し、低レベルcontractを確認する。
-- 純正トラックパッドとNape Proで、縦横scroll、application navigation、Space切替、Mission Control、App Exposé、ZoomのOS/App結果をscenario別に確認する。
-- Nape Pro 操作で同じシナリオを実行し、target log、CGEvent log、画面挙動を保存する。
-- 通常クリック、通常ドラッグ、通常ホイールがジェスチャー処理後も壊れていないことを前面アプリで確認する。
-- キルスイッチを実行中に押し、生成と慣性が止まり、通常入力が過剰抑制されないことを確認する。
-- Mac をスリープ復帰させ、Nape Pro の抜き差しを行い、TCC 権限を一時的に変更して復旧導線を確認する。
-- Developer ID 署名、公証、stapler、Gatekeeper 評価に必要な認証操作を行う。
+次は配布に必要だが、6つの必須ゲートを代用しない。
 
-人間作業で観察した内容は、必ず同じ scenario ディレクトリのログと対応付けます。
-目視だけの「動いた」は完成証跡にせず、画面挙動メモは JSON / JSON Lines / コマンドログを補う材料として扱います。
+- debug / release buildと全test targetが成功する
+- product / diagnostic module境界guardが成功する
+- `.app`のbundle identity、同梱文書、署名、公証、stapler、Gatekeeper評価が成功する
+- `doctor`が実行主体、TCC、対象device、contract provenance、fail-closed理由を構造化して返す
+- 常駐CPU、tap-to-terminal遅延、logger drop countが性能基準内にある
+- READMEと配布文書が固定製品モデル、未達事項、実測済みOS/App結果と矛盾しない
+
+## 履歴証跡の扱い
+
+2026-07-11以前および基準commit`55eb991`までの次の証跡は、移行前実装の履歴またはlogger基盤としてのみ保持する。
+
+- buttonごとの`通常` / `2本指スクロール / スワイプ` / `システムスワイプ` / `ピンチ`選択
+- `scroll`をconfirmed、`DockSwipe` / `magnification`をtrialとする3 family状態
+- `NavigationSwipe`を候補familyとして製品routingと別管理した結果
+- forced horizontal scroll、単純pixel scroll、keyboard shortcutによる結果
+- AX、対象PID、frontmost application分岐を使った配送結果
+- 旧`gesture-*` scenario、旧mode別performance count、旧family別completion表
+
+これらのbuild、test、runtime、画面結果が成功していても、event量保存、2 / 3 / 4 finger count、session terminal、passthrough、現行実機証跡、fail closedの合格には使わない。
+既存のtrackpad event logger、strict analyzer、manifest、scroll fixtureは再利用可能な`基盤のみ`とし、新modelのrun UUIDと登録fixtureで再取得・再判定する。
+
+## 自動検証と実機作業
+
+自動化は先に実行し、失敗を残したまま実機作業へ進まない。
+
+~~~sh
+ruby scripts/check-product-model-documentation.rb
+ruby scripts/check-finger-count-product-model.rb
+swift build --scratch-path .build
+.build/debug/nape-gesture-core-tests
+.build/debug/nape-gesture-product-output-tests
+sh scripts/check-product-output-boundary.sh
+~~~
+
+基準commitでは`check-finger-count-product-model.rb`が廃止対象sourceを列挙して非ゼロ終了するため、`collect-completion-evidence.sh`も成功を返さない。core / product testは移行前契約を含み、成功しても新modelの完成証跡ではない。source、test、fixture、doctor、収集scriptを固定製品モデルへ更新し、両guardと変更後testが同じbinaryに対して成功して初めて採用する。
+
+最後に必要な物理作業は次のとおりである。
+
+1. 純正trackpadで2 / 3 / 4本指の連続入力、方向反転、正常terminal、cancelを取得する。
+2. Nape Proでbutton 3 / 4 / 5を個別に押し、同じevent量系列を取得する。
+3. 未押下時、各button解放直後、異常終了直後のpassthroughを前面Appで取得する。
+4. kill switch、sleep、device切断、TCC喪失のterminalとfail closedを取得する。
+5. OS/App結果を低レベルcontractとは別scenarioで取得する。
+6. 公開配布時だけDeveloper ID署名、公証、stapler、Gatekeeper評価を取得する。
+
+人間が観察した内容は必ず同じscenarioのraw log、manifest、analyzer reportへ結び付ける。目視だけの「動いた」は完成証跡にしない。

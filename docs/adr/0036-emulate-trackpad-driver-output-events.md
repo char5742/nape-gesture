@@ -1,47 +1,62 @@
-# ADR-0036: trackpad driver上位出力eventを再現する
+# ADR-0036: trackpad driver上位入力を安全に再現する
 
-> 現行の入力mode、低レベルevent family、OS/App結果、証跡状態の用語と製品runtime capabilityは[ADR-0048](0048-separate-input-mode-event-family-os-result-and-evidence.md)で置換した。本ADRのsystem-wide投稿、禁止fallback、compatibility adapter、fail-closed方針は維持する。
-
-- 状態: 採択（scroll companionのtimestamp同値要件はADR-0040で置換）
-- 日付: 2026-07-11
+- 状態: 採択
+- 日付: 2026-07-12
 
 ## 背景
 
-Nape Gestureの完成形は、特定ボタン押下中のmouse操作を、scroll / page navigation、Spaces / Mission Control、magnificationに対応するtrackpad driver上位出力相当のevent列としてmacOSへ認識させることである。AX scrollbar、対象PIDへのevent配送、keyboard shortcutによるgesture代替は、前面applicationごとの分岐と不完全な挙動を生むため採用しない。
+[ADR-0049](0049-fixed-button-to-finger-count-trackpad-input.md)をNape Gestureの唯一の製品モデル正本とする。製品はbutton 3 / 4 / 5をそれぞれ2 / 3 / 4本指trackpad入力へ固定し、通常mouseが持つ連続event量を保持してmacOSへ渡す。button未押下時と対象外buttonは通常mouse入力として通過させる。
 
-Nape Gesture自身の操作要件では、二本指相当の経路はcontinuous scroll eventと対応するgesture eventをphase / momentum付きで送り、Spaces / Mission Control相当の経路は連続progressとphaseを持つDockSwipe eventを送る。page navigationとmagnificationもtrackpad driverの上位出力に相当するgesture eventとして扱う。
+縦横scroll、ページ移動、Space切替、Mission Control、App Expose、拡縮は、生成入力を受けたmacOSまたは前面applicationが解釈する結果である。Nape Gestureが結果を選ぶactionや、buttonから低レベルevent familyを選ぶ製品経路は持たない。
 
-event contractとパラメータの正本は、Apple公式資料、Apple OSS、このリポジトリの純正trackpad / Nape Proログとする。採用するfield、定数、係数、調整値、状態遷移を、対応する資料または収録証跡まで追跡できる形で再導出する。
+一方、通常SDKに公開されていないtrackpad event contractをsystem-wideへ安全に投稿するには、OS build別のcompatibility adapter、由来追跡、投稿前検査、fail closedが必要である。本ADRはADR-0049の製品モデルを変更せず、その生成・投稿境界だけを定める。
 
 ## 決定
 
-- 入力側は既存のIOHID device識別、CGEvent tap、対象device association、gesture recognizerを基礎にする。
-- 製品出力は次のtrackpad driver上位出力eventへ限定する。
-  - trackpad scroll: continuous scroll eventと対応するscroll gesture eventの系列。timestamp同値という当初仮定は純正実測に基づき[ADR-0040](0040-capture-order-and-event-timestamp.md)で置き換えた
-  - Spaces / Mission Control: progress、motion、phase、終了速度を持つDockSwipe event系列
-  - page navigation: NavigationSwipe event系列
-  - zoom: magnification / zoom event系列
-- scroll phaseとmomentum phaseを混同せず、begin / change / end / cancelとmomentum begin / continue / endを欠落なく送る。
-- 出力はsystem-wide event streamだけへ送り、対象PID、frontmost application、AX elementを配送判断に使わない。
-- applicationごとの出力分岐、keyboard shortcut fallback、AX fallbackを持たない。
-- DriverKit virtual trackpad、digitizer contact、System Extensionを前提にしない。
-- event type、subtype、field、順序、timestamp、phase、momentumの正本は、AppleのIOHIDFamily OSSにあるevent taxonomyと、このリポジトリのlisten-only loggerで取得した純正trackpad logから再導出する。
-- 通常SDKに公開されていないevent fieldやbridgeが必要な場合は、最小のcompatibility adapterへ隔離し、OS versionごとのfixtureと実機証跡を持つ。未知versionやcontract不一致では誤ったeventを送らずfail closedにする。
-- production code、fixture、testへ採用する名前、field番号、定数、係数、調整値、状態遷移、headerは、前項の正本と収録証跡へ追跡可能であること。
-- [ADR-0037](0037-separate-product-and-diagnostic-event-output.md)に従い、製品adapterと旧単純scroll / shortcut /対象PID配送を含む診断出力をmodule境界で分離する。
+### 製品入力境界
+
+- button 3押下中は2本指、button 4押下中は3本指、button 5押下中は4本指のtrackpad入力を生成する。この対応は固定であり、設定、方向、input kind、application、OS / App結果では変更しない。
+- mouse入力sampleのX / Y量、符号、source kind、timestamp、capture order、sample間隔、方向反転を連続列として保持する。button間で変えてよい意味情報はfinger countだけとする。
+- mouse単位とtrackpad単位の差は、自前の純正trackpad / Nape Pro計測から導出した単一のversioned単位変換contractで補正する。結果別、family別、application別の係数を持たない。
+- 変換対象button未押下時、対象外button、対象外deviceのclick、drag、move、wheelは抑制せず通常入力として通過させる。
+
+### compatibility adapterと投稿境界
+
+- 製品出力はfinger count付き連続入力contractを再現するtrackpad driver上位eventとして、system-wide event streamだけへ投稿する。対象PID、frontmost application、AX elementを配送判断に使わない。
+- keyboard shortcut、AX操作、対象PID投稿、application別分岐、診断eventを製品fallbackにしない。DriverKit virtual trackpad、digitizer contact、System Extensionも前提にしない。
+- `scroll`、`DockSwipe`、`NavigationSwipe`、`magnification`などのevent family名は、物理trackpadとの比較、fixture分類、compatibility adapter内部のcontract識別にだけ使う。ユーザー向けmode、button割り当て、製品機能、supported capability、OS / App結果名には使わない。
+- adapterが具体的なevent type、subtype、field、phase、順序を選ぶ場合、その選択はfinger countとevent量を再現するOS依存実装であり、結果routingではない。
+- event contract、field、定数、状態遷移、単位変換、許容誤差はApple公式資料、Apple OSS、このリポジトリの純正trackpad / Nape Proログから再導出し、資料またはfixtureまで追跡可能にする。第三者project由来の実装値を取り込まない。
+- 通常SDK非公開のfieldやbridgeは最小のcompatibility adapterへ隔離する。fixture ID、SHA-256、schema、contract ID、OS version / build、fixture実体が登録内容と完全一致した場合だけ生成可能と判定する。
+- 未知OS build、未登録fixture、hash不一致、contract不一致、adapter不備、権限不足では、元入力を抑制せずruntimeを開始しない。推測値や別経路へfallbackしない。
+- 生成eventにはfeedback loopを防ぐmarkerを付け、投稿前検査、direct post trace、captureとのprovenance照合を行う。[ADR-0037](0037-separate-product-and-diagnostic-event-output.md)に従い、製品adapterと診断出力をmodule境界で分離する。
+- timestampとcapture順の解釈は[ADR-0040](0040-capture-order-and-event-timestamp.md)、sessionとterminalは[ADR-0038](0038-trackpad-output-session-and-monotonic-clock.md)を正とする。
+
+### OS / App結果と証跡
+
+- 縦横scroll、nested target、ページ戻る・進む、Space切替、Mission Control、App Expose、拡縮はsystem-wide受入scenarioとして記録するが、製品が直接選択または保証する結果にはしない。
+- 証跡は、入力event量とfinger countを再現した低レベルcontract、macOSまたはapplicationで起きた結果、純正trackpadとNape Proの体感差を分けて保存する。
+- 画面が動いたことだけで低レベルcontract一致を証明せず、低レベルcontract一致だけでOS / App結果を証明しない。
+
+## 検証
+
+- 同一mouse入力fixtureをbutton 3 / 4 / 5へ与え、生成列のfinger countだけが2 / 3 / 4へ変わることを検査する。
+- X / Y量、符号、順序、sample間隔、方向反転、phase、terminal、単位変換誤差を純正trackpad contractと比較する。
+- 未知OS build、fixture改変、hash不一致、明示path不正、event作成失敗、投稿失敗で、抑制開始前にfail closedすることを検査する。
+- boundary guard、direct post trace、capture provenanceにより、対象PID、AX、shortcut、診断出力が製品経路へ入らないことを検査する。
+- OS / App結果scenarioを低レベルcontract判定と別々に保存する。
 
 ## 影響
 
-- 現行`EventPoster`の単純pixel scrollとMission Control / page / zoom向けkeyboard shortcutは完成形ではなく、上記adapterへ置換する。
-- 既存のCGEvent runtime証跡は入力認識、元入力抑制、GUI、診断toolの前段証跡として残るが、trackpad driver出力の完成証跡にはしない。
-- 純正trackpad event contractの取得は物理操作を必要とするが、logger、analyzer、fixture比較、output state machineは先に自動化する。
-- macOS更新でprivate contractが変わる可能性をrelease riskとして明示し、version別compatibility testを必須にする。
-- [ADR-0034](0034-reject-driverkit-virtual-trackpad.md)に従い、DriverKit entitlement、`.dext`、System Extension lifecycleは完成要件に含めない。
+- 設定、GUI、doctor、runtime schemaはevent familyやOS / App結果をbutton割り当てとして公開せず、ADR-0049の固定finger-countモデルを表示する。
+- family別builderと過去fixtureは内部解析資産としてのみ残せる。存在するだけでは製品到達性、supported、完成の根拠にならない。
+- compatibility adapterを安全に構成できない環境では、通常mouse入力を壊さず停止する。
 
 ## 関連
 
-- [Apple IOHIDFamily event taxonomy](https://github.com/apple-oss-distributions/IOHIDFamily/blob/777ccd9698845aadf711e32d843c8c9b777431d9/tools/hidartraceutil)
-- [repo-local由来ガード](0023-repo-local-provenance-guard.md)
+- [ADR-0049: buttonを指本数へ固定しイベント量をtrackpad入力へ置換する](0049-fixed-button-to-finger-count-trackpad-input.md)
+- [ADR-0037: 製品gesture出力と診断event出力を分離する](0037-separate-product-and-diagnostic-event-output.md)
+- [ADR-0038: finger count付きtrackpad入力sessionとmonotonic clockを共通化する](0038-trackpad-output-session-and-monotonic-clock.md)
+- [ADR-0043: 25F80のfinger count付きtrackpad入力compatibility contractを構成する](0043-trackpad-scroll-product-output.md)
 - [ゴール要件](../requirements.md)
-- [検証手順](../verification.md)
-- [製品gesture出力と診断event出力を分離する](0037-separate-product-and-diagnostic-event-output.md)
+- [検証ガイド](../verification.md)

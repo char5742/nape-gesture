@@ -5,22 +5,22 @@
 
 ## 背景
 
-`gesture-wheel-then-kill-switch` の runtime event 証跡で、キルスイッチ発火後の activation button `otherMouseUp` が前面 AppKit target に漏れた。
-キルスイッチによりジェスチャー生成と慣性は停止していたが、停止後の通常入力通過方針をそのまま適用したため、キルスイッチ時点で押下中だったジェスチャーボタンの後始末 release まで通常入力として通していた。
+`gesture-wheel-then-kill-switch`のruntime event証跡で、キルスイッチ発火後に進行中sessionのsource button `otherMouseUp`が前面AppKit targetへ漏れた。
+キルスイッチでtrackpad入力生成と物理contract上の継続eventは停止していたが、停止後の通常入力通過方針をそのまま適用したため、button 3 / 4 / 5のうち押下中だったbuttonの後始末releaseまで通常入力として通していた。
 
 通常入力は停止後に通すべきだが、キルスイッチ直前から継続しているジェスチャー入力の release は、前面アプリから見ると孤立したボタン解放になり誤動作の原因になる。
 
 ## 決定
 
-- キルスイッチ発火時に recognizer が idle でなければ、設定中の activation button を pending release として記録する。
-- 停止後でも、その activation button の最初の `buttonUp` は抑制し、pending を消す。
+- キルスイッチ発火時にrecognizerがidleでなければ、active sessionのsource buttonとfinger countをpending releaseとして記録する。設定値からbuttonを推測しない。
+- 停止後でも、そのsource buttonの最初の`buttonUp`だけを抑制し、buttonとfinger countが一致したときにpendingを消す。
 - pending release 以外の通常入力は停止後も通す。
 - この挙動は `RuntimeSafetyState` の純粋状態としてテストし、daemon はその判断に従う。
 - `system-test run --scenario kill-switch` は、他の未マーク入力シナリオと同じ `UnmarkedInputEvent` 経路を使い、`keyDown` / `keyUp` の間隔を `interval` で明示する。ゼロ間隔の合成ショートカット投稿は daemon 停止証跡として採用しない。
 
 ## 影響
 
-- 暴走停止時に、生成スクロール・慣性・キルスイッチキー・activation button release が前面アプリへ漏れない。
+- 暴走停止時に、生成trackpad event、物理contract上の継続event、キルスイッチkey、active source button releaseが前面applicationへ漏れない。
 - キルスイッチ後の通常クリック、通常ドラッグ、通常ホイールは引き続き通せる。
 - runtime event 証跡では `gesture-wheel-then-kill-switch` が `analyze-target-log --assert-no-leaks --assert-has-generated-event --assert-has-foreground-capture` を満たす。
 

@@ -1,153 +1,172 @@
 # PR レビューチェックリスト
 
-メインスレッドはこのチェックリストを基準に、Issue 整理、PR レビュー、マージ判断へ集中する。
-実装量ではなく、ゴール要件に対する証跡と安全性で判断する。
-開発運用の継続方針は [ADR 一覧](adr/README.md) を正とする。
+PRは実装量ではなく、固定製品モデルと実測証跡で判定する。
+button 3 / 4 / 5押下中の連続mouse event量を2 / 3 / 4本指trackpad入力へ変換し、未押下時は通常mouseをそのまま通すことが唯一の製品モデルである。
+設計判断は[ADR-0049](adr/0049-fixed-button-to-finger-count-trackpad-input.md)を正とする。
+
+改訂基準commit`55eb991`は旧3 mode / 3 family routingを保持しており未達である。旧testが成功した、個別familyを投稿できた、画面結果が得られた、という理由だけで完成またはmerge可能と判定しない。
 
 ## 共通ゲート
 
-- 対応 Issue が明記されている
-- 変更ファイルの所有範囲が説明されている
-- コード、Package、workflow に影響する変更では `swift build --scratch-path .build` が成功している
-- コード、Package、workflow に影響する変更では `.build/debug/nape-gesture-core-tests` が成功している
-- release build が必要な変更では `swift build -c release --scratch-path .build` が成功している
-- docs/config のみの変更では、変更対象に合った検証と Swift build を省略した理由が PR 本文に明記されている
-- ユーザーが見る挙動、GUI、権限導線、検証手順、完成状態、配布手順を変えた場合、README を更新している。更新不要の場合は PR 本文で理由を明記している
-- 未検証事項を「完了」と表現していない
-- 実装contract、field番号、状態遷移、係数、調整値に、Apple公式資料、Apple OSS、自前ログからの導出根拠がある
+- 対応Issueと変更ファイルの所有範囲が明記されている
+- 並行作業者の差分をrevert、上書き、無関係に整形していない
+- code / Package / workflow変更ではdebug build、全test target、必要なrelease buildが成功している
+- docs / configだけの変更では、実施した検証とbuild省略理由がPR本文にある
+- ユーザー挙動、GUI、権限、検証、完成状態、配布を変えた場合はREADMEを更新し、更新不要なら理由を記載している
+- 未検証、candidate、履歴証跡を`完了`、`supported`、`release ready`と表現していない
+- field、状態遷移、係数、許容差がApple資料、Apple OSS、純正trackpad / Nape Pro自前logへ追跡できる
+- 不要な第三者固有名や参照実装由来の表現がproduct code、test、docsへない
 - 実装上必要な実依存の識別子と法定通知を除き、README、実装、コメント、テスト名、ユーザー向け文書に不要な第三者プロジェクトの固有名、コンポーネント名、参照実装由来と読める表現がない
-- 由来や配布物に影響する変更では `sh scripts/check-provenance.sh` と `sh scripts/test-check-provenance.sh` が成功している
-- Grok CLIによる独立監査、補助レビュー、発散、PR差分レビューを実行していない
-- 外部モデルの出力を設計判断、PR review、完成判定、CI gate、runtime証跡に混ぜていない
-- computer-use で代替できる GUI 操作を `need:human` にしていない。OS セキュリティ設定を変更する UI 操作では直前確認を取っている
-- Mermaid 図やアプリキャプチャを使う場合、実装、docs、実際の画面証跡と矛盾していない
+- 由来に影響する変更では`check-provenance.sh`と回帰testが成功している
+- Grok CLIや外部モデルの結果を設計判断、review、完成判定、CI gate、runtime証跡へ使っていない
+- computer-useで代替できるGUI操作を`need:human`にせず、TCC変更直前にはユーザー確認を取る
 
-## 性能 / Benchmark 変更
+## 固定製品モデル
 
-- `benchmark --events 200000 --json --assert-baseline` の出力と終了コードが保存または PR 本文へ要約されている
-- `doctor --benchmark-events 50000 --json` の出力が保存または PR 本文へ要約されている
-- `measurementKind` が `pureLogic`、`includesEventTapAndPosting` が `false` であることを確認している
-- `BenchmarkReport.schemaVersion` が `3` で、`sampledNanosecondsPerEvent` と `sampledNanosecondsPerCommand` の p95 / p99 が保存されている
-- `--assert-baseline` が成功し、`recognizer.averageNanosecondsPerEvent`、`recognizer.cpuNanosecondsPerEvent`、`recognizer.sampledNanosecondsPerEvent.p95Nanoseconds`、`recognizer.sampledNanosecondsPerEvent.p99Nanoseconds`、`scrollPlanner.averageNanosecondsPerCommand`、`scrollPlanner.cpuNanosecondsPerCommand`、`scrollPlanner.sampledNanosecondsPerCommand.p95Nanoseconds`、`scrollPlanner.sampledNanosecondsPerCommand.p99Nanoseconds` が `docs/performance-baseline.md` の基準内である
-- 純粋ロジック benchmark を、イベントタップから投稿までの入力遅延実測として扱っていない
-- tap-to-post 遅延を完了扱いにする場合、`run --performance-log` または `NAPE_RUNTIME_PERFORMANCE_LOG` で取得した runtime 性能 JSON Lines と `analyze-performance-log --json --assert-baseline` の結果が保存されている
-- runtime 性能ログを AppKit 受信や画面反映の証跡として扱っていない
-- 常駐 CPU 使用率を完了扱いにする場合、実機・権限付きの測定手順と未検証事項が明記されている
-- 閾値超過時に調整した設定値や生成パラメータが、ログと benchmark の再測定で確認されている
+- `ruby scripts/check-product-model-documentation.rb`と`ruby scripts/check-finger-count-product-model.rb`が成功している
+- button 3が2本指、button 4が3本指、button 5が4本指へ固定されている
+- buttonごとの結果選択modeがproduct model、設定、GUI、CLI、doctorにない
+- 方向別actionとOS/App結果別actionがない
+- application別の有効・無効、感度、割り当てがない
+- finger countを方向、速度、App、低レベルfamily、OS/App結果で変更しない
+- 同一source fixtureでは、3 buttonが同じ正規化入力の量、順序、時間間隔を使い、finger count固有の物理encoding差だけが登録contractと一致する
+- `scroll`、`DockSwipe`、`NavigationSwipe`、`magnification`を観測語彙として扱い、ユーザーmodeや製品capabilityにしていない
+- 旧設定migrationが旧modeを別の結果actionへ流用せず、固定button-to-finger-count modelへ安全に廃止または正規化する
+- 進行中sessionへの追加buttonでfinger count、family、session IDを切り替えない
+- unknown button、session開始時の曖昧な複数activation button、順序欠落からfinger countを推測しない
 
-## Core 変更
+## event量保存
 
-- ジェスチャーボタン未押下時の入力通過を壊していない
-- デッドゾーン内の微小揺れをジェスチャー確定にしていない
-- ボタン解放後に必ず通常状態へ戻る
-- scrollの`began` / `changed` / `ended` / `cancelled`とmomentumの`began` / `continued` / `ended`を別のlifecycleとして扱っている
-- button modeごとの連続入力、加速度、方向非依存のキャンセル条件、慣性のテストが追加または更新されている
-- button 3 / 4 / 5ごとのmode選択と、既定の`2本指スクロール / スワイプ` / `システムスワイプ` / `ピンチ`がテストされている
-- `none`を割り当てたbuttonは通常mouse入力を抑制・変換しない
+- 各source eventのsequence、timestamp、`deltaX`、`deltaY`を変換前に保存する
+- 受理eventと変換器入力が件数・順序・値のbit単位で一致する
+- 複数source sampleをcoalesceせず、各sampleのdeltaとtimestampを個別に対応付けている
+- X / Y、正負、斜め、停止、方向反転のtestがある
+- 最終delta合計だけで保存を判定していない
+- terminal用zero frameや補助eventをsource event量へ加算していない
+- 純正fixture由来の単一versioned単位変換contractについて、係数、clamp、許容差が登録fixtureへ追跡でき、結果別またはfinger count別の係数がない
+- queue drop、重複、並べ替え、整数飽和、非有限値を成功扱いにしない
+- source-to-output対応reportを同じrun UUIDで保存している
 
-## Runtime / Event Tap 変更
+## finger count
 
-- 自前生成イベントを再解釈しない
-- 製品のgesture出力がtrackpad driver上位出力相当のevent adapterへ集約されている
-- 製品runtimeが`NapeGestureProductOutput`だけを参照し、`DiagnosticEventPoster`を参照していない
-- 旧単純scroll / shortcutは`NapeGestureDiagnosticOutput` targetにだけ存在し、許可したCLI command以外からimportされていない
-- AX scrollbar、対象PID配送、frontmost application分岐、keyboard shortcutをgesture出力に使っていない
-- 通常SDK非公開のevent contractがcompatibility adapter外へ漏れていない
-- 未知のmacOS versionまたはcontract不一致で誤ったeventを送らずfail closedになる
-- `supported`が登録済みfixture ID / SHA-256 / schema / contract ID / OS build / fixture実体の完全一致だけで生成される
-- `NAPE_GESTURE_TRACKPAD_CONTRACT` / `NAPE_GESTURE_TRACKPAD_OUTPUT_MODEL`が明示されている場合、空・読取不能・空file・不正bytesのpathからbundle / repository fixtureへfallbackせず、起動不可になる
-- 更新され続ける物理観測台帳と、SHA固定する確定済み実行contract fixtureを分離している
-- output contract未対応時はevent tapと入力抑制を開始せず、別方式へfallbackしない
-- ジェスチャー成立後の元入力漏れを増やしていない
-- 対象外デバイスの通常クリック、ドラッグ、ホイールを改変しない
-- `doctor --json` の `targetDeviceDiagnostics` で、対象デバイス不一致時の matcher 条件差分を確認できる
-- キルスイッチで生成と慣性を即時停止できる
-- キルスイッチ自体を event tap で抑制し、前面アプリへ渡していない
-- `system-test run --scenario kill-switch --dry-run --log-json` を `analyze-log --assert-kill-switch-shortcut` で確認している
-- `system-test run --scenario gesture-wheel-then-kill-switch --dry-run --log-json` を `analyze-log --assert-kill-switch-shortcut --assert-gesture-before-kill-switch` で確認している
-- キルスイッチ後も通常入力を勝手に抑制し続けない
-- 一方向停止と明示 reset 以外で復帰しないことを Core の純粋テストで確認している
-- `normal-after-release` dry-run を `analyze-log --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel` で確認し、未生成キーや activation button だけを通常入力通過証跡として扱っていない
-- runtime event 証跡を更新した場合、`status.json.status`、`blockerCode`、`preflight/`、権限済み時の `scenarios/` の関係が崩れていない
-- アクセシビリティ未許可時に安全に停止し、復旧導線を出す
+- button downでfinger countを確定し、terminalまで変更しない
+- 全generated frameとterminalが期待finger countを持つ
+- 2 / 3 / 4本指の正常、方向反転、cancel testがある
+- event typeやclassifierだけからfinger countを推測していない
+- 純正2 / 3 / 4本指captureでfinger count表現を固定している
+- Nape Pro button 3 / 4 / 5のgenerated captureを同じschemaで比較している
+- contractがfinger countを表現できない場合はunsupportedとしてfail closedにする
 
-## HID / Device 変更
+## session terminal
 
-- 全デバイス誤適用を避けている
-- 複合 HID や特殊 usage を見落とさない調査経路がある
-- 対象未検出時に安全停止する
-- `devices --all --json`、`hid-log`、`analyze-hid-log` のどれで証跡を取るか明記されている
-- 実機 Nape Pro が必要な項目をモックだけで完了扱いにしていない
+- button downから対応button upまでが1 sessionである
+- session ID、0始まりの欠落なしcapture order、source timestamp、sample間隔、登録contractのtimestamp関係を保持する
+- 正常終了、cancel、kill switch、runtime stop、sleep、device切断、TCC喪失、output failureをtestしている
+- 開始した全sessionがterminal 1件へ収束する
+- terminal重複、terminal後event、stuck sessionが0件である
+- active session中に別sessionを開始しない
+- 部分投稿時にtrace順と実投稿順が一致し、再送またはcancelで予約eventを解消する
+- terminal生成失敗を成功扱いにせず、安全停止と物理解放待ちを報告する
 
-## Trackpad driver出力 / Spaces / Mission Control変更
+## passthrough
 
-- raw loggerはcallback内をcopy・採番・bounded queue投入に限定し、0 event、queue飽和、write / flush / close失敗を成功扱いにしていない
-- raw fieldは`fieldNumber`の数値昇順でzeroとdouble bit patternを保持し、serialized eventをCoreGraphicsで再構築できる
-- `--out` captureはevidence kind、最終log SHA / bytes / event数 / capture順の先頭・末尾timestamp、metadata、logger executable SHA、開始・完了wall-clockをmanifestへ固定し、失敗captureに旧sidecar、symlink、一時fileを残していない
-- `--ready-file`はtokenをfile名に含むrun固有pathを必須とし、権限確認前に`ready:false`の排他的leaseを予約する。受付開始時だけdeadline付き`ready:true`へ昇格し、duration / SIGINT /内部errorの受付停止前に`ready:false`へ戻して`unlink`する。log / manifestとの同一・親子pathをcase / Unicode込みで拒否し、専用waiterは安定化後にもtoken / PID / scenario / repo SHA / deadline余裕 / PID生存を再検証できない限り操作案内を出さない
-- 厳格analyzerはtyped decodeの既定値補完前にLF終端、空行、重複key、nesting上限、整数精度、required field、nullable subtype、metadata、captureIndex順、raw field順、bit pattern、Base64を検証し、event family間のtimestamp局所逆行を理由にsortまたは失敗判定していない
-- `physicalTrackpad`証跡は生成marker混入を拒否し、公開fixtureへserialized event、keycode、pointer座標、不要なdevice identifierを残していない
-- unknown top-level / metadata fieldを捨てず、raw JSON表現とreportへ保持している
-- generated product captureは生成markerとactual event typeを検査し、schema 2 direct post trace / provenance / manifestのrun UUID、scenario、repo / binary identity、trace / log SHA、件数、順序、timestamp、type、output session、familyを照合し、製品source境界guardと併せてPID、AX、shortcut、key / pointer / button経路を拒否している
-- adapterはpost operation直前のraw field 39 / 40=`0`を検証する一方、system-wide投稿後のcaptureでWindowServerがfield 39 / 40へ前面配送先を付与することを許容し、capture側の非0だけを明示的PID投稿の証拠または拒否条件にしていない
-- CoreGraphics再構築で保持されないraw field差分を捨てたり意味推測せず`rawFieldDifferences`へ分離し、type / timestamp / flags / subtype /公開named field不一致だけをPhase 1の再構築失敗にしている
-- `--duration`なしのloggerはSIGINT後にevent受付を止め、queue drainとflush / closeを完了している
-- output sessionはsession ID、0始まりで欠落のないcapture order、非減少の起動後timestamp、terminal stateを保持する
-- input lifecycleとmomentum lifecycleを別型にし、input ended後のsession完了またはmomentum開始待ちを明示している
-- kill switch、runtime stop、sleep、device切断、権限変更、output failureで、input開始前を含む全nonterminal stateから明示cancelしてterminalへ収束し、active cancellationのfamilyと最終payloadを失わない
-- 製品gesture出力境界は`MonotonicEventClock`を使い、Unix wall clockや別のuptime取得を直接混在させていない
-- `DiagnosticEventPoster`、`generate-scroll`、`system-test`の実投稿とdry-run logも`MonotonicEventClock`を使い、sequence先頭を投稿開始reference以下、元列を非減少として検証し、各実eventのtimestampを投稿直前の同一clock値から確定している
-- shortcutはdown/upを両方生成・検証してから投稿し、sequence途中失敗ではactiveなscroll / momentum terminal、`mouseUp`、`keyUp`へ収束する
-- `nape-gesture-diagnostic-output-tests`がboot外start、元timestamp回帰、未来予定offset、UInt64差分回帰、failure injection、全13 system scenario、全48 generate patternの現在boot上限・件数・offsetを直接検証し、`sh scripts/check-diagnostic-event-time.sh`も成功している
-- trackpad scrollではcontinuous scroll eventと対応するcompanion eventを、純正fixtureのenvelope / phase / capture順上の局所系列として出す。timestamp同値や固定index差を仮定しない
-- scroll / momentum contract比較はfixture登録を再検証し、document raw bytesとmanifestを再結合してstrict parser / capture index検証をやり直した後だけ実行する。`--contract`なしのPhase 1 schema 1を維持し、terminal 9 deltaの`+0.0` bit pattern、phase遷移、generated type 29 classifier `0 / 6`、companion motion alias、必須phaseと実測coverageを終了codeで判定する
-- 専用scroll contract、公開観測台帳、採用4 sourceのSHA / 件数 / prefix /解析開始index / wall-clockが機械的に結合され、local原本があるcompletion evidenceでは同じsource bytesとmanifestまで再検証する
-- 自前計測の986 pairからterminal 19 pairを除いた967 pairをX / Y軸別のodd quadratic `a*g + b*g*abs(g)`へfitし、tracked sampleから再導出したmodelをCIでruntime fixtureと`cmp`している
-- input frameは同一timestampの`type 22 -> type 29 envelope -> type 29 companion`、momentumは`type 22`だけを生成し、全eventをsystem-wideへ投稿している
-- scroll phaseとmomentum phaseを分離し、begin / change / end / cancelとmomentum begin / continue / endを完結させる
-- daemonがmomentum timerと停止理由、coordinatorがactive mode / family、session ID、順序、continuation、明示cancelを管理し、input active / awaiting momentum / momentum activeを重複なくterminalへ収束させる
-- 部分投稿失敗では未投稿offsetと予約済みpost indexを保持し、同じeventの再送または明示cancelで解消するまで別sessionを拒否して、trace順序と実投稿順を一致させる
-- button modeに必要なfamilyが不足する場合は`outputContract.missingFamilies`として起動前に停止し、方向別bindingによる回避を追加していない
-- `2本指スクロール / スワイプ`の`scroll`経路と、fixture / analyzer / session model上の`NavigationSwipe`低レベル候補を区別し、候補観測だけでページnavigationの完成を主張していない
-- アプリ全体の完成を主張する場合は、`scroll`、`DockSwipe`、`magnification`の低レベル系列と、ページ戻る/進む、Spaces、Mission Control、App Expose、ZoomというOS/App結果を別々に検証し、`NavigationSwipe`候補、forced horizontal scroll、keyboard shortcutで結果を代替していない
-- 純正trackpad logとtype、subtype、field、順序、timestamp、phase、momentumを同一schemaで比較している
-- trackpad output eventのfield番号、定数、状態遷移、係数、調整値が、Apple公式資料、Apple OSS、capture manifest、fixture、自前ログまで追跡できる
-- `generate-scroll` / `system-test`の旧単純CGEvent結果をtrackpad driver出力の完成証跡にしていない
-- scroll product outputの完成を主張する場合は、Finder、Safari、Web content、nested scroll targetで同じbinary / system-wide系列の実機検証が明記されている。Mission Control / Spacesは`DockSwipe`低レベル経路の試用成功だけで合格にしていない
+- button 3 / 4 / 5未押下時のmove、click、double-click、drag、wheelを変更しない
+- button 1 / 2、対象外button、対象外deviceを変更しない
+- 未押下時のgenerated、suppressed、mutated eventが全て0件である
+- activation session中の漏れ防止と未押下passthroughを別scenario、別countで判定する
+- 正常解放、kill switch、output failure、sleep復帰、device再接続、TCC復旧後をtestしている
+- 異常終了時にactivation buttonの物理解放前のdown/upを誤clickとして漏らさない
+- 物理解放後は通常passthroughへ戻る
+- 前面App target logで実機確認している
 
-## UI / Doctor / 権限導線変更
+## 実機証跡
 
-- 設定 UI にアプリ別の有効・無効、感度、割り当てを追加していない
-- 設定 UI の編集対象は `SettingsUIField.descriptors` に追加し、設定パス、control kind、JSON round-trip、アプリ別設定なしの core test を維持している
-- 設定 UI は上下左右またはOS/App結果別の割り当てを持たず、button 3 / 4 / 5ごとに`none`、`2本指スクロール / スワイプ`、`システムスワイプ`、`ピンチ`だけを選択できる
-- 設定UI、設定schema、既定configでbutton 3 / 4 / 5の既定modeが一致している
-- 不正な設定値を保存前または起動前に止める
-- `runtimeIdentity` で権限付与対象が分かる
-- `runtimeReadiness.ready`、`runtimeReadiness.failures[].code`、`tccStatus.accessibility`、`tccStatus.inputMonitoring` で runtime ready と TCC 状態を構造化している
-- `tccStatus.permissionTarget` と `grantRequired` で、権限を付与すべき `.app` または実行ファイルを機械的に引用できる
-- アクセシビリティと入力監視の失敗を区別している
-- doctor JSON 契約を変えた場合は CI smoke、completion evidence、関連 ADR を更新している
-- 常駐 UI の実行中、停止中、自動再試行中、スリープ待機中表示が `RuntimeStatusPresenter` の core test で固定されている
-- スリープ復帰、デバイス抜き差し、権限変更後の復旧状態を説明できる
+- 純正trackpadの2 / 3 / 4本指captureが同じ対象OS buildでそろっている
+- 各finger countに正負X/Y、斜め、停止、方向反転、正常terminal、cancelがある
+- Nape Pro button 3 / 4 / 5のsource、HID、generated、post traceがそろっている
+- 未押下passthroughと異常終了を実機で取得している
+- logger ready token、deadline、PID、scenario、repo SHAを操作前後に検証している
+- 0 event、drop、ready期限切れ、manifest不成立を採用していない
+- manifestがrepo SHA、binary SHA-256、OS build、fixture ID / SHA-256、log SHAを固定する
+- physical captureへgenerated marker、不要なdevice ID、keycode、pointer座標を混入させていない
+- dry-run、合成input、画面移動、computer-use画像だけで実機証跡を代用していない
 
-## Release 変更
+## fail closed
 
-- `.app` バンドルを作成し、`verify-bundle` が成功する
-- `sh scripts/test-bundle-app-safety.sh .build/debug/nape-gesture`が成功し、原子的swap、既存bundle保持、任意directory・symlink・未知option拒否を確認している
-- `LICENSE` と `THIRD_PARTY_NOTICES.md` が同梱される
-- `LICENSE` と `THIRD_PARTY_NOTICES.md` はバンドル内の同梱ファイルと `cmp` で一致している
-- `CFBundleIdentifier`、`CFBundleExecutable`、`CFBundleName`、`CFBundleDisplayName`、`LSUIElement=false` の exact check が成功している
-- active macOS GUI session で `.build/NapeGesture.app/Contents/MacOS/nape-gesture gui-smoke --config <tmp> --json --assert` が成功し、通常 GUI activation policy、設定ウィンドウ、status item `NG`、通常アプリメニュー、status menu の生成契約を検査している。CI runner に active console session がなく skip された場合は、ローカル completion evidence を PR または Issue に残している
-- `.app` を通常 GUI アプリとして起動し、設定ウィンドウを初期表示する方針と矛盾していない
-- ローカル検証では ad-hoc 署名、公開配布では Developer ID Application 署名と公証を使う境界が明記されている
-- 公開配布前は `verify-bundle --require-signature` と `codesign --verify --deep --strict --verbose=2` が成功している
-- 公証が未完了なら、未完了理由と次の作業が明記されている
-- 権限付与対象の `.app` 名と bundle ID が README / doctor / Info.plist で矛盾していない
+- unsupported OS/build、symbol不在、fixture不一致でevent tapと抑制を開始しない
+- fixture ID、SHA-256、schema、contract ID、OS build、実体bytesを全て検証する
+- 明示contract pathが空、読取不能、空file、不正bytesなら他pathへfallbackしない
+- finger count不明、device不一致、TCC不足、現在boot外timestamp、source / contractにないtimestamp変換、session不整合を拒否する
+- event作成・投稿失敗のfailure injectionがある
+- active sessionの失敗はterminalまたは構造化された安全停止へ収束する
+- rejection後のgenerated eventが0件である
+- 物理解放後にpassthroughへ戻る
+- AX scrollbar、対象PID、frontmost App分岐、keyboard shortcut、別family、旧単純scrollへfallbackしない
+- `doctor`がfailure code、実行主体、TCC、device、contract provenanceを構造化して返す
+
+## 低レベルcontract
+
+- contract比較をfinger count、event量、session、terminal、provenanceで行う
+- raw event type、subtype、field、serialized data、phase、補助eventを純正captureと比較する
+- generated capture、direct post trace、manifest、binaryが同じrun UUIDで結合する
+- system-wide streamだけを製品配送に使う
+- family別の`supportedFamilies` / `confirmedFamilies` / `trialFamilies`を製品完成度として残していない
+- 旧3 familyの成功をbutton 3 / 4 / 5の完成へ読み替えていない
+- 候補fieldやcandidate fixtureを確定contractにしていない
+
+## OS/App結果
+
+- 低レベルcontract reportとOS/App結果reportを分離している
+- OS/App結果reportにApp version、OS build、gesture設定、button、finger count、event量、session IDがある
+- 縦横scroll、navigation、Space、Mission Control、App Exposé、Zoomを観測結果として記録している
+- 画面が動いても低レベルcontract不合格なら製品合格にしていない
+- 低レベルcontract合格でも結果不成立なら、その結果を未成立として明記している
+- 未測定AppやOS buildの結果を製品機能として主張していない
+- 結果を得るためのmode、方向別action、application別設定、配送fallbackを追加していない
+
+## 性能
+
+- event量、finger count、terminal、passthrough、fail closedの正確性gateをpercentileより先に判定している
+- 純粋ロジックとevent tap / posting実測を別measurement kindにしている
+- finger count 2 / 3 / 4と未押下passthroughを別bucketで測っている
+- source受理から最初のpost、frame完了、terminal完了のp95 / p99を保存している
+- passthrough追加遅延、logger queue depth、drop countを保存している
+- idle、各finger count連続入力、terminal後、fail-closed待機のCPUを実機で測っている
+- AppKit受信と画面反映時間を低レベル投稿時間へ混ぜていない
+- [性能測定基準](performance-baseline.md)を全項目満たしている
+
+## UI / 権限
+
+- GUIはbutton 3 / 4 / 5と固定finger countを説明し、結果別mode selectorを表示しない
+- 不正または旧設定を保存前・起動前に拒否または安全にmigrationする
+- `runtimeIdentity`とTCC permission targetが実利用`.app`を指す
+- AccessibilityとInput Monitoringの不足を区別する
+- readiness成立前に入力抑制を開始しない
+- sleep、device切断、TCC変更後の状態と復旧導線を説明できる
+- GUI証跡をdoctor、runtime log、実機証跡の代用にしていない
+
+## Release
+
+- 6つの必須ゲートが全て現行binaryで合格している
+- debug / release buildと全test targetが成功している
+- product / diagnostic境界guardが成功している
+- `.app` bundle、identity、同梱文書、署名検証が成功している
+- 公開配布ではDeveloper ID署名、公証、stapler、Gatekeeper評価が成功している
+- 署名・公証をevent contract互換性の証明にしていない
+- README、完成判定、検証、性能、release docsの主張が一致する
+- 未完了の実機scenarioやOS/App結果をrelease noteで明示している
 
 ## 差し戻し基準
 
-- 実機が必要な検証を dry-run だけで完了扱いにしている
-- 入力安全性に影響する変更でテストまたはログがない
-- 旧名、新名、bundle ID、設定パスの混在が増えている
+次のいずれかがあれば差し戻す。
+
 - 第三者プロジェクト由来のコード、field番号、定数、状態遷移、係数、調整値を持ち込んでいる
-- CI やローカル検証の失敗を後回しにしている
+- 旧3 mode / 3 family modelを製品surfaceまたはroutingへ残す
+- `check-finger-count-product-model.rb`が失敗する
+- event量保存、finger count、terminal、passthroughのいずれかに機械testがない
+- 純正trackpadまたはNape Pro実機証跡をdry-runで代用する
+- family単体や画面結果を製品完成とする
+- fail closedより先にevent tapまたは抑制を開始する
+- AX、PID、shortcut、application分岐へfallbackする
+- fixture hash、run identity、binary identityを検証しない
+- terminal欠落、logger drop、test / CI失敗、未検証事項を後回しにする

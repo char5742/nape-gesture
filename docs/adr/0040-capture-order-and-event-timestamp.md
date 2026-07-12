@@ -1,41 +1,44 @@
-# ADR-0040: capture順とevent timestampを分離する
+# ADR-0040: capture順とevent timestampを独立して保持する
 
 - 状態: 採択
 - 日付: 2026-07-11
+- 更新日: 2026-07-12
 
 ## 背景
 
-ADR-0039では、`trackpad-event-log`の全recordでevent timestampが非減少になると仮定していた。
-しかし、macOS 26.5.1（build 25F80）の純正トラックパッドを実測すると、`scrollWheel`より後に配送されるcompanion eventが、直前eventより小さいtimestampを持つ系列が確認された。
-配送順をtimestampで再構成したり、timestamp逆行だけでraw captureを不正と判定すると、純正trackpadの系列を改変または拒否してしまう。
+macOS 26.5.1（build 25F80）の純正trackpadでは、`scrollWheel`より後に配送されるcompanion eventが、直前eventより小さいtimestampを持つ系列が観測される。配送順をtimestampで再構成したり、timestampの局所的な逆行だけでrecordを拒否したりすると、物理trackpadの系列を改変する。
 
-また、Issue #125はscenarioごとの開始・終了時刻を要求するが、capture manifest schema 1は完了wall-clockしか保存していなかった。
+Nape Gestureはsource mouse event量、配送順、timestamp間隔を保持する必要がある。capture順と時刻値を別々の情報として記録し、生成時に投稿直前時刻へ上書きしない。
 
 ## 決定
 
-- eventの配送順は、logger callbackで採番した0始まりかつ欠落のない`captureIndex`だけを正本とする。
-- event timestampは取得値をlosslessに保持し、局所的な逆行を許可する。timestampでrecordをsortしない。
-- analyzerは`captureIndex`の欠落、重複、並べ替えを拒否するが、timestamp逆行だけでは失敗にしない。
-- generated product provenanceも`captureIndex`で順序を固定し、capture logとのtimestamp完全一致を検証する。record間のtimestamp非減少は要求しない。
-- scroll eventとcompanion eventの対応にtimestamp同値を要求しない。envelope、phase、capture順上の局所系列を使い、固定index差やtimestamp最近傍だけで対応付けない。
-- manifestの`firstEventTimestamp`と`lastEventTimestamp`は、数値上の最小・最大ではなく、capture順の先頭・末尾recordの値として保持する。大小関係は検証しない。
-- capture manifestをschema 2へ上げ、`captureStartedAt`と`captureCompletedAt`をISO 8601 wall-clockで必須化する。開始はevent受付開始直前、完了は受付停止、queue drain、log flush / close後に記録し、開始が完了を超えるmanifestを拒否する。
-- schema 1は開始時刻を証明できないため、現行の採用可能証跡として受理しない。
-- ADR-0038の非減少timestamp要件は、製品側のsession進行と投稿scheduleに限定する。CGEvent tapで観測した異なるevent family間のglobal配送順には適用しない。
+- eventの配送順は、logger callbackで採番した0始まりかつ欠落のない`captureIndex`を正本とする。
+- source event timestampは取得値とtime domainをlosslessに保持し、timestampでrecordをsortしない。
+- analyzerは`captureIndex`の欠落、重複、並べ替えを拒否するが、timestampの局所的な逆行だけでは失敗にしない。
+- generated product provenanceもcapture orderで順序を固定し、source timestamp、生成timestamp、rebase offset、内部contractの導出規則をsampleごとに保存する。
+- sourceと生成eventが同じ起動後time domainを使う場合はsource timestampをそのまま使う。rebaseが必要な場合はsession全体へ単一offsetを適用し、sample間隔と同値関係を保持する。
+- companion eventなど物理contract固有のtimestamp関係は登録fixtureから再現する。sourceまたはfixtureにない局所逆行、間隔変更、sampleごとの投稿時刻置換を生成しない。
+- scroll eventとcompanion eventの対応にtimestamp同値を一律要求しない。envelope、phase、capture順上の局所系列、登録contractを使う。
+- manifestの`firstEventTimestamp`と`lastEventTimestamp`はcapture順の先頭・末尾recordの値として保持し、数値上の大小関係を要求しない。
+- capture manifestは`captureStartedAt`と`captureCompletedAt`をISO 8601 wall-clockで持つ。wall clockは収録区間の説明にだけ使い、event timestampへ変換しない。
+
+## 検証
+
+- 正負、同値、局所逆行を含むsource timestamp列で、capture orderとtimestamp値がlosslessに保持される。
+- session単位rebaseは全sampleへ同じoffsetを適用し、各timestamp差分を保持する。
+- sampleごとの投稿直前時刻への置換、timestamp sort、差分clamp、現在boot外timestampを拒否する。
+- 物理fixtureが要求するcompanion timestamp関係と、それ以外の説明不能な関係を区別する。
+- manifestのcapture wall-clockとevent timestamp domainを混在させない。
 
 ## 影響
 
-- 純正trackpadのscrollとcompanion eventの配送順・timestamp関係を改変せず解析できる。
-- timestampが逆行しても、capture順の改ざんは`captureIndex`と最終log SHA-256で検出できる。
-- schema 1の既存captureは調査資料としては残せるが、Issue #125の完成証跡にはschema 2での再収録が必要になる。
-- manifestからscenarioの実収録区間を直接確認できる。
-
-## 置換範囲
-
-ADR-0039の「timestampは逆行しない」と「capture完了wall-clockだけをmanifestへ保存する」という決定を置き換える。その他の厳格JSON Lines、raw field、manifest完全性、provenance、host再構築の決定は維持する。
+- 純正trackpadの配送順とtimestamp関係を改変せず解析できる。
+- source mouse eventから生成trackpad eventまで、量、順序、時間間隔を同じrunで追跡できる。
+- timestamp値だけでは順序を決めず、capture order、session ID、SHA-256で欠落と改ざんを検出する。
 
 ## 関連
 
-- [ADR-0038: trackpad出力sessionとmonotonic clockを共通化する](0038-trackpad-output-session-and-monotonic-clock.md)
+- [ADR-0038: finger count付きtrackpad入力sessionとmonotonic clockを共通化する](0038-trackpad-output-session-and-monotonic-clock.md)
 - [ADR-0039: trackpad eventログを厳格解析しcapture manifestへ固定する](0039-strict-trackpad-event-analysis-and-capture-manifest.md)
+- [ADR-0049: buttonを指本数へ固定しイベント量をtrackpad入力へ置換する](0049-fixed-button-to-finger-count-trackpad-input.md)
 - [検証手順](../verification.md)
