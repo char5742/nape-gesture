@@ -33,7 +33,7 @@
 - `need:human` は、computer-use と直前確認でも代替できない TCC 操作、純正トラックパッド操作、Nape Pro 実機操作、証明書操作など、人間が実作業しないと進められない項目だけに使う。レビュー待ちや判断待ちには使わない。
 - 第三者プロジェクト由来のコード、定数、状態遷移、係数をコピーしない。実装契約とパラメータはApple公式資料、Apple OSS、このリポジトリの純正trackpad / Nape Proログから再導出する。
 - 実装上必要な実依存の識別子と法定通知を除き、README、実装、コメント、テスト名、ユーザー向け文書へ不要な第三者プロジェクトの固有名、コンポーネント名、参照実装由来と読める表現を残さない。
-- 製品のgesture出力はtrackpad driver上位出力相当のscroll / gesture、DockSwipe、NavigationSwipe、magnification eventに限定する。DriverKit virtual trackpad、AX scrollbar、対象PID配送、keyboard shortcutによるgesture代替は使わない。
+- 製品runtimeのgesture出力経路はtrackpad driver上位出力相当の`scroll`、`DockSwipe`、`magnification`に限定する。`NavigationSwipe`は2本指系列で観測された低レベル候補であり、独立したユーザー向けmode、製品機能、runtime capabilityとして扱わない。入力mode、低レベルevent family、macOS / applicationの結果、証跡状態は[ADR-0048](docs/adr/0048-separate-input-mode-event-family-os-result-and-evidence.md)に従って分離する。DriverKit virtual trackpad、AX scrollbar、対象PID配送、keyboard shortcutによるgesture代替は使わない。
 - 通常SDK非公開のevent contractは最小のcompatibility adapterへ隔離し、未知のmacOS versionやcontract不一致ではfail closedにする。詳細は[ADR-0036](docs/adr/0036-emulate-trackpad-driver-output-events.md)を正とする。
 - output contractの`supported`は登録済みfixture ID、SHA-256、schema、contract ID、OS version / build、fixture実体の完全一致でだけ生成する。未登録fixtureやhash不一致を文字列IDだけで通さない。
 - 製品gesture出力と旧単純scroll / shortcut /対象PID配送を含む診断出力はmodule境界で分離する。診断出力を製品fallbackやcompletion evidenceへ使わない。詳細は[ADR-0037](docs/adr/0037-separate-product-and-diagnostic-event-output.md)を正とする。

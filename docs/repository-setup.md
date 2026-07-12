@@ -48,8 +48,8 @@ swift build -c release --scratch-path .build
 - bootstrap 時点の運用 label: 15件
 - 後続追加 label: `need:human`
 
-`need:human` は承認待ちや確認依頼ではなく、人間が実行する物理作業または macOS UI 操作が最後の手段として必要な Issue だけに使う。
-CGEvent 投稿、dry-run、fixtures、ログ解析、Reference Target App、System Behavior Test で代替できる作業は先に自動化する。
+`need:human` は承認待ちや確認依頼ではなく、computer-useでも代替できない物理デバイス操作、ユーザー本人しか通せない認証、秘密情報入力などが最後の手段として必要なIssueだけに使う。
+GUI操作、CGEvent投稿、dry-run、fixtures、ログ解析、Reference Target App、System Behavior Testで代替できる作業は先に自動化する。
 
 Issue、label、milestone の作成・更新・コメント・close は、基本的に `gh api` で行う。
 重複を避けるため、再投入時は既存 title / label name / milestone title を先に取得してから差分だけ作成する。

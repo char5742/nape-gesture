@@ -19,11 +19,11 @@ public struct VerifiedProductGestureOutputContract: Equatable, Sendable {
         osBuild: String
     ) {
         guard schemaVersion > 0,
-              Self.isNotBlank(contractID),
-              Self.isNotBlank(fixtureID),
-              Self.isSHA256(fixtureSHA256),
-              Self.isNotBlank(osVersion),
-              Self.isNotBlank(osBuild)
+            Self.isNotBlank(contractID),
+            Self.isNotBlank(fixtureID),
+            Self.isSHA256(fixtureSHA256),
+            Self.isNotBlank(osVersion),
+            Self.isNotBlank(osBuild)
         else {
             return nil
         }
@@ -41,9 +41,10 @@ public struct VerifiedProductGestureOutputContract: Equatable, Sendable {
     }
 
     private static func isSHA256(_ value: String) -> Bool {
-        value.count == 64 && value.unicodeScalars.allSatisfy { scalar in
-            CharacterSet(charactersIn: "0123456789abcdefABCDEF").contains(scalar)
-        }
+        value.count == 64
+            && value.unicodeScalars.allSatisfy { scalar in
+                CharacterSet(charactersIn: "0123456789abcdefABCDEF").contains(scalar)
+            }
     }
 }
 
@@ -66,7 +67,7 @@ public struct ProductGestureOutputSystemIdentity: Equatable, Sendable {
 
     public init?(osVersion: String, osBuild: String) {
         guard !osVersion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              !osBuild.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            !osBuild.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else {
             return nil
         }
@@ -109,6 +110,13 @@ public enum ProductGestureOutputFailure: String, Error, Equatable, Sendable {
 }
 
 public struct ProductGestureOutputCapability: Equatable, Sendable {
+    public static let defaultConfirmedFamilies: Set<TrackpadOutputEventFamily> = [.scroll]
+    public static let defaultTrialFamilies: Set<TrackpadOutputEventFamily> = [
+        .dockSwipe,
+        .magnification,
+    ]
+    public static let runtimeFamilies = defaultConfirmedFamilies.union(defaultTrialFamilies)
+
     public enum Status: String, Equatable, Sendable {
         case supported
         case unsupported
@@ -118,6 +126,8 @@ public struct ProductGestureOutputCapability: Equatable, Sendable {
     public let status: Status
     public let contract: VerifiedProductGestureOutputContract?
     public let supportedFamilies: Set<TrackpadOutputEventFamily>
+    public let confirmedFamilies: Set<TrackpadOutputEventFamily>
+    public let trialFamilies: Set<TrackpadOutputEventFamily>
     public let reason: String?
 
     public var isSupported: Bool {
@@ -149,6 +159,8 @@ public struct ProductGestureOutputCapability: Equatable, Sendable {
             status: .unsupported,
             contract: nil,
             supportedFamilies: [],
+            confirmedFamilies: [],
+            trialFamilies: [],
             reason: reason
         )
     }
@@ -169,14 +181,16 @@ public struct ProductGestureOutputCapability: Equatable, Sendable {
         }
 
         let fixture = document.fixture
-        guard let contract = VerifiedProductGestureOutputContract(
-            contractID: fixture.contractID,
-            schemaVersion: fixture.schemaVersion,
-            fixtureID: fixture.fixtureID,
-            fixtureSHA256: document.fixtureSHA256,
-            osVersion: fixture.osVersion,
-            osBuild: fixture.osBuild
-        ) else {
+        guard
+            let contract = VerifiedProductGestureOutputContract(
+                contractID: fixture.contractID,
+                schemaVersion: fixture.schemaVersion,
+                fixtureID: fixture.fixtureID,
+                fixtureSHA256: document.fixtureSHA256,
+                osVersion: fixture.osVersion,
+                osBuild: fixture.osBuild
+            )
+        else {
             return contractMismatch(
                 contract: nil,
                 reason: "検証済みfixtureからproduct output contract identityを構成できません。"
@@ -191,7 +205,7 @@ public struct ProductGestureOutputCapability: Equatable, Sendable {
         }
 
         guard contract.osVersion == systemIdentity.osVersion,
-              contract.osBuild == systemIdentity.osBuild
+            contract.osBuild == systemIdentity.osBuild
         else {
             return contractMismatch(
                 contract: contract,
@@ -203,7 +217,9 @@ public struct ProductGestureOutputCapability: Equatable, Sendable {
         return ProductGestureOutputCapability(
             status: .supported,
             contract: contract,
-            supportedFamilies: Set(TrackpadOutputEventFamily.allCases),
+            supportedFamilies: runtimeFamilies,
+            confirmedFamilies: defaultConfirmedFamilies,
+            trialFamilies: defaultTrialFamilies,
             reason: nil
         )
     }
@@ -212,11 +228,15 @@ public struct ProductGestureOutputCapability: Equatable, Sendable {
         status: Status,
         contract: VerifiedProductGestureOutputContract?,
         supportedFamilies: Set<TrackpadOutputEventFamily>,
+        confirmedFamilies: Set<TrackpadOutputEventFamily>,
+        trialFamilies: Set<TrackpadOutputEventFamily>,
         reason: String?
     ) {
         self.status = status
         self.contract = contract
         self.supportedFamilies = supportedFamilies
+        self.confirmedFamilies = confirmedFamilies
+        self.trialFamilies = trialFamilies
         self.reason = reason
     }
 
@@ -228,6 +248,8 @@ public struct ProductGestureOutputCapability: Equatable, Sendable {
             status: .contractMismatch,
             contract: contract,
             supportedFamilies: [],
+            confirmedFamilies: [],
+            trialFamilies: [],
             reason: reason
         )
     }
@@ -246,10 +268,14 @@ public struct ProductGestureOutputResult: Equatable, Sendable {
         let hasInvalidCount = generatedEventCount < 0 || failedEventCreationCount < 0
         self.generatedEventCount = max(generatedEventCount, 0)
         self.failedEventCreationCount = max(failedEventCreationCount, 0)
-        self.failure = failure ?? ((hasInvalidCount || self.failedEventCreationCount > 0) ? .eventCreationFailed : nil)
+        self.failure =
+            failure
+            ?? ((hasInvalidCount || self.failedEventCreationCount > 0) ? .eventCreationFailed : nil)
     }
 
-    public static func rejected(_ failure: ProductGestureOutputFailure) -> ProductGestureOutputResult {
+    public static func rejected(_ failure: ProductGestureOutputFailure)
+        -> ProductGestureOutputResult
+    {
         ProductGestureOutputResult(
             generatedEventCount: 0,
             failedEventCreationCount: 0,
@@ -271,9 +297,9 @@ public struct ProductGestureOutputTraceContext: Equatable, Sendable {
         executableSHA256: String
     ) {
         guard UUID(uuidString: captureRunToken)?.uuidString.lowercased() == captureRunToken,
-              !scenarioID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              Self.isCanonicalHex(repoHeadSHA, lengths: [40, 64]),
-              Self.isCanonicalHex(executableSHA256, lengths: [64])
+            !scenarioID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            Self.isCanonicalHex(repoHeadSHA, lengths: [40, 64]),
+            Self.isCanonicalHex(executableSHA256, lengths: [64])
         else {
             return nil
         }
@@ -284,9 +310,10 @@ public struct ProductGestureOutputTraceContext: Equatable, Sendable {
     }
 
     private static func isCanonicalHex(_ value: String, lengths: Set<Int>) -> Bool {
-        lengths.contains(value.count) && value.unicodeScalars.allSatisfy { scalar in
-            (48...57).contains(scalar.value) || (97...102).contains(scalar.value)
-        }
+        lengths.contains(value.count)
+            && value.unicodeScalars.allSatisfy { scalar in
+                (48...57).contains(scalar.value) || (97...102).contains(scalar.value)
+            }
     }
 }
 

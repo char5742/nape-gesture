@@ -15,8 +15,10 @@ public typealias ProductPostedEventObserver = (
 public enum TrackpadGestureOutputResources {
     public static let contractRelativePath = "TrackpadContracts/25F80/scroll-momentum-contract.json"
     public static let modelRelativePath = "TrackpadContracts/25F80/scroll-output-model.json"
-    public static let repositoryContractRelativePath = "Fixtures/trackpad-contract/25F80/scroll-momentum-contract.json"
-    public static let repositoryModelRelativePath = "Fixtures/trackpad-contract/25F80/scroll-output-model.json"
+    public static let repositoryContractRelativePath =
+        "Fixtures/trackpad-contract/25F80/scroll-momentum-contract.json"
+    public static let repositoryModelRelativePath =
+        "Fixtures/trackpad-contract/25F80/scroll-output-model.json"
 
     public static func loadContractData(
         bundle: Bundle = .main,
@@ -57,8 +59,8 @@ public enum TrackpadGestureOutputResources {
         if let explicitPath {
             let url = URL(fileURLWithPath: explicitPath)
             guard fileManager.isReadableFile(atPath: url.path),
-                  let data = try? Data(contentsOf: url),
-                  !data.isEmpty
+                let data = try? Data(contentsOf: url),
+                !data.isEmpty
             else {
                 return nil
             }
@@ -141,8 +143,8 @@ public final class TrackpadScrollCGEventBuilder {
         from specification: TrackpadScrollPreparedEvent
     ) -> CGEvent? {
         guard let wheel1 = int32(specification.deltaY.point),
-              let wheel2 = int32(specification.deltaX.point),
-              let event = scrollEventFactory(wheel1, wheel2)
+            let wheel2 = int32(specification.deltaX.point),
+            let event = scrollEventFactory(wheel1, wheel2)
         else {
             return nil
         }
@@ -176,7 +178,7 @@ public final class TrackpadScrollCGEventBuilder {
         classifier: Int64
     ) -> CGEvent? {
         guard let event = baseEventFactory(),
-              let eventType = CGEventType(rawValue: UInt32(contract.scrollCompanion.eventTypeRaw))
+            let eventType = CGEventType(rawValue: UInt32(contract.scrollCompanion.eventTypeRaw))
         else {
             return nil
         }
@@ -202,7 +204,8 @@ public final class TrackpadScrollCGEventBuilder {
             rawField(contract.scrollCompanion.phaseRawField),
             value: specification.companionPhase
         )
-        event.setIntegerValueField(rawField(135), value: classifier == contract.scrollCompanion.classifierValue ? 1 : 0)
+        event.setIntegerValueField(
+            rawField(135), value: classifier == contract.scrollCompanion.classifierValue ? 1 : 0)
         setMotionAliases(
             event,
             xMotion: specification.deltaX.gesture,
@@ -240,11 +243,15 @@ public final class TrackpadScrollCGEventBuilder {
         event.setIntegerValueField(.scrollWheelEventDeltaAxis1, value: specification.deltaY.line)
         event.setIntegerValueField(.scrollWheelEventDeltaAxis2, value: specification.deltaX.line)
         event.setIntegerValueField(.scrollWheelEventDeltaAxis3, value: 0)
-        event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1, value: specification.deltaY.fixed)
-        event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2, value: specification.deltaX.fixed)
+        event.setDoubleValueField(
+            .scrollWheelEventFixedPtDeltaAxis1, value: specification.deltaY.fixed)
+        event.setDoubleValueField(
+            .scrollWheelEventFixedPtDeltaAxis2, value: specification.deltaX.fixed)
         event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis3, value: 0.0)
-        event.setDoubleValueField(.scrollWheelEventPointDeltaAxis1, value: specification.deltaY.point)
-        event.setDoubleValueField(.scrollWheelEventPointDeltaAxis2, value: specification.deltaX.point)
+        event.setDoubleValueField(
+            .scrollWheelEventPointDeltaAxis1, value: specification.deltaY.point)
+        event.setDoubleValueField(
+            .scrollWheelEventPointDeltaAxis2, value: specification.deltaX.point)
         event.setDoubleValueField(.scrollWheelEventPointDeltaAxis3, value: 0.0)
     }
 
@@ -279,12 +286,13 @@ public final class TrackpadScrollCGEventBuilder {
             expectedType = contract.scrollCompanion.eventTypeRaw
         }
         guard event.type.rawValue == UInt32(expectedType),
-              event.timestamp == specification.timestamp.nanosecondsSinceStartup,
-              event.getIntegerValueField(rawField(39)) == 0,
-              event.getIntegerValueField(rawField(40)) == 0,
-              event.getIntegerValueField(.eventSourceUserData) == NapeGestureGeneratedEventMarker.value,
-              event.getIntegerValueField(rawField(contract.common.typeRawField)) == expectedType,
-              event.getIntegerValueField(rawField(contract.common.timestampRawField))
+            event.timestamp == specification.timestamp.nanosecondsSinceStartup,
+            event.getIntegerValueField(rawField(39)) == 0,
+            event.getIntegerValueField(rawField(40)) == 0,
+            event.getIntegerValueField(.eventSourceUserData)
+                == NapeGestureGeneratedEventMarker.value,
+            event.getIntegerValueField(rawField(contract.common.typeRawField)) == expectedType,
+            event.getIntegerValueField(rawField(contract.common.timestampRawField))
                 == Int64(specification.timestamp.nanosecondsSinceStartup)
         else {
             return false
@@ -340,10 +348,12 @@ public final class TrackpadScrollCGEventBuilder {
         specification: TrackpadScrollPreparedEvent,
         classifier: Int64
     ) -> Bool {
-        guard event.getIntegerValueField(rawField(contract.scrollCompanion.classifierRawField)) == classifier,
-              event.getIntegerValueField(rawField(contract.scrollCompanion.phaseRawField))
+        guard
+            event.getIntegerValueField(rawField(contract.scrollCompanion.classifierRawField))
+                == classifier,
+            event.getIntegerValueField(rawField(contract.scrollCompanion.phaseRawField))
                 == specification.companionPhase,
-              event.getIntegerValueField(rawField(135))
+            event.getIntegerValueField(rawField(135))
                 == (classifier == contract.scrollCompanion.classifierValue ? 1 : 0)
         else {
             return false
@@ -351,7 +361,7 @@ public final class TrackpadScrollCGEventBuilder {
         if classifier == contract.scrollCompanion.classifierValue {
             for (fieldText, value) in contract.scrollCompanion.constantRawFields {
                 guard let field = Int(fieldText),
-                      event.getIntegerValueField(rawField(field)) == value
+                    event.getIntegerValueField(rawField(field)) == value
                 else {
                     return false
                 }
@@ -362,12 +372,13 @@ public final class TrackpadScrollCGEventBuilder {
             doubleFields: contract.scrollCompanion.xMotionDoubleFields,
             bitFields: contract.scrollCompanion.xMotionFloatBitFields,
             expected: specification.deltaX.gesture
-        ) && validateMotionAliases(
-            event,
-            doubleFields: contract.scrollCompanion.yMotionDoubleFields,
-            bitFields: contract.scrollCompanion.yMotionFloatBitFields,
-            expected: specification.deltaY.gesture
         )
+            && validateMotionAliases(
+                event,
+                doubleFields: contract.scrollCompanion.yMotionDoubleFields,
+                bitFields: contract.scrollCompanion.yMotionFloatBitFields,
+                expected: specification.deltaY.gesture
+            )
     }
 
     private func validateMotionAliases(
@@ -378,15 +389,16 @@ public final class TrackpadScrollCGEventBuilder {
     ) -> Bool {
         doubleFields.allSatisfy {
             event.getDoubleValueField(rawField($0)).bitPattern == Double(expected).bitPattern
-        } && bitFields.allSatisfy {
-            event.getIntegerValueField(rawField($0)) == Int64(UInt64(expected.bitPattern))
         }
+            && bitFields.allSatisfy {
+                event.getIntegerValueField(rawField($0)) == Int64(UInt64(expected.bitPattern))
+            }
     }
 
     private func int32(_ value: Double) -> Int32? {
         guard value.isFinite,
-              value >= Double(Int32.min),
-              value <= Double(Int32.max)
+            value >= Double(Int32.min),
+            value <= Double(Int32.max)
         else {
             return nil
         }
@@ -479,25 +491,27 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
             systemIdentity: systemIdentity
         )
         guard validatedCapability.isSupported,
-              let verifiedContract = validatedCapability.contract,
-              let document = TrackpadScrollMomentumContractDocumentReader.read(data: contractData).document,
-              let modelData,
-              let registeredModel = TrackpadScrollOutputModelFixtureReader.read(
-                  modelData: modelData,
-                  contract: verifiedContract
-              ),
-              TrackpadScrollCGEventBuilder.supportsRawFieldLayout,
-              let outputModel = try? TrackpadScrollOutputModel(
-                  contract: document.fixture,
-                  parameters: registeredModel.parameters
-              )
+            let verifiedContract = validatedCapability.contract,
+            let document = TrackpadScrollMomentumContractDocumentReader.read(data: contractData)
+                .document,
+            let modelData,
+            let registeredModel = TrackpadScrollOutputModelFixtureReader.read(
+                modelData: modelData,
+                contract: verifiedContract
+            ),
+            TrackpadScrollCGEventBuilder.supportsRawFieldLayout,
+            let outputModel = try? TrackpadScrollOutputModel(
+                contract: document.fixture,
+                parameters: registeredModel.parameters
+            )
         else {
             if !validatedCapability.isSupported {
                 capability = validatedCapability
             } else if modelData == nil {
                 capability = .unsupported(reason: "trackpad scroll output model resourceが見つかりません。")
             } else if !TrackpadScrollCGEventBuilder.supportsRawFieldLayout {
-                capability = .unsupported(reason: "この環境では25F80 raw CGEvent field layoutを安全に構成できません。")
+                capability = .unsupported(
+                    reason: "この環境では25F80 raw CGEvent field layoutを安全に構成できません。")
             } else {
                 capability = .contractMismatch(
                     contract: validatedCapability.contract,
@@ -530,8 +544,10 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
         switch family {
         case .scroll:
             return model != nil && builder != nil
-        case .dockSwipe, .navigationSwipe, .magnification:
+        case .dockSwipe, .magnification:
             return gestureBuilder != nil
+        case .navigationSwipe:
+            return false
         }
     }
 
@@ -594,9 +610,11 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
 
         // 予約済みpostIndexと実投稿順を一致させるため、部分投稿の解消までは
         // 別sessionへ切り替えない。
-        guard !sessions.contains(where: {
-            $0.key != event.sessionID && $0.value.inFlight != nil
-        }) else {
+        guard
+            !sessions.contains(where: {
+                $0.key != event.sessionID && $0.value.inFlight != nil
+            })
+        else {
             return .rejected(.invalidSession)
         }
 
@@ -611,14 +629,15 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
             guard case .cancellation = event else {
                 return .rejected(.invalidSession)
             }
-            return cancel(event, replacing: inFlight, record: record, model: model, builder: builder)
+            return cancel(
+                event, replacing: inFlight, record: record, model: model, builder: builder)
         }
 
         let existingRecord = sessions[event.sessionID]
         let machine: TrackpadOutputSessionMachine
         if let existingRecord {
             machine = existingRecord.machine
-        } else if case let .input(frame) = event, frame.phase == .began {
+        } else if case .input(let frame) = event, frame.phase == .began {
             machine = TrackpadOutputSessionMachine(
                 sessionID: event.sessionID,
                 family: event.family
@@ -641,8 +660,8 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
         _ event: TrackpadOutputSessionEvent
     ) -> ProductGestureOutputResult {
         guard let gestureBuilder,
-              let specification = TrackpadGestureCandidatePreparedEvent(event),
-              let preparedEvent = gestureBuilder.makeEvent(from: specification)
+            let specification = TrackpadGestureCandidatePreparedEvent(event),
+            let preparedEvent = gestureBuilder.makeEvent(from: specification)
         else {
             return eventCreationFailure()
         }
@@ -654,7 +673,7 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
                 return .rejected(.invalidSession)
             }
             machine = existing.machine
-        } else if case let .input(frame) = event, frame.phase == .began {
+        } else if case .input(let frame) = event, frame.phase == .began {
             machine = TrackpadOutputSessionMachine(
                 sessionID: event.sessionID,
                 family: event.family
@@ -726,14 +745,16 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
                 rollbackRecord: record
             )
             guard resumed.failure == nil,
-                  let remainingRecord = sessions[cancellation.sessionID]
+                let remainingRecord = sessions[cancellation.sessionID]
             else {
                 return resumed
             }
-            guard let followup = cancellationAfterCompletedTerminalBatch(
-                cancellation,
-                machine: remainingRecord.machine
-            ) else {
+            guard
+                let followup = cancellationAfterCompletedTerminalBatch(
+                    cancellation,
+                    machine: remainingRecord.machine
+                )
+            else {
                 return ProductGestureOutputResult(
                     generatedEventCount: resumed.generatedEventCount,
                     failedEventCreationCount: 0,
@@ -856,8 +877,8 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
             )
             let nextIndexResult = nextPostIndex.addingReportingOverflow(1)
             guard !postIndexResult.overflow,
-                  postIndexResult.partialValue == nextPostIndex,
-                  !nextIndexResult.overflow
+                postIndexResult.partialValue == nextPostIndex,
+                !nextIndexResult.overflow
             else {
                 preserveFailedBatch(
                     batch,
@@ -983,8 +1004,8 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
         _ event: TrackpadOutputSessionEvent,
         machine: TrackpadOutputSessionMachine
     ) -> TrackpadOutputSessionEvent? {
-        guard case let .cancellation(frame) = event,
-              let lastCaptureOrder = machine.lastCaptureOrder
+        guard case .cancellation(let frame) = event,
+            let lastCaptureOrder = machine.lastCaptureOrder
         else {
             return nil
         }
@@ -1012,8 +1033,8 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
         if event == pendingEvent {
             return true
         }
-        guard case let .cancellation(eventFrame) = event,
-              case let .cancellation(pendingFrame) = pendingEvent
+        guard case .cancellation(let eventFrame) = event,
+            case .cancellation(let pendingFrame) = pendingEvent
         else {
             return false
         }
@@ -1026,9 +1047,9 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
 
     private func emitsTerminalBatch(_ event: TrackpadOutputSessionEvent) -> Bool {
         switch event {
-        case let .input(frame):
+        case .input(let frame):
             frame.phase == .ended || frame.phase == .cancelled
-        case let .momentum(frame):
+        case .momentum(let frame):
             frame.phase == .ended
         case .cancellation:
             true

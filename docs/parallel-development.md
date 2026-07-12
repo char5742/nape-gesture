@@ -46,7 +46,7 @@ Issue orchestration と証跡付き close は [ADR-0005](adr/0005-issue-orchestr
 
 ## 次の並列投入候補
 
-2026-07-11時点ではIssue #117を親にし、trackpad driver上位出力eventへの移行を次の順で進める。旧Issue #7の単一phase model、forced horizontal scroll、shortcut dry-runは移行前baselineであり、新経路の完了扱いにしない。
+2026-07-11時点ではIssue #117を親にし、trackpad driver上位出力eventへの移行を次の順で進める。旧Issue #7の単一phase model、forced horizontal scroll、shortcut dry-runは移行前baselineであり、新経路の完了扱いにしない。この表は当時の分担履歴として保持し、現行の3製品経路とNavigationSwipe候補の位置付けは[ADR-0048](adr/0048-separate-input-mode-event-family-os-result-and-evidence.md)を正とする。
 
 | 段階 | Issue | 目的 | 主な所有範囲 | 人間作業 |
 | --- | --- | --- | --- | --- |
@@ -55,17 +55,17 @@ Issue orchestration と証跡付き close は [ADR-0005](adr/0005-issue-orchestr
 | 1 | #129 | raw event analyzer / fixture比較 | analyzer、negative fixtures、contract report | なし |
 | 2 | #125 | 純正trackpad contract取得 | 保存済みraw log、scenario metadata | 純正trackpad物理操作だけ必要 |
 | 3 | #119 | scroll + companion gesture / momentum | scroll family adapter、session state | なし |
-| 3 | #126 | DockSwipe | Spaces / Mission Control family adapter | なし |
-| 3 | #127 | NavigationSwipe / magnification | page / zoom family adapter | なし |
+| 3 | #126 | DockSwipe | DockSwipe製品経路。Space切替 / Mission Control / App Exposéは別のOS結果 | なし |
+| 3 | #127 | magnification | magnification低レベルcontractとピンチ製品経路 | なし |
 | 4 | #122 | macOS compatibility adapter | version fixture、supported / mismatch判定 | なし |
 | 4 | #130 | daemon統合 / fail closed | runtime output coordinator、停止・復帰 | なし |
 | 4 | #131 | product / diagnostic分離 | module境界、CI guard、旧CI移行 | なし |
 | 5 | #132 | output性能baseline | queue / post latency、drop、p95 / p99 | なし |
-| 6 | #9 / #10 | 最終実機受入 | system-wide挙動、画面証跡、体感差分 | Nape Pro /純正trackpad物理操作だけ必要 |
+| 6 | #9 / #10 / #146 | 最終実機受入 | 低レベルevent contractとOS/App結果を分けた画面証跡、体感差分 | Nape Pro /純正trackpad物理操作だけ必要 |
 
 段階1は所有ファイルが重ならない範囲で並列化する。段階3もevent familyごとのmoduleを分けて並列化できる。段階4は共通interfaceが固まってから統合し、メインスレッドが依存方向、CI、runtime証跡をレビューする。
 
-`need:human`は#125と#9 / #10の物理操作にだけ付ける。logger、analyzer、adapter、fixture test、CI guard、GUI / doctor表示を先に完成させ、物理操作を依頼する時点で実行コマンドと保存先を確定させる。
+`need:human`は#125と#9 / #10 / #146の物理操作にだけ付ける。logger、analyzer、adapter、fixture test、CI guard、GUI / doctor表示を先に完成させ、物理操作を依頼する時点で実行コマンドと保存先を確定させる。
 
 ## 独立モデル監査
 

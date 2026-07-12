@@ -1,5 +1,7 @@
 # ADR-0017: System Behavior Test dry-run のシナリオ別機械判定
 
+> historical note: 本文のSpaces、Mission Control、ページ戻る/進む、ズーム、横スクロールは移行前診断scenarioの結果名であり、現行modeまたは低レベルevent familyではない。現在の用語境界は[ADR-0048](0048-separate-input-mode-event-family-os-result-and-evidence.md)を正とする。
+
 - 状態: 置換済み
 - 日付: 2026-07-09
 - 置換先: [ADR-0036](0036-emulate-trackpad-driver-output-events.md)

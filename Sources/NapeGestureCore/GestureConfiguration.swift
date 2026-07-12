@@ -12,9 +12,9 @@ public struct GestureConfiguration: Codable, Equatable, Sendable {
     public var momentum: MomentumConfiguration
 
     public init(
-        button3Mode: TrackpadGestureMode = .scrollAndNavigate,
-        button4Mode: TrackpadGestureMode = .spacesAndMissionControl,
-        button5Mode: TrackpadGestureMode = .zoom,
+        button3Mode: TrackpadGestureMode = .twoFingerSwipe,
+        button4Mode: TrackpadGestureMode = .systemSwipe,
+        button5Mode: TrackpadGestureMode = .pinch,
         deadZonePoints: Double = 8.0,
         dragSensitivity: Double = 1.0,
         wheelSensitivity: Double = 1.0,
@@ -49,24 +49,40 @@ public struct GestureConfiguration: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        let hasCanonicalModes = container.contains(.button3Mode)
+        let hasCanonicalModes =
+            container.contains(.button3Mode)
             || container.contains(.button4Mode)
             || container.contains(.button5Mode)
         if hasCanonicalModes {
-            button3Mode = try container.decodeIfPresent(TrackpadGestureMode.self, forKey: .button3Mode) ?? .scrollAndNavigate
-            button4Mode = try container.decodeIfPresent(TrackpadGestureMode.self, forKey: .button4Mode) ?? .spacesAndMissionControl
-            button5Mode = try container.decodeIfPresent(TrackpadGestureMode.self, forKey: .button5Mode) ?? .zoom
+            button3Mode =
+                try container.decodeIfPresent(TrackpadGestureMode.self, forKey: .button3Mode)
+                ?? .twoFingerSwipe
+            button4Mode =
+                try container.decodeIfPresent(TrackpadGestureMode.self, forKey: .button4Mode)
+                ?? .systemSwipe
+            button5Mode =
+                try container.decodeIfPresent(TrackpadGestureMode.self, forKey: .button5Mode)
+                ?? .pinch
         } else {
-            button3Mode = .scrollAndNavigate
-            button4Mode = .spacesAndMissionControl
-            button5Mode = .zoom
+            button3Mode = .twoFingerSwipe
+            button4Mode = .systemSwipe
+            button5Mode = .pinch
         }
         deadZonePoints = try container.decodeIfPresent(Double.self, forKey: .deadZonePoints) ?? 8.0
-        dragSensitivity = try container.decodeIfPresent(Double.self, forKey: .dragSensitivity) ?? 1.0
-        wheelSensitivity = try container.decodeIfPresent(Double.self, forKey: .wheelSensitivity) ?? 1.0
-        acceleration = try container.decodeIfPresent(GestureAccelerationConfiguration.self, forKey: .acceleration) ?? .default
-        cancellation = try container.decodeIfPresent(GestureCancellationConfiguration.self, forKey: .cancellation) ?? .default
-        momentum = try container.decodeIfPresent(MomentumConfiguration.self, forKey: .momentum) ?? .default
+        dragSensitivity =
+            try container.decodeIfPresent(Double.self, forKey: .dragSensitivity) ?? 1.0
+        wheelSensitivity =
+            try container.decodeIfPresent(Double.self, forKey: .wheelSensitivity) ?? 1.0
+        acceleration =
+            try container.decodeIfPresent(
+                GestureAccelerationConfiguration.self, forKey: .acceleration)
+            ?? .default
+        cancellation =
+            try container.decodeIfPresent(
+                GestureCancellationConfiguration.self, forKey: .cancellation)
+            ?? .default
+        momentum =
+            try container.decodeIfPresent(MomentumConfiguration.self, forKey: .momentum) ?? .default
     }
 
     public func encode(to encoder: Encoder) throws {

@@ -1,6 +1,6 @@
 # ADR-0043: 25F80 trackpad scrollを製品出力として構成する
 
-> bindingによるfamily選択の記述は[ADR-0047](0047-fixed-continuous-2d-trackpad-input.md)で置換済み。scroll contractの決定記録として保持する。
+> binding、active action、4 familyによる製品経路選択の記述は置換済み。現行の入力mode、active mode / family、3つの製品runtime経路、OS/App結果との境界は[ADR-0048](0048-separate-input-mode-event-family-os-result-and-evidence.md)を正とする。本ADR本文はscroll contract採択時の決定記録として保持する。
 
 - 状態: 採択
 - 日付: 2026-07-12

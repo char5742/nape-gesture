@@ -1,5 +1,7 @@
 # ADR-0038: trackpad出力sessionとmonotonic clockを共通化する
 
+> 現行の製品runtime capabilityは[ADR-0048](0048-separate-input-mode-event-family-os-result-and-evidence.md)の`scroll`、`DockSwipe`、`magnification` 3経路を正とする。`NavigationSwipe`を表現できる共通session modelは低レベル候補の解析・生成能力であり、独立製品機能またはsupported capabilityを意味しない。
+
 - 状態: 採択
 - 日付: 2026-07-11
 

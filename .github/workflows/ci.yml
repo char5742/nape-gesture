@@ -37,6 +37,15 @@ jobs:
       - name: Run core tests
         run: .build/debug/nape-gesture-core-tests
 
+      - name: Test settings mode migration
+        run: sh scripts/test-settings-mode-migration.sh .build/debug/nape-gesture
+
+      - name: Test doctor family state validator
+        run: |
+          ruby -c scripts/verify-doctor-family-state.rb
+          ruby -c scripts/test-verify-doctor-family-state.rb
+          ruby scripts/test-verify-doctor-family-state.rb
+
       - name: Run product output tests
         run: .build/debug/nape-gesture-product-output-tests
 
@@ -130,6 +139,7 @@ jobs:
           sh -n scripts/check-product-output-boundary.sh
           sh -n scripts/check-diagnostic-event-time.sh
           sh -n scripts/test-bundle-app-safety.sh
+          sh -n scripts/test-settings-mode-migration.sh
           ruby -c scripts/verify-trackpad-physical-observations.rb
           ruby scripts/verify-trackpad-physical-observations.rb --fixtures-only --json > /dev/null
           ruby -c scripts/derive-trackpad-scroll-output-model.rb

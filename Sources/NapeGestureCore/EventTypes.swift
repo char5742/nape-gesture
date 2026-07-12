@@ -8,8 +8,8 @@ public enum MouseButton: Int, Codable, Equatable, Hashable, Sendable {
     case button4 = 4
     case button5 = 5
 
-    public init(buttonNumber: Int64) {
-        self = MouseButton(rawValue: Int(buttonNumber)) ?? .button3
+    public init?(buttonNumber: Int64) {
+        self.init(rawValue: Int(buttonNumber))
     }
 
     public init?(hidButtonUsage: Int) {
@@ -60,7 +60,7 @@ public struct GestureCommand: Codable, Equatable, Sendable {
     public var timestamp: TimeInterval
 
     public init(
-        mode: TrackpadGestureMode = .scrollAndNavigate,
+        mode: TrackpadGestureMode = .twoFingerSwipe,
         kind: GestureCommandKind,
         phase: GesturePhase,
         direction: GestureDirection?,
@@ -95,7 +95,9 @@ public struct GestureCommand: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        mode = try container.decodeIfPresent(TrackpadGestureMode.self, forKey: .mode) ?? .scrollAndNavigate
+        mode =
+            try container.decodeIfPresent(TrackpadGestureMode.self, forKey: .mode)
+            ?? .twoFingerSwipe
         kind = try container.decode(GestureCommandKind.self, forKey: .kind)
         phase = try container.decode(GesturePhase.self, forKey: .phase)
         direction = try container.decodeIfPresent(GestureDirection.self, forKey: .direction)
@@ -114,13 +116,26 @@ public enum RawInputEvent: Equatable, Sendable {
     case wheel(deltaX: Double, deltaY: Double, time: TimeInterval)
     case cancel(time: TimeInterval)
 
+    public static func otherMouseButton(
+        buttonNumber: Int64,
+        isDown: Bool,
+        time: TimeInterval
+    ) -> RawInputEvent? {
+        guard let button = MouseButton(buttonNumber: buttonNumber) else {
+            return nil
+        }
+        return isDown
+            ? .buttonDown(button: button, time: time)
+            : .buttonUp(button: button, time: time)
+    }
+
     public var time: TimeInterval {
         switch self {
-        case let .buttonDown(_, time),
-             let .buttonUp(_, time),
-             let .move(_, _, time),
-             let .wheel(_, _, time),
-             let .cancel(time):
+        case .buttonDown(_, let time),
+            .buttonUp(_, let time),
+            .move(_, _, let time),
+            .wheel(_, _, let time),
+            .cancel(let time):
             return time
         }
     }

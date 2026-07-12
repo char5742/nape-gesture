@@ -36,7 +36,10 @@ for required_path in \
   Sources/nape-gesture-product-output-tests/main.swift \
   scripts/derive-trackpad-scroll-output-model.rb \
   scripts/finalize-product-output-provenance.rb \
-  scripts/test-finalize-product-output-provenance.rb
+  scripts/test-finalize-product-output-provenance.rb \
+  scripts/test-settings-mode-migration.sh \
+  scripts/verify-doctor-family-state.rb \
+  scripts/test-verify-doctor-family-state.rb
 do
   if ! git ls-files --error-unmatch "$required_path" >/dev/null 2>&1; then
     printf '%s\n' "完成証跡の必須fileがGit管理下にありません: $required_path" >&2
@@ -65,7 +68,7 @@ cat > "$summary_file" <<EOF
 ## 注意
 
 このスクリプトで埋められるのは機械証跡だけです。
-Nape Pro 実機、純正トラックパッドの残る4系列、TCC、Spaces / Mission Control の画面挙動、公証、Developer ID 署名は未完了のままです。
+Nape Pro実機、純正トラックパッドの未確定contract、縦横scroll / application navigation / Space切替 / Mission Control / App Exposé / ZoomのOS/App結果、TCC、公証、Developer ID署名は未完了のままです。
 
 ## コマンド結果
 
@@ -206,6 +209,12 @@ run_combined_success \
   sh scripts/test-check-provenance.sh
 
 run_combined_success \
+  "doctor family state検証器回帰テスト" \
+  "$provenance_dir/test-verify-doctor-family-state.log" \
+  "ruby scripts/test-verify-doctor-family-state.rb" \
+  ruby scripts/test-verify-doctor-family-state.rb
+
+run_combined_success \
   "製品gesture出力境界ガード" \
   "$provenance_dir/check-product-output-boundary.log" \
   "sh scripts/check-product-output-boundary.sh" \
@@ -240,6 +249,12 @@ run_combined_success \
   "$build_dir/core-tests.log" \
   ".build/debug/nape-gesture-core-tests" \
   .build/debug/nape-gesture-core-tests
+
+run_combined_success \
+  "旧mode設定canonical migration" \
+  "$build_dir/settings-mode-migration-tests.log" \
+  "sh scripts/test-settings-mode-migration.sh .build/debug/nape-gesture" \
+  sh scripts/test-settings-mode-migration.sh .build/debug/nape-gesture
 
 run_combined_success \
   "product output tests" \
@@ -546,10 +561,16 @@ run_split_success \
   .build/debug/nape-gesture doctor --config "$config_path" --benchmark-events 50000 --json
 
 run_combined_success \
-  "doctor JSON runtimeReadiness / tccStatus / permissionTarget / targetDeviceDiagnostics / outputContract field check" \
+  "doctor JSON runtimeReadiness / tccStatus / permissionTarget / targetDeviceDiagnostics field check" \
   "$doctor_dir/doctor-json-field-check.log" \
   "grep -q runtimeReadiness $doctor_dir/doctor-debug.json && grep -q tccStatus $doctor_dir/doctor-debug.json && grep -q permissionTarget $doctor_dir/doctor-debug.json && grep -q grantRequired $doctor_dir/doctor-debug.json && grep -q targetDeviceDiagnostics $doctor_dir/doctor-debug.json && grep -q outputContract $doctor_dir/doctor-debug.json" \
   sh -c "grep -q '\"runtimeReadiness\"' '$doctor_dir/doctor-debug.json' && grep -q '\"tccStatus\"' '$doctor_dir/doctor-debug.json' && grep -q '\"permissionTarget\"' '$doctor_dir/doctor-debug.json' && grep -q '\"grantRequired\"' '$doctor_dir/doctor-debug.json' && grep -q '\"targetDeviceDiagnostics\"' '$doctor_dir/doctor-debug.json' && grep -q '\"outputContract\"' '$doctor_dir/doctor-debug.json'"
+
+run_combined_success \
+  "doctor JSON product family state完全一致" \
+  "$doctor_dir/doctor-family-state.log" \
+  "ruby scripts/verify-doctor-family-state.rb $doctor_dir/doctor-debug.json" \
+  ruby scripts/verify-doctor-family-state.rb "$doctor_dir/doctor-debug.json"
 
 run_split_success \
   "doctor HID probe JSON" \
@@ -559,10 +580,16 @@ run_split_success \
   .build/debug/nape-gesture doctor --config "$config_path" --probe-hid --benchmark-events 1000 --json
 
 run_combined_success \
-  "doctor HID probe JSON runtimeReadiness / tccStatus / permissionTarget / targetDeviceDiagnostics / outputContract field check" \
+  "doctor HID probe JSON runtimeReadiness / tccStatus / permissionTarget / targetDeviceDiagnostics field check" \
   "$doctor_dir/doctor-hid-probe-json-field-check.log" \
   "grep -q runtimeReadiness $doctor_dir/doctor-hid-probe-debug.json && grep -q tccStatus $doctor_dir/doctor-hid-probe-debug.json && grep -q permissionTarget $doctor_dir/doctor-hid-probe-debug.json && grep -q grantRequired $doctor_dir/doctor-hid-probe-debug.json && grep -q targetDeviceDiagnostics $doctor_dir/doctor-hid-probe-debug.json && grep -q outputContract $doctor_dir/doctor-hid-probe-debug.json" \
   sh -c "grep -q '\"runtimeReadiness\"' '$doctor_dir/doctor-hid-probe-debug.json' && grep -q '\"tccStatus\"' '$doctor_dir/doctor-hid-probe-debug.json' && grep -q '\"permissionTarget\"' '$doctor_dir/doctor-hid-probe-debug.json' && grep -q '\"grantRequired\"' '$doctor_dir/doctor-hid-probe-debug.json' && grep -q '\"targetDeviceDiagnostics\"' '$doctor_dir/doctor-hid-probe-debug.json' && grep -q '\"outputContract\"' '$doctor_dir/doctor-hid-probe-debug.json'"
+
+run_combined_success \
+  "doctor HID probe JSON product family state完全一致" \
+  "$doctor_dir/doctor-hid-probe-family-state.log" \
+  "ruby scripts/verify-doctor-family-state.rb $doctor_dir/doctor-hid-probe-debug.json" \
+  ruby scripts/verify-doctor-family-state.rb "$doctor_dir/doctor-hid-probe-debug.json"
 
 run_split_expected_failure \
   "doctor assert-runtime-ready requires HID probe" \
@@ -853,10 +880,10 @@ cat >> "$summary_file" <<EOF
 ## 未完了の証跡
 
 - Nape Pro 実機の接続、HID 識別、操作ログ
-- 純正トラックパッドのNavigationSwipe左右marker、pinch方向marker、DockSwipe反対方向 / cancel、Mission Control / App Exposé再収録
+- 純正トラックパッドの2本指系列にあるNavigationSwipe候補左右marker、pinch方向marker、DockSwipe反対方向 / cancel、Mission Control / App Exposé再収録
 - TCC のアクセシビリティ / 入力監視許可操作
-- Spaces / Mission Control の画面挙動実測
-- Issue #10 の Safari / 対応アプリでのページ戻る、進む、ズーム、横スクロール画面挙動実測
+- Space切替 / Mission Control / App ExposéのOS画面結果実測
+- Issue #10 のSafari / 対応applicationでのapplication navigation、Zoom、縦横scroll結果実測
 - \`run\`、実イベント投稿、target 実測、常駐 CPU、入力遅延
 - Developer ID 署名、公証、stapler、Gatekeeper 評価
 

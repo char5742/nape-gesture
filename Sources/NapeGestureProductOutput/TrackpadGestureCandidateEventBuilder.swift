@@ -13,7 +13,7 @@ public struct TrackpadGestureCandidatePreparedEvent: Sendable {
         let phase: Int64
         let payload: TrackpadOutputPayload
         switch event {
-        case let .input(frame):
+        case .input(let frame):
             payload = frame.payload
             switch frame.phase {
             case .began: phase = 1
@@ -21,7 +21,7 @@ public struct TrackpadGestureCandidatePreparedEvent: Sendable {
             case .ended: phase = 4
             case .cancelled: phase = 8
             }
-        case let .cancellation(frame):
+        case .cancellation(let frame):
             guard let cancellationPayload = frame.payload else {
                 return nil
             }
@@ -36,8 +36,7 @@ public struct TrackpadGestureCandidatePreparedEvent: Sendable {
             eventTypeRaw = 29
             classifier = 32
         case .navigationSwipe:
-            eventTypeRaw = 30
-            classifier = 23
+            return nil
         case .magnification:
             eventTypeRaw = 29
             classifier = 8
@@ -68,14 +67,15 @@ public final class TrackpadGestureCandidateCGEventBuilder {
         from specification: TrackpadGestureCandidatePreparedEvent
     ) -> CGEvent? {
         guard TrackpadScrollCGEventBuilder.supportsRawFieldLayout,
-              let event = baseEventFactory(),
-              let eventType = CGEventType(rawValue: UInt32(specification.eventTypeRaw))
+            let event = baseEventFactory(),
+            let eventType = CGEventType(rawValue: UInt32(specification.eventTypeRaw))
         else {
             return nil
         }
         event.type = eventType
         event.timestamp = CGEventTimestamp(specification.timestamp.nanosecondsSinceStartup)
-        event.setIntegerValueField(.eventSourceUserData, value: NapeGestureGeneratedEventMarker.value)
+        event.setIntegerValueField(
+            .eventSourceUserData, value: NapeGestureGeneratedEventMarker.value)
         event.setIntegerValueField(
             rawField(typeRawField),
             value: Int64(specification.eventTypeRaw)
@@ -90,21 +90,16 @@ public final class TrackpadGestureCandidateCGEventBuilder {
         event.setIntegerValueField(rawField(132), value: specification.phase)
 
         switch specification.payload {
-        case let .dockSwipe(axis, progress, velocity):
+        case .dockSwipe(let axis, let progress, let velocity):
             configureDockSwipe(
                 event,
                 axis: axis,
                 progress: terminalValue(specification.phase, progress),
                 velocity: terminalValue(specification.phase, velocity)
             )
-        case let .navigationSwipe(direction, progress, velocity):
-            configureNavigationSwipe(
-                event,
-                direction: direction,
-                progress: terminalValue(specification.phase, progress),
-                velocity: terminalValue(specification.phase, velocity)
-            )
-        case let .magnification(_, scaleDelta, velocity):
+        case .navigationSwipe:
+            return nil
+        case .magnification(_, let scaleDelta, let velocity):
             configureMagnification(
                 event,
                 scaleDelta: terminalValue(specification.phase, scaleDelta),
@@ -115,15 +110,15 @@ public final class TrackpadGestureCandidateCGEventBuilder {
         }
 
         guard event.data != nil,
-              event.type.rawValue == UInt32(specification.eventTypeRaw),
-              event.getIntegerValueField(rawField(110)) == specification.classifier,
-              event.getIntegerValueField(rawField(132)) == specification.phase,
-              event.getIntegerValueField(rawField(39)) == 0,
-              event.getIntegerValueField(rawField(40)) == 0,
-              event.getIntegerValueField(rawField(typeRawField)) == specification.eventTypeRaw,
-              event.getIntegerValueField(rawField(timestampRawField))
+            event.type.rawValue == UInt32(specification.eventTypeRaw),
+            event.getIntegerValueField(rawField(110)) == specification.classifier,
+            event.getIntegerValueField(rawField(132)) == specification.phase,
+            event.getIntegerValueField(rawField(39)) == 0,
+            event.getIntegerValueField(rawField(40)) == 0,
+            event.getIntegerValueField(rawField(typeRawField)) == specification.eventTypeRaw,
+            event.getIntegerValueField(rawField(timestampRawField))
                 == Int64(specification.timestamp.nanosecondsSinceStartup),
-              event.getIntegerValueField(.eventSourceUserData)
+            event.getIntegerValueField(.eventSourceUserData)
                 == NapeGestureGeneratedEventMarker.value
         else {
             return nil
@@ -148,27 +143,6 @@ public final class TrackpadGestureCandidateCGEventBuilder {
         event.setIntegerValueField(rawField(144), value: 5)
         event.setDoubleValueField(rawField(125), value: axis == .horizontal ? velocity : 0)
         event.setDoubleValueField(rawField(126), value: axis == .vertical ? velocity : 0)
-    }
-
-    private func configureNavigationSwipe(
-        _ event: CGEvent,
-        direction: TrackpadOutputNavigationDirection,
-        progress: Double,
-        velocity: Double
-    ) {
-        let sign = direction == .left ? -1.0 : 1.0
-        let signedProgress = abs(progress) * sign
-        let signedVelocity = abs(velocity) * sign
-        event.setIntegerValueField(rawField(134), value: event.getIntegerValueField(rawField(132)))
-        event.setDoubleValueField(rawField(124), value: signedProgress)
-        event.setDoubleValueField(rawField(125), value: signedVelocity)
-        event.setDoubleValueField(rawField(126), value: 0)
-        event.setIntegerValueField(
-            rawField(135),
-            value: Int64(UInt64(Float(signedProgress).bitPattern))
-        )
-        event.setDoubleValueField(rawField(129), value: signedVelocity)
-        event.setDoubleValueField(rawField(130), value: 0)
     }
 
     private func configureMagnification(

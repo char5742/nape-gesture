@@ -1,5 +1,7 @@
 # ADR-0010: 離散割り当ての System Behavior Test dry-run 証跡
 
+> historical note: `page-back`、`page-forward`、`zoom-in`、`zoom-out`、`horizontal-scroll`は移行前診断scenario IDであり、現行modeまたは製品runtime capabilityではない。現在の用語境界は[ADR-0048](0048-separate-input-mode-event-family-os-result-and-evidence.md)を正とする。
+
 - 状態: 置換済み
 - 日付: 2026-07-09
 - 置換先: [ADR-0036](0036-emulate-trackpad-driver-output-events.md)

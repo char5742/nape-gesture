@@ -1,5 +1,7 @@
 # ADR-0036: trackpad driver上位出力eventを再現する
 
+> 現行の入力mode、低レベルevent family、OS/App結果、証跡状態の用語と製品runtime capabilityは[ADR-0048](0048-separate-input-mode-event-family-os-result-and-evidence.md)で置換した。本ADRのsystem-wide投稿、禁止fallback、compatibility adapter、fail-closed方針は維持する。
+
 - 状態: 採択（scroll companionのtimestamp同値要件はADR-0040で置換）
 - 日付: 2026-07-11
 
