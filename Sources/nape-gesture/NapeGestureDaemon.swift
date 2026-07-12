@@ -32,7 +32,10 @@ final class NapeGestureDaemon {
         self.hidInputMonitor = hidInputMonitor
         self.performanceRecorder = performanceRecorder
         self.onTerminalFailure = onTerminalFailure
-        actionExecutor = GestureActionExecutor(bindings: configuration.bindings, output: productOutput)
+        actionExecutor = GestureActionExecutor(
+            enabledModes: configuration.enabledModes,
+            output: productOutput
+        )
         recognizer = GestureRecognizer(configuration: configuration)
         momentum = MomentumEngine(configuration: configuration.momentum)
     }
@@ -146,7 +149,7 @@ final class NapeGestureDaemon {
         }
 
         if case let .buttonDown(button, time) = input,
-           button == configuration.activationButton,
+           configuration.mode(for: button) != .none,
            case .running = momentum.state
         {
             cancelMomentum()
@@ -326,7 +329,7 @@ final class NapeGestureDaemon {
     }
 
     private func emergencyStop(at time: TimeInterval) -> RuntimeSafetyDecision {
-        let releaseToSuppress = recognizer.isIdle ? nil : configuration.activationButton
+        let releaseToSuppress = recognizer.activeButton
         let decision = safetyState.stopForKillSwitch(
             at: time,
             suppressingReleaseOf: releaseToSuppress

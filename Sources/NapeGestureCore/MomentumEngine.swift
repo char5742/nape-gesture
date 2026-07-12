@@ -32,12 +32,13 @@ public struct MomentumEngine: Sendable {
             lastTime: command.timestamp,
             velocityX: command.velocityX,
             velocityY: command.velocityY,
-            direction: command.direction
+            direction: command.direction,
+            mode: command.mode
         )
     }
 
     public mutating func tick(at time: TimeInterval) -> GestureCommand? {
-        guard case let .running(lastTime, velocityX, velocityY, direction) = state else {
+        guard case let .running(lastTime, velocityX, velocityY, direction, mode) = state else {
             return nil
         }
 
@@ -46,6 +47,7 @@ public struct MomentumEngine: Sendable {
         else {
             state = .idle
             return GestureCommand(
+                mode: mode,
                 kind: .momentum,
                 phase: .ended,
                 direction: direction,
@@ -65,6 +67,7 @@ public struct MomentumEngine: Sendable {
         guard speed >= configuration.stopVelocity else {
             state = .idle
             return GestureCommand(
+                mode: mode,
                 kind: .momentum,
                 phase: .ended,
                 direction: direction,
@@ -80,10 +83,12 @@ public struct MomentumEngine: Sendable {
             lastTime: time,
             velocityX: nextVelocityX,
             velocityY: nextVelocityY,
-            direction: direction
+            direction: direction,
+            mode: mode
         )
 
         return GestureCommand(
+            mode: mode,
             kind: .momentum,
             phase: .momentum,
             direction: direction,
@@ -98,5 +103,5 @@ public struct MomentumEngine: Sendable {
 
 public enum MomentumState: Equatable, Sendable {
     case idle
-    case running(lastTime: TimeInterval, velocityX: Double, velocityY: Double, direction: GestureDirection?)
+    case running(lastTime: TimeInterval, velocityX: Double, velocityY: Double, direction: GestureDirection?, mode: TrackpadGestureMode)
 }

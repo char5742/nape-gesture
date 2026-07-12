@@ -101,8 +101,8 @@ final class CommandLineTool {
                   runtime を開始せずに active macOS GUI session 上で通常 GUI activation policy、設定ウィンドウ、status item NG、通常アプリメニュー、status menu を AppKit 内で作成して検査します。--assert で期待 UI と一致しない場合に失敗します。--config 未指定時は一時 config を使います。
 
               nape-gesture run [--performance-log <path>]
-                  特定ボタン押下中のドラッグ・ホイールを生成スクロールへ変換します。
-                  --config <path> で対象デバイスや感度を読み込みます。--performance-log で runtime 性能 JSON Lines を保存します。
+                  button 3 / 4 / 5の押下中入力を、設定したScroll & Navigate、Spaces & Mission Control、Zoomへ変換します。通常modeのbuttonは変換しません。
+                  --config <path> でbutton mode、対象デバイス、感度を読み込みます。--performance-log で runtime 性能 JSON Lines を保存します。
 
               nape-gesture log [--duration <秒>] [--out <path>] [--exclude-generated|--only-generated]
                   グローバル入力イベントを JSON Lines で記録します。メタ情報は標準エラー、イベント本体は標準出力または --out に出します。

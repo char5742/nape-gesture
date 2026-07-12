@@ -556,27 +556,20 @@ private func testChangedValidationAndPostFailureRecovery() {
     )
 }
 
-private func testSessionCoordinatorTransformsHorizontalAndMomentum() {
+private func testSessionCoordinatorProducesFixedTwoDimensionalScrollAndMomentum() {
     let collector = EventCollector()
     let adapter = makeAdapter(collector: collector)
-    let bindings = GestureBindings(
-        dragUp: .smoothScroll,
-        dragDown: .smoothScroll,
-        dragLeft: .smoothScroll,
-        dragRight: .smoothScroll,
-        wheel: .horizontalScroll
-    )
-    let coordinator = ProductGestureSessionCoordinator(bindings: bindings, output: adapter)
-    expect(coordinator.unsupportedRequiredFamilies.isEmpty, "scrollだけのbindingは起動前capability検査を通る")
+    let coordinator = ProductGestureSessionCoordinator(output: adapter)
+    expect(coordinator.unsupportedRequiredFamilies.isEmpty, "固定drag/scroll familyの起動前capability検査を通る")
 
     let began = coordinator.post(
         command: GestureCommand(
             kind: .wheel,
             phase: .began,
             direction: nil,
-            deltaX: 0,
+            deltaX: 20,
             deltaY: -40,
-            velocityX: 0,
+            velocityX: 200,
             velocityY: -400,
             timestamp: MonotonicEventClock.nowSeconds
         )
@@ -599,9 +592,9 @@ private func testSessionCoordinatorTransformsHorizontalAndMomentum() {
             kind: .momentum,
             phase: .momentum,
             direction: nil,
-            deltaX: 0,
+            deltaX: 2,
             deltaY: -4,
-            velocityX: 0,
+            velocityX: 150,
             velocityY: -300,
             timestamp: MonotonicEventClock.nowSeconds
         )
@@ -619,27 +612,25 @@ private func testSessionCoordinatorTransformsHorizontalAndMomentum() {
         )
     )
 
-    expect([began.action, ended.action, momentumBegan.action, momentumEnded.action].allSatisfy { $0 == .horizontalScroll }, "wheel由来momentumまでactive actionをhorizontalScrollへ固定する")
-    expect([began.result, ended.result, momentumBegan.result, momentumEnded.result].allSatisfy { $0.failure == nil }, "horizontal lifecycleをsession coordinatorで完結する")
+    expect([began.action, ended.action, momentumBegan.action, momentumEnded.action].allSatisfy { $0 == .smoothScroll }, "wheel由来momentumまでactive actionをsmoothScrollへ固定する")
+    expect([began.result, ended.result, momentumBegan.result, momentumEnded.result].allSatisfy { $0.failure == nil }, "2D scroll lifecycleをsession coordinatorで完結する")
     guard collector.events.count == 8 else {
-        failures.append("horizontal coordinator lifecycleのevent数が8ではない: \(collector.events.count)")
+        failures.append("2D scroll coordinator lifecycleのevent数が8ではない: \(collector.events.count)")
         return
     }
     let inputScroll = collector.events[0]
     let inputCompanion = collector.events[2]
     let firstMomentum = collector.events[6]
-    expect(inputScroll.getDoubleValueField(.scrollWheelEventPointDeltaAxis1) == 0, "horizontal inputのY point deltaを0にする")
-    expect(inputScroll.getDoubleValueField(.scrollWheelEventPointDeltaAxis2) != 0, "vertical wheel inputをX point deltaへ写す")
-    expect(inputCompanion.getDoubleValueField(rawField(113)) == -40, "horizontal companion motionをX aliasへ写す")
-    expect(inputCompanion.getDoubleValueField(rawField(119)) == 0, "horizontal companion Y motionを0にする")
+    expect(inputScroll.getDoubleValueField(.scrollWheelEventPointDeltaAxis1) != 0, "2D wheel inputのY point deltaを保持する")
+    expect(inputScroll.getDoubleValueField(.scrollWheelEventPointDeltaAxis2) != 0, "2D wheel inputのX point deltaを保持する")
+    expect(inputCompanion.getDoubleValueField(rawField(113)) == 20, "2D companionのX motionを保持する")
+    expect(inputCompanion.getDoubleValueField(rawField(119)) == -40, "2D companionのY motionを保持する")
     expect(firstMomentum.getIntegerValueField(rawField(123)) == 1, "最初のmomentum commandをbeganへ変換する")
-    expect(firstMomentum.getDoubleValueField(.scrollWheelEventPointDeltaAxis2) != 0, "horizontal momentumもX deltaを維持する")
+    expect(firstMomentum.getDoubleValueField(.scrollWheelEventPointDeltaAxis1) != 0, "momentumのY deltaを維持する")
+    expect(firstMomentum.getDoubleValueField(.scrollWheelEventPointDeltaAxis2) != 0, "momentumのX deltaを維持する")
 
-    let defaultCoordinator = ProductGestureSessionCoordinator(
-        bindings: .default,
-        output: makeAdapter(collector: EventCollector())
-    )
-    expect(defaultCoordinator.unsupportedRequiredFamilies.isEmpty, "default bindingの全familyを起動可能にする")
+    let fixedCoordinator = ProductGestureSessionCoordinator(output: makeAdapter(collector: EventCollector()))
+    expect(fixedCoordinator.unsupportedRequiredFamilies.isEmpty, "固定出力の全familyを起動可能にする")
 }
 
 private func candidateInputEvent(
@@ -740,48 +731,116 @@ private func testCandidateGestureFamilies() {
     expect(Set(collector.postedTrace.map(\.family)) == [.dockSwipe, .navigationSwipe, .magnification], "traceへ3 familyを記録する")
 }
 
-private func testCoordinatorProducesCandidatePayloads() {
+private func testCoordinatorFixesDragAxisAndSessionAcrossDirectionReversal() {
     let capability = makeAdapter(collector: EventCollector()).capability
-    let cases: [(GestureAction, GestureDirection, TrackpadOutputEventFamily)] = [
-        (.missionControl, .up, .dockSwipe),
-        (.spaceLeft, .left, .dockSwipe),
-        (.spaceRight, .right, .dockSwipe),
-        (.pageBack, .right, .navigationSwipe),
-        (.pageForward, .left, .navigationSwipe),
-        (.zoomIn, .up, .magnification),
-        (.zoomOut, .down, .magnification)
+    let output = PermissiveProductOutput(capability: capability)
+    let coordinator = ProductGestureSessionCoordinator(
+        output: output,
+        sessionSequence: TrackpadOutputSessionSequence(startingAt: 144)
+    )
+    let commands = [
+        GestureCommand(
+            mode: .spacesAndMissionControl,
+            kind: .drag,
+            phase: .began,
+            direction: .right,
+            deltaX: 60,
+            deltaY: 10,
+            velocityX: 600,
+            velocityY: 100,
+            timestamp: MonotonicEventClock.nowSeconds
+        ),
+        GestureCommand(
+            mode: .spacesAndMissionControl,
+            kind: .drag,
+            phase: .changed,
+            direction: .left,
+            deltaX: -30,
+            deltaY: 90,
+            velocityX: -300,
+            velocityY: 900,
+            timestamp: MonotonicEventClock.nowSeconds
+        ),
+        GestureCommand(
+            mode: .spacesAndMissionControl,
+            kind: .drag,
+            phase: .ended,
+            direction: .left,
+            deltaX: -5,
+            deltaY: 120,
+            velocityX: -50,
+            velocityY: 1_200,
+            timestamp: MonotonicEventClock.nowSeconds
+        )
     ]
-    for (action, direction, expectedFamily) in cases {
-        let output = PermissiveProductOutput(capability: capability)
-        let coordinator = ProductGestureSessionCoordinator(
-            bindings: GestureBindings(
-                dragUp: action,
-                dragDown: action,
-                dragLeft: action,
-                dragRight: action,
-                wheel: .smoothScroll
-            ),
-            output: output
-        )
-        let result = coordinator.post(
-            command: GestureCommand(
-                kind: .drag,
-                phase: .began,
-                direction: direction,
-                deltaX: direction == .left ? -60 : (direction == .right ? 60 : 0),
-                deltaY: direction == .up ? -60 : (direction == .down ? 60 : 0),
-                velocityX: direction == .left ? -600 : (direction == .right ? 600 : 0),
-                velocityY: direction == .up ? -600 : (direction == .down ? 600 : 0),
-                timestamp: MonotonicEventClock.nowSeconds
-            )
-        )
-        expect(result.result.failure == nil, "\(action)のcandidate payloadを生成する")
-        guard case let .input(frame)? = output.postedEvents.first else {
-            failures.append("\(action)のinput frameがありません")
-            continue
-        }
-        expect(frame.payload.family == expectedFamily, "\(action)を\(expectedFamily) payloadへ変換する")
+    let results = commands.map { coordinator.post(command: $0) }
+    expect(results.allSatisfy { $0.action == .dockSwipe }, "drag actionをDockSwipeへ固定する")
+    expect(results.allSatisfy { $0.result.failure == nil }, "方向反転を含むdrag sessionを完結する")
+
+    let frames = output.postedEvents.compactMap { event -> TrackpadOutputInputFrame? in
+        guard case let .input(frame) = event else { return nil }
+        return frame
     }
+    expect(frames.count == 3, "drag lifecycleを3 input frameとして投稿する")
+    expect(Set(frames.map(\.sessionID)).count == 1, "方向反転後も同一session IDを維持する")
+    expect(frames.first?.sessionID == TrackpadOutputSessionID(rawValue: 144), "指定sequenceのsession IDを使用する")
+    expect(frames.map(\.captureOrder) == [0, 1, 2], "方向反転後もcapture orderを連続させる")
+    expect(frames.allSatisfy { $0.payload.family == .dockSwipe }, "drag familyをDockSwipeへ固定する")
+    let payloads = frames.compactMap { frame -> (TrackpadOutputAxis, Double)? in
+        guard case let .dockSwipe(axis, progress, _) = frame.payload else { return nil }
+        return (axis, progress)
+    }
+    expect(payloads.count == 3, "全drag frameをDockSwipe payloadにする")
+    expect(payloads.allSatisfy { $0.0 == .horizontal }, "開始時の優勢軸をsession中固定する")
+    expect(payloads.dropFirst().allSatisfy { $0.1 < 0 }, "方向反転後は固定軸上の負方向progressを保持する")
+}
+
+private func testCoordinatorRoutesButtonModesWithoutDirectionBindings() {
+    let capability = makeAdapter(collector: EventCollector()).capability
+
+    let scrollOutput = PermissiveProductOutput(capability: capability)
+    let scrollCoordinator = ProductGestureSessionCoordinator(output: scrollOutput)
+    let scrollPost = scrollCoordinator.post(
+        command: GestureCommand(
+            mode: .scrollAndNavigate,
+            kind: .drag,
+            phase: .began,
+            direction: .right,
+            deltaX: 12,
+            deltaY: -8,
+            velocityX: 120,
+            velocityY: -80,
+            timestamp: MonotonicEventClock.nowSeconds
+        )
+    )
+    expect(scrollPost.action == .smoothScroll, "Scroll & Navigate modeをscroll familyへ接続する")
+    let scrollFamily = scrollOutput.postedEvents.compactMap { event -> TrackpadOutputEventFamily? in
+        guard case let .input(frame) = event else { return nil }
+        return frame.payload.family
+    }.first
+    expect(scrollFamily == .scroll, "mouse moveの2次元deltaをscroll payloadへ渡す")
+
+    let zoomOutput = PermissiveProductOutput(capability: capability)
+    let zoomCoordinator = ProductGestureSessionCoordinator(output: zoomOutput)
+    let zoomPost = zoomCoordinator.post(
+        command: GestureCommand(
+            mode: .zoom,
+            kind: .drag,
+            phase: .began,
+            direction: .up,
+            deltaX: 0,
+            deltaY: -20,
+            velocityX: 0,
+            velocityY: -200,
+            timestamp: MonotonicEventClock.nowSeconds
+        )
+    )
+    expect(zoomPost.action == .magnification, "Zoom modeをmagnification familyへ接続する")
+    let zoomFamily = zoomOutput.postedEvents.compactMap { event -> TrackpadOutputEventFamily? in
+        guard case let .input(frame) = event else { return nil }
+        return frame.payload.family
+    }.first
+    expect(zoomFamily == .magnification, "mouse moveをmagnification payloadへ渡す")
 }
 
 private func testCoordinatorChangedCreationFailureRecovery() {
@@ -793,14 +852,7 @@ private func testCoordinatorChangedCreationFailureRecovery() {
             shouldCreateBaseEvent ? CGEvent(source: nil) : nil
         }
     )
-    let bindings = GestureBindings(
-        dragUp: .smoothScroll,
-        dragDown: .smoothScroll,
-        dragLeft: .smoothScroll,
-        dragRight: .smoothScroll,
-        wheel: .smoothScroll
-    )
-    let coordinator = ProductGestureSessionCoordinator(bindings: bindings, output: adapter)
+    let coordinator = ProductGestureSessionCoordinator(output: adapter)
 
     let began = coordinator.post(
         command: GestureCommand(
@@ -853,18 +905,11 @@ private func testCoordinatorChangedCreationFailureRecovery() {
     expect(repeatedCancellation.generatedEventCount == 0, "閉じたcoordinator sessionの再cancellationでは投稿しない")
 }
 
-private func testCoordinatorActionMismatchPreservesCancellation() {
-    let collector = EventCollector()
-    let coordinator = ProductGestureSessionCoordinator(
-        bindings: GestureBindings(
-            dragUp: .smoothScroll,
-            dragDown: .smoothScroll,
-            dragLeft: .smoothScroll,
-            dragRight: .smoothScroll,
-            wheel: .horizontalScroll
-        ),
-        output: makeAdapter(collector: collector)
+private func testCoordinatorPreservesActiveActionAcrossChangedCommandKind() {
+    let output = PermissiveProductOutput(
+        capability: makeAdapter(collector: EventCollector()).capability
     )
+    let coordinator = ProductGestureSessionCoordinator(output: output)
     let began = coordinator.post(
         command: GestureCommand(
             kind: .wheel,
@@ -879,7 +924,7 @@ private func testCoordinatorActionMismatchPreservesCancellation() {
     )
     expect(began.result.failure == nil, "action不一致復旧テストのbeganを成功させる")
 
-    let mismatch = coordinator.post(
+    let changed = coordinator.post(
         command: GestureCommand(
             kind: .drag,
             phase: .changed,
@@ -891,26 +936,30 @@ private func testCoordinatorActionMismatchPreservesCancellation() {
             timestamp: MonotonicEventClock.nowSeconds
         )
     )
-    expect(mismatch.result.failure == .invalidSession, "active actionと異なるchangedを拒否する")
+    expect(changed.action == .smoothScroll, "後続command kindにかかわらず開始時actionを維持する")
+    expect(changed.result.failure == nil, "開始時actionでchangedを継続する")
+    guard output.postedEvents.count == 2,
+          case let .input(beganFrame) = output.postedEvents[0],
+          case let .input(changedFrame) = output.postedEvents[1]
+    else {
+        failures.append("active action継続検査のinput frameが2件ではない")
+        return
+    }
+    expect(changedFrame.sessionID == beganFrame.sessionID, "command kind変更後も同一session IDを維持する")
+    expect(changedFrame.captureOrder == 1, "command kind変更後もcapture orderを連続させる")
+    expect(changedFrame.payload.family == .scroll, "開始時のscroll familyを維持する")
 
     let cancellation = coordinator.cancelActive(
         reason: .inputLifecycle,
         at: MonotonicEventClock.nowSeconds
     )
-    expect(cancellation.failure == nil, "action不一致後もactive sessionをcancelできる")
-    expect(cancellation.generatedEventCount == 3, "action不一致後を3 event terminalで閉じる")
-    assertInputCancellationBatch(
-        Array(collector.events.suffix(3)),
-        label: "coordinator action mismatch cancellation"
-    )
+    expect(cancellation.failure == nil, "action継続後もactive sessionをcancelできる")
+    expect(cancellation.generatedEventCount == 1, "permissive outputへcancellationを1 frame渡す")
 }
 
 private func testCoordinatorInvalidPhasePreservesCancellation() {
     let collector = EventCollector()
-    let coordinator = ProductGestureSessionCoordinator(
-        bindings: GestureBindings(wheel: .horizontalScroll),
-        output: makeAdapter(collector: collector)
-    )
+    let coordinator = ProductGestureSessionCoordinator(output: makeAdapter(collector: collector))
     _ = coordinator.post(
         command: GestureCommand(
             kind: .wheel,
@@ -951,10 +1000,7 @@ private func testCoordinatorInvalidPhasePreservesCancellation() {
 private func testCoordinatorValidatesTransitionBeforeOutput() {
     let capabilitySource = makeAdapter(collector: EventCollector())
     let output = PermissiveProductOutput(capability: capabilitySource.capability)
-    let coordinator = ProductGestureSessionCoordinator(
-        bindings: GestureBindings(wheel: .smoothScroll),
-        output: output
-    )
+    let coordinator = ProductGestureSessionCoordinator(output: output)
     let now = MonotonicEventClock.nowSeconds
     _ = coordinator.post(
         command: GestureCommand(
@@ -1009,7 +1055,6 @@ private func testCoordinatorRetriesFailedCancellation() {
     let collector = EventCollector()
     var shouldCreateBaseEvent = true
     let coordinator = ProductGestureSessionCoordinator(
-        bindings: GestureBindings(wheel: .smoothScroll),
         output: makeAdapter(
             collector: collector,
             baseEventFactory: {
@@ -1433,12 +1478,10 @@ private func testRejectedBeganDoesNotResetAnotherCoordinatorSession() {
     sink.configure(failureAttempt: 2)
     let sharedAdapter = makeInjectedAdapter(sink: sink)
     let first = ProductGestureSessionCoordinator(
-        bindings: GestureBindings(wheel: .smoothScroll),
         output: sharedAdapter,
         sessionSequence: TrackpadOutputSessionSequence(startingAt: 160)
     )
     let second = ProductGestureSessionCoordinator(
-        bindings: GestureBindings(wheel: .smoothScroll),
         output: sharedAdapter,
         sessionSequence: TrackpadOutputSessionSequence(startingAt: 161)
     )
@@ -1633,16 +1676,7 @@ private func testOddSymmetricQuantizationOnBothAxes() {
 
 private func testActiveSessionRejectsEveryNewBegan() {
     let collector = EventCollector()
-    let coordinator = ProductGestureSessionCoordinator(
-        bindings: GestureBindings(
-            dragUp: .none,
-            dragDown: .smoothScroll,
-            dragLeft: .smoothScroll,
-            dragRight: .smoothScroll,
-            wheel: .smoothScroll
-        ),
-        output: makeAdapter(collector: collector)
-    )
+    let coordinator = ProductGestureSessionCoordinator(output: makeAdapter(collector: collector))
     let beganAt = MonotonicEventClock.nowSeconds
     let began = coordinator.post(
         command: GestureCommand(
@@ -1671,8 +1705,8 @@ private func testActiveSessionRejectsEveryNewBegan() {
             timestamp: MonotonicEventClock.nowSeconds
         )
     )
-    expect(noneBegan.action == .none, "none began検査のactionをnoneにする")
-    expect(noneBegan.result.failure == .invalidSession, "active中のaction none beganを成功扱いしない")
+    expect(noneBegan.action == .smoothScroll, "active中の新規beganでも既存actionを返す")
+    expect(noneBegan.result.failure == .invalidSession, "active中の別kind beganを成功扱いしない")
 
     let mappedBegan = coordinator.post(
         command: GestureCommand(
@@ -1702,10 +1736,7 @@ private func testActiveSessionRejectsEveryNewBegan() {
 
 private func testCancellationTimestampRegressionIsNormalized() {
     let collector = EventCollector()
-    let coordinator = ProductGestureSessionCoordinator(
-        bindings: GestureBindings(wheel: .smoothScroll),
-        output: makeAdapter(collector: collector)
-    )
+    let coordinator = ProductGestureSessionCoordinator(output: makeAdapter(collector: collector))
     let beganAt = MonotonicEventClock.nowSeconds
     let began = coordinator.post(
         command: GestureCommand(
@@ -1742,10 +1773,7 @@ private func testCoordinatorClosesPartialBeganAndRetriesPartialCancellation() {
         let beganCollector = EventCollector()
         let beganSink = InjectedPostSink(collector: beganCollector)
         beganSink.configure(failureAttempt: failureAttempt)
-        let beganCoordinator = ProductGestureSessionCoordinator(
-            bindings: GestureBindings(wheel: .smoothScroll),
-            output: makeInjectedAdapter(sink: beganSink)
-        )
+        let beganCoordinator = ProductGestureSessionCoordinator(output: makeInjectedAdapter(sink: beganSink))
         let beganAt = MonotonicEventClock.nowSeconds
         let partialBegan = beganCoordinator.post(
             command: GestureCommand(
@@ -1779,10 +1807,7 @@ private func testCoordinatorClosesPartialBeganAndRetriesPartialCancellation() {
         let terminalCollector = EventCollector()
         let terminalSink = InjectedPostSink(collector: terminalCollector)
         terminalSink.configure(failureAttempt: nil)
-        let terminalCoordinator = ProductGestureSessionCoordinator(
-            bindings: GestureBindings(wheel: .smoothScroll),
-            output: makeInjectedAdapter(sink: terminalSink)
-        )
+        let terminalCoordinator = ProductGestureSessionCoordinator(output: makeInjectedAdapter(sink: terminalSink))
         let terminalBeganAt = MonotonicEventClock.nowSeconds
         _ = terminalCoordinator.post(
             command: GestureCommand(
@@ -1836,11 +1861,12 @@ testFailClosedPaths()
 testExplicitResourceOverridesFailClosed()
 testChangedCreationFailureRecovery()
 testChangedValidationAndPostFailureRecovery()
-testSessionCoordinatorTransformsHorizontalAndMomentum()
+testSessionCoordinatorProducesFixedTwoDimensionalScrollAndMomentum()
 testCandidateGestureFamilies()
-testCoordinatorProducesCandidatePayloads()
+testCoordinatorFixesDragAxisAndSessionAcrossDirectionReversal()
+testCoordinatorRoutesButtonModesWithoutDirectionBindings()
 testCoordinatorChangedCreationFailureRecovery()
-testCoordinatorActionMismatchPreservesCancellation()
+testCoordinatorPreservesActiveActionAcrossChangedCommandKind()
 testCoordinatorInvalidPhasePreservesCancellation()
 testCoordinatorValidatesTransitionBeforeOutput()
 testCoordinatorRetriesFailedCancellation()

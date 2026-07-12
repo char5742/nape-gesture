@@ -127,15 +127,15 @@ struct AnalyzeLogCommand {
                 failures.append("未生成の Control + Option + Command + G keyDown / keyUp がありません。")
             }
             if !hasGestureBeforeKillSwitch(records) {
-                failures.append("キルスイッチ前に未生成の activation button 押下とジェスチャー入力がありません。")
+                failures.append("キルスイッチ前に未生成のgesture button押下とジェスチャー入力がありません。")
             }
         case .normalAfterRelease:
             failures.append(contentsOf: unmarkedActivationButtonFailures(records: records))
             if analysis.unmarkedMoveEvents == 0 {
-                failures.append("activation button 解放後の未生成移動イベントがありません。")
+                failures.append("gesture button解放後の未生成移動イベントがありません。")
             }
             if !analysis.hasUnmarkedClickDragWheel {
-                failures.append("activation button 解放後の通常クリック / 通常ドラッグ / 通常ホイールが揃っていません。")
+                failures.append("gesture button解放後の通常クリック / 通常ドラッグ / 通常ホイールが揃っていません。")
             }
             if analysis.generatedEvents > 0 {
                 failures.append("通常入力通過シナリオに Nape Gesture 生成イベントが混在しています。")
@@ -273,10 +273,10 @@ struct AnalyzeLogCommand {
     ) -> [String] {
         var failures = unmarkedActivationButtonFailures(records: records)
         if requiresDrag, !hasUnmarkedActivationButtonDrag(records: records) {
-            failures.append("未生成の activation button 押下中ドラッグがありません。")
+            failures.append("未生成のgesture button押下中ドラッグがありません。")
         }
         if requiresWheel, analysis.unmarkedWheelEvents == 0 {
-            failures.append("未生成の activation button 押下中ホイールがありません。")
+            failures.append("未生成のgesture button押下中ホイールがありません。")
         }
         if analysis.generatedEvents > 0 {
             failures.append("未生成入力シナリオに Nape Gesture 生成イベントが混在しています。")
@@ -288,30 +288,30 @@ struct AnalyzeLogCommand {
     }
 
     private static func hasUnmarkedActivationButtonDrag(records: [InputLogRecord]) -> Bool {
-        let activationButtonNumber = Int64(GestureConfiguration.default.activationButton.rawValue)
+        let gestureButtonNumbers = Set(GestureConfiguration.default.enabledButtons.map { Int64($0.rawValue) })
         return records.contains {
             !$0.generatedByNapeGesture
                 && $0.typeName == "otherMouseDragged"
-                && $0.buttonNumber == activationButtonNumber
+                && gestureButtonNumbers.contains($0.buttonNumber)
         }
     }
 
     private static func unmarkedActivationButtonFailures(records: [InputLogRecord]) -> [String] {
-        let activationButtonNumber = Int64(GestureConfiguration.default.activationButton.rawValue)
+        let gestureButtonNumbers = Set(GestureConfiguration.default.enabledButtons.map { Int64($0.rawValue) })
         var failures: [String] = []
         if !records.contains(where: {
             !$0.generatedByNapeGesture
                 && $0.typeName == "otherMouseDown"
-                && $0.buttonNumber == activationButtonNumber
+                && gestureButtonNumbers.contains($0.buttonNumber)
         }) {
-            failures.append("未生成の activation button down がありません。")
+            failures.append("未生成のgesture button downがありません。")
         }
         if !records.contains(where: {
             !$0.generatedByNapeGesture
                 && $0.typeName == "otherMouseUp"
-                && $0.buttonNumber == activationButtonNumber
+                && gestureButtonNumbers.contains($0.buttonNumber)
         }) {
-            failures.append("未生成の activation button up がありません。")
+            failures.append("未生成のgesture button upがありません。")
         }
         return failures
     }

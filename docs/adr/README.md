@@ -17,7 +17,6 @@
 | [ADR-0008](0008-runtime-recovery-boundary-evidence.md) | Runtime recovery 境界条件の機械証跡化 | Issue #13、スリープ復帰、入力監視、復旧 |
 | [ADR-0009](0009-target-device-association-window-assertion.md) | 対象デバイス紐づけ秒の機械判定 | Issue #5、HID / event tap 時刻差、associationWindow |
 | [ADR-0011](0011-doctor-runtime-ready-assertion.md) | doctor runtime ready の機械判定 | Issue #13、Issue #16、権限、HID probe、対象デバイス一致 |
-| [ADR-0012](0012-settings-ui-gesture-action-coverage.md) | 設定 UI の GestureAction 網羅性 | 設定 UI、GestureAction、アプリ別設定不要 |
 | [ADR-0013](0013-normal-input-passthrough-dry-run-assertion.md) | 通常入力通過 dry-run の機械判定 | Issue #6、Issue #16、normal-after-release、analyze-log |
 | [ADR-0014](0014-kill-switch-dry-run-shortcut-assertion.md) | キルスイッチ dry-run のショートカット機械判定 | Issue #12、Issue #16、kill-switch、analyze-log |
 | [ADR-0015](0015-gesture-wheel-then-kill-switch-evidence.md) | ジェスチャー中キルスイッチの前段証跡 | Issue #12、Issue #16、gesture-wheel-then-kill-switch |
@@ -47,6 +46,7 @@
 | [ADR-0043](0043-trackpad-scroll-product-output.md) | 25F80 trackpad scrollを製品出力として構成する | 軸別odd quadratic、967 pair、type 22 / 29、system-wide、provenance、field 39 / 40 |
 | [ADR-0044](0044-atomic-app-bundle-installation.md) | 検証済みapp bundleを原子的に導入する | bundle-app、renameatx_np、fingerprint、既存bundle保持、strict CLI |
 | [ADR-0046](0046-trial-output-for-remaining-trackpad-families.md) | 残るtrackpad familyを25F80試用出力として有効化する | DockSwipe、NavigationSwipe、magnification、試用、25F80 |
+| [ADR-0047](0047-fixed-continuous-2d-trackpad-input.md) | 方向別bindingを廃止しボタンごとのtrackpad modeへ接続する | Issue #144、button 3 / 4 / 5、mode、DockSwipe、scroll、NavigationSwipe、magnification |
 
 ## 置換済み
 
@@ -56,6 +56,7 @@
 | [ADR-0029](0029-grok-operational-surface.md) | Grok運用知見をAGENTS.mdとCodex skillに同期する | [ADR-0035](0035-discontinue-grok-independent-audit.md) |
 | [ADR-0010](0010-system-test-discrete-assignment-dry-run-evidence.md) | 離散割り当てのSystem Behavior Test dry-run証跡 | [ADR-0036](0036-emulate-trackpad-driver-output-events.md) |
 | [ADR-0017](0017-system-test-scenario-assertion.md) | System Behavior Test dry-runのシナリオ別機械判定 | [ADR-0036](0036-emulate-trackpad-driver-output-events.md) |
+| [ADR-0012](0012-settings-ui-gesture-action-coverage.md) | 設定 UI の GestureAction 網羅性 | [ADR-0047](0047-fixed-continuous-2d-trackpad-input.md) |
 
 ## 却下
 

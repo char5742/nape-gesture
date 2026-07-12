@@ -1,5 +1,21 @@
 import Foundation
 
+public enum TrackpadGestureMode: String, Codable, Equatable, Sendable, CaseIterable {
+    case none
+    case scrollAndNavigate
+    case spacesAndMissionControl
+    case zoom
+
+    public var displayName: String {
+        switch self {
+        case .none: "通常"
+        case .scrollAndNavigate: "Scroll & Navigate"
+        case .spacesAndMissionControl: "Spaces & Mission Control"
+        case .zoom: "Zoom"
+        }
+    }
+}
+
 public enum GestureAction: String, Codable, Equatable, Sendable, CaseIterable {
     case none
     case smoothScroll
@@ -11,65 +27,16 @@ public enum GestureAction: String, Codable, Equatable, Sendable, CaseIterable {
     case pageForward
     case zoomIn
     case zoomOut
-
-    public static let settingsSelectableActions: [GestureAction] = allCases
+    case dockSwipe
+    case magnification
 
     public var supportsMomentum: Bool {
         switch self {
         case .smoothScroll, .horizontalScroll:
             return true
         case .none, .missionControl, .spaceLeft, .spaceRight,
-             .pageBack, .pageForward, .zoomIn, .zoomOut:
+             .pageBack, .pageForward, .zoomIn, .zoomOut, .dockSwipe, .magnification:
             return false
-        }
-    }
-}
-
-public struct GestureBindings: Codable, Equatable, Sendable {
-    public var dragUp: GestureAction
-    public var dragDown: GestureAction
-    public var dragLeft: GestureAction
-    public var dragRight: GestureAction
-    public var wheel: GestureAction
-
-    public init(
-        dragUp: GestureAction = .missionControl,
-        dragDown: GestureAction = .smoothScroll,
-        dragLeft: GestureAction = .spaceLeft,
-        dragRight: GestureAction = .spaceRight,
-        wheel: GestureAction = .horizontalScroll
-    ) {
-        self.dragUp = dragUp
-        self.dragDown = dragDown
-        self.dragLeft = dragLeft
-        self.dragRight = dragRight
-        self.wheel = wheel
-    }
-
-    public static let `default` = GestureBindings()
-
-    public func action(for command: GestureCommand) -> GestureAction {
-        switch command.kind {
-        case .wheel:
-            return wheel
-        case .drag, .momentum:
-            guard let direction = command.direction else {
-                return .smoothScroll
-            }
-            return action(for: direction)
-        }
-    }
-
-    public func action(for direction: GestureDirection) -> GestureAction {
-        switch direction {
-        case .up:
-            return dragUp
-        case .down:
-            return dragDown
-        case .left:
-            return dragLeft
-        case .right:
-            return dragRight
         }
     }
 }

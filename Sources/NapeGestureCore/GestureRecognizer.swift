@@ -6,6 +6,8 @@ public struct GestureRecognizer: Sendable {
     private let configuration: GestureConfiguration
     private var lastVelocityX: Double = 0
     private var lastVelocityY: Double = 0
+    private var sessionButton: MouseButton?
+    private var sessionMode: TrackpadGestureMode?
 
     public init(configuration: GestureConfiguration = .default) {
         self.configuration = configuration
@@ -14,16 +16,22 @@ public struct GestureRecognizer: Sendable {
     public mutating func handle(_ event: RawInputEvent) -> GestureDecision {
         switch event {
         case let .buttonDown(button, time):
-            guard button == configuration.activationButton else {
+            guard state == .idle else {
                 return GestureDecision(shouldSuppressOriginal: false)
             }
+            let mode = configuration.mode(for: button)
+            guard mode != .none else {
+                return GestureDecision(shouldSuppressOriginal: false)
+            }
+            sessionButton = button
+            sessionMode = mode
             state = .armed(startTime: time, lastTime: time, totalX: 0, totalY: 0)
             lastVelocityX = 0
             lastVelocityY = 0
             return GestureDecision(shouldSuppressOriginal: true)
 
         case let .buttonUp(button, time):
-            guard button == configuration.activationButton else {
+            guard button == sessionButton else {
                 return GestureDecision(shouldSuppressOriginal: false)
             }
             if shouldCancelForTiming(at: time) {
@@ -52,6 +60,10 @@ public struct GestureRecognizer: Sendable {
         state == .idle
     }
 
+    public var activeButton: MouseButton? {
+        sessionButton
+    }
+
     private mutating func handleMove(deltaX: Double, deltaY: Double, time: TimeInterval) -> GestureDecision {
         switch state {
         case .idle:
@@ -70,7 +82,7 @@ public struct GestureRecognizer: Sendable {
                 return GestureDecision(shouldSuppressOriginal: true)
             }
 
-            let direction = lockedDirection(deltaX: nextX, deltaY: nextY)
+            let direction = GestureDirection.dominant(deltaX: nextX, deltaY: nextY)
             let accelerated = acceleratedDeltas(
                 deltaX: nextX,
                 deltaY: nextY,
@@ -82,6 +94,7 @@ public struct GestureRecognizer: Sendable {
             return GestureDecision(
                 commands: [
                     GestureCommand(
+                        mode: activeMode,
                         kind: .drag,
                         phase: .began,
                         direction: direction,
@@ -102,10 +115,6 @@ public struct GestureRecognizer: Sendable {
             lastVelocityX = velocity.x
             lastVelocityY = velocity.y
 
-            if shouldCancelForOffAxisMovement(direction: direction, totalX: nextX, totalY: nextY) {
-                return finish(at: time, cancelled: true)
-            }
-
             let accelerated = acceleratedDeltas(
                 deltaX: deltaX,
                 deltaY: deltaY,
@@ -117,6 +126,7 @@ public struct GestureRecognizer: Sendable {
             return GestureDecision(
                 commands: [
                     GestureCommand(
+                        mode: activeMode,
                         kind: .drag,
                         phase: .changed,
                         direction: direction,
@@ -152,6 +162,7 @@ public struct GestureRecognizer: Sendable {
             return GestureDecision(
                 commands: [
                     GestureCommand(
+                        mode: activeMode,
                         kind: .wheel,
                         phase: .began,
                         direction: nil,
@@ -180,6 +191,7 @@ public struct GestureRecognizer: Sendable {
             return GestureDecision(
                 commands: [
                     GestureCommand(
+                        mode: activeMode,
                         kind: .wheel,
                         phase: .changed,
                         direction: nil,
@@ -200,7 +212,10 @@ public struct GestureRecognizer: Sendable {
 
     private mutating func finish(at time: TimeInterval, cancelled: Bool) -> GestureDecision {
         let finishedState = state
+        let mode = activeMode
         state = .idle
+        sessionButton = nil
+        sessionMode = nil
 
         switch finishedState {
         case .idle:
@@ -213,6 +228,7 @@ public struct GestureRecognizer: Sendable {
             return GestureDecision(
                 commands: [
                     GestureCommand(
+                        mode: mode,
                         kind: .drag,
                         phase: cancelled ? .cancelled : .ended,
                         direction: direction,
@@ -230,6 +246,7 @@ public struct GestureRecognizer: Sendable {
             return GestureDecision(
                 commands: [
                     GestureCommand(
+                        mode: mode,
                         kind: .wheel,
                         phase: cancelled ? .cancelled : .ended,
                         direction: nil,
@@ -245,13 +262,8 @@ public struct GestureRecognizer: Sendable {
         }
     }
 
-    private func lockedDirection(deltaX: Double, deltaY: Double) -> GestureDirection? {
-        let absoluteX = abs(deltaX)
-        let absoluteY = abs(deltaY)
-        guard max(absoluteX, absoluteY) >= min(absoluteX, absoluteY) * configuration.directionLockRatio else {
-            return nil
-        }
-        return GestureDirection.dominant(deltaX: deltaX, deltaY: deltaY)
+    private var activeMode: TrackpadGestureMode {
+        sessionMode ?? .none
     }
 
     private func velocity(deltaX: Double, deltaY: Double, previousTime: TimeInterval, time: TimeInterval) -> (x: Double, y: Double) {
@@ -318,33 +330,6 @@ public struct GestureRecognizer: Sendable {
         }
     }
 
-    private func shouldCancelForOffAxisMovement(
-        direction: GestureDirection?,
-        totalX: Double,
-        totalY: Double
-    ) -> Bool {
-        guard let direction else {
-            return false
-        }
-
-        let ratio = configuration.cancellation.offAxisCancelRatio
-        guard ratio > 0 else {
-            return false
-        }
-
-        let alongAxis: Double
-        let offAxis: Double
-        switch direction {
-        case .left, .right:
-            alongAxis = abs(totalX)
-            offAxis = abs(totalY)
-        case .up, .down:
-            alongAxis = abs(totalY)
-            offAxis = abs(totalX)
-        }
-
-        return offAxis >= configuration.deadZonePoints && offAxis > alongAxis * ratio
-    }
 }
 
 public enum GestureState: Equatable, Sendable {

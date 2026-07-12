@@ -6,12 +6,12 @@ final class GestureActionExecutor {
     private let coordinator: ProductGestureSessionCoordinator
 
     init(
-        bindings: GestureBindings,
+        enabledModes: Set<TrackpadGestureMode>,
         output: any ProductGestureOutput = TrackpadGestureOutputAdapter(),
         sessionSequence: TrackpadOutputSessionSequence = TrackpadOutputSessionSequence()
     ) {
         coordinator = ProductGestureSessionCoordinator(
-            bindings: bindings,
+            enabledModes: enabledModes,
             output: output,
             sessionSequence: sessionSequence
         )
@@ -24,7 +24,7 @@ final class GestureActionExecutor {
             guard unsupported.isEmpty else {
                 let names = unsupported.map(\.rawValue).sorted().joined(separator: ", ")
                 throw ToolError.trackpadOutputContractUnavailable(
-                    "現在のbindingに必要なproduct output familyが未対応です: \(names)"
+                    "固定ジェスチャーに必要なproduct output familyが未対応です: \(names)"
                 )
             }
         case .unsupported:

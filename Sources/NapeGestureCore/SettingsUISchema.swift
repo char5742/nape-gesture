@@ -6,14 +6,13 @@ public enum SettingsUISection: String, Codable, Equatable, Sendable, CaseIterabl
     case momentum
     case cancellation
     case targetDevice
-    case bindings
 }
 
 public enum SettingsUIControlKind: String, Codable, Equatable, Sendable {
     case numberTextField
     case textField
     case checkbox
-    case actionPopup
+    case popup
 }
 
 public struct SettingsUIFieldDescriptor: Codable, Equatable, Sendable {
@@ -22,30 +21,28 @@ public struct SettingsUIFieldDescriptor: Codable, Equatable, Sendable {
     public var section: SettingsUISection
     public var controlKind: SettingsUIControlKind
     public var settingsPath: String
-    public var selectableActions: [GestureAction]
 
     public init(
         field: SettingsUIField,
         label: String,
         section: SettingsUISection,
         controlKind: SettingsUIControlKind,
-        settingsPath: String,
-        selectableActions: [GestureAction] = []
+        settingsPath: String
     ) {
         self.field = field
         self.label = label
         self.section = section
         self.controlKind = controlKind
         self.settingsPath = settingsPath
-        self.selectableActions = selectableActions
     }
 }
 
 public enum SettingsUIField: String, Codable, Equatable, Sendable, CaseIterable {
-    case activationButton
+    case button3Mode
+    case button4Mode
+    case button5Mode
     case targetDeviceAssociationWindow
     case deadZonePoints
-    case directionLockRatio
     case dragSensitivity
     case wheelSensitivity
     case accelerationEnabled
@@ -59,7 +56,6 @@ public enum SettingsUIField: String, Codable, Equatable, Sendable, CaseIterable 
     case momentumFrameInterval
     case cancellationMaximumDuration
     case cancellationMaximumInactivityInterval
-    case cancellationOffAxisCancelRatio
     case targetVendorID
     case targetProductID
     case targetManufacturerContains
@@ -68,11 +64,6 @@ public enum SettingsUIField: String, Codable, Equatable, Sendable, CaseIterable 
     case targetUsagePage
     case targetUsage
     case requireMatchingTargetDevice
-    case bindingDragUp
-    case bindingDragDown
-    case bindingDragLeft
-    case bindingDragRight
-    case bindingWheel
 
     public static var descriptors: [SettingsUIFieldDescriptor] {
         allCases.map(\.descriptor)
@@ -80,14 +71,16 @@ public enum SettingsUIField: String, Codable, Equatable, Sendable, CaseIterable 
 
     public var descriptor: SettingsUIFieldDescriptor {
         switch self {
-        case .activationButton:
-            return number("ジェスチャーボタン番号", .gesture, "gesture.activationButton")
+        case .button3Mode:
+            return popup("ボタン3", .gesture, "gesture.button3Mode")
+        case .button4Mode:
+            return popup("ボタン4", .gesture, "gesture.button4Mode")
+        case .button5Mode:
+            return popup("ボタン5", .gesture, "gesture.button5Mode")
         case .targetDeviceAssociationWindow:
             return number("対象入力の紐づけ秒", .targetDevice, "targetDeviceAssociation.associationWindow")
         case .deadZonePoints:
             return number("デッドゾーン pt", .gesture, "gesture.deadZonePoints")
-        case .directionLockRatio:
-            return number("方向ロック比", .gesture, "gesture.directionLockRatio")
         case .dragSensitivity:
             return number("ドラッグ感度", .gesture, "gesture.dragSensitivity")
         case .wheelSensitivity:
@@ -114,8 +107,6 @@ public enum SettingsUIField: String, Codable, Equatable, Sendable, CaseIterable 
             return number("最大ジェスチャー秒", .cancellation, "gesture.cancellation.maximumDuration")
         case .cancellationMaximumInactivityInterval:
             return number("無入力キャンセル秒", .cancellation, "gesture.cancellation.maximumInactivityInterval")
-        case .cancellationOffAxisCancelRatio:
-            return number("軸ずれキャンセル比", .cancellation, "gesture.cancellation.offAxisCancelRatio")
         case .targetVendorID:
             return number("対象 vendor ID", .targetDevice, "targetDevices[0].vendorID")
         case .targetProductID:
@@ -132,16 +123,6 @@ public enum SettingsUIField: String, Codable, Equatable, Sendable, CaseIterable 
             return number("対象 usage", .targetDevice, "targetDevices[0].primaryUsage")
         case .requireMatchingTargetDevice:
             return checkbox("対象デバイス一致を必須にする", .targetDevice, "requireMatchingTargetDevice")
-        case .bindingDragUp:
-            return action("上ドラッグ", "gesture.bindings.dragUp")
-        case .bindingDragDown:
-            return action("下ドラッグ", "gesture.bindings.dragDown")
-        case .bindingDragLeft:
-            return action("左ドラッグ", "gesture.bindings.dragLeft")
-        case .bindingDragRight:
-            return action("右ドラッグ", "gesture.bindings.dragRight")
-        case .bindingWheel:
-            return action("ホイール", "gesture.bindings.wheel")
         }
     }
 
@@ -187,17 +168,18 @@ public enum SettingsUIField: String, Codable, Equatable, Sendable, CaseIterable 
         )
     }
 
-    private func action(
+    private func popup(
         _ label: String,
+        _ section: SettingsUISection,
         _ settingsPath: String
     ) -> SettingsUIFieldDescriptor {
         SettingsUIFieldDescriptor(
             field: self,
             label: label,
-            section: .bindings,
-            controlKind: .actionPopup,
-            settingsPath: settingsPath,
-            selectableActions: GestureAction.settingsSelectableActions
+            section: section,
+            controlKind: .popup,
+            settingsPath: settingsPath
         )
     }
+
 }

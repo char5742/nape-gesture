@@ -67,7 +67,7 @@ struct SystemBehaviorTestCommand {
                   キルスイッチ相当の Control + Option + Command + G を未マークのキーイベントとして生成します。
 
               gesture-drag
-                  既定の activation button 押下、左ドラッグ、解放を未マークのマウスイベントとして生成します。
+                  既定のbutton 4押下、左ドラッグ、解放を未マークのマウスイベントとして生成します。
 
               gesture-wheel
                   既定の activation button 押下中のホイールを未マークのスクロールイベントとして生成します。
@@ -76,7 +76,7 @@ struct SystemBehaviorTestCommand {
                   既定の activation button 押下中にホイールを生成し、その最中にキルスイッチを未マークキーイベントとして生成します。
 
               normal-after-release
-                  既定の activation button 解放後に通常の移動、左クリック、左ドラッグ、ホイールを未マークイベントとして生成します。
+                  既定のbutton 4解放後に通常の移動、左クリック、左ドラッグ、ホイールを未マークイベントとして生成します。
 
             例:
               nape-gesture system-test run --scenario space-left --target finder --amount 1800 --steps 36
@@ -362,9 +362,11 @@ struct SystemBehaviorTestCommand {
         traceOutputPath: String?,
         traceContext: ProductGestureOutputTraceContext?
     ) throws {
-        guard let firstCommand = commands.first else {
+        guard !commands.isEmpty else {
             throw ToolError.invalidValue("product scroll command", "入力列が空です。")
         }
+        let firstCommand = commands[0]
+        let action = GestureAction.smoothScroll
         var postedTrace: [ProductGestureOutputPostedEventTrace] = []
         let traceObserver: ProductPostedEventObserver? = traceOutputPath == nil
             ? nil
@@ -381,17 +383,7 @@ struct SystemBehaviorTestCommand {
             )
         }
 
-        let action: GestureAction = firstCommand.deltaX == 0
-            ? .smoothScroll
-            : .horizontalScroll
         let coordinator = ProductGestureSessionCoordinator(
-            bindings: GestureBindings(
-                dragUp: action,
-                dragDown: action,
-                dragLeft: action,
-                dragRight: action,
-                wheel: action
-            ),
             output: adapter
         )
         guard coordinator.unsupportedRequiredFamilies.isEmpty else {
@@ -1167,7 +1159,7 @@ private struct SystemTestPlan {
     var interval: TimeInterval
     var postToPid: pid_t?
     var activationButtonNumber: Int64 {
-        Int64(GestureConfiguration.default.activationButton.rawValue)
+        Int64(MouseButton.button4.rawValue)
     }
 
     var maximumPlannedOffset: TimeInterval {
