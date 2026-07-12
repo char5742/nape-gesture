@@ -32,7 +32,8 @@ final class AnalyzeTrackpadEventLogCommand {
             path: configuration.provenancePath,
             required: manifest.value?.evidenceKind == .generatedProduct,
             expectedLogSHA256: manifest.value?.logSHA256 ?? logSHA256,
-            expectedEvents: eventLogs
+            expectedEvents: eventLogs,
+            expectedManifest: manifest.value
         )
         let contractComparison = analyzeContract(
             path: configuration.contractPath,
@@ -231,7 +232,8 @@ final class AnalyzeTrackpadEventLogCommand {
         path: String?,
         required: Bool,
         expectedLogSHA256: String,
-        expectedEvents: [TrackpadDriverEventLog]
+        expectedEvents: [TrackpadDriverEventLog],
+        expectedManifest: TrackpadDriverEventCaptureManifest?
     ) -> TrackpadEventProvenanceSection {
         guard let path else {
             let issues = required
@@ -297,15 +299,27 @@ final class AnalyzeTrackpadEventLogCommand {
         let analysis = TrackpadOutputProvenanceAnalyzer.analyze(
             records: documents.map(\.record),
             expectedLogSHA256: expectedLogSHA256,
-            expectedEvents: expectedEvents
+            expectedEvents: expectedEvents,
+            expectedCaptureRunToken: expectedManifest?.captureRunToken,
+            expectedScenarioID: expectedManifest?.scenarioID,
+            expectedRepoHeadSHA: expectedManifest?.repoHeadSHA,
+            expectedExecutableSHA256: expectedManifest?.loggerExecutableSHA256
         )
+        let issues = required && !unknownFields.isEmpty
+            ? [
+                TrackpadEventSectionIssue(
+                    code: "unknown_fields",
+                    message: "generatedProduct provenanceに未知fieldがあります。"
+                )
+            ]
+            : []
         return TrackpadEventProvenanceSection(
             required: required,
             provided: true,
             recordCount: documents.count,
             unknownFields: unknownFields,
             analysis: analysis,
-            issues: []
+            issues: issues
         )
     }
 
@@ -374,7 +388,7 @@ final class AnalyzeTrackpadEventLogCommand {
             nape-gesture analyze-trackpad-event-log <log.jsonl> --manifest <manifest.json> [--provenance <trace.jsonl>] [--contract <scroll-momentum-contract.json>] [--json]
 
             trackpad-event-logの現行raw schema、capture manifest、serialized CGEvent再構築を検証します。
-            evidenceKindがgeneratedProductの場合は--provenanceが必須です。生成marker、actual event type、raw target process field、配送provenanceを照合し、製品source境界guardと併せてPID、Accessibility、shortcut経路を禁止します。
+            evidenceKindがgeneratedProductの場合は--provenanceが必須です。生成marker、actual event type、直接投稿trace、配送provenanceを照合し、投稿前event検証と製品source境界guardを併用してPID、Accessibility、shortcut経路を禁止します。
             --contract指定時は登録済みfixtureのID / SHA-256 / schema / OS buildを照合し、確定済みscroll / momentum lifecycle、terminal、scroll companionを比較します。NavigationSwipe、magnification、DockSwipeは未確定のため受理しません。
             合成eventの成功はlogger / analyzer経路の機械検証であり、純正trackpad contract値の完成証跡にはなりません。
             問題がある場合もreportを出力した後に非ゼロ終了します。
@@ -395,6 +409,7 @@ final class AnalyzeTrackpadEventLogCommand {
         "scenarioID",
         "deviceLabel",
         "repoHeadSHA",
+        "captureRunToken",
         "loggerVersion",
         "loggerExecutableSHA256",
         "captureStartedAt",
@@ -404,6 +419,7 @@ final class AnalyzeTrackpadEventLogCommand {
     private static let provenanceFieldNames: Set<String> = [
         "schemaVersion",
         "logSHA256",
+        "traceSHA256",
         "captureIndex",
         "sessionID",
         "family",
@@ -411,6 +427,12 @@ final class AnalyzeTrackpadEventLogCommand {
         "eventTypeRaw",
         "delivery",
         "eventKind",
+        "captureRunToken",
+        "scenarioID",
+        "repoHeadSHA",
+        "executableSHA256",
+        "prePostTargetProcessSerialNumber",
+        "prePostTargetUnixProcessID",
         "destinationPID",
         "accessibilityElementRole",
         "keyboardKeyCode"

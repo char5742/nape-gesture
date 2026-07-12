@@ -19,6 +19,31 @@ if [ ! -f Package.swift ] || [ "$git_root" != "$repo_root" ]; then
   exit 1
 fi
 
+repo_head_sha=$(git rev-parse HEAD 2>/dev/null)
+tracked_status=$(git status --porcelain --untracked-files=no 2>/dev/null)
+if [ -z "$repo_head_sha" ] || [ -n "$tracked_status" ]; then
+  printf '%s\n' "完成証跡はcleanなtracked treeから取得してください。repoHead=${repo_head_sha:-unknown}" >&2
+  [ -z "$tracked_status" ] || printf '%s\n' "$tracked_status" >&2
+  exit 1
+fi
+
+for required_path in \
+  Fixtures/trackpad-contract/25F80/scroll-output-model-samples.json \
+  Fixtures/trackpad-contract/25F80/scroll-output-model.json \
+  Sources/NapeGestureProductOutput/ProductGestureSessionCoordinator.swift \
+  Sources/NapeGestureProductOutput/TrackpadGestureOutputAdapter.swift \
+  Sources/NapeGestureProductOutput/TrackpadScrollOutputModel.swift \
+  Sources/nape-gesture-product-output-tests/main.swift \
+  scripts/derive-trackpad-scroll-output-model.rb \
+  scripts/finalize-product-output-provenance.rb \
+  scripts/test-finalize-product-output-provenance.rb
+do
+  if ! git ls-files --error-unmatch "$required_path" >/dev/null 2>&1; then
+    printf '%s\n' "完成証跡の必須fileがGit管理下にありません: $required_path" >&2
+    exit 1
+  fi
+done
+
 artifact_root=${NAPE_COMPLETION_ARTIFACT_ROOT:-"artifacts/completion/$(date +%F)/machine-evidence"}
 commands_file="$artifact_root/commands.txt"
 summary_file="$artifact_root/summary.md"
@@ -33,6 +58,8 @@ cat > "$summary_file" <<EOF
 
 - 証跡 root: \`$artifact_root\`
 - 実行日時: $(date '+%F %T %z')
+- repo HEAD: `$repo_head_sha`
+- tracked tree: clean
 - 対象: 実機、TCC 操作、実イベント投稿なしで取得できる機械証跡
 
 ## 注意
@@ -191,10 +218,46 @@ run_combined_success \
   swift build --scratch-path .build
 
 run_combined_success \
+  "debug binary保存" \
+  "$build_dir/debug-binary-copy.log" \
+  "cp .build/debug/nape-gesture $build_dir/nape-gesture.debug" \
+  cp .build/debug/nape-gesture "$build_dir/nape-gesture.debug"
+
+run_combined_success \
+  "debug binary SHA-256" \
+  "$build_dir/debug-binary-sha256.txt" \
+  "shasum -a 256 $build_dir/nape-gesture.debug" \
+  shasum -a 256 "$build_dir/nape-gesture.debug"
+
+run_combined_success \
   "core tests" \
   "$build_dir/core-tests.log" \
   ".build/debug/nape-gesture-core-tests" \
   .build/debug/nape-gesture-core-tests
+
+run_combined_success \
+  "product output tests" \
+  "$build_dir/product-output-tests.log" \
+  ".build/debug/nape-gesture-product-output-tests" \
+  .build/debug/nape-gesture-product-output-tests
+
+run_combined_success \
+  "Trackpad scroll output model再導出" \
+  "$build_dir/scroll-output-model-derivation.log" \
+  "ruby scripts/derive-trackpad-scroll-output-model.rb | cmp - Fixtures/trackpad-contract/25F80/scroll-output-model.json" \
+  sh -c 'ruby scripts/derive-trackpad-scroll-output-model.rb | cmp - Fixtures/trackpad-contract/25F80/scroll-output-model.json'
+
+run_combined_success \
+  "製品output provenance確定テスト" \
+  "$build_dir/product-output-provenance-finalizer-tests.log" \
+  "ruby scripts/test-finalize-product-output-provenance.rb" \
+  ruby scripts/test-finalize-product-output-provenance.rb
+
+run_combined_success \
+  "app bundle原子的置換・保持テスト" \
+  "$build_dir/bundle-app-safety-tests.log" \
+  "sh scripts/test-bundle-app-safety.sh .build/debug/nape-gesture" \
+  sh scripts/test-bundle-app-safety.sh .build/debug/nape-gesture
 
 mkdir -p "$trackpad_analyzer_dir"
 
@@ -426,6 +489,18 @@ run_combined_success \
   "$bundle_dir/third-party-notices-cmp.log" \
   "cmp THIRD_PARTY_NOTICES.md .build/NapeGesture.app/Contents/Resources/THIRD_PARTY_NOTICES.md" \
   cmp THIRD_PARTY_NOTICES.md .build/NapeGesture.app/Contents/Resources/THIRD_PARTY_NOTICES.md
+
+run_combined_success \
+  "Trackpad scroll contract bundle一致確認" \
+  "$bundle_dir/trackpad-scroll-contract-cmp.log" \
+  "cmp Fixtures/trackpad-contract/25F80/scroll-momentum-contract.json .build/NapeGesture.app/Contents/Resources/TrackpadContracts/25F80/scroll-momentum-contract.json" \
+  cmp Fixtures/trackpad-contract/25F80/scroll-momentum-contract.json .build/NapeGesture.app/Contents/Resources/TrackpadContracts/25F80/scroll-momentum-contract.json
+
+run_combined_success \
+  "Trackpad scroll output model bundle一致確認" \
+  "$bundle_dir/trackpad-scroll-output-model-cmp.log" \
+  "cmp Fixtures/trackpad-contract/25F80/scroll-output-model.json .build/NapeGesture.app/Contents/Resources/TrackpadContracts/25F80/scroll-output-model.json" \
+  cmp Fixtures/trackpad-contract/25F80/scroll-output-model.json .build/NapeGesture.app/Contents/Resources/TrackpadContracts/25F80/scroll-output-model.json
 
 run_combined_success \
   "app bundle ad-hoc 署名" \

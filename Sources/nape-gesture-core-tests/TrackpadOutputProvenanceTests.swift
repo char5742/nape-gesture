@@ -4,14 +4,16 @@ import NapeGestureCore
 func runTrackpadOutputProvenanceTests() {
     testTrackpadOutputProvenanceAcceptsSystemWideGestureRecords()
     testTrackpadOutputProvenanceRejectsForbiddenDeliveryAndEventKinds()
+    testTrackpadOutputProvenanceRejectsTraceIdentityAndPrePostTargetMismatch()
     testTrackpadOutputProvenanceRejectsCaptureOrderHashAndFamilyMismatch()
+    testTrackpadOutputProvenanceRejectsNoncanonicalLogSHA256()
     testTrackpadOutputProvenanceAcceptsTimestampRegression()
     testTrackpadOutputProvenanceRejectsCaptureLogMismatch()
     testTrackpadOutputProvenanceAcceptsActualScrollWithGeneratedMarker()
     testTrackpadOutputProvenanceAcceptsScrollFamilyCompanionGesture()
     testTrackpadOutputProvenanceRejectsActualKeyMasqueradingAsScroll()
     testTrackpadOutputProvenanceRejectsEveryKnownForbiddenActualType()
-    testTrackpadOutputProvenanceRejectsRawTargetProcessFields()
+    testTrackpadOutputProvenanceAcceptsWindowServerResolvedTargetFields()
     testTrackpadOutputProvenanceRejectsMissingGeneratedMarker()
     testTrackpadOutputProvenanceKeepsPrivateGestureTypesUnclassified()
     testTrackpadOutputProvenanceDocumentReaderIsStrictAndPreservesUnknownFields()
@@ -137,6 +139,42 @@ private func testTrackpadOutputProvenanceRejectsForbiddenDeliveryAndEventKinds()
     expect(codes.contains(.forbiddenEventKind), "generated key eventを検出する")
 }
 
+private func testTrackpadOutputProvenanceRejectsTraceIdentityAndPrePostTargetMismatch() {
+    let sha = String(repeating: "8", count: 64)
+    var first = makeProvenanceRecord(captureIndex: 0, timestamp: 100, logSHA256: sha)
+    first.captureRunToken = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+    first.scenarioID = "wrong-scenario"
+    first.repoHeadSHA = String(repeating: "e", count: 40)
+    first.executableSHA256 = String(repeating: "f", count: 64)
+    first.prePostTargetUnixProcessID = 42
+
+    var second = makeProvenanceRecord(captureIndex: 1, timestamp: 101, logSHA256: sha)
+    second.traceSHA256 = String(repeating: "9", count: 64)
+    second.sessionID = TrackpadOutputSessionID(rawValue: 2)
+
+    let analysis = TrackpadOutputProvenanceAnalyzer.analyze(
+        records: [first, second],
+        expectedLogSHA256: sha,
+        expectedEvents: [
+            makeActualEvent(captureIndex: 0, timestamp: 100),
+            makeActualEvent(captureIndex: 1, timestamp: 101)
+        ],
+        expectedCaptureRunToken: "11111111-2222-3333-4444-555555555555",
+        expectedScenarioID: "provenance-test",
+        expectedRepoHeadSHA: String(repeating: "c", count: 40),
+        expectedExecutableSHA256: String(repeating: "d", count: 64)
+    )
+    let codes = Set(analysis.issues.map(\.code))
+
+    expect(codes.contains(.captureRunTokenMismatch), "manifestと異なるcapture run tokenを拒否する")
+    expect(codes.contains(.scenarioIDMismatch), "manifestと異なるscenario IDを拒否する")
+    expect(codes.contains(.repoHeadSHAMismatch), "manifestと異なるrepo HEAD SHAを拒否する")
+    expect(codes.contains(.executableSHA256Mismatch), "manifestと異なるbinary SHAを拒否する")
+    expect(codes.contains(.traceSHA256Mismatch), "record間で異なるtrace SHAを拒否する")
+    expect(codes.contains(.sessionIDMismatch), "record間で異なるsession IDを拒否する")
+    expect(codes.contains(.prePostTargetProcessPresent), "投稿前target process fieldの非0を拒否する")
+}
+
 private func testTrackpadOutputProvenanceRejectsCaptureOrderHashAndFamilyMismatch() {
     let expectedSHA = String(repeating: "c", count: 64)
     let records = [
@@ -166,6 +204,36 @@ private func testTrackpadOutputProvenanceRejectsCaptureOrderHashAndFamilyMismatc
     expect(codes.contains(.invalidLogSHA256), "不正なrecord SHA-256を検出する")
     expect(codes.contains(.logSHA256Mismatch), "別logを参照するrecordを検出する")
     expect(codes.contains(.familyEventKindMismatch), "familyとevent kindの不一致を検出する")
+}
+
+private func testTrackpadOutputProvenanceRejectsNoncanonicalLogSHA256() {
+    let lowercaseSHA = String(repeating: "a", count: 64)
+    let uppercaseSHA = lowercaseSHA.uppercased()
+    let record = makeProvenanceRecord(
+        captureIndex: 0,
+        timestamp: 100,
+        logSHA256: uppercaseSHA
+    )
+
+    let recordAnalysis = TrackpadOutputProvenanceAnalyzer.analyze(
+        records: [record],
+        expectedLogSHA256: lowercaseSHA,
+        expectedEventCount: 1
+    )
+    expect(
+        recordAnalysis.issues.map(\.code).contains(.invalidLogSHA256),
+        "大文字を含むrecord log SHA-256をcanonical値として受理しない"
+    )
+
+    let expectedAnalysis = TrackpadOutputProvenanceAnalyzer.analyze(
+        records: [makeProvenanceRecord(captureIndex: 0, timestamp: 100)],
+        expectedLogSHA256: uppercaseSHA,
+        expectedEventCount: 1
+    )
+    expect(
+        expectedAnalysis.issues.map(\.code).contains(.invalidExpectedLogSHA256),
+        "大文字を含むexpected log SHA-256をcanonical値として受理しない"
+    )
 }
 
 private func testTrackpadOutputProvenanceAcceptsTimestampRegression() {
@@ -354,7 +422,7 @@ private func testTrackpadOutputProvenanceRejectsEveryKnownForbiddenActualType() 
     }
 }
 
-private func testTrackpadOutputProvenanceRejectsRawTargetProcessFields() {
+private func testTrackpadOutputProvenanceAcceptsWindowServerResolvedTargetFields() {
     let sha = String(repeating: "3", count: 64)
     let records = [
         makeProvenanceRecord(captureIndex: 0, timestamp: 100, logSHA256: sha),
@@ -362,12 +430,18 @@ private func testTrackpadOutputProvenanceRejectsRawTargetProcessFields() {
     ]
     let events = [
         makeActualEvent(
-            rawFields: [makeRawField(number: 39, integerValue: 123)]
+            rawFields: [
+                makeRawField(number: 39, integerValue: 4_174_843),
+                makeRawField(number: 40, integerValue: 69_888)
+            ]
         ),
         makeActualEvent(
             captureIndex: 1,
             timestamp: 101,
-            rawFields: [makeRawField(number: 40, integerValue: -1)]
+            rawFields: [
+                makeRawField(number: 39, integerValue: 4_174_843),
+                makeRawField(number: 40, integerValue: 69_888)
+            ]
         )
     ]
 
@@ -376,10 +450,8 @@ private func testTrackpadOutputProvenanceRejectsRawTargetProcessFields() {
         expectedLogSHA256: sha,
         expectedEvents: events
     )
-    let targetIssues = analysis.issues.filter { $0.code == .rawTargetProcessPresent }
-
-    expect(targetIssues.count == 2, "raw field 39 / 40の非0 target process指定を拒否する")
-    expect(targetIssues.map(\.captureIndex) == [0, 1], "target process issueをactual captureへ対応付ける")
+    expect(analysis.passed, "system-wide投稿後にWindowServerが付与した配送先fieldを受理する")
+    expect(analysis.issues.isEmpty, "OS解決後の配送先fieldを明示的PID投稿と誤判定しない")
 }
 
 private func testTrackpadOutputProvenanceRejectsMissingGeneratedMarker() {

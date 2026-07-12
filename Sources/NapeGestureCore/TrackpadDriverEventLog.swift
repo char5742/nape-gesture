@@ -48,6 +48,7 @@ public struct TrackpadDriverEventLogMetadata: Codable, Equatable, Sendable {
     public var scenarioID: String?
     public var deviceLabel: String?
     public var repoHeadSHA: String?
+    public var captureRunToken: String?
     public var canonicalEventRepresentation: String
     public var rawFieldScanPolicy: String
 
@@ -59,6 +60,7 @@ public struct TrackpadDriverEventLogMetadata: Codable, Equatable, Sendable {
         scenarioID: String? = nil,
         deviceLabel: String? = nil,
         repoHeadSHA: String? = nil,
+        captureRunToken: String? = nil,
         canonicalEventRepresentation: String = Self.defaultCanonicalEventRepresentation,
         rawFieldScanPolicy: String = Self.allRawFieldValuesPolicy
     ) {
@@ -69,6 +71,7 @@ public struct TrackpadDriverEventLogMetadata: Codable, Equatable, Sendable {
         self.scenarioID = scenarioID
         self.deviceLabel = deviceLabel
         self.repoHeadSHA = repoHeadSHA
+        self.captureRunToken = captureRunToken
         self.canonicalEventRepresentation = canonicalEventRepresentation
         self.rawFieldScanPolicy = rawFieldScanPolicy
     }

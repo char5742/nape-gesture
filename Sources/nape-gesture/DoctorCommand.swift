@@ -59,8 +59,14 @@ struct DoctorCommand {
         }
 
         let inventory = makeInventory(settings: settings, findings: &findings)
+        let outputAdapter = TrackpadGestureOutputAdapter()
+        let outputCoordinator = ProductGestureSessionCoordinator(
+            bindings: settings.gesture.bindings,
+            output: outputAdapter
+        )
         let outputContract = DoctorOutputContractStatus(
-            capability: TrackpadGestureOutputAdapter().capability
+            capability: outputAdapter.capability,
+            missingRequiredFamilies: outputCoordinator.unsupportedRequiredFamilies
         )
         if !outputContract.supported {
             findings.append("trackpad driver出力contractは\(outputContract.status)です。入力抑制を開始せず安全停止します。")
@@ -576,14 +582,21 @@ private struct DoctorRuntimeReadiness: Codable {
         }
         if !outputContract.supported {
             let isMismatch = outputContract.status == ProductGestureOutputCapability.Status.contractMismatch.rawValue
+            let isMissingFamily = outputContract.status == "missingFamilies"
             failures.append(
                 DoctorRuntimeReadinessFailure(
-                    code: isMismatch ? "outputContract.contractMismatch" : "outputContract.unsupported",
+                    code: isMismatch
+                        ? "outputContract.contractMismatch"
+                        : (isMissingFamily ? "outputContract.missingFamilies" : "outputContract.unsupported"),
                     category: "outputContract",
                     message: isMismatch
                         ? "trackpad driver出力contractが現在のmacOS buildと一致しません。"
-                        : "このmacOS build用のtrackpad driver出力contractが未対応です。",
-                    remediation: "純正trackpad fixtureからcontractを導出し、対応OS buildとしてadapterを検証してください。"
+                        : (isMissingFamily
+                            ? "現在のbindingに必要なproduct output familyが未実装です: \(outputContract.missingRequiredFamilies.joined(separator: ", "))"
+                            : "このmacOS build用のtrackpad driver出力contractが未対応です。"),
+                    remediation: isMissingFamily
+                        ? "未実装familyのadapterとcontractを完成させるか、対応済みfamilyだけのbindingで検証してください。"
+                        : "純正trackpad fixtureからcontractを導出し、対応OS buildとしてadapterを検証してください。"
                 )
             )
         }
@@ -601,17 +614,27 @@ private struct DoctorOutputContractStatus: Codable {
     var fixtureSHA256: String?
     var osVersion: String?
     var osBuild: String?
+    var supportedFamilies: [String]
+    var missingRequiredFamilies: [String]
     var reason: String?
 
-    init(capability: ProductGestureOutputCapability) {
-        status = capability.status.rawValue
-        supported = capability.isSupported
+    init(
+        capability: ProductGestureOutputCapability,
+        missingRequiredFamilies: Set<TrackpadOutputEventFamily> = []
+    ) {
+        let missing = missingRequiredFamilies.map(\.rawValue).sorted()
+        status = capability.isSupported && !missing.isEmpty
+            ? "missingFamilies"
+            : capability.status.rawValue
+        supported = capability.isSupported && missing.isEmpty
         contractID = capability.contract?.contractID
         schemaVersion = capability.contract?.schemaVersion
         fixtureID = capability.contract?.fixtureID
         fixtureSHA256 = capability.contract?.fixtureSHA256
         osVersion = capability.contract?.osVersion
         osBuild = capability.contract?.osBuild
+        supportedFamilies = capability.supportedFamilies.map(\.rawValue).sorted()
+        self.missingRequiredFamilies = missing
         reason = capability.reason
     }
 }

@@ -473,7 +473,7 @@ private extension TrackpadDriverEventAnalyzer {
             issues: &issues
         )
 
-        for optionalKey in ["scenarioID", "deviceLabel", "repoHeadSHA"] {
+        for optionalKey in ["scenarioID", "deviceLabel", "repoHeadSHA", "captureRunToken"] {
             if let value = metadata[optionalKey], value.stringValue == nil {
                 issues.append(
                     issue(
@@ -484,6 +484,19 @@ private extension TrackpadDriverEventAnalyzer {
                     )
                 )
             }
+        }
+
+        if let captureRunToken = metadata["captureRunToken"]?.stringValue,
+           UUID(uuidString: captureRunToken)?.uuidString.lowercased() != captureRunToken
+        {
+            appendMetadataContractMismatch(
+                "metadata.captureRunToken",
+                expected: "canonical lowercase UUID",
+                actual: captureRunToken,
+                line: line,
+                captureIndex: captureIndex,
+                issues: &issues
+            )
         }
 
         if let loggerName, loggerName != TrackpadDriverEventLogMetadata.defaultLoggerName {

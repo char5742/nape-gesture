@@ -4,6 +4,7 @@ import CoreGraphics
 import Foundation
 import NapeGestureCore
 import NapeGestureDiagnosticOutput
+import NapeGestureProductOutput
 
 struct SystemBehaviorTestCommand {
     private let options: [String]
@@ -41,6 +42,11 @@ struct SystemBehaviorTestCommand {
 
               horizontal-scroll
                   通常の横スクロール割り当て相当の水平スクロールイベント列を生成します。
+                  --direction left|right で生成delta方向を選べます。
+
+              vertical-scroll
+                  smoothScroll相当の垂直scroll / companion / momentum列を生成します。
+                  --direction up|down で生成delta方向を選べます。
 
               mission-control
                   Mission Control相当のアクションを生成します。
@@ -89,6 +95,32 @@ struct SystemBehaviorTestCommand {
         let dryRun = options.contains("--dry-run")
         let outputLogJSON = options.contains("--log-json")
         let outputPath = value("--out", in: options)
+        let productTraceOutputPath = value("--product-trace-out", in: options)
+        let productRunToken = value("--product-run-token", in: options)
+        let productRepoHeadSHA = value("--product-repo-head-sha", in: options)
+        let directionValue = value("--direction", in: options)
+            ?? (scenario == .verticalScroll ? "up" : "right")
+        let scrollSign: Int
+        switch scenario {
+        case .horizontalScroll:
+            guard ["left", "right"].contains(directionValue) else {
+                throw ToolError.invalidValue("--direction", directionValue)
+            }
+            scrollSign = directionValue == "left" ? -1 : 1
+        case .verticalScroll:
+            guard ["up", "down"].contains(directionValue) else {
+                throw ToolError.invalidValue("--direction", directionValue)
+            }
+            scrollSign = directionValue == "up" ? -1 : 1
+        default:
+            if options.contains("--direction") {
+                throw ToolError.invalidValue(
+                    "--direction",
+                    "horizontal-scrollまたはvertical-scroll scenarioでだけ指定できます。"
+                )
+            }
+            scrollSign = 1
+        }
         let amount = try doubleValue("--amount", in: options, defaultValue: scenario.defaultAmount)
         let steps = try intValue("--steps", in: options, defaultValue: scenario.defaultSteps)
         let interval = try doubleValue("--interval", in: options, defaultValue: 0.008)
@@ -116,6 +148,49 @@ struct SystemBehaviorTestCommand {
         if let outputPath {
             throw ToolError.invalidValue("--out", "--log-json と併用してください: \(outputPath)")
         }
+        if productTraceOutputPath != nil,
+           dryRun || ![.horizontalScroll, .verticalScroll].contains(scenario)
+        {
+            throw ToolError.invalidValue(
+                "--product-trace-out",
+                "実投稿するhorizontal-scrollまたはvertical-scroll scenarioでだけ指定できます。"
+            )
+        }
+        let productTraceContext: ProductGestureOutputTraceContext?
+        if productTraceOutputPath != nil {
+            guard let productRunToken,
+                  UUID(uuidString: productRunToken)?.uuidString.lowercased() == productRunToken
+            else {
+                throw ToolError.invalidValue(
+                    "--product-run-token",
+                    "--product-trace-outではcaptureと共通のcanonical lowercase UUIDが必要です。"
+                )
+            }
+            guard let productRepoHeadSHA,
+                  Self.isCanonicalGitObjectID(productRepoHeadSHA),
+                  let scenarioID = scenario.productEvidenceScenarioID,
+                  let context = ProductGestureOutputTraceContext(
+                    captureRunToken: productRunToken,
+                    scenarioID: scenarioID,
+                    repoHeadSHA: productRepoHeadSHA,
+                    executableSHA256: try TrackpadDriverEventLogger.runningExecutableSHA256()
+                  )
+            else {
+                throw ToolError.invalidValue(
+                    "--product-repo-head-sha",
+                    "--product-trace-outでは完全なlowercase Git object IDが必要です。"
+                )
+            }
+            productTraceContext = context
+        } else {
+            if productRunToken != nil || productRepoHeadSHA != nil {
+                throw ToolError.invalidValue(
+                    "product trace identity",
+                    "--product-run-token / --product-repo-head-shaは--product-trace-outと併用してください。"
+                )
+            }
+            productTraceContext = nil
+        }
 
         print(plan.description)
         if dryRun {
@@ -123,14 +198,28 @@ struct SystemBehaviorTestCommand {
             return
         }
 
+        if let productTraceOutputPath {
+            try prepareProductTraceOutput(path: productTraceOutputPath)
+        }
+
         try AccessibilityPermission.ensurePrompted()
         try activateTargetIfNeeded(plan.target)
         Thread.sleep(forTimeInterval: 0.5)
-        try execute(plan)
+        try execute(
+            plan,
+            productTraceOutputPath: productTraceOutputPath,
+            productTraceContext: productTraceContext,
+            scrollSign: scrollSign
+        )
         print("シナリオを実行しました。`nape-gesture log` または画面挙動で差分を確認してください。")
     }
 
-    private func execute(_ plan: SystemTestPlan) throws {
+    private func execute(
+        _ plan: SystemTestPlan,
+        productTraceOutputPath: String?,
+        productTraceContext: ProductGestureOutputTraceContext?,
+        scrollSign: Int
+    ) throws {
         let poster = DiagnosticEventPoster()
         let now = MonotonicEventClock.nowSeconds
 
@@ -150,11 +239,18 @@ struct SystemBehaviorTestCommand {
                 interval: plan.interval
             )
         case .horizontalScroll:
-            try postScrollCommands(
-                makeHorizontalCommands(sign: 1, plan: plan, now: now),
-                poster: poster,
-                mode: .horizontal,
-                interval: plan.interval
+            try postProductScrollCommands(
+                makeHorizontalCommands(sign: scrollSign, plan: plan, now: now),
+                interval: plan.interval,
+                traceOutputPath: productTraceOutputPath,
+                traceContext: productTraceContext
+            )
+        case .verticalScroll:
+            try postProductScrollCommands(
+                makeVerticalCommands(sign: scrollSign, plan: plan, now: now),
+                interval: plan.interval,
+                traceOutputPath: productTraceOutputPath,
+                traceContext: productTraceContext
             )
         case .missionControl:
             try requireSuccessfulPost(poster.postMissionControl())
@@ -211,6 +307,38 @@ struct SystemBehaviorTestCommand {
         )
     }
 
+    private func makeVerticalCommands(
+        sign: Int,
+        plan: SystemTestPlan,
+        now: TimeInterval
+    ) -> [GestureCommand] {
+        let perStep = plan.amount / Double(plan.steps)
+        let commands = (0..<plan.steps).map { index in
+            let phase: GesturePhase
+            if index == 0 {
+                phase = .began
+            } else if index == plan.steps - 1 {
+                phase = .ended
+            } else {
+                phase = .changed
+            }
+            return GestureCommand(
+                kind: .drag,
+                phase: phase,
+                direction: sign < 0 ? .up : .down,
+                deltaX: 0,
+                deltaY: Double(sign) * perStep,
+                velocityX: 0,
+                velocityY: Double(sign) * perStep / max(plan.interval, 0.001),
+                timestamp: now + Double(index) * plan.interval
+            )
+        }
+        return DiagnosticEventPoster.terminallyCompleteScrollCommands(
+            commands,
+            interval: plan.interval
+        )
+    }
+
     private func postScrollCommands(
         _ commands: [GestureCommand],
         poster: DiagnosticEventPoster,
@@ -225,6 +353,196 @@ struct SystemBehaviorTestCommand {
         try requireSuccessfulPost(result)
         guard result.generatedEventCount == commands.count else {
             throw ToolError.invalidValue("CGEvent sequence", "期待件数のscroll eventを投稿できませんでした。")
+        }
+    }
+
+    private func postProductScrollCommands(
+        _ commands: [GestureCommand],
+        interval: TimeInterval,
+        traceOutputPath: String?,
+        traceContext: ProductGestureOutputTraceContext?
+    ) throws {
+        guard let firstCommand = commands.first else {
+            throw ToolError.invalidValue("product scroll command", "入力列が空です。")
+        }
+        var postedTrace: [ProductGestureOutputPostedEventTrace] = []
+        let traceObserver: ProductPostedEventObserver? = traceOutputPath == nil
+            ? nil
+            : { postedTrace.append($0) }
+        let adapter = TrackpadGestureOutputAdapter(
+            contractData: TrackpadGestureOutputResources.loadContractData(),
+            modelData: TrackpadGestureOutputResources.loadModelData(),
+            traceContext: traceContext,
+            postedEventObserver: traceObserver
+        )
+        guard adapter.supports(.scroll) else {
+            throw ToolError.trackpadOutputContractUnavailable(
+                adapter.capability.reason ?? "trackpad scroll product outputが未対応です。"
+            )
+        }
+
+        let action: GestureAction = firstCommand.deltaX == 0
+            ? .smoothScroll
+            : .horizontalScroll
+        let coordinator = ProductGestureSessionCoordinator(
+            bindings: GestureBindings(
+                dragUp: action,
+                dragDown: action,
+                dragLeft: action,
+                dragRight: action,
+                wheel: action
+            ),
+            output: adapter
+        )
+        guard coordinator.unsupportedRequiredFamilies.isEmpty else {
+            throw ToolError.trackpadOutputContractUnavailable(
+                "product scroll scenarioが要求するevent familyを出力できません。"
+            )
+        }
+
+        func failAfterClosingSession(_ reason: String) throws -> Never {
+            var cancellation = coordinator.cancelActive(
+                reason: .outputFailure,
+                at: MonotonicEventClock.nowSeconds
+            )
+            var retryCount = 0
+            while cancellation.failure != nil && retryCount < 2 {
+                retryCount += 1
+                cancellation = coordinator.cancelActive(
+                    reason: .outputFailure,
+                    at: MonotonicEventClock.nowSeconds
+                )
+            }
+            guard cancellation.failure == nil else {
+                throw ToolError.trackpadOutputPostingFailed(
+                    "\(reason); cancellation_failed=\(cancellation.failure?.rawValue ?? "unknown")"
+                )
+            }
+            throw ToolError.trackpadOutputPostingFailed(reason)
+        }
+
+        for (index, command) in commands.enumerated() {
+            if index > 0 {
+                Thread.sleep(forTimeInterval: interval)
+            }
+            guard command.kind != .momentum, command.phase != .momentum else {
+                try failAfterClosingSession("input列へmomentum commandを混在できません。")
+            }
+            let post = coordinator.post(
+                command: command,
+                continuation: command.phase == .ended ? .momentum : nil
+            )
+            guard post.action == action,
+                  post.result.failure == nil,
+                  post.result.failedEventCreationCount == 0,
+                  post.result.generatedEventCount == 3
+            else {
+                try failAfterClosingSession(
+                    post.result.failure?.rawValue ?? "incomplete_product_scroll_batch"
+                )
+            }
+        }
+
+        let reference = commands.dropLast().last ?? firstCommand
+        let momentumDeltas = [0.6, 0.3]
+        for (index, scale) in momentumDeltas.enumerated() {
+            Thread.sleep(forTimeInterval: interval)
+            let post = coordinator.post(
+                command: GestureCommand(
+                    kind: .momentum,
+                    phase: .momentum,
+                    direction: reference.direction,
+                    deltaX: reference.deltaX * scale,
+                    deltaY: reference.deltaY * scale,
+                    velocityX: reference.velocityX * scale,
+                    velocityY: reference.velocityY * scale,
+                    timestamp: MonotonicEventClock.nowSeconds
+                )
+            )
+            guard post.action == action,
+                  post.result.failure == nil,
+                  post.result.failedEventCreationCount == 0,
+                  post.result.generatedEventCount == 1
+            else {
+                try failAfterClosingSession(
+                    post.result.failure?.rawValue
+                        ?? "incomplete_product_momentum_batch_\(index)"
+                )
+            }
+        }
+        Thread.sleep(forTimeInterval: interval)
+        let terminal = coordinator.post(
+            command: GestureCommand(
+                kind: .momentum,
+                phase: .ended,
+                direction: reference.direction,
+                deltaX: 0,
+                deltaY: 0,
+                velocityX: 0,
+                velocityY: 0,
+                timestamp: MonotonicEventClock.nowSeconds
+            )
+        )
+        guard terminal.action == action,
+              terminal.result.failure == nil,
+              terminal.result.failedEventCreationCount == 0,
+              terminal.result.generatedEventCount == 1
+        else {
+            try failAfterClosingSession(
+                terminal.result.failure?.rawValue ?? "missing_product_momentum_terminal"
+            )
+        }
+        if let traceOutputPath {
+            try writeProductPostedTrace(postedTrace, to: traceOutputPath)
+        }
+    }
+
+    private func writeProductPostedTrace(
+        _ trace: [ProductGestureOutputPostedEventTrace],
+        to path: String
+    ) throws {
+        guard !trace.isEmpty,
+              trace.enumerated().allSatisfy({ $0.element.postIndex == UInt64($0.offset) })
+        else {
+            throw ToolError.invalidValue(
+                "product posted trace",
+                "投稿順が0始まり連続ではありません。"
+            )
+        }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        var data = Data()
+        for record in trace {
+            data.append(try encoder.encode(record))
+            data.append(0x0A)
+        }
+        let url = URL(fileURLWithPath: path)
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try data.write(to: url, options: .atomic)
+    }
+
+    private func prepareProductTraceOutput(path: String) throws {
+        let fileManager = FileManager.default
+        var isDirectory = ObjCBool(false)
+        guard fileManager.fileExists(atPath: path, isDirectory: &isDirectory) else {
+            return
+        }
+        guard !isDirectory.boolValue else {
+            throw ToolError.invalidValue(
+                "--product-trace-out",
+                "出力先がdirectoryです: \(path)"
+            )
+        }
+        do {
+            try fileManager.removeItem(atPath: path)
+        } catch {
+            throw ToolError.invalidValue(
+                "--product-trace-out",
+                "既存traceを除去できません: \(error.localizedDescription)"
+            )
         }
     }
 
@@ -281,6 +599,9 @@ struct SystemBehaviorTestCommand {
         case .horizontalScroll:
             records = try makeHorizontalCommands(sign: 1, plan: plan, now: startTime)
                 .map { try scrollRecord(command: $0, mode: .horizontal) }
+        case .verticalScroll:
+            records = try makeVerticalCommands(sign: -1, plan: plan, now: startTime)
+                .map { try scrollRecord(command: $0, mode: .free) }
         case .missionControl:
             records = try shortcutRecords(keyCode: CGKeyCode(kVK_UpArrow), flags: .maskControl, startTime: startTime)
         case .pageBack:
@@ -403,6 +724,7 @@ struct SystemBehaviorTestCommand {
         case .spaceLeft,
              .spaceRight,
              .horizontalScroll,
+             .verticalScroll,
              .missionControl,
              .pageBack,
              .pageForward,
@@ -827,6 +1149,12 @@ struct SystemBehaviorTestCommand {
         }
         return pid_t(value)
     }
+
+    private static func isCanonicalGitObjectID(_ value: String) -> Bool {
+        [40, 64].contains(value.count) && value.unicodeScalars.allSatisfy { scalar in
+            (48...57).contains(scalar.value) || (97...102).contains(scalar.value)
+        }
+    }
 }
 
 private struct SystemTestPlan {
@@ -843,7 +1171,7 @@ private struct SystemTestPlan {
     var maximumPlannedOffset: TimeInterval {
         let intervalCount: TimeInterval
         switch scenario {
-        case .spaceLeft, .spaceRight, .horizontalScroll:
+        case .spaceLeft, .spaceRight, .horizontalScroll, .verticalScroll:
             intervalCount = steps == 1 ? 1 : max(Double(steps) - 1, 0)
         case .missionControl, .pageBack, .pageForward, .zoomIn, .zoomOut:
             return 0.01
@@ -901,6 +1229,7 @@ private enum SystemTestScenario: String {
     case spaceLeft = "space-left"
     case spaceRight = "space-right"
     case horizontalScroll = "horizontal-scroll"
+    case verticalScroll = "vertical-scroll"
     case missionControl = "mission-control"
     case pageBack = "page-back"
     case pageForward = "page-forward"
@@ -921,6 +1250,7 @@ private enum SystemTestScenario: String {
         case .spaceLeft,
              .spaceRight,
              .horizontalScroll,
+             .verticalScroll,
              .missionControl,
              .pageBack,
              .pageForward,
@@ -939,6 +1269,7 @@ private enum SystemTestScenario: String {
         case .spaceLeft,
              .spaceRight,
              .horizontalScroll,
+             .verticalScroll,
              .missionControl,
              .pageBack,
              .pageForward,
@@ -962,6 +1293,7 @@ private enum SystemTestScenario: String {
         case .spaceLeft,
              .spaceRight,
              .horizontalScroll,
+             .verticalScroll,
              .missionControl,
              .pageBack,
              .pageForward,
@@ -969,6 +1301,28 @@ private enum SystemTestScenario: String {
              .zoomOut,
              .killSwitch:
             return false
+        }
+    }
+
+    var productEvidenceScenarioID: String? {
+        switch self {
+        case .horizontalScroll:
+            "pure-trackpad-horizontal-scroll"
+        case .verticalScroll:
+            "pure-trackpad-vertical-scroll"
+        case .spaceLeft,
+             .spaceRight,
+             .missionControl,
+             .pageBack,
+             .pageForward,
+             .zoomIn,
+             .zoomOut,
+             .killSwitch,
+             .gestureDrag,
+             .gestureWheel,
+             .gestureWheelThenKillSwitch,
+             .normalAfterRelease:
+            nil
         }
     }
 }

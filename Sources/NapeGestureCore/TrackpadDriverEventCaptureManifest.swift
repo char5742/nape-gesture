@@ -74,9 +74,11 @@ public enum TrackpadDriverEventCaptureManifestValidationError: LocalizedError, E
     case invalidScenarioID
     case invalidDeviceLabel
     case invalidRepoHeadSHA
+    case invalidCaptureRunToken
     case missingScenarioID(evidenceKind: TrackpadDriverEventEvidenceKind)
     case missingDeviceLabel(evidenceKind: TrackpadDriverEventEvidenceKind)
     case missingRepoHeadSHA(evidenceKind: TrackpadDriverEventEvidenceKind)
+    case missingCaptureRunToken(evidenceKind: TrackpadDriverEventEvidenceKind)
     case invalidLoggerVersion
     case invalidLoggerExecutableSHA256
     case invalidCaptureStartWallClock
@@ -105,12 +107,16 @@ public enum TrackpadDriverEventCaptureManifestValidationError: LocalizedError, E
             return "capture manifestのdeviceLabelが空です。"
         case .invalidRepoHeadSHA:
             return "capture manifestのrepoHeadSHAが完全な正規化済みGit object IDではありません。"
+        case .invalidCaptureRunToken:
+            return "capture manifestのcaptureRunTokenが正規化済みUUIDではありません。"
         case let .missingScenarioID(evidenceKind):
             return "\(evidenceKind.rawValue)証跡のcapture manifestにはscenarioIDが必要です。"
         case let .missingDeviceLabel(evidenceKind):
             return "\(evidenceKind.rawValue)証跡のcapture manifestにはdeviceLabelが必要です。"
         case let .missingRepoHeadSHA(evidenceKind):
             return "\(evidenceKind.rawValue)証跡のcapture manifestにはrepoHeadSHAが必要です。"
+        case let .missingCaptureRunToken(evidenceKind):
+            return "\(evidenceKind.rawValue)証跡のcapture manifestにはcaptureRunTokenが必要です。"
         case .invalidLoggerVersion:
             return "capture manifestのloggerVersionは1以上である必要があります。"
         case .invalidLoggerExecutableSHA256:
@@ -144,6 +150,7 @@ public struct TrackpadDriverEventCaptureManifest: Codable, Equatable, Sendable {
     public var scenarioID: String?
     public var deviceLabel: String?
     public var repoHeadSHA: String?
+    public var captureRunToken: String?
     public var loggerVersion: Int
     public var loggerExecutableSHA256: String
     public var captureStartedAt: String
@@ -162,6 +169,7 @@ public struct TrackpadDriverEventCaptureManifest: Codable, Equatable, Sendable {
         scenarioID: String? = nil,
         deviceLabel: String? = nil,
         repoHeadSHA: String? = nil,
+        captureRunToken: String? = nil,
         loggerVersion: Int,
         loggerExecutableSHA256: String,
         captureStartedAt: String,
@@ -179,6 +187,7 @@ public struct TrackpadDriverEventCaptureManifest: Codable, Equatable, Sendable {
         self.scenarioID = scenarioID
         self.deviceLabel = deviceLabel
         self.repoHeadSHA = repoHeadSHA
+        self.captureRunToken = captureRunToken
         self.loggerVersion = loggerVersion
         self.loggerExecutableSHA256 = loggerExecutableSHA256
         self.captureStartedAt = captureStartedAt
@@ -205,6 +214,7 @@ public struct TrackpadDriverEventCaptureManifest: Codable, Equatable, Sendable {
             scenarioID: metadata.scenarioID,
             deviceLabel: metadata.deviceLabel,
             repoHeadSHA: metadata.repoHeadSHA,
+            captureRunToken: metadata.captureRunToken,
             loggerVersion: metadata.loggerVersion,
             loggerExecutableSHA256: loggerExecutableSHA256,
             captureStartedAt: Self.wallClockString(for: captureStartedAt),
@@ -240,6 +250,9 @@ public struct TrackpadDriverEventCaptureManifest: Codable, Equatable, Sendable {
         if let repoHeadSHA, !Self.isCanonicalGitObjectID(repoHeadSHA) {
             throw TrackpadDriverEventCaptureManifestValidationError.invalidRepoHeadSHA
         }
+        if let captureRunToken, !Self.isCanonicalRunToken(captureRunToken) {
+            throw TrackpadDriverEventCaptureManifestValidationError.invalidCaptureRunToken
+        }
         if evidenceKind != .synthetic {
             guard scenarioID != nil else {
                 throw TrackpadDriverEventCaptureManifestValidationError.missingScenarioID(
@@ -253,6 +266,13 @@ public struct TrackpadDriverEventCaptureManifest: Codable, Equatable, Sendable {
             }
             guard repoHeadSHA != nil else {
                 throw TrackpadDriverEventCaptureManifestValidationError.missingRepoHeadSHA(
+                    evidenceKind: evidenceKind
+                )
+            }
+        }
+        if evidenceKind == .generatedProduct {
+            guard captureRunToken != nil else {
+                throw TrackpadDriverEventCaptureManifestValidationError.missingCaptureRunToken(
                     evidenceKind: evidenceKind
                 )
             }
@@ -296,6 +316,7 @@ public struct TrackpadDriverEventCaptureManifest: Codable, Equatable, Sendable {
         try requireEqual(scenarioID, metadata.scenarioID, field: "scenarioID")
         try requireEqual(deviceLabel, metadata.deviceLabel, field: "deviceLabel")
         try requireEqual(repoHeadSHA, metadata.repoHeadSHA, field: "repoHeadSHA")
+        try requireEqual(captureRunToken, metadata.captureRunToken, field: "captureRunToken")
         try requireEqual(loggerVersion, metadata.loggerVersion, field: "loggerVersion")
     }
 
@@ -413,6 +434,10 @@ public struct TrackpadDriverEventCaptureManifest: Codable, Equatable, Sendable {
 
     private static func isCanonicalGitObjectID(_ value: String) -> Bool {
         [40, 64].contains(value.count) && isLowercaseHex(value)
+    }
+
+    private static func isCanonicalRunToken(_ value: String) -> Bool {
+        UUID(uuidString: value)?.uuidString.lowercased() == value
     }
 
     private static func isLowercaseHex(_ value: String) -> Bool {

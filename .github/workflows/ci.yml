@@ -34,8 +34,26 @@ jobs:
       - name: Run core tests
         run: .build/debug/nape-gesture-core-tests
 
+      - name: Run product output tests
+        run: .build/debug/nape-gesture-product-output-tests
+
+      - name: Verify trackpad scroll output model derivation
+        run: |
+          ruby -c scripts/derive-trackpad-scroll-output-model.rb
+          ruby scripts/derive-trackpad-scroll-output-model.rb > "$RUNNER_TEMP/scroll-output-model.json"
+          cmp "$RUNNER_TEMP/scroll-output-model.json" Fixtures/trackpad-contract/25F80/scroll-output-model.json
+
+      - name: Test product output provenance finalizer
+        run: |
+          ruby -c scripts/finalize-product-output-provenance.rb
+          ruby -c scripts/test-finalize-product-output-provenance.rb
+          ruby scripts/test-finalize-product-output-provenance.rb
+
       - name: Run diagnostic output and dry-run contract tests
         run: .build/debug/nape-gesture-diagnostic-output-tests
+
+      - name: Test atomic app bundle installation
+        run: sh scripts/test-bundle-app-safety.sh .build/debug/nape-gesture
 
       - name: Run trackpad analyzer contract tests
         run: |
@@ -89,6 +107,13 @@ jobs:
           fi
           ruby -rjson -e 'r=JSON.parse(File.read(ARGV[0])); codes=r.dig("provenance", "analysis", "issues").map { |i| i["code"] }; abort "PID配送違反を検出できない" unless codes.include?("forbiddenDelivery")' "$fixture_dir/pid.report.json"
 
+          ruby -rjson -e 'records=File.readlines(ARGV[0], chomp: true).map { |line| JSON.parse(line) }; records[0]["destinationPid"] = 123; File.write(ARGV[1], records.map { |record| JSON.generate(record) }.join("\n") + "\n")' "$fixture_dir/generated.provenance.jsonl" "$fixture_dir/unknown.provenance.jsonl"
+          if .build/debug/nape-gesture analyze-trackpad-event-log "$fixture_dir/generated.jsonl" --manifest "$fixture_dir/generated.manifest.json" --provenance "$fixture_dir/unknown.provenance.jsonl" --json > "$fixture_dir/unknown-provenance.report.json"; then
+            echo "未知fieldを持つgeneratedProduct provenanceが成功しました" >&2
+            exit 1
+          fi
+          ruby -rjson -e 'r=JSON.parse(File.read(ARGV[0])); codes=r.dig("provenance", "issues").map { |i| i["code"] }; abort "provenance未知fieldを失敗にできない" unless codes.include?("unknown_fields")' "$fixture_dir/unknown-provenance.report.json"
+
           if .build/debug/nape-gesture analyze-trackpad-event-log "$fixture_dir/negative-raw.jsonl" --manifest "$fixture_dir/negative-raw.manifest.json" --json > "$fixture_dir/negative-raw.report.json"; then
             echo "負のraw fieldが成功しました" >&2
             exit 1
@@ -101,8 +126,12 @@ jobs:
           sh -n scripts/collect-completion-evidence.sh
           sh -n scripts/check-product-output-boundary.sh
           sh -n scripts/check-diagnostic-event-time.sh
+          sh -n scripts/test-bundle-app-safety.sh
           ruby -c scripts/verify-trackpad-physical-observations.rb
           ruby scripts/verify-trackpad-physical-observations.rb --fixtures-only --json > /dev/null
+          ruby -c scripts/derive-trackpad-scroll-output-model.rb
+          ruby -c scripts/finalize-product-output-provenance.rb
+          ruby -c scripts/test-finalize-product-output-provenance.rb
           ruby -c scripts/wait-for-trackpad-capture-ready.rb
           ruby -c scripts/test-wait-for-trackpad-capture-ready.rb
           ruby scripts/test-wait-for-trackpad-capture-ready.rb
@@ -165,6 +194,10 @@ jobs:
           fi
           if .build/debug/nape-gesture trackpad-event-log --duration 1 --ready-token "$ready_token"; then
             echo "trackpad-event-log がready fileなしのtokenを受理しました" >&2
+            exit 1
+          fi
+          if .build/debug/nape-gesture trackpad-event-log --duration 1 --out "$RUNNER_TEMP/generated-without-run-token.jsonl" --evidence-kind generatedProduct --only-generated --scenario-id pure-trackpad-vertical-scroll --device-label nape-gesture-product-output --repo-head-sha aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; then
+            echo "generatedProduct captureが共通run tokenなしで開始しました" >&2
             exit 1
           fi
           if .build/debug/nape-gesture trackpad-event-log --duration 1 --ready-file /tmp/trackpad-ready-without-token-in-name.json --ready-token "$ready_token"; then
@@ -321,6 +354,12 @@ jobs:
 
       - name: Build release
         run: swift build -c release --scratch-path .build
+
+      - name: Run release core tests
+        run: .build/release/nape-gesture-core-tests
+
+      - name: Run release product output tests
+        run: .build/release/nape-gesture-product-output-tests
 
       - name: Run release diagnostic output and dry-run contract tests
         run: .build/release/nape-gesture-diagnostic-output-tests

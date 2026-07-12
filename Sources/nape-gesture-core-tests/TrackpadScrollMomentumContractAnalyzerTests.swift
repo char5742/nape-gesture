@@ -135,7 +135,8 @@ private func makeContractEvent(
             osBuild: "25F80",
             scenarioID: "pure-trackpad-vertical-scroll",
             deviceLabel: "generated-contract-test",
-            repoHeadSHA: String(repeating: "a", count: 40)
+            repoHeadSHA: String(repeating: "a", count: 40),
+            captureRunToken: "11111111-2222-4333-8444-555555555555"
         ),
         captureIndex: captureIndex,
         timestamp: timestamp,
@@ -298,6 +299,7 @@ private func makeContractTestInput(
                 scenarioID: summary.metadata.scenarioID,
                 deviceLabel: summary.metadata.deviceLabel,
                 repoHeadSHA: summary.metadata.repoHeadSHA,
+                captureRunToken: summary.metadata.captureRunToken,
                 loggerVersion: summary.metadata.loggerVersion,
                 loggerExecutableSHA256: String(repeating: "c", count: 64),
                 captureStartedAt: "2026-07-11T00:00:00.000Z",

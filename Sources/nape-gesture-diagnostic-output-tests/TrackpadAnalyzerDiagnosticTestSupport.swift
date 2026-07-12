@@ -186,7 +186,8 @@ enum TrackpadAnalyzerDiagnosticTestSupport {
             osBuild: "diagnostic-fixture",
             scenarioID: "ci-generated-scroll",
             deviceLabel: "synthetic-cgevent",
-            repoHeadSHA: String(repeating: "a", count: 40)
+            repoHeadSHA: String(repeating: "a", count: 40),
+            captureRunToken: "11111111-2222-3333-4444-555555555555"
         )
         let eventLog = try TrackpadDriverEventSnapshotFactory.makeRecord(
             event: event,
@@ -233,7 +234,11 @@ enum TrackpadAnalyzerDiagnosticTestSupport {
             eventTimestamp: eventLog.timestamp,
             eventTypeRaw: eventLog.typeRaw,
             delivery: .systemWide,
-            eventKind: .scroll
+            eventKind: .scroll,
+            captureRunToken: "11111111-2222-3333-4444-555555555555",
+            scenarioID: "ci-generated-scroll",
+            repoHeadSHA: String(repeating: "a", count: 40),
+            executableSHA256: executableSHA
         )
         let pidProvenance = TrackpadOutputProvenanceRecord(
             logSHA256: summary.logSHA256,
@@ -244,6 +249,10 @@ enum TrackpadAnalyzerDiagnosticTestSupport {
             eventTypeRaw: eventLog.typeRaw,
             delivery: .targetPID,
             eventKind: .scroll,
+            captureRunToken: "11111111-2222-3333-4444-555555555555",
+            scenarioID: "ci-generated-scroll",
+            repoHeadSHA: String(repeating: "a", count: 40),
+            executableSHA256: executableSHA,
             destinationPID: 123
         )
         let contractValid = try makeContractFixture()
@@ -278,7 +287,8 @@ enum TrackpadAnalyzerDiagnosticTestSupport {
             osBuild: "25F80",
             scenarioID: "pure-trackpad-vertical-scroll",
             deviceLabel: "generated-contract-fixture",
-            repoHeadSHA: String(repeating: "a", count: 40)
+            repoHeadSHA: String(repeating: "a", count: 40),
+            captureRunToken: "66666666-7777-4888-8999-aaaaaaaaaaaa"
         )
         let timestampBase: UInt64 = 1_000_000_000
         let events = try [
@@ -384,7 +394,11 @@ enum TrackpadAnalyzerDiagnosticTestSupport {
                 eventTimestamp: record.timestamp,
                 eventTypeRaw: record.typeRaw,
                 delivery: .systemWide,
-                eventKind: eventKind
+                eventKind: eventKind,
+                captureRunToken: "66666666-7777-4888-8999-aaaaaaaaaaaa",
+                scenarioID: "pure-trackpad-vertical-scroll",
+                repoHeadSHA: String(repeating: "a", count: 40),
+                executableSHA256: String(repeating: "c", count: 64)
             )
         }
         return ContractFixture(

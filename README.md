@@ -3,7 +3,7 @@
 Nape Gesture は、Nape Pro などの通常マウス入力を macOS 上でトラックパッド級のジェスチャー操作へ変換する常駐 GUI アプリです。
 特定ボタンを押している間だけジェスチャーモードへ入り、押していないときは通常のマウスとして振る舞います。
 
-トラックパッド級の操作感とtrackpad driver上位出力相当のevent構成を目標にしますが、第三者プロジェクトのコード、定数、field番号、状態遷移、係数、調整値は流用しません。Apple公式資料、Apple OSS、このリポジトリで取得した純正trackpad / Nape Proログからevent contractを独自に再導出します。
+event contractとパラメータの正本は、Apple公式資料、Apple OSS、このリポジトリで取得した純正trackpad / Nape Proログです。各event構成と調整値を、対応する計測証跡まで追跡できる形で再導出します。
 
 ## いまの完成状態
 
@@ -13,7 +13,7 @@ Nape Gesture は、Nape Pro などの通常マウス入力を macOS 上でトラ
 | メニューバー常駐 UI | 実装済み。AppKit `gui-smoke` で status item `NG`、状態、開始、緊急停止、停止、設定、権限導線の生成契約を検査する。SystemUIServer の AX name に出ない場合は `gui-smoke` を正とする | [docs/completion-checklist.md](docs/completion-checklist.md) |
 | 設定 UI | 実装済み。編集項目 catalog、JSON round-trip、computer-use による `.app` 設定表示と保存操作は確認済み。保存は設定ファイル更新までの証跡で、TCC 許可済み runtime と実イベントは completion matrix で管理する | [ADR-0021](docs/adr/0021-settings-ui-field-catalog.md)、[docs/completion-checklist.md](docs/completion-checklist.md) |
 | Runtime入力・安全性 | `.build/NapeGesture.app`のTCC許可済み経路で、gesture認識、元入力抑制、kill switch、通常入力復帰を機械判定済み。既存CGEvent出力の成功は最終gesture出力の完成証跡にはしない | [ADR-0032](docs/adr/0032-reference-target-foreground-capture.md)、[ADR-0033](docs/adr/0033-kill-switch-pending-release-suppression.md) |
-| Trackpad driver出力 | 再構築中。listen-only raw logger、manifest、厳格analyzer、generated配送provenance、共通output sessionに加え、25F80のscroll / momentum / companion contract比較を実装済み。生成adapterとNavigationSwipe / magnification / DockSwipe contractは未完了 | [ADR-0036](docs/adr/0036-emulate-trackpad-driver-output-events.md)、[ADR-0039](docs/adr/0039-strict-trackpad-event-analysis-and-capture-manifest.md)、[ADR-0042](docs/adr/0042-versioned-scroll-momentum-contract-comparison.md) |
+| Trackpad driver出力 | 25F80の`scroll` familyを実装済み。自前計測967 pairから導出した軸別model、type 22 scroll + type 29 envelope / companion、momentum、session / cancel、system-wide post traceとprovenanceを機械検証する。`DockSwipe` / `NavigationSwipe` / `magnification`は未実装で、必要なbindingでは起動前にfail closedになるため、アプリ全体は未完成 | [ADR-0036](docs/adr/0036-emulate-trackpad-driver-output-events.md)、[ADR-0042](docs/adr/0042-versioned-scroll-momentum-contract-comparison.md)、[ADR-0043](docs/adr/0043-trackpad-scroll-product-output.md) |
 | 通常入力通過 | 機械証跡あり。ジェスチャーボタン未押下時と解放後の通常クリック、ドラッグ、ホイールを AppKit target log で確認する | [ADR-0016](docs/adr/0016-normal-input-kind-assertions.md) |
 | 権限導線 | 実装済み。GUI と `doctor` が TCC 権限付与対象を表示し、System Settings を開く | [ADR-0020](docs/adr/0020-doctor-tcc-permission-target.md)、[ADR-0025](docs/adr/0025-gui-permission-recovery-actions.md) |
 | runtime 性能測定 | tap callback から投稿直前/直後までを JSON Lines で保存し、p95 / p99 を判定できる | [docs/performance-baseline.md](docs/performance-baseline.md) |
@@ -25,29 +25,33 @@ Nape Gesture は、Nape Pro などの通常マウス入力を macOS 上でトラ
 
 ## 全体像
 
-以下は[ADR-0036](docs/adr/0036-emulate-trackpad-driver-output-events.md)で採択した目標構成です。入力認識と安全停止は実装済みですが、trackpad driver出力adapterは再構築中であり、図中の出力系列が現在すべて実装済みであることを示しません。
+実線は現在実装している25F80 `scroll` family、点線は未実装familyとの境界です。未実装familyを要求するbindingでは、event tapと入力抑制を開始しません。
 
 ```mermaid
 flowchart LR
-    mouse["Nape Pro / 通常マウス"] --> hid["IOHID 入力監視"]
-    mouse --> tap["CGEvent tap"]
-    hid --> association["対象デバイス紐づけ"]
-    tap --> recognizer["入力抑制 / gesture認識"]
-    association --> recognizer
-    recognizer --> pressed{"特定ボタン押下中?"}
-    pressed -->|いいえ| passthrough["通常入力として通過"]
-    pressed -->|はい| output["trackpad driver出力adapter"]
-    output --> scroll["scroll + gesture / momentum"]
-    output --> system["DockSwipe / NavigationSwipe / magnification"]
-    scroll --> stream["macOS system-wide event stream"]
-    system --> stream
-    stream --> appkit["macOS標準gesture処理 / AppKit"]
-    passthrough --> appkit
-    recognizer --> status["GUI 状態表示 / doctor / JSON Lines 証跡"]
+    mouse["Nape Pro / 通常マウス"] --> tap["CGEvent tap"]
+    mouse --> hid["IOHID 入力監視"]
+    tap --> gate{"対象device<br/>特定button押下中?"}
+    hid --> gate
+    gate -->|いいえ| pass["通常入力を通過"]
+    gate -->|はい| recognize["gesture認識 / 元入力抑制"]
+
+    subgraph scroll["実装済み: 25F80 scroll family"]
+        recognize --> session["daemon + session coordinator<br/>began / changed / ended / cancel / momentum"]
+        session --> model["軸別odd quadratic model<br/>自前計測967 pair"]
+        model --> batch["type 22 scroll<br/>type 29 envelope + companion"]
+        batch --> post["system-wide post<br/>direct post trace"]
+    end
+
+    post --> stream["WindowServer / system-wide event stream"]
+    stream --> app["前面app / nested scroll target"]
+    pass --> app
+    session -.->|未対応ならfail closed| pending["未実装<br/>DockSwipe / NavigationSwipe / magnification"]
+    recognize --> status["GUI状態 / doctor / runtime証跡"]
 ```
 
-この図は入力経路と責務の全体像です。
-Spaces / Mission Control など、OS 側の画面反応を最終完成扱いにするには、[docs/completion-checklist.md](docs/completion-checklist.md) の実機証跡が必要です。
+scroll adapterは投稿前のraw field 39 / 40が`0`であることを検証します。system-wide投稿後のcaptureではWindowServerが前面配送先をfield 39 / 40へ付与できるため、capture側の非0だけを明示的PID投稿の証拠にはしません。投稿経路はdirect post trace、captureとのprovenance照合、製品source境界guardで検証します。
+Spaces / Mission Controlなど未実装familyを含むアプリ全体の完成判定は、[docs/completion-checklist.md](docs/completion-checklist.md)を正本にします。
 
 ## 使い始める
 
@@ -135,18 +139,26 @@ swift run nape-gesture init-config --vendor-id <ID> --product-id <ID> --usage-pa
 | --- | --- |
 | `app` | 通常 GUI アプリモードで起動する |
 | `gui-smoke` | runtime を開始せずに通常 GUI activation policy、設定ウィンドウ、status item `NG`、通常アプリメニュー、status menu を JSON で検査する。`--config` 未指定時は一時 config を使う |
-| `run` | グローバルイベントタップで入力を読み、入力認識と安全性を検証する。trackpad driver出力adapterへの移行完了まではgesture出力の完成証跡に使わない |
+| `run` | グローバルイベントタップで入力を読み、製品output sessionへ接続する。現在は25F80 `scroll` familyだけに対応し、設定済みbindingが未実装familyを要求する場合は入力抑制前に停止する |
 | `doctor` | 権限、対象デバイス、HID probe、trackpad output contract、runtime ready、benchmarkを一括診断する |
 | `devices` | IOHID で認識できるマウス系または全 HID デバイスを一覧する |
 | `hid-log` / `analyze-hid-log` | Nape Pro などの HID 生入力を記録、解析する |
 | `log` / `analyze-log` / `compare-log` | 実デバイス、純正トラックパッド、生成イベントを JSON Lines で記録、解析、比較する |
-| `trackpad-event-log` | 純正trackpad driver上位出力のevent type、subtype、raw field 0...255、serialized event、capture順、OS / scenario metadataをlisten-onlyで記録し、`--out`指定時は確定logのcapture manifestを作る。`--ready-file`とcapture固有の`--ready-token`で物理操作の開始を同期できる |
+| `trackpad-event-log` | 純正trackpad driver上位出力のevent type、subtype、raw field 0...255、serialized event、capture順、OS / scenario metadataをlisten-onlyで記録し、`--out`指定時は確定logのcapture manifestを作る。`generatedProduct`では`--only-generated`で生成marker付きeventだけを採用できる |
 | `analyze-trackpad-event-log` | 現行raw schema、capture manifest、serialized CGEvent再構築を検証する。generated productではsystem-wide配送provenanceを照合する。`--contract`指定時は登録済み25F80 fixtureでscroll / momentum lifecycle、terminal、companionを比較する |
 | `target` / `analyze-target-log` | AppKit が受け取った `scrollWheel` / `swipe` / `magnify` などを画面と JSON Lines で確認する。無人証跡では `--focus-capture-point` で capture view 中心へカーソルを移動し、`--assert-has-foreground-capture` で `globalMonitor` だけの弱い証跡を除外する |
-| `system-test` | 入力抑制、通常入力復帰、キルスイッチと旧出力baselineをdry-runまたは実行する。単純scroll / forced horizontal / shortcut scenarioは診断専用 |
+| `system-test` | 入力抑制、通常入力復帰、キルスイッチを検証する。実投稿の`vertical-scroll` / `horizontal-scroll`は25F80 product adapterを使い、`--product-trace-out`とcapture共通のrun UUID / repo SHAでdirect post traceを保存する。旧単純scroll / forced horizontal / shortcut scenarioは診断専用 |
 | `benchmark` | 認識器とスクロール計画の純粋ロジック処理時間を測る |
 | `analyze-performance-log` | runtime 性能 JSON Lines から tap-to-post の p95 / p99 を判定する |
-| `bundle-app` / `verify-bundle` | `.app` を作成し、Info.plist、署名、同梱物、通常 GUI 設定を検証する |
+| `bundle-app` / `verify-bundle` | `.app` を検証済み一時bundleから原子的に作成・置換し、Info.plist、署名、同梱contract / model、通常 GUI 設定を検証する。構築・検証失敗時は既存bundleを保持する |
+
+## 25F80 scroll製品出力
+
+25F80では、4つの自前captureから対応付けた986 pairのうちterminal 19 pairを除く967 pairを、X / Y軸別のline / fixed-point / point modelへ使います。連続値は`a*g + b*g*abs(g)`で導出し、tracked sampleからCIでmodel fixtureを再生成してbytes一致を検査します。contract / sample / modelのSHA-256、schema、ID、OS version / build、source identity、sample countのどれかが一致しなければ、adapterは`scroll`を有効化しません。
+
+inputの各frameは同一timestampの`type 22 scroll -> type 29 envelope -> type 29 companion`、momentumは`type 22`としてsystem-wideへ投稿します。scrollとmomentumのphaseを分離し、endedと明示cancelはline delta `0`、fixed-point / point delta `+0.0`へ収束します。daemonが慣性timerと停止理由、session coordinatorがactive action、session ID、順序、continuationを管理します。
+
+現在supportedなのは`scroll` familyだけです。既定bindingには`DockSwipe`が必要な割り当てが含まれるため、そのままでは`outputContract.missingFamilies`として起動前に停止します。`scroll`の実装済み状態を、Spaces / Mission Control、page navigation、zoom、Nape Pro実機比較、配布を含むアプリ全体の完成とは扱いません。設計と検証境界は[ADR-0043](docs/adr/0043-trackpad-scroll-product-output.md)を参照してください。
 
 `system-test --post-to-pid` は Reference Target App の sink 診断専用です。
 製品gesture出力と完成証跡には使いません。`.cghidEventTap`経由であっても、旧単純scroll / forced horizontal / shortcut scenarioはtrackpad driver上位出力の完成証跡にしません。

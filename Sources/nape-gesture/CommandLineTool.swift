@@ -107,7 +107,7 @@ final class CommandLineTool {
               nape-gesture log [--duration <秒>] [--out <path>] [--exclude-generated|--only-generated]
                   グローバル入力イベントを JSON Lines で記録します。メタ情報は標準エラー、イベント本体は標準出力または --out に出します。
 
-              nape-gesture trackpad-event-log [--duration <秒>] [--out <path>] [--manifest-out <path>] [--ready-file <path> --ready-token <UUID>] [--evidence-kind <synthetic|physicalTrackpad|generatedProduct>] [--scenario-id <ID>] [--device-label <ラベル>] [--repo-head-sha <SHA>]
+              nape-gesture trackpad-event-log [--duration <秒>] [--out <path>] [--manifest-out <path>] [--ready-file <path> --ready-token <UUID>] [--evidence-kind <synthetic|physicalTrackpad|generatedProduct>] [--only-generated] [--scenario-id <ID>] [--device-label <ラベル>] [--repo-head-sha <SHA>]
                   純正トラックパッドの上位イベント契約を調査するため、listen-only の CGEvent tap で event type 0...63 と zero を含む raw field 0...255 を JSON Lines に記録します。--out 指定時は evidence kind が必須で、確定 log の hash、件数、metadata、logger executable hash を sidecar manifest に保存します。
 
               nape-gesture analyze-trackpad-event-log <log.jsonl> --manifest <manifest.json> [--provenance <trace.jsonl>] [--contract <scroll-momentum-contract.json>] [--json]
@@ -164,8 +164,8 @@ final class CommandLineTool {
               nape-gesture system-test list
                   System Behavior Test のシナリオ一覧を表示します。
 
-              nape-gesture system-test run --scenario <name> [--target finder|safari] [--dry-run] [--log-json] [--out <path>] [--post-to-pid <pid>]
-                  Spaces / Mission Control / Safari / Finder 向けの実挙動検証イベント、または未マーク元入力を生成します。--dry-run --log-json で計画したイベントを JSON Lines で出力します。--post-to-pid は Reference Target App の受信経路を切り分ける診断専用です。
+              nape-gesture system-test run --scenario <name> [--target finder|safari] [--direction left|right|up|down] [--product-trace-out <path> --product-run-token <UUID> --product-repo-head-sha <SHA>] [--dry-run] [--log-json] [--out <path>] [--post-to-pid <pid>]
+                  Spaces / Mission Control / Safari / Finder 向けの実挙動検証イベント、または未マーク元入力を生成します。horizontal-scroll / vertical-scroll は製品adapterでsystem-wide投稿し、captureと共通のrun UUID、repo SHA、実行binary SHAを持つ直接投稿traceを保存できます。--dry-run --log-json で計画したイベントを JSON Lines で出力します。--post-to-pid は Reference Target App の受信経路を切り分ける診断専用です。
 
               nape-gesture benchmark [--events <数>] [--json] [--assert-baseline]
                   認識器とスクロール計画の純粋ロジック処理時間、CPU コスト、batch p95/p99 を測定します。--assert-baseline で性能基準を満たさない場合に失敗します。

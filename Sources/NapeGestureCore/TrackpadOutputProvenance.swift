@@ -17,10 +17,11 @@ public enum TrackpadOutputProvenanceEventKind: String, Codable, Equatable, Senda
 }
 
 public struct TrackpadOutputProvenanceRecord: Codable, Equatable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public var schemaVersion: Int
     public var logSHA256: String
+    public var traceSHA256: String
     public var captureIndex: UInt64
     public var sessionID: TrackpadOutputSessionID?
     public var family: TrackpadOutputEventFamily?
@@ -28,6 +29,12 @@ public struct TrackpadOutputProvenanceRecord: Codable, Equatable, Sendable {
     public var eventTypeRaw: Int?
     public var delivery: TrackpadOutputDeliveryKind
     public var eventKind: TrackpadOutputProvenanceEventKind
+    public var captureRunToken: String
+    public var scenarioID: String
+    public var repoHeadSHA: String
+    public var executableSHA256: String
+    public var prePostTargetProcessSerialNumber: Int64
+    public var prePostTargetUnixProcessID: Int64
     public var destinationPID: Int32?
     public var accessibilityElementRole: String?
     public var keyboardKeyCode: Int?
@@ -35,6 +42,7 @@ public struct TrackpadOutputProvenanceRecord: Codable, Equatable, Sendable {
     public init(
         schemaVersion: Int = currentSchemaVersion,
         logSHA256: String,
+        traceSHA256: String = String(repeating: "b", count: 64),
         captureIndex: UInt64,
         sessionID: TrackpadOutputSessionID?,
         family: TrackpadOutputEventFamily?,
@@ -42,12 +50,19 @@ public struct TrackpadOutputProvenanceRecord: Codable, Equatable, Sendable {
         eventTypeRaw: Int?,
         delivery: TrackpadOutputDeliveryKind,
         eventKind: TrackpadOutputProvenanceEventKind,
+        captureRunToken: String = "11111111-2222-3333-4444-555555555555",
+        scenarioID: String = "provenance-test",
+        repoHeadSHA: String = String(repeating: "c", count: 40),
+        executableSHA256: String = String(repeating: "d", count: 64),
+        prePostTargetProcessSerialNumber: Int64 = 0,
+        prePostTargetUnixProcessID: Int64 = 0,
         destinationPID: Int32? = nil,
         accessibilityElementRole: String? = nil,
         keyboardKeyCode: Int? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.logSHA256 = logSHA256
+        self.traceSHA256 = traceSHA256
         self.captureIndex = captureIndex
         self.sessionID = sessionID
         self.family = family
@@ -55,6 +70,12 @@ public struct TrackpadOutputProvenanceRecord: Codable, Equatable, Sendable {
         self.eventTypeRaw = eventTypeRaw
         self.delivery = delivery
         self.eventKind = eventKind
+        self.captureRunToken = captureRunToken
+        self.scenarioID = scenarioID
+        self.repoHeadSHA = repoHeadSHA
+        self.executableSHA256 = executableSHA256
+        self.prePostTargetProcessSerialNumber = prePostTargetProcessSerialNumber
+        self.prePostTargetUnixProcessID = prePostTargetUnixProcessID
         self.destinationPID = destinationPID
         self.accessibilityElementRole = accessibilityElementRole
         self.keyboardKeyCode = keyboardKeyCode
@@ -67,11 +88,23 @@ public enum TrackpadOutputProvenanceIssueCode: String, Codable, Equatable, Senda
     case schemaVersionMismatch
     case invalidLogSHA256
     case logSHA256Mismatch
+    case invalidTraceSHA256
+    case traceSHA256Mismatch
+    case invalidCaptureRunToken
+    case captureRunTokenMismatch
+    case invalidScenarioID
+    case scenarioIDMismatch
+    case invalidRepoHeadSHA
+    case repoHeadSHAMismatch
+    case invalidExecutableSHA256
+    case executableSHA256Mismatch
     case eventCountMismatch
     case captureIndexMismatch
     case logCaptureIndexMismatch
     case eventTimestampMismatch
     case missingSessionID
+    case invalidSessionID
+    case sessionIDMismatch
     case missingFamily
     case missingEventType
     case eventTypeMismatch
@@ -82,7 +115,7 @@ public enum TrackpadOutputProvenanceIssueCode: String, Codable, Equatable, Senda
     case actualForbiddenEventKind
     case actualEventKindMismatch
     case missingGeneratedMarker
-    case rawTargetProcessPresent
+    case prePostTargetProcessPresent
 }
 
 public struct TrackpadOutputProvenanceIssue: Codable, Equatable, Sendable {
@@ -126,13 +159,21 @@ public enum TrackpadOutputProvenanceAnalyzer {
     public static func analyze(
         records: [TrackpadOutputProvenanceRecord],
         expectedLogSHA256: String,
-        expectedEvents: [TrackpadDriverEventLog]
+        expectedEvents: [TrackpadDriverEventLog],
+        expectedCaptureRunToken: String? = nil,
+        expectedScenarioID: String? = nil,
+        expectedRepoHeadSHA: String? = nil,
+        expectedExecutableSHA256: String? = nil
     ) -> TrackpadOutputProvenanceAnalysis {
         analyze(
             records: records,
             expectedLogSHA256: expectedLogSHA256,
             expectedEventCount: expectedEvents.count,
-            expectedEvents: expectedEvents
+            expectedEvents: expectedEvents,
+            expectedCaptureRunToken: expectedCaptureRunToken,
+            expectedScenarioID: expectedScenarioID,
+            expectedRepoHeadSHA: expectedRepoHeadSHA,
+            expectedExecutableSHA256: expectedExecutableSHA256
         )
     }
 
@@ -145,7 +186,11 @@ public enum TrackpadOutputProvenanceAnalyzer {
             records: records,
             expectedLogSHA256: expectedLogSHA256,
             expectedEventCount: expectedEventCount,
-            expectedEvents: nil
+            expectedEvents: nil,
+            expectedCaptureRunToken: nil,
+            expectedScenarioID: nil,
+            expectedRepoHeadSHA: nil,
+            expectedExecutableSHA256: nil
         )
     }
 
@@ -153,11 +198,13 @@ public enum TrackpadOutputProvenanceAnalyzer {
         records: [TrackpadOutputProvenanceRecord],
         expectedLogSHA256: String,
         expectedEventCount: Int,
-        expectedEvents: [TrackpadDriverEventLog]?
+        expectedEvents: [TrackpadDriverEventLog]?,
+        expectedCaptureRunToken: String?,
+        expectedScenarioID: String?,
+        expectedRepoHeadSHA: String?,
+        expectedExecutableSHA256: String?
     ) -> TrackpadOutputProvenanceAnalysis {
         var issues: [TrackpadOutputProvenanceIssue] = []
-        let normalizedExpectedSHA = expectedLogSHA256.lowercased()
-
         if records.isEmpty {
             issues.append(
                 TrackpadOutputProvenanceIssue(
@@ -166,7 +213,7 @@ public enum TrackpadOutputProvenanceAnalyzer {
                 )
             )
         }
-        if !isSHA256(normalizedExpectedSHA) {
+        if !isSHA256(expectedLogSHA256) {
             issues.append(
                 TrackpadOutputProvenanceIssue(
                     code: .invalidExpectedLogSHA256,
@@ -194,8 +241,7 @@ public enum TrackpadOutputProvenanceAnalyzer {
                 )
             }
 
-            let normalizedRecordSHA = record.logSHA256.lowercased()
-            if !isSHA256(normalizedRecordSHA) {
+            if !isSHA256(record.logSHA256) {
                 append(
                     .invalidLogSHA256,
                     index: index,
@@ -203,12 +249,118 @@ public enum TrackpadOutputProvenanceAnalyzer {
                     message: "provenance recordのlog SHA-256が不正です。",
                     to: &issues
                 )
-            } else if normalizedRecordSHA != normalizedExpectedSHA {
+            } else if record.logSHA256 != expectedLogSHA256 {
                 append(
                     .logSHA256Mismatch,
                     index: index,
                     record: record,
                     message: "provenance recordが別のcapture logを参照しています。",
+                    to: &issues
+                )
+            }
+
+            if !isSHA256(record.traceSHA256) {
+                append(
+                    .invalidTraceSHA256,
+                    index: index,
+                    record: record,
+                    message: "provenance recordのtrace SHA-256が不正です。",
+                    to: &issues
+                )
+            } else if let first = records.first, record.traceSHA256 != first.traceSHA256 {
+                append(
+                    .traceSHA256Mismatch,
+                    index: index,
+                    record: record,
+                    message: "provenance record間でtrace SHA-256が一致しません。",
+                    to: &issues
+                )
+            }
+
+            if !isCanonicalRunToken(record.captureRunToken) {
+                append(
+                    .invalidCaptureRunToken,
+                    index: index,
+                    record: record,
+                    message: "provenance recordのcapture run tokenが不正です。",
+                    to: &issues
+                )
+            } else if record.captureRunToken
+                != (expectedCaptureRunToken ?? records.first?.captureRunToken)
+            {
+                append(
+                    .captureRunTokenMismatch,
+                    index: index,
+                    record: record,
+                    message: "provenance recordのcapture run tokenがmanifestまたは先頭recordと一致しません。",
+                    to: &issues
+                )
+            }
+
+            if record.scenarioID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                append(
+                    .invalidScenarioID,
+                    index: index,
+                    record: record,
+                    message: "provenance recordのscenario IDが空です。",
+                    to: &issues
+                )
+            } else if record.scenarioID != (expectedScenarioID ?? records.first?.scenarioID) {
+                append(
+                    .scenarioIDMismatch,
+                    index: index,
+                    record: record,
+                    message: "provenance recordのscenario IDがmanifestまたは先頭recordと一致しません。",
+                    to: &issues
+                )
+            }
+
+            if !isGitObjectID(record.repoHeadSHA) {
+                append(
+                    .invalidRepoHeadSHA,
+                    index: index,
+                    record: record,
+                    message: "provenance recordのrepo HEAD SHAが不正です。",
+                    to: &issues
+                )
+            } else if record.repoHeadSHA != (expectedRepoHeadSHA ?? records.first?.repoHeadSHA) {
+                append(
+                    .repoHeadSHAMismatch,
+                    index: index,
+                    record: record,
+                    message: "provenance recordのrepo HEAD SHAがmanifestまたは先頭recordと一致しません。",
+                    to: &issues
+                )
+            }
+
+            if !isSHA256(record.executableSHA256) {
+                append(
+                    .invalidExecutableSHA256,
+                    index: index,
+                    record: record,
+                    message: "provenance recordの実行binary SHA-256が不正です。",
+                    to: &issues
+                )
+            } else if record.executableSHA256
+                != (expectedExecutableSHA256 ?? records.first?.executableSHA256)
+            {
+                append(
+                    .executableSHA256Mismatch,
+                    index: index,
+                    record: record,
+                    message: "provenance recordの実行binary SHA-256がmanifestまたは先頭recordと一致しません。",
+                    to: &issues
+                )
+            }
+
+            if record.prePostTargetProcessSerialNumber != 0
+                || record.prePostTargetUnixProcessID != 0
+            {
+                append(
+                    .prePostTargetProcessPresent,
+                    index: index,
+                    record: record,
+                    message: "投稿前eventのtarget process fieldが0ではありません。",
                     to: &issues
                 )
             }
@@ -264,6 +416,22 @@ public enum TrackpadOutputProvenanceAnalyzer {
                     index: index,
                     record: record,
                     message: "generated product eventにoutput session IDがありません。",
+                    to: &issues
+                )
+            } else if record.sessionID?.rawValue == 0 {
+                append(
+                    .invalidSessionID,
+                    index: index,
+                    record: record,
+                    message: "generated product eventのoutput session IDが0です。",
+                    to: &issues
+                )
+            } else if record.sessionID != records.first?.sessionID {
+                append(
+                    .sessionIDMismatch,
+                    index: index,
+                    record: record,
+                    message: "provenance record間でoutput session IDが一致しません。",
                     to: &issues
                 )
             }
@@ -388,22 +556,8 @@ public enum TrackpadOutputProvenanceAnalyzer {
             )
         }
 
-        // raw logから判定する配送情報はtarget process fieldに限定し、AX経路は推論しない。
-        let targetProcessFields = [39, 40].filter { fieldNumber in
-            guard let value = event.rawField(number: fieldNumber)?.integerValue else {
-                return false
-            }
-            return value != 0
-        }
-        if !targetProcessFields.isEmpty {
-            append(
-                .rawTargetProcessPresent,
-                index: index,
-                record: record,
-                message: "capture logのraw fieldにtarget process指定があります。fields=\(targetProcessFields.map(String.init).joined(separator: ","))",
-                to: &issues
-            )
-        }
+        // field 39/40はsystem-wide投稿後にWindowServerが実配送先を付与するため、
+        // capture logから投稿APIの宛先指定有無を逆算しない。
     }
 
     private enum ActualEventKind: Equatable {
@@ -477,5 +631,15 @@ public enum TrackpadOutputProvenanceAnalyzer {
         value.count == 64 && value.unicodeScalars.allSatisfy { scalar in
             CharacterSet(charactersIn: "0123456789abcdef").contains(scalar)
         }
+    }
+
+    private static func isGitObjectID(_ value: String) -> Bool {
+        [40, 64].contains(value.count) && value.unicodeScalars.allSatisfy { scalar in
+            CharacterSet(charactersIn: "0123456789abcdef").contains(scalar)
+        }
+    }
+
+    private static func isCanonicalRunToken(_ value: String) -> Bool {
+        UUID(uuidString: value)?.uuidString.lowercased() == value
     }
 }

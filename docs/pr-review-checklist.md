@@ -14,7 +14,7 @@
 - docs/config のみの変更では、変更対象に合った検証と Swift build を省略した理由が PR 本文に明記されている
 - ユーザーが見る挙動、GUI、権限導線、検証手順、完成状態、配布手順を変えた場合、README を更新している。更新不要の場合は PR 本文で理由を明記している
 - 未検証事項を「完了」と表現していない
-- 第三者プロジェクトのコード、定数、field番号、状態遷移、係数、調整値をコピーしていない
+- 実装contract、field番号、状態遷移、係数、調整値に、Apple公式資料、Apple OSS、自前ログからの導出根拠がある
 - 由来や配布物に影響する変更では `sh scripts/check-provenance.sh` が成功している
 - Grok CLIによる独立監査、補助レビュー、発散、PR差分レビューを実行していない
 - 外部モデルの出力を設計判断、PR review、完成判定、CI gate、runtime証跡に混ぜていない
@@ -52,6 +52,7 @@
 - 通常SDK非公開のevent contractがcompatibility adapter外へ漏れていない
 - 未知のmacOS versionまたはcontract不一致で誤ったeventを送らずfail closedになる
 - `supported`が登録済みfixture ID / SHA-256 / schema / contract ID / OS build / fixture実体の完全一致だけで生成される
+- `NAPE_GESTURE_TRACKPAD_CONTRACT` / `NAPE_GESTURE_TRACKPAD_OUTPUT_MODEL`が明示されている場合、空・読取不能・空file・不正bytesのpathからbundle / repository fixtureへfallbackせず、起動不可になる
 - 更新され続ける物理観測台帳と、SHA固定する確定済み実行contract fixtureを分離している
 - output contract未対応時はevent tapと入力抑制を開始せず、別方式へfallbackしない
 - ジェスチャー成立後の元入力漏れを増やしていない
@@ -84,7 +85,8 @@
 - 厳格analyzerはtyped decodeの既定値補完前にLF終端、空行、重複key、nesting上限、整数精度、required field、nullable subtype、metadata、captureIndex順、raw field順、bit pattern、Base64を検証し、event family間のtimestamp局所逆行を理由にsortまたは失敗判定していない
 - `physicalTrackpad`証跡は生成marker混入を拒否し、公開fixtureへserialized event、keycode、pointer座標、不要なdevice identifierを残していない
 - unknown top-level / metadata fieldを捨てず、raw JSON表現とreportへ保持している
-- generated product captureは生成marker、actual event type、raw target process fieldとprovenanceのlog SHA / 件数 / 順序 / timestamp / type / output session / familyを照合し、製品source境界guardと併せてPID、AX、shortcut、key / pointer / button経路を拒否している
+- generated product captureは生成markerとactual event typeを検査し、schema 2 direct post trace / provenance / manifestのrun UUID、scenario、repo / binary identity、trace / log SHA、件数、順序、timestamp、type、output session、familyを照合し、製品source境界guardと併せてPID、AX、shortcut、key / pointer / button経路を拒否している
+- adapterはpost operation直前のraw field 39 / 40=`0`を検証する一方、system-wide投稿後のcaptureでWindowServerがfield 39 / 40へ前面配送先を付与することを許容し、capture側の非0だけを明示的PID投稿の証拠または拒否条件にしていない
 - CoreGraphics再構築で保持されないraw field差分を捨てたり意味推測せず`rawFieldDifferences`へ分離し、type / timestamp / flags / subtype /公開named field不一致だけをPhase 1の再構築失敗にしている
 - `--duration`なしのloggerはSIGINT後にevent受付を止め、queue drainとflush / closeを完了している
 - output sessionはsession ID、0始まりで欠落のないcapture order、非減少の起動後timestamp、terminal stateを保持する
@@ -97,13 +99,17 @@
 - trackpad scrollではcontinuous scroll eventと対応するcompanion eventを、純正fixtureのenvelope / phase / capture順上の局所系列として出す。timestamp同値や固定index差を仮定しない
 - scroll / momentum contract比較はfixture登録を再検証し、document raw bytesとmanifestを再結合してstrict parser / capture index検証をやり直した後だけ実行する。`--contract`なしのPhase 1 schema 1を維持し、terminal 9 deltaの`+0.0` bit pattern、phase遷移、generated type 29 classifier `0 / 6`、companion motion alias、必須phaseと実測coverageを終了codeで判定する
 - 専用scroll contract、公開観測台帳、採用4 sourceのSHA / 件数 / prefix /解析開始index / wall-clockが機械的に結合され、local原本があるcompletion evidenceでは同じsource bytesとmanifestまで再検証する
+- 自前計測の986 pairからterminal 19 pairを除いた967 pairをX / Y軸別のodd quadratic `a*g + b*g*abs(g)`へfitし、tracked sampleから再導出したmodelをCIでruntime fixtureと`cmp`している
+- input frameは同一timestampの`type 22 -> type 29 envelope -> type 29 companion`、momentumは`type 22`だけを生成し、全eventをsystem-wideへ投稿している
 - scroll phaseとmomentum phaseを分離し、begin / change / end / cancelとmomentum begin / continue / endを完結させる
-- Spaces / Mission Controlはprogressとphaseを持つDockSwipe event系列として実装し、forced horizontal scrollやkeyboard shortcutで代替していない
-- page navigationはNavigationSwipe、zoomはmagnification / zoom eventとして実装している
+- daemonがmomentum timerと停止理由、coordinatorがactive action、session ID、順序、continuation、明示cancelを管理し、input active / awaiting momentum / momentum activeを重複なくterminalへ収束させる
+- 部分投稿失敗では未投稿offsetと予約済みpost indexを保持し、同じeventの再送または明示cancelで解消するまで別sessionを拒否して、trace順序と実投稿順を一致させる
+- scroll familyだけの変更では`DockSwipe` / `NavigationSwipe` / `magnification`を未実装と明記してcapabilityへ含めず、必要なbindingを`outputContract.missingFamilies`として起動前に停止する。scroll実装をアプリ全体の完成と表現していない
+- アプリ全体の完成を主張する場合は、Spaces / Mission ControlをDockSwipe、page navigationをNavigationSwipe、zoomをmagnificationとして別途実装・検証し、forced horizontal scrollやkeyboard shortcutで代替していない
 - 純正trackpad logとtype、subtype、field、順序、timestamp、phase、momentumを同一schemaで比較している
-- 第三者プロジェクト由来のコード、field番号、定数、状態遷移、係数、調整値をコピーせず、Apple公式資料、Apple OSS、自前ログから導出した根拠がある
+- trackpad output eventのfield番号、定数、状態遷移、係数、調整値が、Apple公式資料、Apple OSS、capture manifest、fixture、自前ログまで追跡できる
 - `generate-scroll` / `system-test`の旧単純CGEvent結果をtrackpad driver出力の完成証跡にしていない
-- Finder、Safari、Mission Control、Spacesでsystem-wide配送の実機検証が明記されている
+- scroll product outputの完成を主張する場合は、Finder、Safari、Web content、nested scroll targetで同じbinary / system-wide系列の実機検証が明記されている。Mission Control / Spacesは未実装DockSwipeの別gateとして混同していない
 
 ## UI / Doctor / 権限導線変更
 
@@ -122,6 +128,7 @@
 ## Release 変更
 
 - `.app` バンドルを作成し、`verify-bundle` が成功する
+- `sh scripts/test-bundle-app-safety.sh .build/debug/nape-gesture`が成功し、原子的swap、既存bundle保持、任意directory・symlink・未知option拒否を確認している
 - `LICENSE` と `THIRD_PARTY_NOTICES.md` が同梱される
 - `LICENSE` と `THIRD_PARTY_NOTICES.md` はバンドル内の同梱ファイルと `cmp` で一致している
 - `CFBundleIdentifier`、`CFBundleExecutable`、`CFBundleName`、`CFBundleDisplayName`、`LSUIElement=false` の exact check が成功している

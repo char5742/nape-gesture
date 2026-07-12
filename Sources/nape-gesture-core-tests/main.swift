@@ -2007,30 +2007,30 @@ func testMomentumTerminatesOnBackwardMonotonicTime() {
 }
 
 func testProductGestureOutputFailsClosedWithoutVerifiedContract() {
-    let adapter = TrackpadGestureOutputAdapter()
-    let command = GestureCommand(
-        kind: .drag,
-        phase: .began,
-        direction: .right,
-        deltaX: 10,
-        deltaY: 0,
-        velocityX: 100,
-        velocityY: 0,
-        timestamp: 1
+    let adapter = TrackpadGestureOutputAdapter(contractData: nil)
+    let sessionID = TrackpadOutputSessionID(rawValue: 1)
+    let event = TrackpadOutputSessionEvent.input(
+        TrackpadOutputInputFrame(
+            sessionID: sessionID,
+            captureOrder: 0,
+            timestamp: MonotonicEventClock.now,
+            phase: .began,
+            payload: .scroll(deltaX: 10, deltaY: 0, velocityX: 100, velocityY: 0)
+        )
     )
-    let result = adapter.post(action: .spaceRight, command: command)
+    let result = adapter.post(event)
 
     expect(adapter.capability.unsupportedReason != nil, "未検証contractをsupportedとして扱わない")
     expect(result.generatedEventCount == 0, "未検証contractではeventを生成しない")
     expect(result.failedEventCreationCount == 0, "未検証contractをevent作成失敗と混同しない")
     expect(result.failure == .unsupported, "未検証contractを明示的なunsupportedとして返す")
-    expect(!adapter.supportsMomentum(for: .smoothScroll), "未検証contractではmomentumを開始しない")
+    expect(!adapter.supports(.scroll), "未検証contractではscroll familyを対応扱いしない")
 }
 
 func testProductGestureOutputRequiresRegisteredFixtureAndInfersFailures() {
     expect(
-        ProductGestureOutputCapability.registeredFixtureCount == 0,
-        "fixture未取得中はsupported contract registryを空に保つ"
+        ProductGestureOutputCapability.registeredFixtureCount == 1,
+        "25F80 fixture registrationをCoreの単一registryから参照する"
     )
     expect(ProductGestureOutputSystemIdentity.current() != nil, "現在のmacOS version/buildを取得できる")
 
@@ -2761,7 +2761,8 @@ func testDefaultGestureBindingsMapSystemActions() {
 
 func testGestureActionMomentumSupport() {
     expect(GestureAction.smoothScroll.supportsMomentum, "smoothScroll は慣性を持てる")
-    expect(GestureAction.spaceLeft.supportsMomentum, "spaceLeft は連続スクロール系として慣性を持てる")
+    expect(GestureAction.horizontalScroll.supportsMomentum, "horizontalScroll は慣性を持てる")
+    expect(!GestureAction.spaceLeft.supportsMomentum, "spaceLeft はDockSwipe familyなのでscroll momentumを使わない")
     expect(!GestureAction.missionControl.supportsMomentum, "Mission Control は離散アクションなので慣性を持たない")
     expect(!GestureAction.pageBack.supportsMomentum, "ページ戻るは離散アクションなので慣性を持たない")
 }

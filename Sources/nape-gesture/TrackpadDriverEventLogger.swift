@@ -28,6 +28,7 @@ final class TrackpadDriverEventLogger {
     private var acceptingEvents = false
     private var activeReadyLease: TrackpadDriverEventCaptureReadyLease?
     private var readyLifecycleError: Error?
+    private var onlyGeneratedEvents = false
 
     init(options: [String] = []) {
         self.options = options
@@ -86,6 +87,7 @@ final class TrackpadDriverEventLogger {
             throw TrackpadDriverEventLoggerError.unsupportedEventFieldLayout
         }
         runMetadata = try Self.makeMetadata(configuration: configuration)
+        onlyGeneratedEvents = configuration.onlyGeneratedEvents
         let loggerExecutableSHA256: String?
         if configuration.manifestPath == nil {
             loggerExecutableSHA256 = nil
@@ -264,6 +266,12 @@ final class TrackpadDriverEventLogger {
         guard isAcceptingEvents() else {
             return Unmanaged.passUnretained(event)
         }
+        if onlyGeneratedEvents,
+           event.getIntegerValueField(.eventSourceUserData)
+            != NapeGestureGeneratedEventMarker.value
+        {
+            return Unmanaged.passUnretained(event)
+        }
 
         let captureIndex = nextCaptureIndex
         let (followingIndex, overflow) = captureIndex.addingReportingOverflow(1)
@@ -433,6 +441,7 @@ final class TrackpadDriverEventLogger {
         var evidenceKind: TrackpadDriverEventEvidenceKind?
         var readyFilePath: String?
         var readyRunToken: String?
+        var onlyGeneratedEvents = false
         var seenOptions = Set<String>()
         var index = 0
         let supportedOptions = [
@@ -444,7 +453,8 @@ final class TrackpadDriverEventLogger {
             "--manifest-out",
             "--evidence-kind",
             "--ready-file",
-            "--ready-token"
+            "--ready-token",
+            "--only-generated"
         ]
 
         while index < options.count {
@@ -454,6 +464,11 @@ final class TrackpadDriverEventLogger {
             }
             guard seenOptions.insert(option).inserted else {
                 throw TrackpadDriverEventLoggerError.duplicateOption(option)
+            }
+            if option == "--only-generated" {
+                onlyGeneratedEvents = true
+                index += 1
+                continue
             }
             guard index + 1 < options.count else {
                 throw ToolError.missingValue(option)
@@ -553,6 +568,12 @@ final class TrackpadDriverEventLogger {
                     )
                 }
             }
+            if evidenceKind == .generatedProduct, readyRunToken == nil {
+                throw TrackpadDriverEventLoggerError.requiredEvidenceMetadataMissing(
+                    evidenceKind: evidenceKind,
+                    option: "--ready-file / --ready-token"
+                )
+            }
         } else {
             if manifestPath != nil {
                 throw TrackpadDriverEventLoggerError.manifestRequiresFileOutput
@@ -567,6 +588,12 @@ final class TrackpadDriverEventLogger {
         }
         if readyRunToken != nil, readyFilePath == nil {
             throw TrackpadDriverEventLoggerError.readyTokenRequiresFile
+        }
+        if onlyGeneratedEvents, evidenceKind != .generatedProduct {
+            throw ToolError.invalidValue(
+                "--only-generated",
+                "--evidence-kind generatedProduct と併用してください。"
+            )
         }
 
         if let readyFilePath, let readyRunToken {
@@ -605,7 +632,8 @@ final class TrackpadDriverEventLogger {
             manifestPath: manifestPath,
             evidenceKind: evidenceKind,
             readyFilePath: readyFilePath,
-            readyRunToken: readyRunToken
+            readyRunToken: readyRunToken,
+            onlyGeneratedEvents: onlyGeneratedEvents
         )
     }
 
@@ -631,7 +659,8 @@ final class TrackpadDriverEventLogger {
             osBuild: try operatingSystemBuild(),
             scenarioID: configuration.scenarioID,
             deviceLabel: configuration.deviceLabel,
-            repoHeadSHA: configuration.repoHeadSHA
+            repoHeadSHA: configuration.repoHeadSHA,
+            captureRunToken: configuration.readyRunToken
         )
     }
 
@@ -656,7 +685,7 @@ final class TrackpadDriverEventLogger {
         }
     }
 
-    private static func runningExecutableSHA256() throws -> String {
+    static func runningExecutableSHA256() throws -> String {
         var requiredSize: UInt32 = 0
         _ = _NSGetExecutablePath(nil, &requiredSize)
         guard requiredSize > 1 else {
@@ -779,13 +808,14 @@ final class TrackpadDriverEventLogger {
     private func printCommandHelp() {
         print(
             """
-            nape-gesture trackpad-event-log [--duration <秒>] [--out <path>] [--manifest-out <path>] [--ready-file <path> --ready-token <UUID>] [--evidence-kind <synthetic|physicalTrackpad|generatedProduct>] [--scenario-id <ID>] [--device-label <ラベル>] [--repo-head-sha <SHA>]
+            nape-gesture trackpad-event-log [--duration <秒>] [--out <path>] [--manifest-out <path>] [--ready-file <path> --ready-token <UUID>] [--evidence-kind <synthetic|physicalTrackpad|generatedProduct>] [--only-generated] [--scenario-id <ID>] [--device-label <ラベル>] [--repo-head-sha <SHA>]
 
             純正トラックパッドがCoreGraphicsへ送るイベント契約を、listen-onlyのCGEvent tapでJSON Linesとして記録します。
             callbackではイベントのcopy・採番・bounded queue投入だけを行い、event type 0...63とzeroを含むraw field 0...255をfieldNumber昇順で保存します。
             serializedEventBase64を正本とし、OS version/build、logger version、scenario ID、device label、repo HEAD SHAを各eventへ保存します。
             --repo-head-sha は40桁または64桁の完全な16進SHAを指定してください。診断中は対象外の入力を避けてください。
             --out指定時は--evidence-kindが必須です。--manifest-out省略時は<out>.manifest.jsonへsidecarを生成します。physicalTrackpad / generatedProductでは--scenario-id、--device-label、--repo-head-shaも必須です。
+            --only-generatedは--evidence-kind generatedProduct専用です。Nape Gesture markerを持つeventだけをcallbackで採用し、採用後のcaptureIndexを0始まりで再採番します。generatedProductではcaptureとdirect post traceを結合するため--ready-file / --ready-tokenも必須です。physicalTrackpad証跡には指定できません。
             manifestはcapture開始・完了wall-clockと、確定log fileのflush / close後に再読込した最終bytesを保存し、同じdirectoryのtemporary fileからatomic renameします。capture開始前に同じpathの旧sidecarを削除するため、失敗captureに旧manifestは残りません。
             --ready-fileには呼び出し側が新規発行した--ready-token UUIDが必須で、file名にもtokenを含めます。権限確認前にready:falseの排他的leaseを作り、既存pathは削除せず失敗します。event受付開始時だけtoken、PID、開始wall-clock、有限durationのdeadline、scenario ID、repo HEAD SHAを持つready:trueへatomic更新し、受付停止前にready:falseへ戻してunlinkします。監視側は全field、deadline、PID生存を確認してから物理操作を開始してください。
             --out未指定時はJSON Linesを標準出力へ書き出しますが、完全性を証明できるfile bytesがないためmanifestを生成しません。--manifest-outまたは--evidence-kindだけの指定は失敗します。
@@ -831,6 +861,7 @@ private struct TrackpadDriverEventLoggerConfiguration {
     var evidenceKind: TrackpadDriverEventEvidenceKind?
     var readyFilePath: String?
     var readyRunToken: String?
+    var onlyGeneratedEvents: Bool
 }
 
 private struct CapturedTrackpadDriverEvent {
