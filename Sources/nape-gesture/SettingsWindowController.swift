@@ -7,7 +7,9 @@ final class SettingsWindowController: NSWindowController {
 
     private var settings: NapeGestureSettings
     private let configPath: String
-    private let activationButtonField = NSTextField()
+    private let button3ModePopup = NSPopUpButton()
+    private let button4ModePopup = NSPopUpButton()
+    private let button5ModePopup = NSPopUpButton()
     private let associationWindowField = NSTextField()
     private let deadZoneField = NSTextField()
     private let dragSensitivityField = NSTextField()
@@ -76,6 +78,9 @@ final class SettingsWindowController: NSWindowController {
         stack.translatesAutoresizingMaskIntoConstraints = false
 
         stack.addArrangedSubview(label("設定ファイル: \(configPath)", fontSize: 11))
+        configureModePopup(button3ModePopup)
+        configureModePopup(button4ModePopup)
+        configureModePopup(button5ModePopup)
         for field in SettingsUIField.allCases {
             let control = control(for: field)
             if field.descriptor.controlKind == .checkbox {
@@ -122,7 +127,9 @@ final class SettingsWindowController: NSWindowController {
     }
 
     private func populate(_ settings: NapeGestureSettings) {
-        activationButtonField.stringValue = String(settings.gesture.activationButton.rawValue)
+        select(settings.gesture.button3Mode, in: button3ModePopup)
+        select(settings.gesture.button4Mode, in: button4ModePopup)
+        select(settings.gesture.button5Mode, in: button5ModePopup)
         associationWindowField.stringValue = String(settings.targetDeviceAssociation.associationWindow)
         deadZoneField.stringValue = String(settings.gesture.deadZonePoints)
         dragSensitivityField.stringValue = String(settings.gesture.dragSensitivity)
@@ -151,7 +158,6 @@ final class SettingsWindowController: NSWindowController {
 
     @objc private func save() {
         guard
-            let activationButton = Int(activationButtonField.stringValue),
             let associationWindow = Double(associationWindowField.stringValue),
             let deadZone = Double(deadZoneField.stringValue),
             let dragSensitivity = Double(dragSensitivityField.stringValue),
@@ -216,7 +222,9 @@ final class SettingsWindowController: NSWindowController {
         let targetDevices = matcher.hasAnyCondition ? [matcher] : []
         let updated = NapeGestureSettings(
             gesture: GestureConfiguration(
-                activationButton: MouseButton(rawValue: activationButton) ?? .button4,
+                button3Mode: selectedMode(button3ModePopup),
+                button4Mode: selectedMode(button4ModePopup),
+                button5Mode: selectedMode(button5ModePopup),
                 deadZonePoints: deadZone,
                 dragSensitivity: dragSensitivity,
                 wheelSensitivity: wheelSensitivity,
@@ -253,6 +261,24 @@ final class SettingsWindowController: NSWindowController {
         close()
     }
 
+    private func configureModePopup(_ popup: NSPopUpButton) {
+        for mode in TrackpadGestureMode.allCases {
+            popup.addItem(withTitle: mode.displayName)
+            popup.lastItem?.representedObject = mode.rawValue
+        }
+    }
+
+    private func select(_ mode: TrackpadGestureMode, in popup: NSPopUpButton) {
+        popup.selectItem(withTitle: mode.displayName)
+    }
+
+    private func selectedMode(_ popup: NSPopUpButton) -> TrackpadGestureMode {
+        guard let rawValue = popup.selectedItem?.representedObject as? String else {
+            return .none
+        }
+        return TrackpadGestureMode(rawValue: rawValue) ?? .none
+    }
+
     private func optionalText(_ field: NSTextField) -> String? {
         let value = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? nil : value
@@ -279,8 +305,12 @@ final class SettingsWindowController: NSWindowController {
 
     private func control(for field: SettingsUIField) -> NSView {
         switch field {
-        case .activationButton:
-            return activationButtonField
+        case .button3Mode:
+            return button3ModePopup
+        case .button4Mode:
+            return button4ModePopup
+        case .button5Mode:
+            return button5ModePopup
         case .targetDeviceAssociationWindow:
             return associationWindowField
         case .deadZonePoints:

@@ -34,13 +34,16 @@ public final class ProductGestureSessionCoordinator {
     }
 
     private let output: any ProductGestureOutput
+    private let enabledModes: Set<TrackpadGestureMode>
     private let sessionSequence: TrackpadOutputSessionSequence
     private var activeSession: ActiveSession?
 
     public init(
+        enabledModes: Set<TrackpadGestureMode> = Set(TrackpadGestureMode.allCases.filter { $0 != .none }),
         output: any ProductGestureOutput,
         sessionSequence: TrackpadOutputSessionSequence = TrackpadOutputSessionSequence()
     ) {
+        self.enabledModes = enabledModes
         self.output = output
         self.sessionSequence = sessionSequence
     }
@@ -172,7 +175,7 @@ public final class ProductGestureSessionCoordinator {
     }
 
     private var requiredFamilies: Set<TrackpadOutputEventFamily> {
-        [.dockSwipe, .scroll]
+        Set(enabledModes.compactMap(Self.family(for:)))
     }
 
     private func makeSessionEvent(
@@ -322,17 +325,26 @@ public final class ProductGestureSessionCoordinator {
             .dockSwipe
         case .pageBack, .pageForward:
             .navigationSwipe
-        case .zoomIn, .zoomOut:
+        case .zoomIn, .zoomOut, .magnification:
             .magnification
         }
     }
 
+    private static func family(for mode: TrackpadGestureMode) -> TrackpadOutputEventFamily? {
+        switch mode {
+        case .none: nil
+        case .scrollAndNavigate: .scroll
+        case .spacesAndMissionControl: .dockSwipe
+        case .zoom: .magnification
+        }
+    }
+
     private static func action(for command: GestureCommand) -> GestureAction {
-        switch command.kind {
-        case .drag:
-            .dockSwipe
-        case .wheel, .momentum:
-            .smoothScroll
+        switch command.mode {
+        case .none: .none
+        case .scrollAndNavigate: .smoothScroll
+        case .spacesAndMissionControl: .dockSwipe
+        case .zoom: .magnification
         }
     }
 
@@ -404,6 +416,15 @@ public final class ProductGestureSessionCoordinator {
                 progress: Self.normalizedProgress(-abs(command.deltaY)),
                 scaleDelta: Self.normalizedScale(-abs(command.deltaY)),
                 velocity: Self.normalizedVelocity(-abs(command.velocityY))
+            )
+        case .magnification:
+            let useY = command.deltaY != 0 || command.velocityY != 0
+            let delta = useY ? command.deltaY : command.deltaX
+            let velocity = useY ? command.velocityY : command.velocityX
+            return .magnification(
+                progress: Self.normalizedProgress(delta),
+                scaleDelta: Self.normalizedScale(delta),
+                velocity: Self.normalizedVelocity(velocity)
             )
         case .none:
             return nil

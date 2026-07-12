@@ -46,7 +46,7 @@
 | [ADR-0043](0043-trackpad-scroll-product-output.md) | 25F80 trackpad scrollを製品出力として構成する | 軸別odd quadratic、967 pair、type 22 / 29、system-wide、provenance、field 39 / 40 |
 | [ADR-0044](0044-atomic-app-bundle-installation.md) | 検証済みapp bundleを原子的に導入する | bundle-app、renameatx_np、fingerprint、既存bundle保持、strict CLI |
 | [ADR-0046](0046-trial-output-for-remaining-trackpad-families.md) | 残るtrackpad familyを25F80試用出力として有効化する | DockSwipe、NavigationSwipe、magnification、試用、25F80 |
-| [ADR-0047](0047-fixed-continuous-2d-trackpad-input.md) | 方向別bindingを廃止し固定trackpad gestureへ接続する | Issue #144、DockSwipe、scroll、固定操作体系、macOS標準gesture処理 |
+| [ADR-0047](0047-fixed-continuous-2d-trackpad-input.md) | 方向別bindingを廃止しボタンごとのtrackpad modeへ接続する | Issue #144、button 3 / 4 / 5、mode、DockSwipe、scroll、NavigationSwipe、magnification |
 
 ## 置換済み
 

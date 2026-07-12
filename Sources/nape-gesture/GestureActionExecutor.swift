@@ -6,10 +6,12 @@ final class GestureActionExecutor {
     private let coordinator: ProductGestureSessionCoordinator
 
     init(
+        enabledModes: Set<TrackpadGestureMode>,
         output: any ProductGestureOutput = TrackpadGestureOutputAdapter(),
         sessionSequence: TrackpadOutputSessionSequence = TrackpadOutputSessionSequence()
     ) {
         coordinator = ProductGestureSessionCoordinator(
+            enabledModes: enabledModes,
             output: output,
             sessionSequence: sessionSequence
         )

@@ -41,7 +41,9 @@
 - デッドゾーン内の微小揺れをジェスチャー確定にしていない
 - ボタン解放後に必ず通常状態へ戻る
 - scrollの`began` / `changed` / `ended` / `cancelled`とmomentumの`began` / `continued` / `ended`を別のlifecycleとして扱っている
-- 連続2D入力、加速度、方向非依存のキャンセル条件、慣性のテストが追加または更新されている
+- button modeごとの連続入力、加速度、方向非依存のキャンセル条件、慣性のテストが追加または更新されている
+- button 3 / 4 / 5ごとのmode選択と、既定の`Scroll & Navigate` / `Spaces & Mission Control` / `Zoom`がテストされている
+- `none`を割り当てたbuttonは通常mouse入力を抑制・変換しない
 
 ## Runtime / Event Tap 変更
 
@@ -105,7 +107,8 @@
 - scroll phaseとmomentum phaseを分離し、begin / change / end / cancelとmomentum begin / continue / endを完結させる
 - daemonがmomentum timerと停止理由、coordinatorがactive action、session ID、順序、continuation、明示cancelを管理し、input active / awaiting momentum / momentum activeを重複なくterminalへ収束させる
 - 部分投稿失敗では未投稿offsetと予約済みpost indexを保持し、同じeventの再送または明示cancelで解消するまで別sessionを拒否して、trace順序と実投稿順を一致させる
-- 固定操作体系に必要なfamilyが不足する場合は`outputContract.missingFamilies`として起動前に停止し、方向別bindingによる回避を追加していない
+- button modeに必要なfamilyが不足する場合は`outputContract.missingFamilies`として起動前に停止し、方向別bindingによる回避を追加していない
+- `Scroll & Navigate`の`scroll`経路と`NavigationSwipe` adapter生成能力を区別し、adapter単体testやmode名だけでページnavigationの完成を主張していない
 - アプリ全体の完成を主張する場合は、Spaces / Mission ControlをDockSwipe、page navigationをNavigationSwipe、zoomをmagnificationとして別途実装・検証し、forced horizontal scrollやkeyboard shortcutで代替していない
 - 純正trackpad logとtype、subtype、field、順序、timestamp、phase、momentumを同一schemaで比較している
 - trackpad output eventのfield番号、定数、状態遷移、係数、調整値が、Apple公式資料、Apple OSS、capture manifest、fixture、自前ログまで追跡できる
@@ -116,7 +119,8 @@
 
 - 設定 UI にアプリ別の有効・無効、感度、割り当てを追加していない
 - 設定 UI の編集対象は `SettingsUIField.descriptors` に追加し、設定パス、control kind、JSON round-trip、アプリ別設定なしの core test を維持している
-- 設定 UI の割り当て候補は `GestureAction.settingsSelectableActions` から生成し、`GestureAction.allCases` との網羅性テストを維持している
+- 設定 UI は上下左右の割り当てを持たず、button 3 / 4 / 5ごとに`none`、`Scroll & Navigate`、`Spaces & Mission Control`、`Zoom`だけを選択できる
+- 設定UI、設定schema、既定configでbutton 3 / 4 / 5の既定modeが一致している
 - 不正な設定値を保存前または起動前に止める
 - `runtimeIdentity` で権限付与対象が分かる
 - `runtimeReadiness.ready`、`runtimeReadiness.failures[].code`、`tccStatus.accessibility`、`tccStatus.inputMonitoring` で runtime ready と TCC 状態を構造化している

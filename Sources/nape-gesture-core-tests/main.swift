@@ -443,6 +443,7 @@ func testMomentumDecaysAndEventuallyEnds() {
         )
     )
     let command = GestureCommand(
+        mode: .zoom,
         kind: .drag,
         phase: .ended,
         direction: .right,
@@ -458,6 +459,7 @@ func testMomentumDecaysAndEventuallyEnds() {
 
     expect(first?.kind == .momentum, "慣性コマンドを出す")
     expect(first?.phase == .momentum, "慣性フェーズを出す")
+    expect(first?.mode == .zoom, "慣性コマンドへ開始元のmodeを継承する")
     expect((first?.velocityX ?? 100) < 100, "速度が減衰する")
 
     var ended = false
@@ -614,6 +616,10 @@ func testGestureConfigurationDecodesOldJSONWithDefaults() {
 
     expect(configuration?.acceleration == .default, "古い設定JSONにはデフォルトの加速度設定を補う")
     expect(configuration?.cancellation == .default, "古い設定JSONにはデフォルトのキャンセル設定を補う")
+    expect(configuration?.button3Mode == .scrollAndNavigate, "旧設定をbutton 3の既定modeへ移行する")
+    expect(configuration?.button4Mode == .spacesAndMissionControl, "旧設定をbutton 4の既定modeへ移行する")
+    expect(configuration?.button5Mode == .zoom, "旧設定をbutton 5の既定modeへ移行する")
+    expect(!reencodedText.contains("activationButton"), "再エンコード時は旧activationButtonを除去する")
     expect(!reencodedText.contains("bindings"), "再エンコード時は廃止済み bindings を除去する")
     expect(!reencodedText.contains("directionLockRatio"), "再エンコード時は廃止済み directionLockRatio を除去する")
     expect(!reencodedText.contains("offAxisCancelRatio"), "再エンコード時は廃止済み offAxisCancelRatio を除去する")
@@ -623,6 +629,7 @@ func testSettingsMigrationDetectsOnlyDeprecatedGestureKeys() {
     let oldJSON = Data("""
     {
       "gesture": {
+        "activationButton": 4,
         "bindings": { "dragUp": "missionControl" },
         "cancellation": { "offAxisCancelRatio": 2.5 }
       }
@@ -645,6 +652,52 @@ func testSettingsMigrationDetectsOnlyDeprecatedGestureKeys() {
         (try? SettingsMigration.containsDeprecatedGestureKeys(in: currentJSON)) == false,
         "現行gesture設定を不要にmigrationしない"
     )
+}
+
+func testGestureConfigurationUsesCanonicalButtonModeDefaults() {
+    let configuration = GestureConfiguration.default
+
+    expect(configuration.button3Mode == .scrollAndNavigate, "button 3の既定modeはscrollAndNavigate")
+    expect(configuration.button4Mode == .spacesAndMissionControl, "button 4の既定modeはspacesAndMissionControl")
+    expect(configuration.button5Mode == .zoom, "button 5の既定modeはzoom")
+    expect(configuration.mode(for: .left) == .none, "通常ボタンにはtrackpad gesture modeを割り当てない")
+}
+
+func testRecognizerFixesButtonModeForSessionAndWaitsForMatchingRelease() {
+    let configuration = GestureConfiguration(
+        button3Mode: .scrollAndNavigate,
+        button4Mode: .spacesAndMissionControl,
+        button5Mode: .zoom,
+        deadZonePoints: 1
+    )
+    var recognizer = GestureRecognizer(configuration: configuration)
+
+    _ = recognizer.handle(.buttonDown(button: .button5, time: 1))
+    let began = recognizer.handle(.move(deltaX: 2, deltaY: 0, time: 1.01))
+    let unrelatedRelease = recognizer.handle(.buttonUp(button: .button4, time: 1.02))
+    let changed = recognizer.handle(.move(deltaX: 1, deltaY: 0, time: 1.03))
+    let ended = recognizer.handle(.buttonUp(button: .button5, time: 1.04))
+
+    expect(began.commands.first?.mode == .zoom, "押下ボタンのmodeを開始コマンドへ固定する")
+    expect(!unrelatedRelease.shouldSuppressOriginal, "別ボタンの解放は通過させる")
+    expect(changed.commands.first?.mode == .zoom, "セッション中は押下時のmodeを維持する")
+    expect(ended.commands.first?.mode == .zoom, "対応ボタンの終了コマンドにもmodeを維持する")
+    expect(recognizer.isIdle, "対応ボタンの解放でのみセッションを終了する")
+}
+
+func testNoneModeButtonPassesThrough() {
+    var recognizer = GestureRecognizer(
+        configuration: GestureConfiguration(
+            button3Mode: .none,
+            button4Mode: .none,
+            button5Mode: .none
+        )
+    )
+
+    let down = recognizer.handle(.buttonDown(button: .button3, time: 1))
+
+    expect(!down.shouldSuppressOriginal, "none modeのボタン押下は通過させる")
+    expect(recognizer.isIdle, "none modeではセッションを開始しない")
 }
 
 func testNapeGestureSettingsDecodesOldJSONWithDefaultAssociationWindow() {
@@ -2711,7 +2764,7 @@ func testScrollEventPhaseEncoderSeparatesScrollAndMomentumPhases() {
 func testTargetDeviceGateOnlyHandlesRecentTargetActivity() {
     var gate = TargetDeviceGateState(
         configuration: TargetDeviceGateConfiguration(
-            activationButton: .button4,
+            gestureButtons: [.button3, .button4, .button5],
             associationWindow: 0.1
         )
     )
@@ -2730,7 +2783,7 @@ func testTargetDeviceGateOnlyHandlesRecentTargetActivity() {
 func testTargetDeviceGateKeepsHandlingWhileActivationButtonIsDown() {
     var gate = TargetDeviceGateState(
         configuration: TargetDeviceGateConfiguration(
-            activationButton: .button4,
+            gestureButtons: [.button3, .button4, .button5],
             associationWindow: 0.1
         )
     )
@@ -2745,7 +2798,11 @@ func testTargetDeviceGateKeepsHandlingWhileActivationButtonIsDown() {
 
 func testTargetDeviceGateUsesAssociationWindowFromSettings() {
     let settings = NapeGestureSettings(
-        gesture: GestureConfiguration(activationButton: .button5),
+        gesture: GestureConfiguration(
+            button3Mode: .none,
+            button4Mode: .none,
+            button5Mode: .zoom
+        ),
         targetDeviceAssociation: TargetDeviceAssociationConfiguration(associationWindow: 0.04),
         targetDevices: [DeviceMatcher(productContains: "Nape Pro")],
         requireMatchingTargetDevice: true
@@ -2755,7 +2812,7 @@ func testTargetDeviceGateUsesAssociationWindowFromSettings() {
 
     gate.record(.pointer(deltaX: 1, deltaY: 0, time: 2))
 
-    expect(configuration.activationButton == .button5, "設定のジェスチャーボタンを gate に反映する")
+    expect(configuration.gestureButtons == [.button5], "有効なジェスチャーボタンを gate に反映する")
     expect(configuration.associationWindow == 0.04, "設定の対象入力紐づけ秒を gate に反映する")
     expect(gate.shouldHandle(.buttonDown(button: .button5, time: 2.03)), "設定した紐づけ秒以内の入力を処理する")
     expect(!gate.shouldHandle(.buttonDown(button: .button5, time: 2.05)), "設定した紐づけ秒を超えた入力は処理しない")
@@ -2764,7 +2821,7 @@ func testTargetDeviceGateUsesAssociationWindowFromSettings() {
 func testTargetDeviceGatePassesThroughNonTargetClickDragAndWheel() {
     var gate = TargetDeviceGateState(
         configuration: TargetDeviceGateConfiguration(
-            activationButton: .button4,
+            gestureButtons: [.button3, .button4, .button5],
             associationWindow: 0.05
         )
     )
@@ -2797,7 +2854,9 @@ func testSettingsUIFieldCatalogCoversEditableSettings() {
     let labels = descriptors.map(\.label)
     let paths = descriptors.map(\.settingsPath)
     let requiredPaths: Set<String> = [
-        "gesture.activationButton",
+        "gesture.button3Mode",
+        "gesture.button4Mode",
+        "gesture.button5Mode",
         "targetDeviceAssociation.associationWindow",
         "gesture.deadZonePoints",
         "gesture.dragSensitivity",
@@ -2840,7 +2899,6 @@ func testSettingsUIFieldCatalogCoversEditableSettings() {
 func testSettingsUIFieldCatalogKindsAndSections() {
     let descriptorsByField = Dictionary(uniqueKeysWithValues: SettingsUIField.descriptors.map { ($0.field, $0) })
     let numberFields: Set<SettingsUIField> = [
-        .activationButton,
         .targetDeviceAssociationWindow,
         .deadZonePoints,
         .dragSensitivity,
@@ -2869,6 +2927,7 @@ func testSettingsUIFieldCatalogKindsAndSections() {
         .momentumEnabled,
         .requireMatchingTargetDevice
     ]
+    let popupFields: Set<SettingsUIField> = [.button3Mode, .button4Mode, .button5Mode]
     for field in numberFields {
         expect(descriptorsByField[field]?.controlKind == .numberTextField, "\(field.rawValue) は数値入力として扱う")
     }
@@ -2878,7 +2937,10 @@ func testSettingsUIFieldCatalogKindsAndSections() {
     for field in checkboxFields {
         expect(descriptorsByField[field]?.controlKind == .checkbox, "\(field.rawValue) はチェックボックスとして扱う")
     }
-    expect(descriptorsByField[.activationButton]?.section == .gesture, "activation button は gesture section に置く")
+    for field in popupFields {
+        expect(descriptorsByField[field]?.controlKind == .popup, "\(field.rawValue) はpopupとして扱う")
+        expect(descriptorsByField[field]?.section == .gesture, "\(field.rawValue) はgesture sectionに置く")
+    }
     expect(descriptorsByField[.accelerationEnabled]?.section == .acceleration, "加速度 enable は acceleration section に置く")
     expect(descriptorsByField[.momentumEnabled]?.section == .momentum, "慣性 enable は momentum section に置く")
     expect(descriptorsByField[.cancellationMaximumDuration]?.section == .cancellation, "キャンセル条件は cancellation section に置く")
@@ -3396,6 +3458,9 @@ testDeviceMatcherWithoutConditionsDoesNotMatchEverything()
 testDeviceIdentityEncodesStableID()
 testGestureConfigurationDecodesOldJSONWithDefaults()
 testSettingsMigrationDetectsOnlyDeprecatedGestureKeys()
+testGestureConfigurationUsesCanonicalButtonModeDefaults()
+testRecognizerFixesButtonModeForSessionAndWaitsForMatchingRelease()
+testNoneModeButtonPassesThrough()
 testNapeGestureSettingsDecodesOldJSONWithDefaultAssociationWindow()
 testSettingsValidatorAcceptsTemplateSettings()
 testSettingsValidatorRejectsUnsafeGestureValues()

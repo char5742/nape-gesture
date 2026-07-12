@@ -49,6 +49,7 @@ public enum GestureCommandKind: String, Codable, Equatable, Sendable {
 }
 
 public struct GestureCommand: Codable, Equatable, Sendable {
+    public var mode: TrackpadGestureMode
     public var kind: GestureCommandKind
     public var phase: GesturePhase
     public var direction: GestureDirection?
@@ -59,6 +60,7 @@ public struct GestureCommand: Codable, Equatable, Sendable {
     public var timestamp: TimeInterval
 
     public init(
+        mode: TrackpadGestureMode = .scrollAndNavigate,
         kind: GestureCommandKind,
         phase: GesturePhase,
         direction: GestureDirection?,
@@ -68,6 +70,7 @@ public struct GestureCommand: Codable, Equatable, Sendable {
         velocityY: Double,
         timestamp: TimeInterval
     ) {
+        self.mode = mode
         self.kind = kind
         self.phase = phase
         self.direction = direction
@@ -76,6 +79,31 @@ public struct GestureCommand: Codable, Equatable, Sendable {
         self.velocityX = velocityX
         self.velocityY = velocityY
         self.timestamp = timestamp
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case mode
+        case kind
+        case phase
+        case direction
+        case deltaX
+        case deltaY
+        case velocityX
+        case velocityY
+        case timestamp
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        mode = try container.decodeIfPresent(TrackpadGestureMode.self, forKey: .mode) ?? .scrollAndNavigate
+        kind = try container.decode(GestureCommandKind.self, forKey: .kind)
+        phase = try container.decode(GesturePhase.self, forKey: .phase)
+        direction = try container.decodeIfPresent(GestureDirection.self, forKey: .direction)
+        deltaX = try container.decode(Double.self, forKey: .deltaX)
+        deltaY = try container.decode(Double.self, forKey: .deltaY)
+        velocityX = try container.decode(Double.self, forKey: .velocityX)
+        velocityY = try container.decode(Double.self, forKey: .velocityY)
+        timestamp = try container.decode(TimeInterval.self, forKey: .timestamp)
     }
 }
 

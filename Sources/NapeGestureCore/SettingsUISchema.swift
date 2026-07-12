@@ -12,6 +12,7 @@ public enum SettingsUIControlKind: String, Codable, Equatable, Sendable {
     case numberTextField
     case textField
     case checkbox
+    case popup
 }
 
 public struct SettingsUIFieldDescriptor: Codable, Equatable, Sendable {
@@ -37,7 +38,9 @@ public struct SettingsUIFieldDescriptor: Codable, Equatable, Sendable {
 }
 
 public enum SettingsUIField: String, Codable, Equatable, Sendable, CaseIterable {
-    case activationButton
+    case button3Mode
+    case button4Mode
+    case button5Mode
     case targetDeviceAssociationWindow
     case deadZonePoints
     case dragSensitivity
@@ -68,8 +71,12 @@ public enum SettingsUIField: String, Codable, Equatable, Sendable, CaseIterable 
 
     public var descriptor: SettingsUIFieldDescriptor {
         switch self {
-        case .activationButton:
-            return number("ジェスチャーボタン番号", .gesture, "gesture.activationButton")
+        case .button3Mode:
+            return popup("ボタン3", .gesture, "gesture.button3Mode")
+        case .button4Mode:
+            return popup("ボタン4", .gesture, "gesture.button4Mode")
+        case .button5Mode:
+            return popup("ボタン5", .gesture, "gesture.button5Mode")
         case .targetDeviceAssociationWindow:
             return number("対象入力の紐づけ秒", .targetDevice, "targetDeviceAssociation.associationWindow")
         case .deadZonePoints:
@@ -157,6 +164,20 @@ public enum SettingsUIField: String, Codable, Equatable, Sendable, CaseIterable 
             label: label,
             section: section,
             controlKind: .checkbox,
+            settingsPath: settingsPath
+        )
+    }
+
+    private func popup(
+        _ label: String,
+        _ section: SettingsUISection,
+        _ settingsPath: String
+    ) -> SettingsUIFieldDescriptor {
+        SettingsUIFieldDescriptor(
+            field: self,
+            label: label,
+            section: section,
+            controlKind: .popup,
             settingsPath: settingsPath
         )
     }

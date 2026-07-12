@@ -61,6 +61,7 @@ struct DoctorCommand {
         let inventory = makeInventory(settings: settings, findings: &findings)
         let outputAdapter = TrackpadGestureOutputAdapter()
         let outputCoordinator = ProductGestureSessionCoordinator(
+            enabledModes: settings.gesture.enabledModes,
             output: outputAdapter
         )
         let outputContract = DoctorOutputContractStatus(

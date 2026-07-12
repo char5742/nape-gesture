@@ -6,6 +6,8 @@ public struct GestureRecognizer: Sendable {
     private let configuration: GestureConfiguration
     private var lastVelocityX: Double = 0
     private var lastVelocityY: Double = 0
+    private var sessionButton: MouseButton?
+    private var sessionMode: TrackpadGestureMode?
 
     public init(configuration: GestureConfiguration = .default) {
         self.configuration = configuration
@@ -14,16 +16,22 @@ public struct GestureRecognizer: Sendable {
     public mutating func handle(_ event: RawInputEvent) -> GestureDecision {
         switch event {
         case let .buttonDown(button, time):
-            guard button == configuration.activationButton else {
+            guard state == .idle else {
                 return GestureDecision(shouldSuppressOriginal: false)
             }
+            let mode = configuration.mode(for: button)
+            guard mode != .none else {
+                return GestureDecision(shouldSuppressOriginal: false)
+            }
+            sessionButton = button
+            sessionMode = mode
             state = .armed(startTime: time, lastTime: time, totalX: 0, totalY: 0)
             lastVelocityX = 0
             lastVelocityY = 0
             return GestureDecision(shouldSuppressOriginal: true)
 
         case let .buttonUp(button, time):
-            guard button == configuration.activationButton else {
+            guard button == sessionButton else {
                 return GestureDecision(shouldSuppressOriginal: false)
             }
             if shouldCancelForTiming(at: time) {
@@ -50,6 +58,10 @@ public struct GestureRecognizer: Sendable {
 
     public var isIdle: Bool {
         state == .idle
+    }
+
+    public var activeButton: MouseButton? {
+        sessionButton
     }
 
     private mutating func handleMove(deltaX: Double, deltaY: Double, time: TimeInterval) -> GestureDecision {
@@ -82,6 +94,7 @@ public struct GestureRecognizer: Sendable {
             return GestureDecision(
                 commands: [
                     GestureCommand(
+                        mode: activeMode,
                         kind: .drag,
                         phase: .began,
                         direction: direction,
@@ -113,6 +126,7 @@ public struct GestureRecognizer: Sendable {
             return GestureDecision(
                 commands: [
                     GestureCommand(
+                        mode: activeMode,
                         kind: .drag,
                         phase: .changed,
                         direction: direction,
@@ -148,6 +162,7 @@ public struct GestureRecognizer: Sendable {
             return GestureDecision(
                 commands: [
                     GestureCommand(
+                        mode: activeMode,
                         kind: .wheel,
                         phase: .began,
                         direction: nil,
@@ -176,6 +191,7 @@ public struct GestureRecognizer: Sendable {
             return GestureDecision(
                 commands: [
                     GestureCommand(
+                        mode: activeMode,
                         kind: .wheel,
                         phase: .changed,
                         direction: nil,
@@ -196,7 +212,10 @@ public struct GestureRecognizer: Sendable {
 
     private mutating func finish(at time: TimeInterval, cancelled: Bool) -> GestureDecision {
         let finishedState = state
+        let mode = activeMode
         state = .idle
+        sessionButton = nil
+        sessionMode = nil
 
         switch finishedState {
         case .idle:
@@ -209,6 +228,7 @@ public struct GestureRecognizer: Sendable {
             return GestureDecision(
                 commands: [
                     GestureCommand(
+                        mode: mode,
                         kind: .drag,
                         phase: cancelled ? .cancelled : .ended,
                         direction: direction,
@@ -226,6 +246,7 @@ public struct GestureRecognizer: Sendable {
             return GestureDecision(
                 commands: [
                     GestureCommand(
+                        mode: mode,
                         kind: .wheel,
                         phase: cancelled ? .cancelled : .ended,
                         direction: nil,
@@ -239,6 +260,10 @@ public struct GestureRecognizer: Sendable {
                 shouldSuppressOriginal: true
             )
         }
+    }
+
+    private var activeMode: TrackpadGestureMode {
+        sessionMode ?? .none
     }
 
     private func velocity(deltaX: Double, deltaY: Double, previousTime: TimeInterval, time: TimeInterval) -> (x: Double, y: Double) {

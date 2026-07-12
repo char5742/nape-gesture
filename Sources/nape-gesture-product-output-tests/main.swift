@@ -740,6 +740,7 @@ private func testCoordinatorFixesDragAxisAndSessionAcrossDirectionReversal() {
     )
     let commands = [
         GestureCommand(
+            mode: .spacesAndMissionControl,
             kind: .drag,
             phase: .began,
             direction: .right,
@@ -750,6 +751,7 @@ private func testCoordinatorFixesDragAxisAndSessionAcrossDirectionReversal() {
             timestamp: MonotonicEventClock.nowSeconds
         ),
         GestureCommand(
+            mode: .spacesAndMissionControl,
             kind: .drag,
             phase: .changed,
             direction: .left,
@@ -760,6 +762,7 @@ private func testCoordinatorFixesDragAxisAndSessionAcrossDirectionReversal() {
             timestamp: MonotonicEventClock.nowSeconds
         ),
         GestureCommand(
+            mode: .spacesAndMissionControl,
             kind: .drag,
             phase: .ended,
             direction: .left,
@@ -790,6 +793,54 @@ private func testCoordinatorFixesDragAxisAndSessionAcrossDirectionReversal() {
     expect(payloads.count == 3, "全drag frameをDockSwipe payloadにする")
     expect(payloads.allSatisfy { $0.0 == .horizontal }, "開始時の優勢軸をsession中固定する")
     expect(payloads.dropFirst().allSatisfy { $0.1 < 0 }, "方向反転後は固定軸上の負方向progressを保持する")
+}
+
+private func testCoordinatorRoutesButtonModesWithoutDirectionBindings() {
+    let capability = makeAdapter(collector: EventCollector()).capability
+
+    let scrollOutput = PermissiveProductOutput(capability: capability)
+    let scrollCoordinator = ProductGestureSessionCoordinator(output: scrollOutput)
+    let scrollPost = scrollCoordinator.post(
+        command: GestureCommand(
+            mode: .scrollAndNavigate,
+            kind: .drag,
+            phase: .began,
+            direction: .right,
+            deltaX: 12,
+            deltaY: -8,
+            velocityX: 120,
+            velocityY: -80,
+            timestamp: MonotonicEventClock.nowSeconds
+        )
+    )
+    expect(scrollPost.action == .smoothScroll, "Scroll & Navigate modeをscroll familyへ接続する")
+    let scrollFamily = scrollOutput.postedEvents.compactMap { event -> TrackpadOutputEventFamily? in
+        guard case let .input(frame) = event else { return nil }
+        return frame.payload.family
+    }.first
+    expect(scrollFamily == .scroll, "mouse moveの2次元deltaをscroll payloadへ渡す")
+
+    let zoomOutput = PermissiveProductOutput(capability: capability)
+    let zoomCoordinator = ProductGestureSessionCoordinator(output: zoomOutput)
+    let zoomPost = zoomCoordinator.post(
+        command: GestureCommand(
+            mode: .zoom,
+            kind: .drag,
+            phase: .began,
+            direction: .up,
+            deltaX: 0,
+            deltaY: -20,
+            velocityX: 0,
+            velocityY: -200,
+            timestamp: MonotonicEventClock.nowSeconds
+        )
+    )
+    expect(zoomPost.action == .magnification, "Zoom modeをmagnification familyへ接続する")
+    let zoomFamily = zoomOutput.postedEvents.compactMap { event -> TrackpadOutputEventFamily? in
+        guard case let .input(frame) = event else { return nil }
+        return frame.payload.family
+    }.first
+    expect(zoomFamily == .magnification, "mouse moveをmagnification payloadへ渡す")
 }
 
 private func testCoordinatorChangedCreationFailureRecovery() {
@@ -1813,6 +1864,7 @@ testChangedValidationAndPostFailureRecovery()
 testSessionCoordinatorProducesFixedTwoDimensionalScrollAndMomentum()
 testCandidateGestureFamilies()
 testCoordinatorFixesDragAxisAndSessionAcrossDirectionReversal()
+testCoordinatorRoutesButtonModesWithoutDirectionBindings()
 testCoordinatorChangedCreationFailureRecovery()
 testCoordinatorPreservesActiveActionAcrossChangedCommandKind()
 testCoordinatorInvalidPhasePreservesCancellation()

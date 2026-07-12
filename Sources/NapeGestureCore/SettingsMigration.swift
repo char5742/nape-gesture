@@ -3,7 +3,8 @@ import Foundation
 public enum SettingsMigration {
     private static let deprecatedGestureKeys: Set<String> = [
         "bindings",
-        "directionLockRatio"
+        "directionLockRatio",
+        "activationButton"
     ]
 
     private static let deprecatedCancellationKeys: Set<String> = [

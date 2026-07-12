@@ -1,7 +1,9 @@
 import Foundation
 
 public struct GestureConfiguration: Codable, Equatable, Sendable {
-    public var activationButton: MouseButton
+    public var button3Mode: TrackpadGestureMode
+    public var button4Mode: TrackpadGestureMode
+    public var button5Mode: TrackpadGestureMode
     public var deadZonePoints: Double
     public var dragSensitivity: Double
     public var wheelSensitivity: Double
@@ -10,7 +12,9 @@ public struct GestureConfiguration: Codable, Equatable, Sendable {
     public var momentum: MomentumConfiguration
 
     public init(
-        activationButton: MouseButton = .button4,
+        button3Mode: TrackpadGestureMode = .scrollAndNavigate,
+        button4Mode: TrackpadGestureMode = .spacesAndMissionControl,
+        button5Mode: TrackpadGestureMode = .zoom,
         deadZonePoints: Double = 8.0,
         dragSensitivity: Double = 1.0,
         wheelSensitivity: Double = 1.0,
@@ -18,7 +22,9 @@ public struct GestureConfiguration: Codable, Equatable, Sendable {
         cancellation: GestureCancellationConfiguration = .default,
         momentum: MomentumConfiguration = .default
     ) {
-        self.activationButton = activationButton
+        self.button3Mode = button3Mode
+        self.button4Mode = button4Mode
+        self.button5Mode = button5Mode
         self.deadZonePoints = deadZonePoints
         self.dragSensitivity = dragSensitivity
         self.wheelSensitivity = wheelSensitivity
@@ -30,7 +36,9 @@ public struct GestureConfiguration: Codable, Equatable, Sendable {
     public static let `default` = GestureConfiguration()
 
     private enum CodingKeys: String, CodingKey {
-        case activationButton
+        case button3Mode
+        case button4Mode
+        case button5Mode
         case deadZonePoints
         case dragSensitivity
         case wheelSensitivity
@@ -41,7 +49,18 @@ public struct GestureConfiguration: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        activationButton = try container.decodeIfPresent(MouseButton.self, forKey: .activationButton) ?? .button4
+        let hasCanonicalModes = container.contains(.button3Mode)
+            || container.contains(.button4Mode)
+            || container.contains(.button5Mode)
+        if hasCanonicalModes {
+            button3Mode = try container.decodeIfPresent(TrackpadGestureMode.self, forKey: .button3Mode) ?? .scrollAndNavigate
+            button4Mode = try container.decodeIfPresent(TrackpadGestureMode.self, forKey: .button4Mode) ?? .spacesAndMissionControl
+            button5Mode = try container.decodeIfPresent(TrackpadGestureMode.self, forKey: .button5Mode) ?? .zoom
+        } else {
+            button3Mode = .scrollAndNavigate
+            button4Mode = .spacesAndMissionControl
+            button5Mode = .zoom
+        }
         deadZonePoints = try container.decodeIfPresent(Double.self, forKey: .deadZonePoints) ?? 8.0
         dragSensitivity = try container.decodeIfPresent(Double.self, forKey: .dragSensitivity) ?? 1.0
         wheelSensitivity = try container.decodeIfPresent(Double.self, forKey: .wheelSensitivity) ?? 1.0
@@ -52,13 +71,32 @@ public struct GestureConfiguration: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(activationButton, forKey: .activationButton)
+        try container.encode(button3Mode, forKey: .button3Mode)
+        try container.encode(button4Mode, forKey: .button4Mode)
+        try container.encode(button5Mode, forKey: .button5Mode)
         try container.encode(deadZonePoints, forKey: .deadZonePoints)
         try container.encode(dragSensitivity, forKey: .dragSensitivity)
         try container.encode(wheelSensitivity, forKey: .wheelSensitivity)
         try container.encode(acceleration, forKey: .acceleration)
         try container.encode(cancellation, forKey: .cancellation)
         try container.encode(momentum, forKey: .momentum)
+    }
+
+    public func mode(for button: MouseButton) -> TrackpadGestureMode {
+        switch button {
+        case .button3: button3Mode
+        case .button4: button4Mode
+        case .button5: button5Mode
+        case .left, .right, .center: .none
+        }
+    }
+
+    public var enabledButtons: Set<MouseButton> {
+        Set([MouseButton.button3, .button4, .button5].filter { mode(for: $0) != .none })
+    }
+
+    public var enabledModes: Set<TrackpadGestureMode> {
+        Set([button3Mode, button4Mode, button5Mode].filter { $0 != .none })
     }
 }
 

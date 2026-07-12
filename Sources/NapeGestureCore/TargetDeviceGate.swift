@@ -1,20 +1,20 @@
 import Foundation
 
 public struct TargetDeviceGateConfiguration: Codable, Equatable, Sendable {
-    public var activationButton: MouseButton
+    public var gestureButtons: Set<MouseButton>
     public var associationWindow: TimeInterval
 
     public init(
-        activationButton: MouseButton,
+        gestureButtons: Set<MouseButton>,
         associationWindow: TimeInterval = TargetDeviceAssociationConfiguration.defaultAssociationWindow
     ) {
-        self.activationButton = activationButton
+        self.gestureButtons = gestureButtons
         self.associationWindow = associationWindow
     }
 
     public init(settings: NapeGestureSettings) {
         self.init(
-            activationButton: settings.gesture.activationButton,
+            gestureButtons: settings.gesture.enabledButtons,
             associationWindow: settings.targetDeviceAssociation.associationWindow
         )
     }
@@ -75,15 +75,15 @@ public struct TargetDeviceGateState: Equatable, Sendable {
     }
 
     public func shouldHandle(_ event: RawInputEvent) -> Bool {
-        if activeButtons.contains(configuration.activationButton) {
+        if !activeButtons.isDisjoint(with: configuration.gestureButtons) {
             return true
         }
 
         switch event {
         case let .buttonDown(button, time):
-            return button == configuration.activationButton && hasRecentTargetActivity(at: time)
+            return configuration.gestureButtons.contains(button) && hasRecentTargetActivity(at: time)
         case let .buttonUp(button, time):
-            return button == configuration.activationButton && hasRecentTargetActivity(at: time)
+            return configuration.gestureButtons.contains(button) && hasRecentTargetActivity(at: time)
         case let .move(_, _, time), let .wheel(_, _, time):
             return hasRecentTargetActivity(at: time)
         case .cancel:
