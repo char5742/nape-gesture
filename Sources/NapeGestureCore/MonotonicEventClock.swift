@@ -5,6 +5,10 @@ import Foundation
 public struct MonotonicEventTimestamp: Codable, Comparable, Equatable, Hashable, Sendable {
     public let nanosecondsSinceStartup: UInt64
 
+    public init(nanosecondsSinceStartup: UInt64) {
+        self.nanosecondsSinceStartup = nanosecondsSinceStartup
+    }
+
     fileprivate init(uncheckedNanosecondsSinceStartup nanosecondsSinceStartup: UInt64) {
         self.nanosecondsSinceStartup = nanosecondsSinceStartup
     }

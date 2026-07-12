@@ -33,13 +33,11 @@ public struct TrackpadGestureCandidatePreparedEvent: Sendable {
 
         switch payload {
         case .dockSwipe:
-            eventTypeRaw = 29
-            classifier = 32
-        case .navigationSwipe:
-            return nil
-        case .magnification:
-            eventTypeRaw = 29
-            classifier = 8
+            eventTypeRaw = 30
+            classifier = 23
+        case .dockSwipePinch:
+            eventTypeRaw = 30
+            classifier = 23
         case .scroll:
             return nil
         }
@@ -52,60 +50,66 @@ public struct TrackpadGestureCandidatePreparedEvent: Sendable {
 public final class TrackpadGestureCandidateCGEventBuilder {
     private let typeRawField: Int
     private let timestampRawField: Int
-    private let baseEventFactory: ProductBaseEventFactory
+    private let compatibilityAdapter: RecognizedGestureIOHIDCompatibilityAdapter
 
-    public init(
+    init(
         contract: TrackpadScrollMomentumContractFixture,
-        baseEventFactory: @escaping ProductBaseEventFactory = { CGEvent(source: nil) }
+        compatibilityAdapter: RecognizedGestureIOHIDCompatibilityAdapter
     ) {
         typeRawField = contract.common.typeRawField
         timestampRawField = contract.common.timestampRawField
-        self.baseEventFactory = baseEventFactory
+        self.compatibilityAdapter = compatibilityAdapter
     }
 
-    public func makeEvent(
-        from specification: TrackpadGestureCandidatePreparedEvent
+    func makeEvent(
+        from specification: TrackpadGestureCandidatePreparedEvent,
+        polarity: RecognizedDockSwipeTemplatePolarity
     ) -> CGEvent? {
-        guard TrackpadScrollCGEventBuilder.supportsRawFieldLayout,
-            let event = baseEventFactory(),
-            let eventType = CGEventType(rawValue: UInt32(specification.eventTypeRaw))
-        else {
+        guard TrackpadScrollCGEventBuilder.supportsRawFieldLayout else {
             return nil
         }
-        event.type = eventType
-        event.timestamp = CGEventTimestamp(specification.timestamp.nanosecondsSinceStartup)
-        event.setIntegerValueField(
-            .eventSourceUserData, value: NapeGestureGeneratedEventMarker.value)
-        event.setIntegerValueField(
-            rawField(typeRawField),
-            value: Int64(specification.eventTypeRaw)
-        )
-        event.setIntegerValueField(
-            rawField(timestampRawField),
-            value: Int64(specification.timestamp.nanosecondsSinceStartup)
-        )
-        event.setIntegerValueField(rawField(39), value: 0)
-        event.setIntegerValueField(rawField(40), value: 0)
-        event.setIntegerValueField(rawField(110), value: specification.classifier)
-        event.setIntegerValueField(rawField(132), value: specification.phase)
 
+        let recognizedPayload: RecognizedGestureIOHIDPayload
         switch specification.payload {
-        case .dockSwipe(let axis, let progress, let velocity):
-            configureDockSwipe(
-                event,
-                axis: axis,
-                progress: terminalValue(specification.phase, progress),
-                velocity: terminalValue(specification.phase, velocity)
+        case let .dockSwipe(
+            axis,
+            progress,
+            motionX,
+            motionY,
+            terminalVelocityX,
+            terminalVelocityY
+        ):
+            recognizedPayload = .dockSwipe(
+                motion: axis == .horizontal ? 1 : 2,
+                phase: specification.phase,
+                progress: progress,
+                positionX: motionX,
+                positionY: motionY,
+                terminalVelocityX: terminalVelocityX,
+                terminalVelocityY: terminalVelocityY,
+                terminalVelocityZ: 0
             )
-        case .navigationSwipe:
-            return nil
-        case .magnification(_, let scaleDelta, let velocity):
-            configureMagnification(
-                event,
-                scaleDelta: terminalValue(specification.phase, scaleDelta),
-                velocity: terminalValue(specification.phase, velocity)
+        case let .dockSwipePinch(progress, _, terminalVelocity):
+            recognizedPayload = .dockSwipe(
+                motion: 4,
+                phase: specification.phase,
+                progress: progress,
+                positionX: 0,
+                positionY: 0,
+                terminalVelocityX: 0,
+                terminalVelocityY: 0,
+                terminalVelocityZ: terminalVelocity
             )
         case .scroll:
+            return nil
+        }
+
+        guard let event = compatibilityAdapter.makeEvent(
+            payload: recognizedPayload,
+            timestamp: specification.timestamp,
+            polarity: polarity
+        )
+        else {
             return nil
         }
 
@@ -124,44 +128,6 @@ public final class TrackpadGestureCandidateCGEventBuilder {
             return nil
         }
         return event
-    }
-
-    private func configureDockSwipe(
-        _ event: CGEvent,
-        axis: TrackpadOutputAxis,
-        progress: Double,
-        velocity: Double
-    ) {
-        for field in [119, 139, 148] {
-            event.setDoubleValueField(rawField(field), value: progress)
-        }
-        let progressBits = Float(progress).bitPattern
-        for field in [123, 165] {
-            event.setIntegerValueField(rawField(field), value: Int64(UInt64(progressBits)))
-        }
-        event.setIntegerValueField(rawField(143), value: progress == 0 ? 0 : 1)
-        event.setIntegerValueField(rawField(144), value: 5)
-        event.setDoubleValueField(rawField(125), value: axis == .horizontal ? velocity : 0)
-        event.setDoubleValueField(rawField(126), value: axis == .vertical ? velocity : 0)
-    }
-
-    private func configureMagnification(
-        _ event: CGEvent,
-        scaleDelta: Double,
-        velocity: Double
-    ) {
-        for field in [113, 114, 116, 118] {
-            event.setDoubleValueField(rawField(field), value: scaleDelta)
-        }
-        let scaleBits = Float(scaleDelta).bitPattern
-        for field in [115, 117, 164] {
-            event.setIntegerValueField(rawField(field), value: Int64(UInt64(scaleBits)))
-        }
-        event.setDoubleValueField(rawField(119), value: velocity)
-    }
-
-    private func terminalValue(_ phase: Int64, _ value: Double) -> Double {
-        phase == 4 || phase == 8 ? 0 : value
     }
 
     private func rawField(_ number: Int) -> CGEventField {

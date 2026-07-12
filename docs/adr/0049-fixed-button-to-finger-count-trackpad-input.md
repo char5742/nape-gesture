@@ -1,125 +1,116 @@
-# ADR-0049: buttonを指本数へ固定しイベント量をtrackpad入力へ置換する
+# ADR-0049: buttonを固定GestureClassへ接続する
 
 - 状態: 採択
 - 日付: 2026-07-12
+- 更新日: 2026-07-13
+- 注記: 履歴上のlink互換のためファイル名は維持する
 
 ## 背景
 
-従来は、button 3 / 4 / 5へ画面結果を想定したmodeを割り当て、modeから低レベルevent familyを選ぶ設計を採っていた。
+従来の製品runtimeには、buttonごとにユーザー変更可能なmodeを持ち、modeから結果別event familyを選ぶ設計があった。固定mappingへ移行する際、「2 / 3 / 4本指」というユーザー向け概念をraw finger count transportとして字義どおり扱い、button間で出力上変更できる情報はfinger countだけ、一つのgeneric trackpad eventを生成する、という抽象へ変更した。
 
-この設計は製品の責務を誤っていた。ユーザーが求める変換は結果別modeの選択ではなく、通常mouseが持つ連続イベント量をtrackpad入力へ置換し、押したbuttonによって指本数だけを2、3、4へ変えることである。scroll、ページ移動、Space切替、Mission Control、App Expose、Zoomなどは、生成入力を受けたmacOSまたは前面applicationが解釈する結果であり、製品がroutingするactionではない。
+この抽象は誤りである。物理trackpadはgesture認識後、gesture classに応じて異なる上位event contractを生成する。2本指scroll、3本指system swipe、4本指system pinchではevent type、field、phase、単位が異なる。4本指classはapplication magnification eventではなく認識済みDockSwipe motion 4である。class固有adapterを持つことは結果別routingではなく、異なる物理gestureの再現に必要である。
 
-結果別modeは、同じ入力に異なる正規化、優勢軸固定、family別係数、到達性の分岐を持ち込み、event量の欠落と複雑なfailure modeを生んだ。また、低レベルevent familyの存在と、製品runtimeからの到達性と、OS/App結果の成立を混同させた。
+一方、固定button mapping、source sampleのexact timestampとcapture order、session identity、single terminal、fail closed、system-wide投稿、第三者成果物非流用は維持する。
 
 ## 決定
 
-### 1. buttonはfinger countだけを決める
+### 1. buttonは固定GestureClassを選ぶ
 
-固定対応を次のとおりとする。
+| button | 固定GestureClass | ProductOutput family |
+| --- | --- | --- |
+| 3 | 2本指スクロール / スワイプ相当 | `scroll` |
+| 4 | 3本指システムスワイプ相当 | `dockSwipe`、type 30 DockSwipe motion 1 / 2 |
+| 5 | 4本指system pinch相当 | `dockSwipePinch`、type 30 DockSwipe motion 4 |
 
-- button 3押下中: 2本指trackpad入力
-- button 4押下中: 3本指trackpad入力
-- button 5押下中: 4本指trackpad入力
-- 上記button未押下または対象外button: 通常mouse入力
+button未押下または対象外buttonでは通常mouse入力を通す。このmappingは設定、方向、source kind、application、OS画面結果で変更しない。
 
-この対応は設定で変更しない。buttonごとの無効化または結果別mode selector、方向別action、application別assignmentを廃止する。
+「2 / 3 / 4本指」はraw digitizer contact countでもgeneric `fingerCount` fieldでもない。固定GestureClassのユーザー向け説明であり、ProductOutputへ一つのfinger-count fieldだけを渡す契約にしない。
 
-### 2. 変換は一つの連続入力contractを使う
+### 2. source sampleとoutput encodingを分ける
 
-mouse入力sampleを、少なくともX/Y量、符号、source kind、timestamp、capture orderからなる連続列として扱う。生成sampleでは、物理的な単位差を補正したX/Y量、順序、時間間隔、方向反転を保持し、buttonから決まるfinger countを付与する。
+accepted move / wheel sampleごとに1つの`FixedGestureInputCommand`を生成する。commandはsource kind、X/Y量、符号、exact timestamp、capture order、session ID、source button、GestureClassを保持する。
 
-buttonごとに別の結果変換器を選ばない。同一の入力列をbutton 3 / 4 / 5で与えた場合、生成列はfinger count以外について同じ変換原則に従わなければならない。
+source commandはdrop、duplicate、coalesce、reorderしない。方向反転、軸変更、move / wheel混在を別actionまたは別sessionへ変換しない。
 
-mouse単位とtrackpad単位が異なる場合は、自前の純正trackpad / Nape Pro計測から導出した単一のversioned単位変換contractだけを使う。軸ごとの物理単位差とOS build差はcontractへ記録できるが、結果別のprogress、velocity、scale係数を持たない。
+ProductOutput adapterはclass固有のevent contractを生成する。
 
-次を製品経路から除外する。
+- 2本指classはtype 22 scrollとtype 29 gesture envelope / companion lifecycleを生成し、scroll phase field 99、companion phase field 132、line / fixed / point / gesture motion単位を使う。
+- 3本指classはtype 30 / classifier 23、phase fields 132 / 134、IOHID DockSwipe motion 1 / 2へ変換する。progress / XY positionはsource delta / 300、終端XY velocityはsource delta / 経過秒 / 300とする。
+- 4本指classは同じtype 30 / classifier 23とphase 1 / 2 / 4 / 8を使うが、IOHID DockSwipe motion 4へ変換する。progressはY優先のsigned source delta / 300、終端Z velocityは同じ符号規則のsource velocity / 300とする。
 
-- 開始時の優勢軸へsessionを固定する処理
-- 直交成分を捨てる処理
-- Space切替やページ移動などの結果を成立させるための正規化
-- input kind、方向、applicationによるevent family routing
-- keyboard shortcut、AX、対象PID投稿によるfallback
+このため、同じsource系列でもgenerated event type、event count、field、phase、unit conversionはclassごとに異なり得る。異なることを許可し、各classの純正trackpad fixtureへ照合する。
 
-### 3. event familyは内部contract語彙に限定する
+### 3. 固定classとユーザーmodeを区別する
 
-`scroll`、`DockSwipe`、`NavigationSwipe`、`magnification`などは、純正trackpadと生成eventを比較する低レベルfamilyまたはcompatibility contractの名称として保持できる。ただし、次には使わない。
+内部でGestureClassからadapterを選ぶ処理は必要である。一方、次の製品surfaceは設けない。
 
-- ユーザー向けmode
-- buttonの割り当て先
-- 製品機能の一覧
-- OS/App結果の保証名
-- familyごとに独立した感度または係数
+- buttonごとのmode selectorまたは無効化
+- ユーザー変更可能なbutton割り当て
+- 感度、dead zone、加速度、結果別係数
+- 方向別binding
+- applicationごとの有効・無効、感度、割り当て
 
-compatibility adapterがmacOSへ投稿する具体的event typeを選ぶ必要がある場合も、その選択はfinger count付き連続入力contractを再現する内部実装であり、ユーザーの結果選択ではない。familyごとのbuilderが残るだけでは完成または到達性の証明にならない。
+GUIは固定mappingを読み取り専用で表示する。旧modeと調整値はcanonical設定から原子的に除去し、migration失敗時は原本を保持してruntimeを開始しない。
 
-### 4. OS / application結果を別に判定する
+### 4. system-wide ProductOutputを使う
 
-縦横scroll、nested target、ページ戻る・進む、Space切替、Mission Control、App Expose、拡縮は受入scenarioとして記録する。各scenarioでは次を別々に判定する。
+- fixed coordinatorはbutton由来GestureClassから既存ProductOutput familyを一意に選ぶ。
+- eventはsystem-wideへ投稿し、macOSまたは前面applicationの標準gesture処理へ渡す。
+- 水平scrollからページ移動が起きる場合はapplicationの通常解釈に任せる。
+- Spaces、Mission Control、App Expose、DockSwipe motion 4のsystem pinch解釈はOS / App受入結果として別に記録する。
+- `NavigationSwipe`を独立class、独立button、ページ移動専用routingにしない。
+- AX、対象PID、keyboard shortcut、application別分岐をfallbackにしない。
+- DriverKit、virtual HID、raw digitizer contactを使わない。
 
-1. 入力event量、finger count、phase、timestamp、terminalが期待contractに一致したか。
-2. macOSまたはapplicationでどの結果が起きたか。
-3. 純正trackpadとNape Proで体感差があるか。
+### 5. session safetyを共通化する
 
-画面結果を成立させるために製品runtimeへ個別routingを追加しない。OS設定またはapplicationにより結果が異なる場合は、その前提をscenario証跡へ記録する。
+- button pressからreleaseまたはcancelまでsource buttonとGestureClassを固定する。
+- session ID、capture order、source timestamp、terminal stateを共通session machineで検証する。
+- class固有adapterは低レベルphaseとbatchを管理し、共通machineはsource identityとsingle terminalを保証する。
+- release、cancel、kill switch、runtime stop、sleep、disconnect、TCC喪失、作成 / 投稿失敗で一度だけterminalへ収束する。
+- partial batch後は未投稿offsetを保持し、同じterminalを再試行する。
+- terminal後は通常mouse状態へ戻る。
 
-### 5. session中のfinger countを固定する
+### 6. 抑制前にreadinessを確定する
 
-button pressから対応releaseまたはcancelまでを一つのtrackpad入力sessionとし、finger countを固定する。session中の追加button、軸変更、方向反転、move / wheel到着でfinger count、family、session IDを切り替えない。
+- 対象device、TCC、OS build、scroll contract、変換model、正負方向別の認識済みDockSwipe template fixtureを検証する。25F80 templateはID `recognized-dockswipe-templates-25F80-v2`、contract ID `recognized-dockswipe-template-v2`、SHA-256 `852c7d0b6e32ced7082ea5c06a65d05971d3868e6a36aaccfd6f422871bc32a6`を登録値とする。
+- 3 classを安全に生成・終了できる場合だけevent tapと元入力抑制を開始する。
+- いずれかのfixture、model、adapterが欠落、未知、改変済み、または不一致なら全ProductOutput familyを無効にし、通常mouse入力を保持してruntime全体をfail closedする。診断出力や別配送へfallbackしない。
 
-release、cancel、kill switch、runtime stop、sleep、デバイス切断、権限喪失、投稿失敗では、一度だけterminalを生成する。momentumが物理contract上必要な場合は元sessionのfinger countをmetadataとして継承し、終了後に通常mouse状態へ戻る。
+## 検証と完成判定
 
-### 6. 抑制より先に生成可能性を確定する
+- buttonからGestureClass、GestureClassからProductOutput familyへの固定mappingを自動検査する。
+- source sample 1対1 command化、exact timestamp、capture order、session ID、single terminalを検査する。
+- 3 classのevent type、field、phase、batch、単位変換とIOHID motion 1 / 2 / 4をregistered fixtureへ照合する。
+- GUIがmappingをread-only表示し、canonical設定に旧modeや感度が残らないことを検査する。
+- system-wide posting、禁止経路非到達、unknown build / fixture mismatchのfail closedを検査する。
+- Nape Proと純正trackpadでsource、generated event、OS / App結果、terminal、passthroughを物理受入する。残る実機対象はNape Pro button 4 / 5である。
 
-対象デバイス、権限、OS build、fixture、contract、adapterを検証し、対応するtrackpad入力を安全に生成できると確定してから元入力を抑制する。fail-closed条件では元入力を飲み込まずruntimeを開始しない。
-
-変換対象sessionのbutton、move、wheelだけを抑制し、button未押下時、対象外button、対象外デバイスのclick、drag、wheelを通過させる。生成eventのfeedback loopとrelease漏れを防ぐ。
-
-### 7. GUIと設定を固定モデルへ移行する
-
-GUIはbutton 3 = 2本指、button 4 = 3本指、button 5 = 4本指を読み取り専用の製品仕様として表示する。結果別mode selectorとapplication別設定を置かない。
-
-設定可能な値は、自前計測により必要性と単位を説明できる共通変換contract、安全条件、対象デバイス条件に限る。旧mode、旧action、旧button assignmentは、読込時に固定モデルへ原子的に移行し、canonical設定から除去する。
-
-## 証跡と完成判定
-
-純正trackpad、Nape Pro元入力、生成eventを同一schemaで収録し、最低限、button、finger count、X/Y量、符号、単位、phase、timestamp、capture order、session、terminal、抑制判断を比較する。
-
-完成には次が必要である。
-
-- button 3 / 4 / 5の同一入力fixtureで、finger countだけが2 / 3 / 4へ変わる自動テスト
-- 単位変換誤差、sample間隔差、drop、並び替え、terminal重複の数値判定
-- 通常mouse passthrough、抑制、kill switch、sleep、抜き差し、権限変更、未知OS fail-closedの証跡
-- 低レベルcontractとOS/App結果を分離したsystem-wide受入
-- Nape Proと純正trackpadの物理受入
-- 設定migration、GUI、doctor、README、Issue、release資料の同期
-
-現行実装に結果別mode、modeからfamilyを選ぶrouting、優勢軸固定、結果別正規化が残る間は、本ADRへ未適合であり完成扱いにしない。
+release buildの`/Applications/Nape Gesture.app`はインストール済みでdoctor runtime readyであり、system-testではDockが3本指垂直とmotion 4の正負両方向を受理済みである。ただし、Nape Pro button 4 / 5の物理受入と公開配布署名が完了するまで製品完成とはしない。
 
 ## 影響
 
-- `TrackpadGestureMode`とbuttonごとのmode設定を製品surfaceから削除する。
-- recognizerはbuttonからfinger countを確定し、session commandへ明示的に渡す。
-- coordinatorは結果別familyを選ばず、同一の入力sample contractをfinger count付きで出力層へ渡す。
-- compatibility adapterはfinger countとevent量を再現する責務を持ち、OS/App結果を選ぶ責務を持たない。
-- raw physical captureと生成logは再解析可能な計測原本として保持できる。ただし、その説明文、manifest status、analyzer出力は固定button / finger-countモデルへ更新し、旧製品modeの正当化に使わない。
-- requirements、README、completion checklist、verification、release、Issue orchestrationを本ADRへ同期する。
+- exact timestamp、capture order、source command、session ID、single terminalのCore成果を維持する。
+- ProductOutput adapter、固定class coordinator、認識済みDockSwipe compatibility adapterを同じruntime readiness境界へ統合する。
+- generic finger-count-onlyのrequirements、guard、完成条件を本ADRのGestureClassモデルへ訂正する。
+- `TrackpadGestureMode`など旧型がmigrationまたは非製品診断の読込に残っても、daemon、executor、GUI、canonical設定から到達させない。
+- requirements、README、completion checklist、performance baseline、既存guardを同じ実装差分で同期する。
 
 ## 廃止する設計
 
-次の設計は現行文書、設定、runtime、テスト、証跡から削除する。
-
-- buttonごとに結果別modeまたは変換無効を選ぶ設計
-- modeからscroll、system swipe、pinchなどのfamilyへroutingする設計
-- family別の試用経路を製品機能として数える設計
-- scroll固有変換、優勢軸固定、progress / velocity / scale正規化を共通入力変換より上位に置く設計
-- 旧設計を「置換済みADR」として残し、実装判断や完成判定から参照できる状態
-
-[ADR-0036](0036-emulate-trackpad-driver-output-events.md)はfinger-count付きdriver上位入力、[ADR-0038](0038-trackpad-output-session-and-monotonic-clock.md)は共通session、monotonic timestamp、terminal、[ADR-0043](0043-trackpad-scroll-product-output.md)は25F80の2 / 3 / 4本指内部compatibility contractとして本ADRへ全面同期する。
+- button間で出力上変更できる意味情報をfinger countだけに限定する設計
+- 一つのgeneric finger-count eventをProductOutput contractにする設計
+- class固有event familyを結果routingとして一律禁止する設計
+- raw digitizer、virtual HID、DriverKitを必要条件とする設計
+- ユーザー変更可能なmode、割り当て、感度、application別設定
+- AX、対象PID、keyboard shortcutによる製品fallback
 
 ## 関連
 
 - [ゴール要件](../requirements.md)
 - [完成判定チェックリスト](../completion-checklist.md)
-- [検証ガイド](../verification.md)
+- [ADR-0034](0034-reject-driverkit-virtual-trackpad.md)
 - [ADR-0036](0036-emulate-trackpad-driver-output-events.md)
 - [ADR-0038](0038-trackpad-output-session-and-monotonic-clock.md)
+- [ADR-0043](0043-trackpad-scroll-product-output.md)

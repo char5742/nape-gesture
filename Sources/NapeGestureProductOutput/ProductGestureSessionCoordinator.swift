@@ -340,7 +340,7 @@ public final class ProductGestureSessionCoordinator {
         case .none: nil
         case .twoFingerSwipe: .scroll
         case .systemSwipe: .dockSwipe
-        case .pinch: .magnification
+        case .pinch: .dockSwipePinch
         }
     }
 
@@ -358,21 +358,27 @@ public final class ProductGestureSessionCoordinator {
             )
         case .systemSwipe:
             let axis = activeSession?.dockSwipeAxis ?? Self.dominantAxis(for: command)
-            let delta = axis == .horizontal ? command.deltaX : command.deltaY
-            let velocity = axis == .horizontal ? command.velocityX : command.velocityY
+            let motionX = command.deltaX / 300
+            let motionY = command.deltaY / 300
+            let progress = axis == .horizontal ? motionX : -motionY
+            let isTerminal = command.phase == .ended || command.phase == .cancelled
             return .dockSwipe(
                 axis: axis,
-                progress: Self.normalizedProgress(delta),
-                velocity: Self.normalizedVelocity(velocity)
+                progress: progress,
+                motionX: isTerminal ? 0 : motionX,
+                motionY: isTerminal ? 0 : motionY,
+                terminalVelocityX: isTerminal ? command.velocityX / 300 : 0,
+                terminalVelocityY: isTerminal ? command.velocityY / 300 : 0
             )
         case .pinch:
             let useY = command.deltaY != 0 || command.velocityY != 0
-            let delta = useY ? command.deltaY : command.deltaX
-            let velocity = useY ? command.velocityY : command.velocityX
-            return .magnification(
-                progress: Self.normalizedProgress(delta),
-                scaleDelta: Self.normalizedScale(delta),
-                velocity: Self.normalizedVelocity(velocity)
+            let motion = useY ? -command.deltaY / 300 : command.deltaX / 300
+            let velocity = useY ? -command.velocityY / 300 : command.velocityX / 300
+            let isTerminal = command.phase == .ended || command.phase == .cancelled
+            return .dockSwipePinch(
+                progress: motion,
+                motion: isTerminal ? 0 : motion,
+                terminalVelocity: isTerminal ? velocity : 0
             )
         case .none:
             return nil

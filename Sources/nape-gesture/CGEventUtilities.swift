@@ -65,6 +65,50 @@ enum CGEventUtilities {
         }
     }
 
+    static func fixedGestureInput(
+        from type: CGEventType,
+        event: CGEvent
+    ) -> FixedGestureSourceInputEvent? {
+        let timestamp = MonotonicEventTimestamp(
+            nanosecondsSinceStartup: event.timestamp
+        )
+
+        switch type {
+        case .otherMouseDown:
+            guard let button = MouseButton(
+                buttonNumber: event.getIntegerValueField(.mouseEventButtonNumber)
+            ) else {
+                return nil
+            }
+            return .buttonDown(button: button, timestamp: timestamp)
+        case .otherMouseUp:
+            guard let button = MouseButton(
+                buttonNumber: event.getIntegerValueField(.mouseEventButtonNumber)
+            ) else {
+                return nil
+            }
+            return .buttonUp(button: button, timestamp: timestamp)
+        case .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged:
+            return .move(
+                deltaX: Double(event.getIntegerValueField(.mouseEventDeltaX)),
+                deltaY: Double(event.getIntegerValueField(.mouseEventDeltaY)),
+                timestamp: timestamp
+            )
+        case .scrollWheel:
+            let pointDeltaX = event.getDoubleValueField(.scrollWheelEventPointDeltaAxis2)
+            let pointDeltaY = event.getDoubleValueField(.scrollWheelEventPointDeltaAxis1)
+            let deltaX = pointDeltaX != 0
+                ? pointDeltaX
+                : Double(event.getIntegerValueField(.scrollWheelEventDeltaAxis2))
+            let deltaY = pointDeltaY != 0
+                ? pointDeltaY
+                : Double(event.getIntegerValueField(.scrollWheelEventDeltaAxis1))
+            return .wheel(deltaX: deltaX, deltaY: deltaY, timestamp: timestamp)
+        default:
+            return nil
+        }
+    }
+
     static func isGeneratedByThisTool(_ event: CGEvent) -> Bool {
         event.getIntegerValueField(.eventSourceUserData) == generatedEventMarker
     }

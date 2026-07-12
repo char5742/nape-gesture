@@ -35,10 +35,10 @@ struct SystemBehaviorTestCommand {
             system-test scenarios
 
               space-left
-                  水平ピクセルスクロールを左Spaces方向として連続生成します。
+                  3本指システムスワイプ相当のDockSwipeを左方向へ連続生成します。
 
               space-right
-                  水平ピクセルスクロールを右Spaces方向として連続生成します。
+                  3本指システムスワイプ相当のDockSwipeを右方向へ連続生成します。
 
               horizontal-scroll
                   通常の横スクロール割り当て相当の水平スクロールイベント列を生成します。
@@ -58,10 +58,10 @@ struct SystemBehaviorTestCommand {
                   ページ進む相当のアクションを生成します。
 
               zoom-in
-                  ズームイン相当のアクションを生成します。
+                  4本指システムピンチ相当のDockSwipe motion 4を一方向へ生成します。
 
               zoom-out
-                  ズームアウト相当のアクションを生成します。
+                  4本指システムピンチ相当のDockSwipe motion 4を反対方向へ生成します。
 
               kill-switch
                   キルスイッチ相当の Control + Option + Command + G を未マークのキーイベントとして生成します。
@@ -100,7 +100,7 @@ struct SystemBehaviorTestCommand {
         let productRepoHeadSHA = value("--product-repo-head-sha", in: options)
         let directionValue =
             value("--direction", in: options)
-            ?? (scenario == .verticalScroll ? "up" : "right")
+            ?? ([.verticalScroll, .missionControl].contains(scenario) ? "up" : "right")
         let scrollSign: Int
         switch scenario {
         case .horizontalScroll:
@@ -108,7 +108,7 @@ struct SystemBehaviorTestCommand {
                 throw ToolError.invalidValue("--direction", directionValue)
             }
             scrollSign = directionValue == "left" ? -1 : 1
-        case .verticalScroll:
+        case .verticalScroll, .missionControl:
             guard ["up", "down"].contains(directionValue) else {
                 throw ToolError.invalidValue("--direction", directionValue)
             }
@@ -117,7 +117,7 @@ struct SystemBehaviorTestCommand {
             if options.contains("--direction") {
                 throw ToolError.invalidValue(
                     "--direction",
-                    "horizontal-scrollまたはvertical-scroll scenarioでだけ指定できます。"
+                    "horizontal-scroll、vertical-scroll、mission-control scenarioでだけ指定できます。"
                 )
             }
             scrollSign = 1
@@ -222,23 +222,22 @@ struct SystemBehaviorTestCommand {
         productTraceContext: ProductGestureOutputTraceContext?,
         scrollSign: Int
     ) throws {
-        let poster = DiagnosticEventPoster()
         let now = MonotonicEventClock.nowSeconds
 
         switch plan.scenario {
         case .spaceLeft:
-            try postScrollCommands(
-                makeHorizontalCommands(sign: -1, plan: plan, now: now),
-                poster: poster,
-                mode: .forcedHorizontal(sign: -1),
-                interval: plan.interval
+            try postFixedGestureCommands(
+                gestureClass: .threeFingerSystemSwipe,
+                deltaX: -plan.amount / Double(plan.steps),
+                deltaY: 0,
+                plan: plan
             )
         case .spaceRight:
-            try postScrollCommands(
-                makeHorizontalCommands(sign: 1, plan: plan, now: now),
-                poster: poster,
-                mode: .forcedHorizontal(sign: 1),
-                interval: plan.interval
+            try postFixedGestureCommands(
+                gestureClass: .threeFingerSystemSwipe,
+                deltaX: plan.amount / Double(plan.steps),
+                deltaY: 0,
+                plan: plan
             )
         case .horizontalScroll:
             try postProductScrollCommands(
@@ -255,20 +254,145 @@ struct SystemBehaviorTestCommand {
                 traceContext: productTraceContext
             )
         case .missionControl:
-            try requireSuccessfulPost(poster.postMissionControl())
+            try postFixedGestureCommands(
+                gestureClass: .threeFingerSystemSwipe,
+                deltaX: 0,
+                deltaY: Double(scrollSign) * plan.amount / Double(plan.steps),
+                plan: plan
+            )
         case .pageBack:
-            try requireSuccessfulPost(poster.postPageBack())
+            try postFixedGestureCommands(
+                gestureClass: .twoFingerScrollSwipe,
+                deltaX: -plan.amount / Double(plan.steps),
+                deltaY: 0,
+                plan: plan
+            )
         case .pageForward:
-            try requireSuccessfulPost(poster.postPageForward())
+            try postFixedGestureCommands(
+                gestureClass: .twoFingerScrollSwipe,
+                deltaX: plan.amount / Double(plan.steps),
+                deltaY: 0,
+                plan: plan
+            )
         case .zoomIn:
-            try requireSuccessfulPost(poster.postZoomIn())
+            try postFixedGestureCommands(
+                gestureClass: .pinch,
+                deltaX: 0,
+                deltaY: plan.amount / Double(plan.steps),
+                plan: plan
+            )
         case .zoomOut:
-            try requireSuccessfulPost(poster.postZoomOut())
+            try postFixedGestureCommands(
+                gestureClass: .pinch,
+                deltaX: 0,
+                deltaY: -plan.amount / Double(plan.steps),
+                plan: plan
+            )
         case .killSwitch:
             try postUnmarkedInputEvents(unmarkedInputEvents(for: plan, startTime: now), to: nil)
         case .gestureDrag, .gestureWheel, .gestureWheelThenKillSwitch, .normalAfterRelease:
             try postUnmarkedInputEvents(
                 unmarkedInputEvents(for: plan, startTime: now), to: plan.postToPid)
+        }
+    }
+
+    private func postFixedGestureCommands(
+        gestureClass: FixedGestureClass,
+        deltaX: Double,
+        deltaY: Double,
+        plan: SystemTestPlan
+    ) throws {
+        let adapter = TrackpadGestureOutputAdapter()
+        let coordinator = FixedGestureProductSessionCoordinator(output: adapter)
+        guard coordinator.unsupportedRequiredFamilies.isEmpty else {
+            let names = coordinator.unsupportedRequiredFamilies
+                .map(\.rawValue)
+                .sorted()
+                .joined(separator: ", ")
+            throw ToolError.trackpadOutputContractUnavailable(
+                "固定gesture classに必要なevent familyが未対応です: \(names)"
+            )
+        }
+
+        let sessionID = TrackpadOutputSessionID(rawValue: 1)
+        var captureOrder: UInt64 = 0
+        func command(
+            sourceKind: GestureInputSourceKind,
+            phase: FixedGestureInputPhase,
+            deltaX: Double,
+            deltaY: Double
+        ) -> FixedGestureInputCommand {
+            defer { captureOrder += 1 }
+            return FixedGestureInputCommand(
+                sessionID: sessionID,
+                sourceButton: gestureClass.activationButton,
+                gestureClass: gestureClass,
+                captureOrder: captureOrder,
+                timestamp: MonotonicEventClock.now,
+                sourceKind: sourceKind,
+                phase: phase,
+                deltaX: deltaX,
+                deltaY: deltaY
+            )
+        }
+
+        var commands = [
+            command(
+                sourceKind: .buttonDown,
+                phase: .began,
+                deltaX: 0,
+                deltaY: 0
+            )
+        ]
+        commands.append(
+            contentsOf: (0..<plan.steps).map { _ in
+                command(
+                    sourceKind: .move,
+                    phase: .changed,
+                    deltaX: deltaX,
+                    deltaY: deltaY
+                )
+            }
+        )
+        commands.append(
+            command(
+                sourceKind: .buttonUp,
+                phase: .ended,
+                deltaX: 0,
+                deltaY: 0
+            )
+        )
+
+        for (index, sourceCommand) in commands.enumerated() {
+            if index > 0 {
+                Thread.sleep(forTimeInterval: plan.interval)
+            }
+            var postingCommand = sourceCommand
+            postingCommand = FixedGestureInputCommand(
+                sessionID: postingCommand.sessionID,
+                sourceButton: postingCommand.sourceButton,
+                gestureClass: postingCommand.gestureClass,
+                captureOrder: postingCommand.captureOrder,
+                timestamp: MonotonicEventClock.now,
+                sourceKind: postingCommand.sourceKind,
+                phase: postingCommand.phase,
+                deltaX: postingCommand.deltaX,
+                deltaY: postingCommand.deltaY
+            )
+            let post = coordinator.post(postingCommand)
+            guard post.result.failure == nil,
+                  post.result.failedEventCreationCount == 0,
+                  post.result.generatedEventCount > 0
+                    || (gestureClass != .twoFingerScrollSwipe && postingCommand.phase == .began)
+            else {
+                _ = coordinator.cancelActive(
+                    reason: .outputFailure,
+                    timestamp: MonotonicEventClock.now
+                )
+                throw ToolError.trackpadOutputPostingFailed(
+                    post.result.failure?.rawValue ?? "fixed_gesture_batch_incomplete"
+                )
+            }
         }
     }
 

@@ -1,4 +1,5 @@
 import CoreGraphics
+import Darwin
 import Foundation
 import NapeGestureCore
 import NapeGestureProductOutput
@@ -67,6 +68,28 @@ private func rawField(_ number: Int) -> CGEventField {
     unsafeBitCast(UInt32(number), to: CGEventField.self)
 }
 
+private func copiedIOHIDEventDescription(_ event: CGEvent) -> String? {
+    guard let handle = dlopen(
+        "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics",
+        RTLD_NOW | RTLD_LOCAL
+    ) else {
+        return nil
+    }
+    defer { dlclose(handle) }
+    guard let symbol = dlsym(handle, "CGEventCopyIOHIDEvent") else {
+        return nil
+    }
+    typealias CopyIOHIDEvent = @convention(c) (
+        UnsafeMutableRawPointer?
+    ) -> Unmanaged<CFTypeRef>?
+    let copyIOHIDEvent = unsafeBitCast(symbol, to: CopyIOHIDEvent.self)
+    let eventPointer = Unmanaged.passUnretained(event).toOpaque()
+    guard let hidEvent = copyIOHIDEvent(eventPointer)?.takeRetainedValue() else {
+        return nil
+    }
+    return CFCopyDescription(hidEvent) as String
+}
+
 private func contractData() -> Data {
     let path = "Fixtures/trackpad-contract/25F80/scroll-momentum-contract.json"
     guard let data = FileManager.default.contents(atPath: path) else {
@@ -79,6 +102,14 @@ private func modelData() -> Data {
     let path = "Fixtures/trackpad-contract/25F80/scroll-output-model.json"
     guard let data = FileManager.default.contents(atPath: path) else {
         fatalError("output model fixtureを読み込めません: \(path)")
+    }
+    return data
+}
+
+private func dockSwipeTemplateData() -> Data {
+    let path = "Fixtures/trackpad-contract/25F80/recognized-dockswipe-templates.json"
+    guard let data = FileManager.default.contents(atPath: path), !data.isEmpty else {
+        fatalError("DockSwipe template fixtureを読み込めません: \(path)")
     }
     return data
 }
@@ -186,6 +217,8 @@ private func makeAdapter(
 ) -> TrackpadGestureOutputAdapter {
     TrackpadGestureOutputAdapter(
         contractData: contractData(),
+        modelData: modelData(),
+        dockSwipeTemplateData: dockSwipeTemplateData(),
         systemIdentity: identity25F80(),
         traceContext: productTraceContext(),
         baseEventFactory: baseEventFactory,
@@ -203,6 +236,8 @@ private func makeInjectedAdapter(
 ) -> TrackpadGestureOutputAdapter {
     TrackpadGestureOutputAdapter(
         contractData: contractData(),
+        modelData: modelData(),
+        dockSwipeTemplateData: dockSwipeTemplateData(),
         systemIdentity: identity25F80(),
         traceContext: traceCollector == nil ? nil : productTraceContext(),
         postEvent: sink.post,
@@ -262,11 +297,12 @@ private func testLifecycleAndFields() {
     expect(
         ProductGestureOutputCapability.runtimeFamilies.allSatisfy(adapter.supports),
         "製品runtimeの3 familyを対応扱いする")
+    expect(adapter.supports(.dockSwipe), "明示注入したtemplateでDockSwipeを利用可能にする")
+    expect(adapter.supports(.dockSwipePinch), "明示注入したtemplateでDockSwipe pinchを利用可能にする")
     expect(adapter.capability.confirmedFamilies == [.scroll], "純正contract確定familyをscrollだけに限定する")
     expect(
-        adapter.capability.trialFamilies == [.dockSwipe, .magnification],
-        "試用familyをDockSwipeとmagnificationに限定する")
-    expect(!adapter.supports(.navigationSwipe), "NavigationSwipe候補を独立した製品familyとして公開しない")
+        adapter.capability.trialFamilies == [.dockSwipe, .dockSwipePinch],
+        "試用familyをDockSwipeとDockSwipe pinchに限定する")
 
     let results = [
         adapter.post(inputEvent(sessionID: 1, order: 0, phase: .began, deltaX: 12, deltaY: -8)),
@@ -435,6 +471,73 @@ private func testFailClosedPaths() {
         "output model byte改変をcontract mismatchにする"
     )
     expect(!modelMismatch.supports(.scroll), "改変output modelではscrollを有効化しない")
+
+    var modifiedTemplate = dockSwipeTemplateData()
+    modifiedTemplate[modifiedTemplate.startIndex] ^= 0x01
+    var templateMismatchPostAttempts = 0
+    let templateMismatch = TrackpadGestureOutputAdapter(
+        contractData: contractData(),
+        modelData: modelData(),
+        dockSwipeTemplateData: modifiedTemplate,
+        systemIdentity: identity25F80(),
+        postEvent: { _ in
+            templateMismatchPostAttempts += 1
+            return true
+        }
+    )
+    expect(
+        templateMismatch.capability.status == .contractMismatch,
+        "DockSwipe templateの1 byte改変をcontract mismatchにする"
+    )
+    expect(
+        templateMismatch.capability.supportedFamilies.isEmpty,
+        "改変templateでは対応familyを公開しない"
+    )
+    expect(
+        ProductGestureOutputCapability.runtimeFamilies.allSatisfy {
+            !templateMismatch.supports($0)
+        },
+        "改変templateではscrollを含む全製品familyを無効化する"
+    )
+    let templateMismatchResults = [
+        templateMismatch.post(
+            inputEvent(sessionID: 12, order: 0, phase: .began, deltaX: 5, deltaY: 0)
+        ),
+        templateMismatch.post(
+            candidateInputEvent(
+                sessionID: 13,
+                order: 0,
+                phase: .began,
+                payload: .dockSwipe(
+                    axis: .horizontal,
+                    progress: 0.1,
+                    motionX: 0.1,
+                    motionY: 0,
+                    terminalVelocityX: 0,
+                    terminalVelocityY: 0
+                )
+            )
+        ),
+        templateMismatch.post(
+            candidateInputEvent(
+                sessionID: 14,
+                order: 0,
+                phase: .began,
+                payload: .dockSwipePinch(
+                    progress: 0.1,
+                    motion: 0.1,
+                    terminalVelocity: 0
+                )
+            )
+        ),
+    ]
+    expect(
+        templateMismatchResults.allSatisfy {
+            $0.failure == .contractMismatch && $0.generatedEventCount == 0
+        },
+        "改変templateでは全製品出力をcontract mismatchでfail closedにする"
+    )
+    expect(templateMismatchPostAttempts == 0, "改変templateでは製品eventを1件も投稿しない")
 
     var postedAfterCreationFailure = 0
     let creationFailure = TrackpadGestureOutputAdapter(
@@ -749,74 +852,89 @@ private func testCandidateGestureFamilies() {
             sessionID: 120,
             order: 0,
             phase: .began,
-            payload: .dockSwipe(axis: .horizontal, progress: 0.1, velocity: 0.5)
+            payload: .dockSwipe(
+                axis: .horizontal,
+                progress: 0.1,
+                motionX: 0.1,
+                motionY: 0,
+                terminalVelocityX: 0,
+                terminalVelocityY: 0
+            )
         ),
         candidateInputEvent(
             sessionID: 120,
             order: 1,
             phase: .changed,
-            payload: .dockSwipe(axis: .horizontal, progress: 0.6, velocity: 1.2)
+            payload: .dockSwipe(
+                axis: .horizontal,
+                progress: 0.6,
+                motionX: 0.5,
+                motionY: 0,
+                terminalVelocityX: 0,
+                terminalVelocityY: 0
+            )
         ),
         candidateInputEvent(
             sessionID: 120,
             order: 2,
             phase: .ended,
-            payload: .dockSwipe(axis: .horizontal, progress: 0, velocity: 0)
+            payload: .dockSwipe(
+                axis: .horizontal,
+                progress: 0.6,
+                motionX: 0,
+                motionY: 0,
+                terminalVelocityX: 1.2,
+                terminalVelocityY: 0
+            )
         ),
         candidateInputEvent(
             sessionID: 122,
             order: 0,
             phase: .began,
-            payload: .magnification(progress: 0.1, scaleDelta: 0.03, velocity: 0.2)
+            payload: .dockSwipePinch(progress: 0.1, motion: 0.1, terminalVelocity: 0)
         ),
         candidateInputEvent(
             sessionID: 122,
             order: 1,
             phase: .changed,
-            payload: .magnification(progress: 0.5, scaleDelta: 0.08, velocity: 0.4)
+            payload: .dockSwipePinch(progress: 0.5, motion: 0.4, terminalVelocity: 0)
         ),
         candidateInputEvent(
             sessionID: 122,
             order: 2,
             phase: .ended,
-            payload: .magnification(progress: 0, scaleDelta: 0, velocity: 0)
+            payload: .dockSwipePinch(progress: 0.5, motion: 0, terminalVelocity: 0.4)
         ),
     ]
     let results = posts.map(adapter.post)
     expect(
         results.allSatisfy { $0.failure == nil && $0.generatedEventCount == 1 },
         "製品modeへ接続する2 candidate familyを各1 eventで投稿する")
-    let navigationResult = adapter.post(
-        candidateInputEvent(
-            sessionID: 121,
-            order: 0,
-            phase: .began,
-            payload: .navigationSwipe(direction: .left, progress: -0.1, velocity: -0.5)
-        )
-    )
-    expect(navigationResult.failure == .unsupported, "NavigationSwipe候補を製品runtimeから拒否する")
-    expect(navigationResult.generatedEventCount == 0, "NavigationSwipe候補を投稿しない")
     guard collector.events.count == 6 else {
         failures.append(
             "candidate familyのevent数が6ではない: \(collector.events.count) results=\(results)")
         return
     }
     expect(
-        collector.events.map { $0.type.rawValue } == [29, 29, 29, 29, 29, 29],
+        collector.events.map { $0.type.rawValue } == [30, 30, 30, 30, 30, 30],
         "candidate familyのevent typeを固定する")
     expect(
-        collector.events.prefix(3).allSatisfy { $0.getIntegerValueField(rawField(110)) == 32 },
-        "DockSwipe classifierを32にする")
-    expect(
-        collector.events.suffix(3).allSatisfy { $0.getIntegerValueField(rawField(110)) == 8 },
-        "magnification classifierを8にする")
+        collector.events.allSatisfy { $0.getIntegerValueField(rawField(110)) == 23 },
+        "DockSwipe classifierを23にする")
     expect(
         collector.events.map { $0.getIntegerValueField(rawField(132)) } == [1, 2, 4, 1, 2, 4],
         "candidate lifecycle phaseをbegan/changed/endedにする")
     expect(
-        collector.events[2].getIntegerValueField(rawField(143)) == 0,
-        "DockSwipe terminal activeを0にする")
-    expect(collector.events[4].getDoubleValueField(rawField(113)) > 0, "pinchのscale fieldを正にする")
+        abs(abs(collector.events[2].getDoubleValueField(rawField(124))) - 0.6) < 0.000_1,
+        "DockSwipe terminalのIOHID payloadへ累積progressを保持する")
+    expect(
+        copiedIOHIDEventDescription(collector.events[0])?.contains("EventType:           DockSwipe") == true,
+        "DockSwipe CGEventへ認識済みIOHID eventを内包する"
+    )
+    expect(
+        copiedIOHIDEventDescription(collector.events[3])?.contains("EventType:           DockSwipe") == true,
+        "4本指pinch CGEventへ認識済みDockSwipe eventを内包する"
+    )
     expect(
         collector.events.allSatisfy {
             $0.getIntegerValueField(.eventSourceUserData) == NapeGestureGeneratedEventMarker.value
@@ -831,7 +949,7 @@ private func testCandidateGestureFamilies() {
         },
         "candidate eventのcontract timestamp field 58を一致させる")
     expect(
-        Set(collector.postedTrace.map(\.family)) == [.dockSwipe, .magnification],
+        Set(collector.postedTrace.map(\.family)) == [.dockSwipe, .dockSwipePinch],
         "traceへ製品mode接続済みの2 candidate familyを記録する")
 }
 
@@ -895,7 +1013,9 @@ private func testCoordinatorFixesDragAxisAndSessionAcrossDirectionReversal() {
     expect(frames.map(\.captureOrder) == [0, 1, 2], "方向反転後もcapture orderを連続させる")
     expect(frames.allSatisfy { $0.payload.family == .dockSwipe }, "drag familyをDockSwipeへ固定する")
     let payloads = frames.compactMap { frame -> (TrackpadOutputAxis, Double)? in
-        guard case .dockSwipe(let axis, let progress, _) = frame.payload else { return nil }
+        guard case .dockSwipe(let axis, let progress, _, _, _, _) = frame.payload else {
+            return nil
+        }
         return (axis, progress)
     }
     expect(payloads.count == 3, "全drag frameをDockSwipe payloadにする")
@@ -947,13 +1067,13 @@ private func testCoordinatorRoutesButtonModesWithoutDirectionBindings() {
         )
     )
     expect(
-        pinchPost.mode == .pinch && pinchPost.family == .magnification,
-        "ピンチmodeをmagnification familyへ接続する")
+        pinchPost.mode == .pinch && pinchPost.family == .dockSwipePinch,
+        "ピンチmodeをDockSwipe pinch familyへ接続する")
     let pinchFamily = pinchOutput.postedEvents.compactMap { event -> TrackpadOutputEventFamily? in
         guard case .input(let frame) = event else { return nil }
         return frame.payload.family
     }.first
-    expect(pinchFamily == .magnification, "mouse moveをmagnification payloadへ渡す")
+    expect(pinchFamily == .dockSwipePinch, "mouse moveをDockSwipe pinch payloadへ渡す")
 }
 
 private func testCoordinatorChangedCreationFailureRecovery() {
@@ -1118,7 +1238,7 @@ private func testCoordinatorRejectsModeChangeWithinActiveSession() {
         )
     )
     expect(mismatched.mode == .pinch, "拒否結果へ実際に要求されたmodeを記録する")
-    expect(mismatched.family == .magnification, "拒否結果へ要求されたfamilyを記録する")
+    expect(mismatched.family == .dockSwipePinch, "拒否結果へ要求されたfamilyを記録する")
     expect(mismatched.result.failure == .invalidSession, "active session中のmode変更を拒否する")
     expect(output.postedEvents.count == postedCount, "mode不一致時はeventを投稿しない")
 
@@ -1896,7 +2016,7 @@ private func testActiveSessionRejectsEveryNewBegan() {
         )
     )
     expect(
-        conflictingBegan.mode == .pinch && conflictingBegan.family == .magnification,
+        conflictingBegan.mode == .pinch && conflictingBegan.family == .dockSwipePinch,
         "active中の新規began拒否へ要求されたmodeとfamilyを返す")
     expect(
         conflictingBegan.result.failure == .invalidSession,
@@ -2059,6 +2179,352 @@ private func testCoordinatorClosesPartialBeganAndRetriesPartialCancellation() {
     }
 }
 
+private func testFixedGestureClassesReachProductFamiliesWithExactOrderAndTimestamp() {
+    let cases: [(MouseButton, FixedGestureClass, TrackpadOutputEventFamily)] = [
+        (.button3, .twoFingerScrollSwipe, .scroll),
+        (.button4, .threeFingerSystemSwipe, .dockSwipe),
+        (.center, .pinch, .dockSwipePinch),
+    ]
+
+    for (index, item) in cases.enumerated() {
+        let output = PermissiveProductOutput(
+            capability: .validated(
+                fixtureData: contractData(),
+                systemIdentity: identity25F80()
+            )
+        )
+        let coordinator = FixedGestureProductSessionCoordinator(output: output)
+        let sessionID = TrackpadOutputSessionID(rawValue: UInt64(900 + index))
+        let timestamps = [
+            MonotonicEventTimestamp(nanosecondsSinceStartup: 10_000),
+            MonotonicEventTimestamp(nanosecondsSinceStartup: 10_007),
+            MonotonicEventTimestamp(nanosecondsSinceStartup: 10_019),
+        ]
+        let commands = [
+            FixedGestureInputCommand(
+                sessionID: sessionID,
+                sourceButton: item.0,
+                gestureClass: item.1,
+                captureOrder: 0,
+                timestamp: timestamps[0],
+                sourceKind: .buttonDown,
+                phase: .began,
+                deltaX: 0,
+                deltaY: 0
+            ),
+            FixedGestureInputCommand(
+                sessionID: sessionID,
+                sourceButton: item.0,
+                gestureClass: item.1,
+                captureOrder: 1,
+                timestamp: timestamps[1],
+                sourceKind: .move,
+                phase: .changed,
+                deltaX: 12.5,
+                deltaY: -7.25
+            ),
+            FixedGestureInputCommand(
+                sessionID: sessionID,
+                sourceButton: item.0,
+                gestureClass: item.1,
+                captureOrder: 2,
+                timestamp: timestamps[2],
+                sourceKind: .buttonUp,
+                phase: .ended,
+                deltaX: 0,
+                deltaY: 0
+            ),
+        ]
+        let posts = commands.map(coordinator.post)
+
+        expect(posts.allSatisfy { $0.result.failure == nil }, "\(item.1.rawValue)をproduct outputへ投稿する")
+        expect(posts.allSatisfy { $0.family == item.2 }, "\(item.1.rawValue)のfamilyを\(item.2.rawValue)へ固定する")
+        let expectedOrders: [UInt64] = item.1 == .twoFingerScrollSwipe ? [0, 1, 2] : [1, 2]
+        let expectedTimestamps = item.1 == .twoFingerScrollSwipe ? timestamps : Array(timestamps.dropFirst())
+        expect(
+            output.postedEvents.count == expectedOrders.count,
+            "\(item.1.rawValue)でmove sampleとterminalを欠落・合算しない"
+        )
+        expect(output.postedEvents.map(\.captureOrder) == expectedOrders, "\(item.1.rawValue)のcapture orderを保持する")
+        expect(output.postedEvents.map(\.timestamp) == expectedTimestamps, "\(item.1.rawValue)のexact timestampを保持する")
+        expect(output.postedEvents.allSatisfy { $0.sessionID == sessionID }, "\(item.1.rawValue)のsession IDを保持する")
+    }
+}
+
+private func testFixedDockSwipeAccumulatesSessionProgress() {
+    let output = PermissiveProductOutput(
+        capability: .validated(
+            fixtureData: contractData(),
+            systemIdentity: identity25F80()
+        )
+    )
+    let coordinator = FixedGestureProductSessionCoordinator(output: output)
+    let sessionID = TrackpadOutputSessionID(rawValue: 950)
+    let commands = [
+        FixedGestureInputCommand(
+            sessionID: sessionID,
+            sourceButton: .button4,
+            gestureClass: .threeFingerSystemSwipe,
+            captureOrder: 0,
+            timestamp: MonotonicEventTimestamp(nanosecondsSinceStartup: 1_000),
+            sourceKind: .buttonDown,
+            phase: .began,
+            deltaX: 0,
+            deltaY: 0
+        ),
+        FixedGestureInputCommand(
+            sessionID: sessionID,
+            sourceButton: .button4,
+            gestureClass: .threeFingerSystemSwipe,
+            captureOrder: 1,
+            timestamp: MonotonicEventTimestamp(nanosecondsSinceStartup: 2_000),
+            sourceKind: .move,
+            phase: .changed,
+            deltaX: 30,
+            deltaY: 0
+        ),
+        FixedGestureInputCommand(
+            sessionID: sessionID,
+            sourceButton: .button4,
+            gestureClass: .threeFingerSystemSwipe,
+            captureOrder: 2,
+            timestamp: MonotonicEventTimestamp(nanosecondsSinceStartup: 3_000),
+            sourceKind: .move,
+            phase: .changed,
+            deltaX: 30,
+            deltaY: 0
+        ),
+        FixedGestureInputCommand(
+            sessionID: sessionID,
+            sourceButton: .button4,
+            gestureClass: .threeFingerSystemSwipe,
+            captureOrder: 3,
+            timestamp: MonotonicEventTimestamp(nanosecondsSinceStartup: 4_000),
+            sourceKind: .buttonUp,
+            phase: .ended,
+            deltaX: 0,
+            deltaY: 0
+        ),
+    ]
+    _ = commands.map(coordinator.post)
+
+    let progress = output.postedEvents.compactMap { event -> Double? in
+        guard case .input(let frame) = event,
+              case .dockSwipe(_, let progress, _, _, _, _) = frame.payload
+        else {
+            return nil
+        }
+        return progress
+    }
+    expect(progress.count == 3, "移動開始後のDockSwipe lifecycleを3 eventで保持する")
+    expect(abs(progress[0] - 0.1) < 0.000_001, "最初のDockSwipe sampleをbeganへ変換する")
+    expect(abs(progress[1] - 0.2) < 0.000_001, "DockSwipe progressをsession内で累積する")
+    expect(abs(progress[2] - 0.2) < 0.000_001, "DockSwipe terminalでも累積progressを保持する")
+}
+
+private func testFixedGestureCoordinatorClosesPartialScrollBatch() {
+    func command(
+        order: UInt64,
+        phase: FixedGestureInputPhase,
+        sourceKind: GestureInputSourceKind,
+        timestamp: UInt64
+    ) -> FixedGestureInputCommand {
+        FixedGestureInputCommand(
+            sessionID: TrackpadOutputSessionID(rawValue: 990),
+            sourceButton: .button3,
+            gestureClass: .twoFingerScrollSwipe,
+            captureOrder: order,
+            timestamp: MonotonicEventTimestamp(nanosecondsSinceStartup: timestamp),
+            sourceKind: sourceKind,
+            phase: phase,
+            deltaX: phase == .changed ? 4 : 0,
+            deltaY: phase == .changed ? -6 : 0
+        )
+    }
+
+    let beganCollector = EventCollector()
+    let beganSink = InjectedPostSink(collector: beganCollector)
+    beganSink.configure(failureAttempt: 2)
+    let beganCoordinator = FixedGestureProductSessionCoordinator(
+        output: makeInjectedAdapter(sink: beganSink)
+    )
+    let partialBegan = beganCoordinator.post(
+        command(order: 0, phase: .began, sourceKind: .buttonDown, timestamp: 10)
+    )
+    expect(partialBegan.result.failure == .eventPostFailed, "fixed coordinatorがpartial beganを検出する")
+    expect(partialBegan.result.generatedEventCount == 1, "fixed coordinatorがpartial began投稿数を保持する")
+    beganSink.configure(failureAttempt: nil)
+    let cancelledBegan = beganCoordinator.cancelActive(
+        reason: .outputFailure,
+        timestamp: MonotonicEventTimestamp(nanosecondsSinceStartup: 11)
+    )
+    expect(cancelledBegan.failure == nil, "fixed coordinatorがpartial beganをcancel terminalへ収束させる")
+    assertInputCancellationBatch(
+        Array(beganCollector.events.suffix(3)),
+        label: "fixed coordinator partial began"
+    )
+
+    let terminalCollector = EventCollector()
+    let terminalSink = InjectedPostSink(collector: terminalCollector)
+    terminalSink.configure(failureAttempt: nil)
+    let terminalCoordinator = FixedGestureProductSessionCoordinator(
+        output: makeInjectedAdapter(sink: terminalSink)
+    )
+    _ = terminalCoordinator.post(
+        command(order: 0, phase: .began, sourceKind: .buttonDown, timestamp: 20)
+    )
+    terminalSink.configure(failureAttempt: 2)
+    let partialTerminal = terminalCoordinator.post(
+        command(order: 1, phase: .ended, sourceKind: .buttonUp, timestamp: 21)
+    )
+    expect(partialTerminal.result.failure == .eventPostFailed, "fixed coordinatorがpartial terminalを検出する")
+    terminalSink.configure(failureAttempt: nil)
+    let retriedTerminal = terminalCoordinator.cancelActive(
+        reason: .outputFailure,
+        timestamp: MonotonicEventTimestamp(nanosecondsSinceStartup: 22)
+    )
+    expect(retriedTerminal.failure == nil, "fixed coordinatorがpartial terminalの未投稿offsetを再開する")
+    expect(retriedTerminal.generatedEventCount == 2, "fixed coordinatorがterminal未投稿分だけを投稿する")
+}
+
+private func testFixedScrollAcceptsMouseDeltaGrid() {
+    let adapter = TrackpadGestureOutputAdapter(
+        contractData: contractData(),
+        modelData: modelData(),
+        systemIdentity: identity25F80(),
+        postEvent: { _ in true }
+    )
+    let coordinator = FixedGestureProductSessionCoordinator(output: adapter)
+    var sessionRawValue: UInt64 = 20_000
+
+    for deltaX in -16...16 {
+        for deltaY in -16...16 {
+            let sessionID = TrackpadOutputSessionID(rawValue: sessionRawValue)
+            sessionRawValue += 1
+            let commands = [
+                FixedGestureInputCommand(
+                    sessionID: sessionID,
+                    sourceButton: .button3,
+                    gestureClass: .twoFingerScrollSwipe,
+                    captureOrder: 0,
+                    timestamp: MonotonicEventClock.now,
+                    sourceKind: .buttonDown,
+                    phase: .began,
+                    deltaX: 0,
+                    deltaY: 0
+                ),
+                FixedGestureInputCommand(
+                    sessionID: sessionID,
+                    sourceButton: .button3,
+                    gestureClass: .twoFingerScrollSwipe,
+                    captureOrder: 1,
+                    timestamp: MonotonicEventClock.now,
+                    sourceKind: .move,
+                    phase: .changed,
+                    deltaX: Double(deltaX),
+                    deltaY: Double(deltaY)
+                ),
+                FixedGestureInputCommand(
+                    sessionID: sessionID,
+                    sourceButton: .button3,
+                    gestureClass: .twoFingerScrollSwipe,
+                    captureOrder: 2,
+                    timestamp: MonotonicEventClock.now,
+                    sourceKind: .buttonUp,
+                    phase: .ended,
+                    deltaX: 0,
+                    deltaY: 0
+                ),
+            ]
+            for command in commands {
+                let post = coordinator.post(command)
+                if let failure = post.result.failure {
+                    failures.append(
+                        "mouse delta grid x=\(deltaX) y=\(deltaY) phase=\(command.phase.rawValue): \(failure.rawValue) \(post.result.failureDetails ?? "")"
+                    )
+                    coordinator.reset()
+                    break
+                }
+            }
+        }
+    }
+}
+
+private func postFixedGestureSmokeIfRequested() {
+    guard ProcessInfo.processInfo.environment["NAPE_GESTURE_POST_FIXED_SMOKE"] == "1" else {
+        return
+    }
+    let adapter = TrackpadGestureOutputAdapter()
+    let coordinator = FixedGestureProductSessionCoordinator(output: adapter)
+    let cases: [(MouseButton, FixedGestureClass, Double, Double)] = [
+        (.button3, .twoFingerScrollSwipe, -1, 0),
+        (.button4, .threeFingerSystemSwipe, 0, -12),
+        (.center, .pinch, 0, 10),
+    ]
+
+    for (index, item) in cases.enumerated() {
+        let sessionID = TrackpadOutputSessionID(rawValue: UInt64(8_000 + index))
+        var commands = [
+            FixedGestureInputCommand(
+                sessionID: sessionID,
+                sourceButton: item.0,
+                gestureClass: item.1,
+                captureOrder: 0,
+                timestamp: MonotonicEventClock.now,
+                sourceKind: .buttonDown,
+                phase: .began,
+                deltaX: 0,
+                deltaY: 0
+            )
+        ]
+        commands.append(
+            contentsOf: (1...6).map { order in
+                FixedGestureInputCommand(
+                    sessionID: sessionID,
+                    sourceButton: item.0,
+                    gestureClass: item.1,
+                    captureOrder: UInt64(order),
+                    timestamp: MonotonicEventClock.now,
+                    sourceKind: .move,
+                    phase: .changed,
+                    deltaX: item.2,
+                    deltaY: item.3
+                )
+            }
+        )
+        commands.append(
+            FixedGestureInputCommand(
+                sessionID: sessionID,
+                sourceButton: item.0,
+                gestureClass: item.1,
+                captureOrder: 7,
+                timestamp: MonotonicEventClock.now,
+                sourceKind: .buttonUp,
+                phase: .ended,
+                deltaX: 0,
+                deltaY: 0
+            )
+        )
+
+        for command in commands {
+            Thread.sleep(forTimeInterval: 0.008)
+            let current = FixedGestureInputCommand(
+                sessionID: command.sessionID,
+                sourceButton: command.sourceButton,
+                gestureClass: command.gestureClass,
+                captureOrder: command.captureOrder,
+                timestamp: MonotonicEventClock.now,
+                sourceKind: command.sourceKind,
+                phase: command.phase,
+                deltaX: command.deltaX,
+                deltaY: command.deltaY
+            )
+            let post = coordinator.post(current)
+            expect(post.result.failure == nil, "system-wide smokeで\(item.1.rawValue)を投稿する")
+        }
+    }
+}
+
 testLifecycleAndFields()
 testCancellationStates()
 testFailClosedPaths()
@@ -2087,6 +2553,11 @@ testOddSymmetricQuantizationOnBothAxes()
 testActiveSessionRejectsEveryNewBegan()
 testCancellationTimestampRegressionIsNormalized()
 testCoordinatorClosesPartialBeganAndRetriesPartialCancellation()
+testFixedGestureClassesReachProductFamiliesWithExactOrderAndTimestamp()
+testFixedDockSwipeAccumulatesSessionProgress()
+testFixedGestureCoordinatorClosesPartialScrollBatch()
+testFixedScrollAcceptsMouseDeltaGrid()
+postFixedGestureSmokeIfRequested()
 
 if failures.isEmpty {
     print("product output tests passed")

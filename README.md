@@ -1,151 +1,123 @@
 # Nape Gesture
 
-Nape Gestureは、mouse buttonを押している間の連続mouse event量を、固定されたfinger countのtrackpad入力へ変換するmacOS常駐アプリです。button 3 / 4 / 5を押していない間は、通常mouse入力をそのまま通します。
+Nape Gestureは、Nape Proなどのmouse入力を、固定buttonに対応するmacOSの上位trackpad gestureへ変換する常駐GUIアプリです。button 3 / 4 / 5を押していない間は、通常mouse入力をそのまま通します。
 
-> **現在の製品状態: 未達**
+> **現在の製品状態: 試用可能・物理受入未完了**
 >
-> 2026-07-12のbaseline `55eb991`で確認した現行実装には、buttonごとに結果系のmodeを選ぶ、固定製品モデルに反する経路が残っています。固定のbutton→finger count変換はend-to-endで実装・検証されていないため、現在のbinary、GUI、設定、既存テストをこの製品モデルの完成証跡にはできません。
+> release buildの`/Applications/Nape Gesture.app`をインストール済みです。CLI runtimeではbutton 3のscroll lifecycle、button 4のSpace切替、button 5のsystem control `0 → 1 → 0`をevent tapからsystem-wide出力まで確認済みです。再署名後のGUI runtimeはAccessibility / Input Monitoringの再登録待ちです。現在のmacOS設定ではApp Exposéがオフで、残るNape Pro物理受入はbutton 4 / 5の実入力、terminal、解放後passthroughです。
 
-## 製品dashboard
+## 固定操作
 
-| 領域 | 必須状態 | 現在 |
+buttonとgesture classの対応は製品仕様として固定です。ユーザーがmode、割り当て、感度を変更するものではありません。
+
+| 操作 | 固定GestureClass | ProductOutput |
 | --- | --- | --- |
-| 固定button対応 | button 3→2本指、button 4→3本指、button 5→4本指 | **未達**。選択式modeの実装が残る |
-| 連続入力変換 | 押下中の連続mouse event量を、同じfinger-count sessionの連続量として渡す | **未達**。finger countを正本にしたend-to-end契約がない |
-| 通常mouse passthrough | button 3 / 4 / 5未押下時とsession終了後に通常入力を無変更で通す | **一部証跡あり・再検証必須**。固定モデルへの移行後の回帰証跡は未取得 |
-| 製品surface | 結果別mode、方向別action、application別設定を持たない | **未達**。button別modeと設定UIが残る |
-| 製品配送 | system-wideなtrackpad相当入力だけを使い、AX / PID / shortcut配送を使わない | **境界検証が必要**。診断経路を含めた非到達性の再確認が必要 |
-| 低レベルcontract | 2 / 3 / 4本指の物理captureと生成eventをOS buildごとに照合する | **未完了**。既存familyの部分証跡だけではfinger count再現を証明しない |
-| OS / App結果 | trackpad入力後の結果をscenario単位で別途確認する | **未完了**。結果はNape Gestureのmodeやactionではない |
-| Nape Pro実機 | 実機入力から生成、配送、結果、通常入力復帰まで確認する | **未完了** |
-| 配布 | 署名、公証、stapler、Gatekeeper評価を完了する | **未完了** |
+| button 3を押しながらmouseを操作 | 2本指スクロール / スワイプ相当 | type 22 scrollと必要なgesture companion lifecycle |
+| button 4を押しながらmouseを操作 | 3本指システムスワイプ相当 | type 30 `DockSwipe`、motion 1 / 2 |
+| button 5を押しながらmouseを操作 | 4本指system pinch相当 | type 30 `DockSwipe`、motion 4 |
+| button 3 / 4 / 5を押していない | 変換なし | 通常mouse入力をそのまま通過 |
 
-このdashboardは、実装が存在することと製品要件を満たすことを分けて表示します。低レベルevent builder、fixture、dry-run、GUI、画面変化のいずれか一つだけで行を「完了」に変更してはいけません。
-
-## 固定操作モデル
-
-buttonとfinger countの対応は製品仕様として固定です。ユーザーがmodeや割り当てを選ぶものではありません。
-
-詳細要件は[ゴール要件](docs/requirements.md)、設計決定は[ADR-0049](docs/adr/0049-fixed-button-to-finger-count-trackpad-input.md)を正とします。
-
-| 操作 | Nape Gestureの入力変換 |
-| --- | --- |
-| button 3を押しながらmouseを操作 | 連続した2本指trackpad入力 |
-| button 4を押しながらmouseを操作 | 連続した3本指trackpad入力 |
-| button 5を押しながらmouseを操作 | 連続した4本指trackpad入力 |
-| button 3 / 4 / 5を押していない | 通常mouse入力をそのまま通過 |
+ここでの「2 / 3 / 4本指」はraw digitizer contact数でもgeneric `fingerCount` fieldでもありません。物理trackpad driverがgestureを認識した後に上位へ生成する固定GestureClassを表します。このため、classごとにevent type、field、phase、companion event、単位変換が異なることは必須です。button 5はapplication magnificationではありません。
 
 ```mermaid
 flowchart LR
-    mouse["通常mouse入力"] --> gate{"button 3 / 4 / 5<br/>押下中?"}
+    input["対象mouse入力"] --> gate{"固定button押下中?"}
     gate -->|"いいえ"| passthrough["通常mouseとして通過"]
-    gate -->|"button 3"| two["連続した2本指trackpad入力"]
-    gate -->|"button 4"| three["連続した3本指trackpad入力"]
-    gate -->|"button 5"| four["連続した4本指trackpad入力"]
-    two --> system["system-wide event stream"]
-    three --> system
-    four --> system
-    system --> result["macOS / 前面applicationが結果を解釈"]
+    gate -->|"button 3"| two["2本指scroll / swipe class"]
+    gate -->|"button 4"| three["3本指system swipe class"]
+    gate -->|"button 5"| four["4本指system pinch class"]
+    two --> scroll["scroll + companion"]
+    three --> dock["type 30 DockSwipe motion 1 / 2"]
+    four --> pinch["type 30 DockSwipe motion 4"]
+    scroll --> system["system-wide event stream"]
+    dock --> system
+    pinch --> system
+    system --> result["macOS / applicationの標準解釈"]
 ```
 
-押下中の移動方向や途中の方向転換は、別actionを選ぶためのcommandではありません。mouse eventの連続量を保ったまま、buttonに対応するfinger countの同一sessionへ渡します。button解放時はsessionを正しく閉じ、通常mouse状態へ戻します。
+## 入力保存契約
 
-button→finger count対応を変更する設定、無効化する`none`、結果名で選ぶmode、方向別bindingは製品モデルにありません。対象deviceの識別、権限、diagnostics、安全停止などの運用設定は、この固定対応を変更しない範囲で別レイヤーとして扱います。
+押下中に受理したmove / wheel sampleは、欠落、重複、coalescing、並べ替えをせず、1 sampleから1つのsource commandを生成します。各commandはX/Y量、符号、source kind、取得timestamp、capture order、session IDを保持します。
 
-有効なsource sampleは欠落、重複、coalescing、並べ替えをせず、X/Y量、符号、timestampを個別に生成eventへ対応付けます。mouse単位とtrackpad単位の差だけを自前fixtureから導出した単一contractで変換し、感度、加速度、dead zone、threshold、clampをユーザー設定または結果別係数として追加しません。
+source commandと低レベルeventの件数が同じである必要はありません。2本指scroll classでは、1 commandからtype 22 scrollと複数のtype 29 companion eventを1 batchとして生成できます。3本指system swipeはtype 30 `DockSwipe`のaxis、XY motion、progress、終端XY velocityへ、4本指system pinchは同じtype 30でもmotion 4、progress、終端Z velocityへ変換します。class固有encodingは、application別routingやユーザーmodeではありません。
 
-## 通常mouse passthrough
+button解放、cancel、kill switch、runtime stop、sleep、device切断、権限喪失、event作成または投稿失敗では、active sessionを一度だけterminalへ収束させます。部分投稿が起きた場合は、未投稿offsetと順序を保持して同じsessionを閉じ、新しいsessionへすり替えません。
 
-button 3 / 4 / 5のいずれも押していないとき、Nape Gestureは通常mouseの振る舞いを変えません。
+## 製品経路
 
-- 通常クリック、pointer移動、drag、wheelなどをgesture eventへ変換しない。
-- applicationごとに「通常mouseへ戻す」設定を要求しない。
-- gesture sessionの終了、cancel、緊急停止、runtime停止後も通常入力を過剰抑制しない。
-- passthroughをfallbackや例外動作ではなく、製品の通常状態として検証する。
+現在の製品runtimeは次の一続きの経路です。
 
-## レイヤーの分離
+```text
+CGEventUtilities
+  -> FixedGestureInputRecognizer
+  -> FixedGestureSessionMachine
+  -> FixedGestureProductSessionCoordinator
+  -> ProductGestureOutput
+  -> system-wide event stream
+```
 
-Nape Gestureが決めるのは、押下buttonに対応するfinger countと、その連続入力量までです。
+- button 3は`twoFingerScrollSwipe`から`scroll` adapterへ接続する。
+- button 4は`threeFingerSystemSwipe`から`DockSwipe` adapterへ接続する。
+- button 5は`pinch`から`dockSwipePinch` payloadへ接続し、認識済みtype 30 `DockSwipe`をmotion 4で構成する。
+- 水平scrollによるページ移動などは、前面applicationの通常解釈に任せる。
+- `NavigationSwipe`を独立したbutton classまたは製品routingとして追加しない。
+- eventを対象PIDへ直接投稿せず、AX、keyboard shortcut、application別分岐をfallbackにしない。
+- DriverKit、virtual HID、raw digitizer contactを製品出力に使わない。
 
-| レイヤー | 扱う内容 | 扱わない内容 |
-| --- | --- | --- |
-| ユーザー操作 | button 3 / 4 / 5、連続mouse event量 | 結果別mode、方向別action、application別割り当て |
-| 製品runtime | 2 / 3 / 4本指trackpad入力session、system-wide配送 | AX scrollbar、対象PIDへの直接投稿、keyboard shortcut代替 |
-| 低レベル互換層 | event contract、phase、field、fixture、OS build | ユーザー向け機能名、button設定、完成結果 |
-| macOS / application | 受け取ったtrackpad入力の解釈と画面結果 | Nape Gestureの設定値としての結果選択 |
-| 証跡 | 入力、生成、配送、結果、通常入力復帰の対応付け | 画面が動いたという観察だけの完成判定 |
+通常SDKに公開されないevent contractは最小のcompatibility adapterへ隔離します。25F80では正負方向別の認識済みtemplate fixture `recognized-dockswipe-templates-25F80-v2`、SHA-256 `852c7d0b6e32ced7082ea5c06a65d05971d3868e6a36aaccfd6f422871bc32a6`を検証してtype 30 / IOHID `DockSwipe`を復元します。scroll contract、変換model、DockSwipe templateのID、SHA-256、schema、contract ID、OS version / build、fixture実体のどれかが未知または改変済みなら、3 classすべてを非対応としてevent tapと入力抑制を開始しません。
 
-`scroll`、`DockSwipe`、`NavigationSwipe`、`magnification`は、低レベルevent familyまたは物理captureの観測語彙です。adapter、fixture、analyzer、runtime traceで使用できますが、ユーザーmode、button割り当て、独立した製品機能ではありません。
+## GUIと設定
 
-実際のscroll、navigation、system gesture、拡大縮小などは、macOSまたは前面applicationがtrackpad入力を解釈した結果です。Nape Gestureはapplication別に結果を選択せず、特定結果をAX、PID配送、shortcutで成立させません。
+GUIは次の固定対応を読み取り専用で表示します。
 
-## 現行実装が未達である理由
+- button 3 = 2本指スクロール / スワイプ
+- button 4 = 3本指システムスワイプ
+- button 5 = 4本指system pinch
 
-このREADME更新時点で、現行sourceには固定製品モデルに反する次の実装が残っています。
+buttonごとのmode selector、無効化、感度、方向別binding、application別設定はありません。保存済みの旧modeや調整値はmigration時にcanonical設定から除去し、移行失敗時は原本を保持してruntimeを開始しません。対象device条件、cancel時間、診断など、gestureの意味を変更しない運用項目だけを設定対象にします。「権限とデバイス」にはAccessibility、Input Monitoring、対象device、macOS version / build、output contract / fixture、必須family、runtime状態、fail-closed理由を表示します。
 
-- `button3Mode`、`button4Mode`、`button5Mode`という選択式設定がある。
-- `none`、2本指相当、system swipe相当、pinch相当をユーザーmodeとして扱う。
-- modeから`scroll`、`DockSwipe`、`magnification`へ接続するsession coordinatorと、その前提を固定するテストがある。
-- 設定UIがbuttonごとのmode選択を公開している。
-- button 4を3本指、button 5を4本指として一貫して表現するinput contract、migration、UI、runtime、fixture、end-to-end証跡が揃っていない。
+## 現在位置
 
-したがって、既存のmode別テストが成功しても、このREADMEの固定製品モデルが完成したことにはなりません。既存の低レベルadapter、capture、fixture、passthrough証跡は再利用できる可能性がありますが、固定finger-count経路から到達し、同じrunの入力・生成・配送・結果へ対応付けられるまで参考資料です。
+| 領域 | 現在 |
+| --- | --- |
+| 固定button mapping | 実装済み。button 3 / 4 / 5は固定GestureClassへ直接接続 |
+| source sample保存 | exact timestamp、capture order、session ID、sample 1対1 command化を実装済み |
+| ProductOutput | `scroll`、`dockSwipe`、`dockSwipePinch`をsystem-wideへ投稿可能。pinchはDockSwipe motion 4 |
+| GUI / migration / doctor | 固定mappingへ更新済み。旧modeを製品surfaceへ公開しない |
+| release `.app` | `/Applications/Nape Gesture.app`へインストール済み。再署名後のGUI TCC再登録待ち |
+| system-test | daemon経由で3本指水平のSpace切替とmotion 4の正負両方向をDockが受理済み。App ExposéはmacOS設定でオフ |
+| Nape Pro物理受入 | button 4 / 5が**未完了**。実入力から生成、terminal、解放後passthroughを確認する必要あり |
+| 公開配布 | Developer ID署名、公証、stapler、Gatekeeper評価は未完了 |
 
-## 完了条件
+build、test、GUI起動、direct post smoke、system-testのDock受理だけで製品完成とはしません。残るNape Pro button 4 / 5と純正trackpadの物理操作を同じOS buildで収録し、source、生成event、system-wide配送、画面結果、terminal、通常入力復帰を対応付けて初めて物理受入を完了します。
 
-次の条件をすべて満たしたときだけ、製品モデルを完成扱いにできます。
+## 完成条件
 
-- source、設定schema、設定UI、保存済み設定、migrationから選択式button mode、結果別action、方向別binding、application別設定を除去する。
-- `ruby scripts/check-product-model-documentation.rb`と`ruby scripts/check-finger-count-product-model.rb`を成功させる。
-- button 3 / 4 / 5を2 / 3 / 4本指入力へ固定し、ユーザー設定や旧設定値で変更できないことをテストする。
-- 押下開始から解放またはcancelまで、連続mouse event量、timestamp、方向転換、session ID、phase、terminalを保持する。
-- button未押下時、session終了後、緊急停止後、runtime停止後の通常click、move、drag、wheel passthroughを実eventで確認する。
-- 製品runtimeからAX scrollbar、対象PID投稿、keyboard shortcut代替へ到達しないことをsource boundaryと実行証跡で確認する。
-- 純正trackpadの2 / 3 / 4本指captureを、manifest、fixture SHA-256、schema、contract ID、OS version / buildとともに固定する。
-- Nape Proの入力量と生成したtrackpad入力を同じrunで照合し、system-wide event streamへの投稿を確認する。
-- macOS / applicationの結果を低レベルcontractとは別のscenarioとして確認し、Nape Gestureのmodeやactionとして記録しない。
-- 未知OS build、fixture不一致、contract不一致では入力抑制前にfail closedし、診断出力へfallbackしない。
-- TCC許可済みの実利用`.app`でend-to-end証跡を取り、通常入力復帰、kill switch、復旧経路、性能基準を確認する。
-- Developer ID署名、公証、stapler、Gatekeeper評価まで完了し、配布物と検証対象のidentityを一致させる。
-- READMEのdashboard、詳細要件、完成checklist、検証手順、ADR、テスト名が同じ固定モデルを説明する。
+- button 3 / 4 / 5が固定GestureClass以外へ変更できない。
+- 各source sampleの量、符号、timestamp、capture order、session対応を保存する。
+- 3 class固有のevent family、field、phase、単位変換を自前fixtureまで追跡できる。
+- normally pressed / changed / endedと全cancel経路がsingle terminalへ収束する。
+- button未押下時、session終了後、異常停止後に通常mouseへ戻る。
+- 製品runtimeからsystem-wide以外の配送や診断fallbackへ到達しない。
+- 未知OS build、fixture不一致、権限不足、対象device不一致では抑制前にfail closedする。
+- Nape Proと純正trackpadで低レベルcontract、OS / App結果、体感差を別々に物理受入する。
+- 日常利用する配布`.app`について署名、公証、性能、復旧を確認する。
 
-## 安全性と証跡
+詳細は[ゴール要件](docs/requirements.md)、[完成判定チェックリスト](docs/completion-checklist.md)、[ADR-0049](docs/adr/0049-fixed-button-to-finger-count-trackpad-input.md)を参照してください。
 
-通常SDKで公開されないevent contractは最小のcompatibility adapterへ隔離します。登録済みfixture ID、SHA-256、schema、contract ID、OS version / build、fixture実体が一致しない環境では、入力抑制を開始せずfail closedにします。
+## 文書
 
-製品gesture出力と診断出力はmodule境界で分離します。診断専用の単純event、AX、PID、shortcut経路を、製品fallback、`supported`、完成証跡へ使いません。
-
-完成証跡では、少なくとも次を別々に保存して対応付けます。
-
-- mouse / HID入力と対象device
-- 純正trackpad物理captureとfixture
-- 製品が生成したeventとdirect post trace
-- system-wide captureとtarget log
-- macOS / applicationの結果
-- session終了、通常入力復帰、kill switch
-- 実行binary、bundle identity、repo revision、OS version / build
-
-## 文書導線
-
-製品モデルに関しては、このREADME、[AGENTS.md](AGENTS.md)、[ゴール要件](docs/requirements.md)、[ADR-0049](docs/adr/0049-fixed-button-to-finger-count-trackpad-input.md)が現在の正本です。現行文書はすべて固定button→finger countモデルへ統一し、結果別mode、方向別action、application別設定、buttonごとのevent family割り当てを説明する文書やリンクを残しません。
-
-| 目的 | 文書 | 現在の扱い |
-| --- | --- | --- |
-| 製品入口・状態dashboard | [README.md](README.md) | 固定button→finger countモデルの正本 |
-| エージェント実装規約 | [AGENTS.md](AGENTS.md) | 固定モデル、禁止境界、完成主張の正本 |
-| 詳細要件 | [docs/requirements.md](docs/requirements.md) | 固定モデルの詳細な製品要件 |
-| 固定モデルの設計決定 | [ADR-0049](docs/adr/0049-fixed-button-to-finger-count-trackpad-input.md) | 固定mappingと連続入力contractの現行ADR |
-| 完成判定matrix | [docs/completion-checklist.md](docs/completion-checklist.md) | fixed finger-count経路の層別完成条件 |
-| 実機・runtime検証 | [docs/verification.md](docs/verification.md) | 低レベルcontractとOS / App結果を分ける検証手順 |
-| 性能基準 | [docs/performance-baseline.md](docs/performance-baseline.md) | 2 / 3 / 4本指経路のlatency / CPU基準 |
-| 配布 | [docs/release.md](docs/release.md) | 固定製品モデルの署名・公証・配布条件 |
-| ADR索引 | [docs/adr/README.md](docs/adr/README.md) | 現行ADR一覧の入口 |
-| 製品・診断出力の分離 | [ADR-0037](docs/adr/0037-separate-product-and-diagnostic-event-output.md) | 診断fallback禁止の境界 |
-| captureとmanifest | [ADR-0039](docs/adr/0039-strict-trackpad-event-analysis-and-capture-manifest.md) | fixture・解析証跡の条件 |
-| 物理capture | [ADR-0041](docs/adr/0041-physical-capture-readiness-and-fixture-privacy.md) | ready同期と公開fixtureの条件 |
+| 目的 | 文書 |
+| --- | --- |
+| 製品要件 | [docs/requirements.md](docs/requirements.md) |
+| 固定GestureClassの決定 | [ADR-0049](docs/adr/0049-fixed-button-to-finger-count-trackpad-input.md) |
+| 上位event生成境界 | [ADR-0036](docs/adr/0036-emulate-trackpad-driver-output-events.md) |
+| sessionとclock | [ADR-0038](docs/adr/0038-trackpad-output-session-and-monotonic-clock.md) |
+| 25F80 ProductOutput | [ADR-0043](docs/adr/0043-trackpad-scroll-product-output.md) |
+| 完成判定 | [docs/completion-checklist.md](docs/completion-checklist.md) |
+| 実機検証 | [docs/verification.md](docs/verification.md) |
+| 性能基準 | [docs/performance-baseline.md](docs/performance-baseline.md) |
 
 ## ライセンス
 
-実装contractとパラメータは、公式資料、OSの公開ソース、このリポジトリで取得した純正trackpad / Nape Proログから再導出します。第三者成果物由来のコード、定数、状態遷移、係数を取り込みません。リポジトリのライセンスは[LICENSE](LICENSE)を参照してください。
-
-第三者プロジェクトのコード、定数、field番号、状態遷移、係数、調整値は取り込みません。
+event contract、field、状態遷移、係数は、Apple公式資料、Apple OSS、このリポジトリで取得した純正trackpad / Nape Proログから再導出します。第三者プロジェクトのコード、定数、field番号、状態遷移、係数、調整値は取り込みません。リポジトリのライセンスは[LICENSE](LICENSE)を参照してください。

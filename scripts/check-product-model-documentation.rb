@@ -14,12 +14,12 @@ def markdown_link_targets(content)
     while index < content.bytesize
       byte = content.getbyte(index)
 
-      if byte == 92 # backslash
+      if byte == 92
         index += 2
         next
-      elsif byte == 40 # (
+      elsif byte == 40
         depth += 1
-      elsif byte == 41 # )
+      elsif byte == 41
         depth -= 1
         break if depth.zero?
       end
@@ -101,77 +101,120 @@ if adr_index.match?(/^## .*置換済み/)
   errors << "docs/adr/README.md: 置換済みsectionを現行treeへ残さないでください"
 end
 
-deprecated_adr_terms = /
-  twoFingerSwipe |
-  systemSwipe |
-  scrollAndNavigate |
-  spacesAndMissionControl |
-  button[345]Mode |
-  supportedFamilies |
-  confirmedFamilies |
-  trialFamilies |
-  GestureAction
-/x
-
 current_adrs.each do |basename|
-  path = adr_dir.join(basename)
-  content = path.read
-
+  content = adr_dir.join(basename).read
   if content.match?(/^- 状態:\s*置換済み\s*$/)
     errors << "docs/adr/#{basename}: 置換済みADRを現行treeへ残さないでください"
-  end
-
-  content.each_line.with_index(1) do |line, line_number|
-    if line.match?(deprecated_adr_terms)
-      errors << "docs/adr/#{basename}:#{line_number}: 廃止した製品モデルの識別子が残っています"
-    end
   end
 end
 
 required_snippets = {
-  "AGENTS.md" => [
-    "| button 3押下中 | 2本指入力 |",
-    "| button 4押下中 | 3本指入力 |",
-    "| button 5押下中 | 4本指入力 |",
-    "| button 3 / 4 / 5のいずれも未押下 | 通常mouse入力をそのまま通過 |",
-    "有効なsource sampleは欠落、重複、coalescing、並べ替えをせず",
-    "単一の計測済み単位変換以外に感度、加速度、dead zone、threshold、clampを適用しない",
-    "macOSまたは前面applicationが解釈する"
-  ],
   "README.md" => [
-    "> **現在の製品状態: 未達**",
-    "| button 3を押しながらmouseを操作 | 連続した2本指trackpad入力 |",
-    "| button 4を押しながらmouseを操作 | 連続した3本指trackpad入力 |",
-    "| button 5を押しながらmouseを操作 | 連続した4本指trackpad入力 |",
-    "| button 3 / 4 / 5を押していない | 通常mouse入力をそのまま通過 |",
-    "有効なsource sampleは欠落、重複、coalescing、並べ替えをせず",
-    "mouse単位とtrackpad単位の差だけを自前fixtureから導出した単一contractで変換",
-    "macOSまたは前面applicationがtrackpad入力を解釈した結果"
+    "> **現在の製品状態: 試用可能・物理受入未完了**",
+    "| button 3を押しながらmouseを操作 | 2本指スクロール / スワイプ相当 |",
+    "| button 4を押しながらmouseを操作 | 3本指システムスワイプ相当 | type 30 `DockSwipe`、motion 1 / 2 |",
+    "| button 5を押しながらmouseを操作 | 4本指system pinch相当 | type 30 `DockSwipe`、motion 4 |",
+    "raw digitizer contact数でもgeneric `fingerCount` fieldでもありません",
+    "1 sampleから1つのsource command",
+    "recognized-dockswipe-templates-25F80-v2",
+    "852c7d0b6e32ced7082ea5c06a65d05971d3868e6a36aaccfd6f422871bc32a6",
+    "`/Applications/Nape Gesture.app`をインストール済み",
+    "Nape Pro物理受入 | button 4 / 5が**未完了**"
   ],
   "docs/requirements.md" => [
-    "| button 3押下中 | 2本指 |",
-    "| button 4押下中 | 3本指 |",
-    "| button 5押下中 | 4本指 |",
-    "| 上記button未押下 | 変換なし | 通常mouse入力を改変せず通過させる |",
-    "変えてよい意味情報は`fingerCount`だけ",
-    "複数source sampleを1 sampleへcoalesceしない",
-    "単一の単位変換contractを使う",
-    "最終的な画面結果はmacOSまたは前面applicationが解釈する"
+    "| button 3押下中 | 2本指スクロール / スワイプ相当 |",
+    "| button 4押下中 | 3本指システムスワイプ相当 | type 30 `DockSwipe`、motion 1 / 2 |",
+    "| button 5押下中 | 4本指system pinch相当 | type 30 `DockSwipe`、motion 4 |",
+    "raw digitizer contact count、generic `fingerCount` field",
+    "各source sampleからちょうど1つの内部command",
+    "class間で同じevent type、field、単位変換を強制しない",
+    "phase fields 132 / 134 = began 1、changed 2、ended 4、cancelled 8",
+    "application magnification event、generic finger count field、3本指classのmotion 1 / 2へ置き換えない",
+    "eventはsystem-wideへだけ投稿する",
+    "runtime全体をfail closedする"
+  ],
+  "docs/completion-checklist.md" => [
+    "| 固定GestureClass |",
+    "| ProductOutput | 2本指はtype 22 scroll + type 29 companion、3本指はtype 30 DockSwipe motion 1 / 2、4本指はtype 30 DockSwipe motion 4",
+    "class間でevent count、field、単位変換が同一であることは要求しない",
+    "Nape Pro実機",
+    "3本指の水平`DockSwipe`で左右のSpaceを切り替え",
+    "App Exposéがオフ"
+  ],
+  "docs/adr/0036-emulate-trackpad-driver-output-events.md" => [
+    "| 5 | 4本指system pinch | type 30 `DockSwipe`、IOHID motion 4 |",
+    "recognized-dockswipe-templates-25F80-v2",
+    "IOHID `DockSwipe` type 23を復元",
+    "motion = 1 / 2 / 4",
+    "runtime全体をfail closedする"
+  ],
+  "docs/adr/0043-trackpad-scroll-product-output.md" => [
+    "| 4本指system pinch | `dockSwipePinch` | type 30 / classifier 23",
+    "phase fields 132 / 134",
+    "IOHID motion 4",
+    "全ProductOutput familyを無効にし"
   ],
   "docs/adr/0049-fixed-button-to-finger-count-trackpad-input.md" => [
-    "- button 3押下中: 2本指trackpad入力",
-    "- button 4押下中: 3本指trackpad入力",
-    "- button 5押下中: 4本指trackpad入力",
-    "event familyは内部contract語彙に限定する",
-    "同一の入力列をbutton 3 / 4 / 5で与えた場合、生成列はfinger count以外について同じ変換原則",
-    "button未押下時、対象外button、対象外デバイスのclick、drag、wheelを通過させる"
+    "# ADR-0049: buttonを固定GestureClassへ接続する",
+    "| 3 | 2本指スクロール / スワイプ相当 | `scroll` |",
+    "| 4 | 3本指システムスワイプ相当 | `dockSwipe`、type 30 DockSwipe motion 1 / 2 |",
+    "| 5 | 4本指system pinch相当 | `dockSwipePinch`、type 30 DockSwipe motion 4 |",
+    "raw digitizer contact countでもgeneric `fingerCount` fieldでもない",
+    "accepted move / wheel sampleごとに1つの`FixedGestureInputCommand`",
+    "同じsource系列でもgenerated event type、event count、field、phase、unit conversionはclassごとに異なり得る",
+    "残る実機対象はNape Pro button 4 / 5"
   ]
 }.freeze
 
 required_snippets.each do |relative, snippets|
-  content = root.join(relative).read
+  path = root.join(relative)
+  unless path.file?
+    errors << "製品モデル文書guardの対象fileがありません: #{relative}"
+    next
+  end
+
+  content = path.read
   snippets.each do |snippet|
     errors << "#{relative}: 正本の必須記述がありません: #{snippet}" unless content.include?(snippet)
+  end
+end
+
+stale_positive_statements = [
+  "button 3 / 4 / 5の違いで変えてよい意味情報は`fingerCount`だけとする",
+  "button間で変えてよい意味情報はfinger countだけとする",
+  "生成列はfinger count以外について同じ変換原則に従わなければならない",
+  "coordinatorは結果別familyを選ばず、同一の入力sample contractをfinger count付きで出力層へ渡す",
+  "button 5のclassを`magnification` adapterへ接続する",
+  "4本指はmagnificationをclass固有contractでsystem-wide投稿する",
+  "4本指classはmagnificationのprogress、scale delta、velocity、phaseへ変換する",
+  "`scroll`、`DockSwipe`、`magnification`をsystem-wideへ投稿可能",
+  "`scroll` / `DockSwipe` / `magnification`へ一意に接続される"
+].freeze
+
+model_documents = %w[
+  README.md
+  docs/requirements.md
+  docs/completion-checklist.md
+  docs/adr/0034-reject-driverkit-virtual-trackpad.md
+  docs/adr/0036-emulate-trackpad-driver-output-events.md
+  docs/adr/0038-trackpad-output-session-and-monotonic-clock.md
+  docs/adr/0040-capture-order-and-event-timestamp.md
+  docs/adr/0043-trackpad-scroll-product-output.md
+  docs/adr/0049-fixed-button-to-finger-count-trackpad-input.md
+  docs/performance-baseline.md
+].freeze
+
+model_documents.each do |relative|
+  content = root.join(relative).read
+  stale_positive_statements.each do |statement|
+    errors << "#{relative}: finger-count-onlyの廃止済み記述が残っています: #{statement}" if content.include?(statement)
+  end
+
+  content.each_line.with_index(1) do |line, line_number|
+    next unless line.include?("magnification")
+    next if line.match?(/ではありません|ではない|ではなく|使わない|変換しない|置き換えない/)
+
+    errors << "#{relative}:#{line_number}: magnificationを現行製品adapterまたは完成条件として残しています"
   end
 end
 

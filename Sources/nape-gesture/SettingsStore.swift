@@ -44,10 +44,27 @@ enum SettingsStore {
         if FileManager.default.fileExists(atPath: path) {
             let data = try Data(contentsOf: url)
             let settings = try decoder.decode(NapeGestureSettings.self, from: data)
-            if try SettingsMigration.requiresCanonicalRewrite(in: data) {
-                try write(settings, to: path)
+            guard try SettingsMigration.requiresCanonicalRewrite(in: data) else {
+                return settings
             }
-            return settings
+
+            try validateMigrationSettings(settings)
+            let canonicalData = try encoder.encode(settings)
+            let canonicalSettings = try decoder.decode(
+                NapeGestureSettings.self,
+                from: canonicalData
+            )
+            try validateSettings(canonicalSettings)
+            guard try !SettingsMigration.requiresCanonicalRewrite(in: canonicalData) else {
+                throw ToolError.invalidSettings([
+                    SettingsValidationIssue(
+                        path: "settings",
+                        message: "canonical設定に廃止済み項目が残っています。"
+                    )
+                ])
+            }
+            try write(canonicalData, to: url)
+            return canonicalSettings
         }
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(),
@@ -63,11 +80,16 @@ enum SettingsStore {
 
     static func write(_ settings: NapeGestureSettings, to path: String) throws {
         let url = URL(fileURLWithPath: path)
+        try validateSettings(settings)
+        let data = try encoder.encode(settings)
+        try write(data, to: url)
+    }
+
+    private static func write(_ data: Data, to url: URL) throws {
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        let data = try encoder.encode(settings)
         try data.write(to: url, options: .atomic)
     }
 
@@ -109,6 +131,15 @@ enum SettingsStore {
 
     static func validateSettings(_ settings: NapeGestureSettings) throws {
         let issues = SettingsValidator.issues(for: settings)
+        guard issues.isEmpty else {
+            throw ToolError.invalidSettings(issues)
+        }
+    }
+
+    private static func validateMigrationSettings(
+        _ settings: NapeGestureSettings
+    ) throws {
+        let issues = SettingsValidator.migrationIssues(for: settings)
         guard issues.isEmpty else {
             throw ToolError.invalidSettings(issues)
         }

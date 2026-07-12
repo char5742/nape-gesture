@@ -118,7 +118,7 @@ private func testTrackpadOutputProvenanceRejectsForbiddenDeliveryAndEventKinds()
         makeProvenanceRecord(
             captureIndex: 2,
             timestamp: 102,
-            family: .navigationSwipe,
+            family: .dockSwipe,
             eventKind: .gesture,
             delivery: .accessibility,
             logSHA256: sha,
@@ -510,7 +510,7 @@ private func testTrackpadOutputProvenanceKeepsPrivateGestureTypesUnclassified() 
     let scrollAsGestureRecord = makeProvenanceRecord(
         captureIndex: 0,
         timestamp: 100,
-        family: .navigationSwipe,
+        family: .dockSwipe,
         eventKind: .gesture,
         logSHA256: sha
     )

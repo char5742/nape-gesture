@@ -26,7 +26,8 @@ let package = Package(
             name: "NapeGestureProductOutput",
             dependencies: ["NapeGestureCore"],
             linkerSettings: [
-                .linkedFramework("ApplicationServices")
+                .linkedFramework("ApplicationServices"),
+                .linkedFramework("IOKit")
             ]
         ),
         .target(

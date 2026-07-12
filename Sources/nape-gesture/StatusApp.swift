@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import NapeGestureCore
+import NapeGestureProductOutput
 
 final class StatusApp: NSObject, NSApplicationDelegate {
     private static var retainedDelegate: StatusApp?
@@ -233,6 +234,16 @@ final class StatusApp: NSObject, NSApplicationDelegate {
         let devices = (try? DeviceInventory.pointingDevices()) ?? []
         let matched = (try? DeviceInventory.matchedDevices(settings: settings)) ?? []
         let inputMonitoring = probeInputMonitoring(matchedDevices: matched)
+        let systemIdentity = ProductGestureOutputSystemIdentity.current()
+        let outputCapability = TrackpadGestureOutputAdapter().capability
+        let requiredFamilies: Set<TrackpadOutputEventFamily> = [
+            .scroll,
+            .dockSwipe,
+            .dockSwipePinch,
+        ]
+        let missingFamilies = requiredFamilies.subtracting(outputCapability.supportedFamilies)
+            .map(\.rawValue)
+            .sorted()
         let recoveryPresentation = PermissionRecoveryPresenter.present(
             accessibilityTrusted: accessibilityTrusted,
             inputMonitoringGranted: inputMonitoring.granted,
@@ -246,6 +257,14 @@ final class StatusApp: NSObject, NSApplicationDelegate {
             "権限対象: \(recoveryPresentation.permissionTargetDescription)",
             "実行ファイル: \(identity.executablePath)",
             "バンドルID: \(identity.bundleIdentifier ?? "なし")",
+            "macOS: \(systemIdentity?.osVersion ?? "取得失敗")",
+            "OS build: \(systemIdentity?.osBuild ?? "取得失敗")",
+            "出力contract: \(outputCapability.status.rawValue)",
+            "出力contract ID: \(outputCapability.contract?.contractID ?? "なし")",
+            "出力fixture: \(outputCapability.contract?.fixtureID ?? "なし")",
+            "出力fixture SHA-256: \(outputCapability.contract?.fixtureSHA256 ?? "なし")",
+            "固定必須family: \(requiredFamilies.map(\.rawValue).sorted().joined(separator: ", "))",
+            "不足family: \(missingFamilies.isEmpty ? "なし" : missingFamilies.joined(separator: ", "))",
             "キルスイッチ: \(KillSwitchShortcut.displayName)",
             "実行状態: \(runtime.isRunning ? "実行中" : "停止中")",
             "設定ファイル: \(configPath)",
@@ -258,6 +277,9 @@ final class StatusApp: NSObject, NSApplicationDelegate {
 
         if let error = runtime.lastError {
             lines.append("直近エラー: \(error.localizedDescription)")
+        }
+        if let reason = outputCapability.reason {
+            lines.append("fail-closed理由: \(reason)")
         }
 
         if !matched.isEmpty {

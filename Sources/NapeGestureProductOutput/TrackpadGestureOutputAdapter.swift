@@ -15,10 +15,14 @@ public typealias ProductPostedEventObserver = (
 public enum TrackpadGestureOutputResources {
     public static let contractRelativePath = "TrackpadContracts/25F80/scroll-momentum-contract.json"
     public static let modelRelativePath = "TrackpadContracts/25F80/scroll-output-model.json"
+    public static let dockSwipeTemplatesRelativePath =
+        "TrackpadContracts/25F80/recognized-dockswipe-templates.json"
     public static let repositoryContractRelativePath =
         "Fixtures/trackpad-contract/25F80/scroll-momentum-contract.json"
     public static let repositoryModelRelativePath =
         "Fixtures/trackpad-contract/25F80/scroll-output-model.json"
+    public static let repositoryDockSwipeTemplatesRelativePath =
+        "Fixtures/trackpad-contract/25F80/recognized-dockswipe-templates.json"
 
     public static func loadContractData(
         bundle: Bundle = .main,
@@ -43,6 +47,20 @@ public enum TrackpadGestureOutputResources {
             explicitPath: environment["NAPE_GESTURE_TRACKPAD_OUTPUT_MODEL"],
             bundleRelativePath: modelRelativePath,
             repositoryRelativePath: repositoryModelRelativePath,
+            bundle: bundle,
+            currentDirectoryPath: currentDirectoryPath
+        )
+    }
+
+    public static func loadDockSwipeTemplateData(
+        bundle: Bundle = .main,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        currentDirectoryPath: String = FileManager.default.currentDirectoryPath
+    ) -> Data? {
+        loadData(
+            explicitPath: environment["NAPE_GESTURE_DOCKSWIPE_TEMPLATES"],
+            bundleRelativePath: dockSwipeTemplatesRelativePath,
+            repositoryRelativePath: repositoryDockSwipeTemplatesRelativePath,
             bundle: bundle,
             currentDirectoryPath: currentDirectoryPath
         )
@@ -414,6 +432,17 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
     private struct SessionRecord {
         var machine: TrackpadOutputSessionMachine
         var inFlight: InFlightBatch?
+        var gesturePolarity: RecognizedDockSwipeTemplatePolarity?
+
+        init(
+            machine: TrackpadOutputSessionMachine,
+            inFlight: InFlightBatch?,
+            gesturePolarity: RecognizedDockSwipeTemplatePolarity? = nil
+        ) {
+            self.machine = machine
+            self.inFlight = inFlight
+            self.gesturePolarity = gesturePolarity
+        }
     }
 
     private struct InFlightBatch {
@@ -443,13 +472,15 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
     public convenience init() {
         self.init(
             contractData: TrackpadGestureOutputResources.loadContractData(),
-            modelData: TrackpadGestureOutputResources.loadModelData()
+            modelData: TrackpadGestureOutputResources.loadModelData(),
+            dockSwipeTemplateData: TrackpadGestureOutputResources.loadDockSwipeTemplateData()
         )
     }
 
     public init(
         contractData: Data?,
         modelData: Data? = TrackpadGestureOutputResources.loadModelData(),
+        dockSwipeTemplateData: Data? = TrackpadGestureOutputResources.loadDockSwipeTemplateData(),
         systemIdentity: ProductGestureOutputSystemIdentity? = .current(),
         traceContext: ProductGestureOutputTraceContext? = nil,
         scrollEventFactory: @escaping ProductScrollEventFactory = { wheel1, wheel2 in
@@ -499,6 +530,11 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
                 modelData: modelData,
                 contract: verifiedContract
             ),
+            let dockSwipeTemplateData,
+            let recognizedGestureAdapter = RecognizedGestureIOHIDCompatibilityAdapter(
+                fixtureData: dockSwipeTemplateData,
+                contract: verifiedContract
+            ),
             TrackpadScrollCGEventBuilder.supportsRawFieldLayout,
             let outputModel = try? TrackpadScrollOutputModel(
                 contract: document.fixture,
@@ -509,13 +545,15 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
                 capability = validatedCapability
             } else if modelData == nil {
                 capability = .unsupported(reason: "trackpad scroll output model resourceが見つかりません。")
+            } else if dockSwipeTemplateData == nil {
+                capability = .unsupported(reason: "DockSwipe template resourceが見つかりません。")
             } else if !TrackpadScrollCGEventBuilder.supportsRawFieldLayout {
                 capability = .unsupported(
                     reason: "この環境では25F80 raw CGEvent field layoutを安全に構成できません。")
             } else {
                 capability = .contractMismatch(
                     contract: validatedCapability.contract,
-                    reason: "trackpad scroll output modelのidentity、SHA、式、sample countが登録値と一致しません。"
+                    reason: "trackpad scroll output modelまたはDockSwipe templateのidentity、SHA、OS contractが登録値と一致しません。"
                 )
             }
             model = nil
@@ -533,7 +571,7 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
         )
         gestureBuilder = TrackpadGestureCandidateCGEventBuilder(
             contract: document.fixture,
-            baseEventFactory: baseEventFactory
+            compatibilityAdapter: recognizedGestureAdapter
         )
     }
 
@@ -544,10 +582,8 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
         switch family {
         case .scroll:
             return model != nil && builder != nil
-        case .dockSwipe, .magnification:
+        case .dockSwipe, .dockSwipePinch:
             return gestureBuilder != nil
-        case .navigationSwipe:
-            return false
         }
     }
 
@@ -599,7 +635,7 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
             return .rejected(.unsupported)
         }
         guard postedEventObserver == nil || traceContext != nil else {
-            return eventCreationFailure()
+            return eventCreationFailure("posted event observerにtrace contextがありません。")
         }
         if event.family != .scroll {
             return postCandidateGesture(event)
@@ -640,7 +676,8 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
         } else if case .input(let frame) = event, frame.phase == .began {
             machine = TrackpadOutputSessionMachine(
                 sessionID: event.sessionID,
-                family: event.family
+                family: event.family,
+                initialCaptureOrder: event.captureOrder
             )
         } else {
             return .rejected(.invalidSession)
@@ -659,25 +696,32 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
     private func postCandidateGesture(
         _ event: TrackpadOutputSessionEvent
     ) -> ProductGestureOutputResult {
-        guard let gestureBuilder,
-            let specification = TrackpadGestureCandidatePreparedEvent(event),
-            let preparedEvent = gestureBuilder.makeEvent(from: specification)
-        else {
-            return eventCreationFailure()
+        guard let gestureBuilder else {
+            return eventCreationFailure("gesture builderがありません。")
+        }
+        guard let specification = TrackpadGestureCandidatePreparedEvent(event) else {
+            return eventCreationFailure("gesture specificationを構成できません。")
         }
 
         let existing = sessions[event.sessionID]
         var machine: TrackpadOutputSessionMachine
+        let polarity: RecognizedDockSwipeTemplatePolarity
         if let existing {
-            guard existing.inFlight == nil else {
+            guard existing.inFlight == nil, let existingPolarity = existing.gesturePolarity else {
                 return .rejected(.invalidSession)
             }
             machine = existing.machine
+            polarity = existingPolarity
         } else if case .input(let frame) = event, frame.phase == .began {
+            guard let initialPolarity = Self.gesturePolarity(for: specification.payload) else {
+                return eventCreationFailure("gesture開始時の進行方向を確定できません。")
+            }
             machine = TrackpadOutputSessionMachine(
                 sessionID: event.sessionID,
-                family: event.family
+                family: event.family,
+                initialCaptureOrder: event.captureOrder
             )
+            polarity = initialPolarity
         } else {
             return .rejected(.invalidSession)
         }
@@ -686,11 +730,19 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
         } catch {
             return .rejected(.invalidSession)
         }
+        guard let preparedEvent = gestureBuilder.makeEvent(
+            from: specification,
+            polarity: polarity
+        ) else {
+            return eventCreationFailure(
+                "gesture eventを構成できません。family=\(event.family.rawValue) phase=\(specification.phase)"
+            )
+        }
 
         let processSerialNumber = preparedEvent.getIntegerValueField(rawField(39))
         let unixProcessID = preparedEvent.getIntegerValueField(rawField(40))
         guard processSerialNumber == 0, unixProcessID == 0 else {
-            return eventCreationFailure()
+            return eventCreationFailure("gesture eventに対象process情報が混入しました。")
         }
         let nextIndex = nextPostIndex.addingReportingOverflow(1)
         guard !nextIndex.overflow else {
@@ -720,7 +772,11 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
         if case .terminal = machine.state {
             sessions.removeValue(forKey: event.sessionID)
         } else {
-            sessions[event.sessionID] = SessionRecord(machine: machine, inFlight: nil)
+            sessions[event.sessionID] = SessionRecord(
+                machine: machine,
+                inFlight: nil,
+                gesturePolarity: polarity
+            )
         }
         if let trace {
             postedEventObserver?(trace)
@@ -729,6 +785,28 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
             generatedEventCount: 1,
             failedEventCreationCount: 0
         )
+    }
+
+    private static func gesturePolarity(
+        for payload: TrackpadOutputPayload
+    ) -> RecognizedDockSwipeTemplatePolarity? {
+        let value: Double
+        switch payload {
+        case let .dockSwipe(_, progress, motionX, motionY, terminalVelocityX, _):
+            value = firstNonzero(progress, motionX, motionY, terminalVelocityX)
+        case let .dockSwipePinch(progress, motion, terminalVelocity):
+            value = firstNonzero(progress, motion, terminalVelocity)
+        case .scroll:
+            return nil
+        }
+        guard value.isFinite, value != 0 else {
+            return nil
+        }
+        return value > 0 ? .positive : .negative
+    }
+
+    private static func firstNonzero(_ values: Double...) -> Double {
+        values.first(where: { $0 != 0 }) ?? 0
     }
 
     private func cancel(
@@ -808,11 +886,17 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
                 previousState: modelPreviousState
             )
         } catch {
-            return eventCreationFailure()
+            return eventCreationFailure("scroll model.prepare: \(String(describing: error))")
         }
-        let events = specifications.compactMap(builder.makeEvent)
-        guard events.count == specifications.count else {
-            return eventCreationFailure()
+        var events: [CGEvent] = []
+        events.reserveCapacity(specifications.count)
+        for (index, specification) in specifications.enumerated() {
+            guard let preparedEvent = builder.makeEvent(from: specification) else {
+                return eventCreationFailure(
+                    "scroll event builder: index=\(index) kind=\(String(describing: specification.kind)) deltaX=\(specification.deltaX) deltaY=\(specification.deltaY)"
+                )
+            }
+            events.append(preparedEvent)
         }
         guard let firstPostIndex = preflightPostIndexes(count: events.count) else {
             return .rejected(.eventPostFailed)
@@ -1056,11 +1140,12 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
         }
     }
 
-    private func eventCreationFailure() -> ProductGestureOutputResult {
+    private func eventCreationFailure(_ details: String) -> ProductGestureOutputResult {
         ProductGestureOutputResult(
             generatedEventCount: 0,
             failedEventCreationCount: 1,
-            failure: .eventCreationFailed
+            failure: .eventCreationFailed,
+            failureDetails: details
         )
     }
 
@@ -1072,7 +1157,8 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
             generatedEventCount: prefix.generatedEventCount + suffix.generatedEventCount,
             failedEventCreationCount: prefix.failedEventCreationCount
                 + suffix.failedEventCreationCount,
-            failure: suffix.failure
+            failure: suffix.failure,
+            failureDetails: suffix.failureDetails ?? prefix.failureDetails
         )
     }
 

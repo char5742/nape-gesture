@@ -1,20 +1,15 @@
 import Foundation
 
 public struct GestureConfiguration: Codable, Equatable, Sendable {
-    public var button3Mode: TrackpadGestureMode
-    public var button4Mode: TrackpadGestureMode
-    public var button5Mode: TrackpadGestureMode
     public var deadZonePoints: Double
     public var dragSensitivity: Double
     public var wheelSensitivity: Double
     public var acceleration: GestureAccelerationConfiguration
     public var cancellation: GestureCancellationConfiguration
     public var momentum: MomentumConfiguration
+    var legacyDirectionLockRatio: Double?
 
     public init(
-        button3Mode: TrackpadGestureMode = .twoFingerSwipe,
-        button4Mode: TrackpadGestureMode = .systemSwipe,
-        button5Mode: TrackpadGestureMode = .pinch,
         deadZonePoints: Double = 8.0,
         dragSensitivity: Double = 1.0,
         wheelSensitivity: Double = 1.0,
@@ -22,15 +17,13 @@ public struct GestureConfiguration: Codable, Equatable, Sendable {
         cancellation: GestureCancellationConfiguration = .default,
         momentum: MomentumConfiguration = .default
     ) {
-        self.button3Mode = button3Mode
-        self.button4Mode = button4Mode
-        self.button5Mode = button5Mode
         self.deadZonePoints = deadZonePoints
         self.dragSensitivity = dragSensitivity
         self.wheelSensitivity = wheelSensitivity
         self.acceleration = acceleration
         self.cancellation = cancellation
         self.momentum = momentum
+        legacyDirectionLockRatio = nil
     }
 
     public static let `default` = GestureConfiguration()
@@ -45,29 +38,20 @@ public struct GestureConfiguration: Codable, Equatable, Sendable {
         case acceleration
         case cancellation
         case momentum
+        case activationButton
+        case directionLockRatio
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        let hasCanonicalModes =
-            container.contains(.button3Mode)
-            || container.contains(.button4Mode)
-            || container.contains(.button5Mode)
-        if hasCanonicalModes {
-            button3Mode =
-                try container.decodeIfPresent(TrackpadGestureMode.self, forKey: .button3Mode)
-                ?? .twoFingerSwipe
-            button4Mode =
-                try container.decodeIfPresent(TrackpadGestureMode.self, forKey: .button4Mode)
-                ?? .systemSwipe
-            button5Mode =
-                try container.decodeIfPresent(TrackpadGestureMode.self, forKey: .button5Mode)
-                ?? .pinch
-        } else {
-            button3Mode = .twoFingerSwipe
-            button4Mode = .systemSwipe
-            button5Mode = .pinch
-        }
+        _ = try container.decodeIfPresent(TrackpadGestureMode.self, forKey: .button3Mode)
+        _ = try container.decodeIfPresent(TrackpadGestureMode.self, forKey: .button4Mode)
+        _ = try container.decodeIfPresent(TrackpadGestureMode.self, forKey: .button5Mode)
+        _ = try container.decodeIfPresent(MouseButton.self, forKey: .activationButton)
+        legacyDirectionLockRatio = try container.decodeIfPresent(
+            Double.self,
+            forKey: .directionLockRatio
+        )
         deadZonePoints = try container.decodeIfPresent(Double.self, forKey: .deadZonePoints) ?? 8.0
         dragSensitivity =
             try container.decodeIfPresent(Double.self, forKey: .dragSensitivity) ?? 1.0
@@ -87,32 +71,20 @@ public struct GestureConfiguration: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(button3Mode, forKey: .button3Mode)
-        try container.encode(button4Mode, forKey: .button4Mode)
-        try container.encode(button5Mode, forKey: .button5Mode)
-        try container.encode(deadZonePoints, forKey: .deadZonePoints)
-        try container.encode(dragSensitivity, forKey: .dragSensitivity)
-        try container.encode(wheelSensitivity, forKey: .wheelSensitivity)
-        try container.encode(acceleration, forKey: .acceleration)
         try container.encode(cancellation, forKey: .cancellation)
-        try container.encode(momentum, forKey: .momentum)
     }
 
     public func mode(for button: MouseButton) -> TrackpadGestureMode {
         switch button {
-        case .button3: button3Mode
-        case .button4: button4Mode
-        case .button5: button5Mode
+        case .button3: .twoFingerSwipe
+        case .button4: .systemSwipe
+        case .button5: .pinch
         case .left, .right, .center: .none
         }
     }
 
     public var enabledButtons: Set<MouseButton> {
-        Set([MouseButton.button3, .button4, .button5].filter { mode(for: $0) != .none })
-    }
-
-    public var enabledModes: Set<TrackpadGestureMode> {
-        Set([button3Mode, button4Mode, button5Mode].filter { $0 != .none })
+        [.button3, .button4, .button5]
     }
 }
 
@@ -140,6 +112,7 @@ public struct GestureAccelerationConfiguration: Codable, Equatable, Sendable {
 public struct GestureCancellationConfiguration: Codable, Equatable, Sendable {
     public var maximumDuration: TimeInterval
     public var maximumInactivityInterval: TimeInterval
+    var legacyOffAxisCancelRatio: Double?
 
     public init(
         maximumDuration: TimeInterval = 10.0,
@@ -147,9 +120,38 @@ public struct GestureCancellationConfiguration: Codable, Equatable, Sendable {
     ) {
         self.maximumDuration = maximumDuration
         self.maximumInactivityInterval = maximumInactivityInterval
+        legacyOffAxisCancelRatio = nil
     }
 
     public static let `default` = GestureCancellationConfiguration()
+
+    private enum CodingKeys: String, CodingKey {
+        case maximumDuration
+        case maximumInactivityInterval
+        case offAxisCancelRatio
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        maximumDuration = try container.decodeIfPresent(
+            TimeInterval.self,
+            forKey: .maximumDuration
+        ) ?? 10.0
+        maximumInactivityInterval = try container.decodeIfPresent(
+            TimeInterval.self,
+            forKey: .maximumInactivityInterval
+        ) ?? 2.0
+        legacyOffAxisCancelRatio = try container.decodeIfPresent(
+            Double.self,
+            forKey: .offAxisCancelRatio
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(maximumDuration, forKey: .maximumDuration)
+        try container.encode(maximumInactivityInterval, forKey: .maximumInactivityInterval)
+    }
 }
 
 public struct MomentumConfiguration: Codable, Equatable, Sendable {

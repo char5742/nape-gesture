@@ -414,17 +414,18 @@ public struct TrackpadScrollOutputModel: Sendable {
 
         let magnitude = abs(gestureDelta)
         let sign = gestureDelta.sign == .minus ? -1.0 : 1.0
-        let point = sign * modeledMagnitude(
+        let modeledPoint = sign * modeledMagnitude(
             magnitude,
             linear: parameters.pointLinearCoefficient,
             quadratic: parameters.pointQuadraticCoefficient
         ).rounded()
+        let point = canonicalZero(modeledPoint)
         let fixedMagnitude = floor(modeledMagnitude(
             magnitude,
             linear: parameters.fixedLinearCoefficient,
             quadratic: parameters.fixedQuadraticCoefficient
         ) * 65_536.0) / 65_536.0
-        let fixed = sign * fixedMagnitude
+        let fixed = canonicalZero(sign * fixedMagnitude)
         let lineValue = sign * modeledMagnitude(
             magnitude,
             linear: parameters.lineLinearCoefficient,
@@ -453,5 +454,9 @@ public struct TrackpadScrollOutputModel: Sendable {
         quadratic: Double
     ) -> Double {
         linear * magnitude + quadratic * magnitude * magnitude
+    }
+
+    private func canonicalZero(_ value: Double) -> Double {
+        value == 0 ? 0 : value
     }
 }

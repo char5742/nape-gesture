@@ -4,40 +4,32 @@ import NapeGestureCore
 import NapeGestureProductOutput
 
 final class NapeGestureDaemon {
-    private var recognizer: GestureRecognizer
-    private var momentum: MomentumEngine
+    private var recognizer: FixedGestureInputRecognizer
     private let outputExecutor: GestureOutputExecutor
-    private let configuration: GestureConfiguration
     private let targetGate: SharedTargetDeviceGate?
     private let hidInputMonitor: HIDInputMonitor?
     private let performanceRecorder: RuntimePerformanceRecording?
     private let onTerminalFailure: ((Error) -> Void)?
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
-    private var momentumTimer: DispatchSourceTimer?
     private var safetyState = RuntimeSafetyState()
     private var performanceOperationSequence = 0
     private var terminalError: Error?
 
     init(
-        configuration: GestureConfiguration,
+        cancellation: GestureCancellationConfiguration,
         targetGate: SharedTargetDeviceGate? = nil,
         hidInputMonitor: HIDInputMonitor? = nil,
         performanceRecorder: RuntimePerformanceRecording? = nil,
         productOutput: any ProductGestureOutput = TrackpadGestureOutputAdapter(),
         onTerminalFailure: ((Error) -> Void)? = nil
     ) {
-        self.configuration = configuration
+        recognizer = FixedGestureInputRecognizer(cancellation: cancellation)
+        outputExecutor = GestureOutputExecutor(output: productOutput)
         self.targetGate = targetGate
         self.hidInputMonitor = hidInputMonitor
         self.performanceRecorder = performanceRecorder
         self.onTerminalFailure = onTerminalFailure
-        outputExecutor = GestureOutputExecutor(
-            enabledModes: configuration.enabledModes,
-            output: productOutput
-        )
-        recognizer = GestureRecognizer(configuration: configuration)
-        momentum = MomentumEngine(configuration: configuration.momentum)
     }
 
     deinit {
@@ -48,6 +40,7 @@ final class NapeGestureDaemon {
     func run() throws {
         try start()
         writeOperationalLog("nape-gesture を開始しました。停止するには Ctrl-C を押してください。")
+        writeOperationalLog("固定操作: button 3 = 2本指スクロール / スワイプ、button 4 = 3本指システムスワイプ、button 5 = 4本指システムピンチ")
         writeOperationalLog("キルスイッチ: \(KillSwitchShortcut.displayName)")
         CFRunLoopRun()
         if let terminalError {
@@ -62,17 +55,14 @@ final class NapeGestureDaemon {
 
         let mask = CGEventUtilities.eventMask(for: CGEventUtilities.observedMouseEventTypes)
         let userInfo = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
-
-        guard
-            let tap = CGEvent.tapCreate(
-                tap: .cgSessionEventTap,
-                place: .headInsertEventTap,
-                options: .defaultTap,
-                eventsOfInterest: mask,
-                callback: eventTapCallback,
-                userInfo: userInfo
-            )
-        else {
+        guard let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: mask,
+            callback: eventTapCallback,
+            userInfo: userInfo
+        ) else {
             throw ToolError.eventTapCreationFailed
         }
 
@@ -80,7 +70,6 @@ final class NapeGestureDaemon {
         guard let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) else {
             throw ToolError.eventTapCreationFailed
         }
-
         runLoopSource = source
         CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
@@ -96,10 +85,10 @@ final class NapeGestureDaemon {
         }
         eventTap = nil
         runLoopSource = nil
-        cancelMomentum()
+
         let cancellation = outputExecutor.cancelActive(
             reason: .runtimeStop,
-            at: MonotonicEventClock.nowSeconds
+            timestamp: MonotonicEventClock.now
         )
         guard let failure = cancellation.failure else {
             return nil
@@ -112,223 +101,166 @@ final class NapeGestureDaemon {
         return error
     }
 
-    fileprivate func handle(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent) -> Unmanaged<
-        CGEvent
-    >? {
-        let callbackStartedAt =
-            performanceRecorder == nil ? 0 : MonotonicEventClock.nowTimestampNanoseconds
+    fileprivate func handle(
+        proxy _: CGEventTapProxy,
+        type: CGEventType,
+        event: CGEvent
+    ) -> Unmanaged<CGEvent>? {
+        let callbackStartedAt = performanceRecorder == nil
+            ? 0
+            : MonotonicEventClock.nowTimestampNanoseconds
 
         guard terminalError == nil else {
             return Unmanaged.passUnretained(event)
         }
-
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             if let eventTap {
                 CGEvent.tapEnable(tap: eventTap, enable: true)
             }
             return Unmanaged.passUnretained(event)
         }
-
         if CGEventUtilities.isGeneratedByThisTool(event) {
             return Unmanaged.passUnretained(event)
         }
 
+        let exactTimestamp = MonotonicEventTimestamp(
+            nanosecondsSinceStartup: event.timestamp
+        )
         if KillSwitchShortcut.matches(type: type, event: event) {
-            let decision = emergencyStop(
-                at: MonotonicEventClock.seconds(fromTimestampNanoseconds: event.timestamp)
-            )
+            let decision = emergencyStop(timestamp: exactTimestamp)
             return decision.shouldSuppressOriginalEvent ? nil : Unmanaged.passUnretained(event)
         }
 
-        guard let input = CGEventUtilities.rawInput(from: type, event: event) else {
+        guard let rawInput = CGEventUtilities.rawInput(from: type, event: event) else {
             return Unmanaged.passUnretained(event)
         }
-
-        let safetyDecision = safetyState.inputDecision(input)
+        let safetyDecision = safetyState.inputDecision(rawInput)
         guard safetyDecision.shouldProcessGestureInput else {
             return safetyDecision.shouldSuppressOriginalEvent
-                ? nil : Unmanaged.passUnretained(event)
+                ? nil
+                : Unmanaged.passUnretained(event)
         }
-
-        if let targetGate, !targetGate.shouldHandle(input) {
+        if let targetGate, !targetGate.shouldHandle(rawInput) {
             return Unmanaged.passUnretained(event)
         }
-
-        if case .buttonDown(let button, let time) = input,
-            configuration.mode(for: button) != .none,
-            case .running = momentum.state
-        {
-            cancelMomentum()
-            let cancellation = outputExecutor.cancelActive(reason: .inputLifecycle, at: time)
-            if let failure = cancellation.failure {
-                transitionToTerminalFailure(failure)
-                return Unmanaged.passUnretained(event)
-            }
+        guard let input = CGEventUtilities.fixedGestureInput(from: type, event: event) else {
+            return Unmanaged.passUnretained(event)
         }
 
         let decision = recognizer.handle(input)
-        let performanceContext: RuntimePerformanceContext?
-        if performanceRecorder == nil {
-            performanceContext = nil
-        } else {
-            performanceContext = RuntimePerformanceContext(
+        if let failure = decision.failure {
+            _ = outputExecutor.cancelActive(
+                reason: .inputLifecycle,
+                timestamp: exactTimestamp
+            )
+            transitionToTerminalFailure(
+                ToolError.trackpadOutputPostingFailed(
+                    "fixed gesture input contract: \(String(describing: failure))"
+                )
+            )
+            return decision.shouldSuppressOriginal ? nil : Unmanaged.passUnretained(event)
+        }
+
+        let performanceContext = performanceRecorder.map { _ in
+            RuntimePerformanceContext(
                 operationID: nextPerformanceOperationID(source: .eventTap),
-                source: .eventTap,
                 inputEventTimestampNanoseconds: event.timestamp,
                 tapCallbackStartedAtNanoseconds: callbackStartedAt,
                 recognizerFinishedAtNanoseconds: MonotonicEventClock.nowTimestampNanoseconds,
                 suppressedOriginal: decision.shouldSuppressOriginal
             )
         }
-        let outputSucceeded = handle(
-            commands: decision.commands, performanceContext: performanceContext)
-
-        guard outputSucceeded else {
-            return Unmanaged.passUnretained(event)
+        guard post(commands: decision.commands, performanceContext: performanceContext) else {
+            return decision.shouldSuppressOriginal ? nil : Unmanaged.passUnretained(event)
         }
-
-        if decision.shouldSuppressOriginal {
-            return nil
-        }
-
-        return Unmanaged.passUnretained(event)
+        return decision.shouldSuppressOriginal ? nil : Unmanaged.passUnretained(event)
     }
 
     @discardableResult
-    private func handle(
-        commands: [GestureCommand],
-        performanceContext: RuntimePerformanceContext? = nil,
-        allowsMomentumStart: Bool = true
+    private func post(
+        commands: [FixedGestureInputCommand],
+        performanceContext: RuntimePerformanceContext? = nil
     ) -> Bool {
         for command in commands {
-            let continuation = prepareContinuation(
-                for: command,
-                allowsMomentumStart: allowsMomentumStart
-            )
-            let shouldRecordPerformance = performanceContext != nil
-            let postStartedAt =
-                shouldRecordPerformance ? MonotonicEventClock.nowTimestampNanoseconds : 0
-            let postResult = outputExecutor.post(command: command, continuation: continuation)
-            let postFinishedAt =
-                shouldRecordPerformance ? MonotonicEventClock.nowTimestampNanoseconds : 0
+            let shouldRecord = performanceContext != nil
+            let postStartedAt = shouldRecord
+                ? MonotonicEventClock.nowTimestampNanoseconds
+                : 0
+            let result = outputExecutor.post(command: command)
+            let postFinishedAt = shouldRecord
+                ? MonotonicEventClock.nowTimestampNanoseconds
+                : 0
             recordRuntimePerformance(
                 command: command,
-                postResult: postResult,
+                postResult: result,
                 context: performanceContext,
                 postStartedAtNanoseconds: postStartedAt,
                 postFinishedAtNanoseconds: postFinishedAt
             )
 
-            let outputFailure =
-                postResult.outputFailure
-                ?? (postResult.failedEventCreationCount > 0 ? .eventCreationFailed : nil)
-            if let outputFailure {
-                cancelMomentum()
-                transitionToTerminalFailure(outputFailure)
+            let failure = result.outputFailure
+                ?? (result.failedEventCreationCount > 0 ? .eventCreationFailed : nil)
+            if let failure {
+                let context = [
+                    "failure=\(failure.rawValue)",
+                    "class=\(command.gestureClass.rawValue)",
+                    "family=\(result.family.rawValue)",
+                    "source=\(command.sourceKind.rawValue)",
+                    "phase=\(command.phase.rawValue)",
+                    "captureOrder=\(command.captureOrder)",
+                    result.failureDetails,
+                ].compactMap { $0 }.joined(separator: " ")
+                transitionToTerminalFailure(
+                    ToolError.trackpadOutputPostingFailed(context)
+                )
                 return false
-            }
-
-            if continuation == .momentum {
-                scheduleMomentumTimer()
-            } else if command.phase == .cancelled {
-                cancelMomentum()
             }
         }
         return true
     }
 
-    private func prepareContinuation(
-        for command: GestureCommand,
-        allowsMomentumStart: Bool
-    ) -> TrackpadOutputContinuation? {
-        guard command.kind != .momentum, command.phase == .ended else {
-            return nil
-        }
-        guard allowsMomentumStart, outputExecutor.supportsMomentum(for: command) else {
-            cancelMomentum()
-            return .complete
-        }
-
-        momentum.start(from: command)
-        return momentum.state.isRunning ? .momentum : .complete
-    }
-
-    private func scheduleMomentumTimer() {
-        momentumTimer?.cancel()
-        let timer = DispatchSource.makeTimerSource(queue: .main)
-        timer.schedule(
-            deadline: .now() + configuration.momentum.frameInterval,
-            repeating: configuration.momentum.frameInterval)
-        timer.setEventHandler { [weak self] in
-            self?.tickMomentum()
-        }
-        momentumTimer = timer
-        timer.resume()
-    }
-
-    private func tickMomentum() {
-        guard safetyState.regularInputDecision().shouldProcessGestureInput else {
-            cancelMomentum()
-            let cancellation = outputExecutor.cancelActive(
-                reason: .killSwitch,
-                at: MonotonicEventClock.nowSeconds
-            )
-            if let failure = cancellation.failure {
-                transitionToTerminalFailure(failure)
-            }
-            return
-        }
-
-        guard let command = momentum.tick(at: MonotonicEventClock.nowSeconds) else {
-            cancelMomentum()
-            return
-        }
-
-        let performanceContext: RuntimePerformanceContext?
-        if performanceRecorder == nil {
-            performanceContext = nil
-        } else {
-            let now = MonotonicEventClock.nowTimestampNanoseconds
-            performanceContext = RuntimePerformanceContext(
-                operationID: nextPerformanceOperationID(source: .momentumTimer),
-                source: .momentumTimer,
-                inputEventTimestampNanoseconds: nil,
-                tapCallbackStartedAtNanoseconds: now,
-                recognizerFinishedAtNanoseconds: now,
-                suppressedOriginal: false
-            )
-        }
-        let outputSucceeded = handle(
-            commands: [command],
-            performanceContext: performanceContext,
-            allowsMomentumStart: false
+    private func emergencyStop(
+        timestamp: MonotonicEventTimestamp
+    ) -> RuntimeSafetyDecision {
+        let decision = safetyState.stopForKillSwitch(
+            at: timestamp.secondsSinceStartup,
+            suppressingReleaseOf: recognizer.activeButton
         )
-        guard outputSucceeded else {
-            return
+        if decision.shouldCancelGesture {
+            let cancelDecision = recognizer.handle(.cancel(timestamp: timestamp))
+            _ = post(commands: cancelDecision.commands)
         }
-        if command.phase == .ended {
-            cancelMomentum()
+        let cancellation = outputExecutor.cancelActive(
+            reason: .killSwitch,
+            timestamp: timestamp
+        )
+        if let failure = cancellation.failure {
+            transitionToTerminalFailure(failure)
         }
-    }
-
-    private func cancelMomentum() {
-        momentumTimer?.cancel()
-        momentumTimer = nil
-        momentum = MomentumEngine(configuration: configuration.momentum)
+        if decision.didEnterStoppedState {
+            writeOperationalLog("キルスイッチによりジェスチャーを無効化しました。再開するには常駐UIの停止/開始、またはプロセス再起動を行ってください。")
+        }
+        return decision
     }
 
     private func transitionToTerminalFailure(_ failure: ProductGestureOutputFailure) {
+        transitionToTerminalFailure(
+            ToolError.trackpadOutputPostingFailed(failure.rawValue)
+        )
+    }
+
+    private func transitionToTerminalFailure(_ error: Error) {
         guard terminalError == nil else {
             return
         }
-
-        let error = ToolError.trackpadOutputPostingFailed(failure.rawValue)
         terminalError = error
         if let eventTap {
             CGEvent.tapEnable(tap: eventTap, enable: false)
         }
-        cancelMomentum()
-        _ = outputExecutor.cancelActive(reason: .outputFailure, at: MonotonicEventClock.nowSeconds)
+        _ = outputExecutor.cancelActive(
+            reason: .outputFailure,
+            timestamp: MonotonicEventClock.now
+        )
         writeOperationalLog(error.localizedDescription)
 
         if let onTerminalFailure {
@@ -340,35 +272,8 @@ final class NapeGestureDaemon {
         }
     }
 
-    private func emergencyStop(at time: TimeInterval) -> RuntimeSafetyDecision {
-        let releaseToSuppress = recognizer.activeButton
-        let decision = safetyState.stopForKillSwitch(
-            at: time,
-            suppressingReleaseOf: releaseToSuppress
-        )
-        if decision.shouldCancelMomentum {
-            cancelMomentum()
-        }
-        if decision.shouldCancelGesture {
-            let cancelDecision = recognizer.handle(.cancel(time: time))
-            handle(commands: cancelDecision.commands)
-        }
-        let cancellation = outputExecutor.cancelActive(reason: .killSwitch, at: time)
-        if let failure = cancellation.failure {
-            transitionToTerminalFailure(failure)
-        }
-        if decision.didEnterStoppedState {
-            writeOperationalLog("キルスイッチによりジェスチャーを無効化しました。再開するには常駐UIの停止/開始、またはプロセス再起動を行ってください。")
-        }
-        return decision
-    }
-
-    private func writeOperationalLog(_ message: String) {
-        FileHandle.standardOutput.write(Data((message + "\n").utf8))
-    }
-
     private func recordRuntimePerformance(
-        command: GestureCommand,
+        command: FixedGestureInputCommand,
         postResult: GestureOutputPostResult,
         context: RuntimePerformanceContext?,
         postStartedAtNanoseconds: UInt64,
@@ -380,12 +285,12 @@ final class NapeGestureDaemon {
         performanceRecorder?.record(
             RuntimePerformanceRecord(
                 operationID: context.operationID,
-                source: context.source,
-                mode: postResult.mode,
+                source: .eventTap,
+                gestureClass: command.gestureClass,
                 outputFamily: postResult.family,
-                commandKind: command.kind,
-                commandPhase: command.phase,
-                commandTimestamp: command.timestamp,
+                sourceKind: command.sourceKind,
+                inputPhase: command.phase,
+                commandTimestampNanoseconds: command.timestamp.nanosecondsSinceStartup,
                 inputEventTimestampNanoseconds: context.inputEventTimestampNanoseconds,
                 tapCallbackStartedAtNanoseconds: context.tapCallbackStartedAtNanoseconds,
                 recognizerFinishedAtNanoseconds: context.recognizerFinishedAtNanoseconds,
@@ -403,24 +308,17 @@ final class NapeGestureDaemon {
         return "\(source.rawValue)-\(performanceOperationSequence)"
     }
 
-}
-
-extension MomentumState {
-    fileprivate var isRunning: Bool {
-        if case .running = self {
-            return true
-        }
-        return false
+    private func writeOperationalLog(_ message: String) {
+        FileHandle.standardOutput.write(Data((message + "\n").utf8))
     }
 }
 
 private struct RuntimePerformanceContext {
-    var operationID: String
-    var source: RuntimePerformanceSource
-    var inputEventTimestampNanoseconds: UInt64?
-    var tapCallbackStartedAtNanoseconds: UInt64
-    var recognizerFinishedAtNanoseconds: UInt64
-    var suppressedOriginal: Bool
+    let operationID: String
+    let inputEventTimestampNanoseconds: UInt64?
+    let tapCallbackStartedAtNanoseconds: UInt64
+    let recognizerFinishedAtNanoseconds: UInt64
+    let suppressedOriginal: Bool
 }
 
 private let eventTapCallback: CGEventTapCallBack = { proxy, type, event, userInfo in

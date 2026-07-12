@@ -14,7 +14,7 @@ public struct TargetDeviceGateConfiguration: Codable, Equatable, Sendable {
 
     public init(settings: NapeGestureSettings) {
         self.init(
-            gestureButtons: settings.gesture.enabledButtons,
+            gestureButtons: FixedGestureClass.activationButtons,
             associationWindow: settings.targetDeviceAssociation.associationWindow
         )
     }

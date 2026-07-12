@@ -60,13 +60,14 @@ struct DoctorCommand {
 
         let inventory = makeInventory(settings: settings, findings: &findings)
         let outputAdapter = TrackpadGestureOutputAdapter()
-        let outputCoordinator = ProductGestureSessionCoordinator(
-            enabledModes: settings.gesture.enabledModes,
-            output: outputAdapter
-        )
+        let requiredFamilies: Set<TrackpadOutputEventFamily> = [
+            .scroll,
+            .dockSwipe,
+            .dockSwipePinch,
+        ]
         let outputContract = DoctorOutputContractStatus(
             capability: outputAdapter.capability,
-            missingRequiredFamilies: outputCoordinator.unsupportedRequiredFamilies
+            requiredFamilies: requiredFamilies
         )
         if !outputContract.supported {
             findings.append(
@@ -293,6 +294,8 @@ struct DoctorCommand {
             "ポインティングデバイス数: \(formatOptional(report.pointingDeviceCount))",
             "一致対象デバイス数: \(report.matchedTargetDeviceCount)",
             "trackpad output contract: \(report.outputContract.status)",
+            "固定必須family: \(report.outputContract.requiredFamilies.joined(separator: ", "))",
+            "不足family: \(report.outputContract.missingRequiredFamilies.isEmpty ? "なし" : report.outputContract.missingRequiredFamilies.joined(separator: ", "))",
             "確定family: \(report.outputContract.confirmedFamilies.joined(separator: ", "))",
             "試用family: \(report.outputContract.trialFamilies.joined(separator: ", "))",
             "runtime ready: \(report.runtimeReadiness.ready ? "はい" : "いいえ")",
@@ -647,14 +650,16 @@ private struct DoctorOutputContractStatus: Codable {
     var supportedFamilies: [String]
     var confirmedFamilies: [String]
     var trialFamilies: [String]
+    var requiredFamilies: [String]
     var missingRequiredFamilies: [String]
     var reason: String?
 
     init(
         capability: ProductGestureOutputCapability,
-        missingRequiredFamilies: Set<TrackpadOutputEventFamily> = []
+        requiredFamilies: Set<TrackpadOutputEventFamily>
     ) {
-        let missing = missingRequiredFamilies.map(\.rawValue).sorted()
+        let missingFamilies = requiredFamilies.subtracting(capability.supportedFamilies)
+        let missing = missingFamilies.map(\.rawValue).sorted()
         status =
             capability.isSupported && !missing.isEmpty
             ? "missingFamilies"
@@ -669,6 +674,7 @@ private struct DoctorOutputContractStatus: Codable {
         supportedFamilies = capability.supportedFamilies.map(\.rawValue).sorted()
         confirmedFamilies = capability.confirmedFamilies.map(\.rawValue).sorted()
         trialFamilies = capability.trialFamilies.map(\.rawValue).sorted()
+        self.requiredFamilies = requiredFamilies.map(\.rawValue).sorted()
         self.missingRequiredFamilies = missing
         reason = capability.reason
     }

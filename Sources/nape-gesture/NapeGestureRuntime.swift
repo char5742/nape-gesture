@@ -33,7 +33,7 @@ final class NapeGestureRuntime {
             let performanceRecorder = try RuntimePerformanceLogWriter.make(path: nil)
             pendingMonitor = newMonitor
             let newDaemon = NapeGestureDaemon(
-                configuration: settings.gesture,
+                cancellation: settings.gesture.cancellation,
                 targetGate: newGate,
                 hidInputMonitor: newMonitor,
                 performanceRecorder: performanceRecorder,

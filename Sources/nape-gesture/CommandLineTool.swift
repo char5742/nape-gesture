@@ -34,7 +34,7 @@ final class CommandLineTool {
             let monitor = try makeHIDInputMonitor(
                 settings: settings, gate: gate, matchedDevices: matchedDevices)
             let daemon = NapeGestureDaemon(
-                configuration: settings.gesture,
+                cancellation: settings.gesture.cancellation,
                 targetGate: gate,
                 hidInputMonitor: monitor,
                 performanceRecorder: performanceRecorder
@@ -104,8 +104,8 @@ final class CommandLineTool {
                   runtime を開始せずに active macOS GUI session 上で通常 GUI activation policy、設定ウィンドウ、status item NG、通常アプリメニュー、status menu を AppKit 内で作成して検査します。--assert で期待 UI と一致しない場合に失敗します。--config 未指定時は一時 config を使います。
 
               nape-gesture run [--performance-log <path>]
-                  button 3 / 4 / 5の押下中入力を、設定した2本指スクロール / スワイプ、システムスワイプ、ピンチへ変換します。通常modeのbuttonは変換しません。
-                  --config <path> でbutton mode、対象デバイス、感度を読み込みます。--performance-log で runtime 性能 JSON Lines を保存します。
+                  button 3 / 4 / 5の押下中入力を、固定された2本指スクロール / スワイプ、3本指システムスワイプ、4本指システムピンチへ変換します。対象button未押下時は通常mouse入力をそのまま通します。
+                  --config <path> では対象デバイスと安全用キャンセル条件だけを読み込みます。--performance-log で runtime 性能 JSON Lines を保存します。
 
               nape-gesture log [--duration <秒>] [--out <path>] [--exclude-generated|--only-generated]
                   グローバル入力イベントを JSON Lines で記録します。メタ情報は標準エラー、イベント本体は標準出力または --out に出します。
@@ -501,7 +501,7 @@ enum ToolError: LocalizedError {
         case .trackpadOutputContractMismatch(let reason):
             return "trackpad driver出力contractが現在のmacOSと一致しないため、入力抑制を開始しません。\n\(reason)"
         case .trackpadOutputPostingFailed(let reason):
-            return "trackpad driver出力に失敗したため、元入力を通過させてruntimeを安全停止しました。\n\(reason)"
+            return "trackpad driver出力に失敗したため、対象入力を通常mouseへ漏らさずruntimeを安全停止しました。\n\(reason)"
         }
     }
 }
