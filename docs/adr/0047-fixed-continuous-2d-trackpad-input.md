@@ -1,5 +1,7 @@
 # ADR-0047: 方向別bindingを廃止しボタンごとのtrackpad modeへ接続する
 
+> 一部置換済み: 方向別binding廃止、button単位のmode、同一session維持、旧設定migrationは維持する。mode名、低レベルevent family、OS/App結果、証跡状態、製品runtime capabilityは[ADR-0048](0048-separate-input-mode-event-family-os-result-and-evidence.md)で置換した。
+
 - 状態: 採択
 - 日付: 2026-07-12
 

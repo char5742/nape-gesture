@@ -1,5 +1,7 @@
 # ADR-0002: GitHub labels / milestones / Issue close 方針
 
+> `need:human`のGUI操作境界は[ADR-0030](0030-computer-use-gui-operation-evidence.md)で更新済み。computer-useで代替できるmacOS UI操作には付けず、物理デバイス操作、本人認証、秘密情報入力など代替不能な作業だけに使う。
+
 - 状態: 採択
 - 日付: 2026-07-08
 

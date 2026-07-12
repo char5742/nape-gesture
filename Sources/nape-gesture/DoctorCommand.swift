@@ -69,11 +69,15 @@ struct DoctorCommand {
             missingRequiredFamilies: outputCoordinator.unsupportedRequiredFamilies
         )
         if !outputContract.supported {
-            findings.append("trackpad driver出力contractは\(outputContract.status)です。入力抑制を開始せず安全停止します。")
+            findings.append(
+                "trackpad driver出力contractは\(outputContract.status)です。入力抑制を開始せず安全停止します。")
         }
-        let probe = shouldProbeHID
-            ? makeHIDProbe(settings: settings, matchedDevices: inventory.matchedDevices, findings: &findings)
-            : DoctorHIDProbe(requested: false, succeeded: nil, error: nil, failureCode: nil, remediation: nil)
+        let probe =
+            shouldProbeHID
+            ? makeHIDProbe(
+                settings: settings, matchedDevices: inventory.matchedDevices, findings: &findings)
+            : DoctorHIDProbe(
+                requested: false, succeeded: nil, error: nil, failureCode: nil, remediation: nil)
         let benchmark = BenchmarkRunner.run(events: benchmarkEvents)
         let tccStatus = DoctorTCCStatus(
             runtimeIdentity: runtimeIdentity,
@@ -93,7 +97,8 @@ struct DoctorCommand {
         )
 
         if findings.isEmpty {
-            findings.append("診断範囲では致命的な問題は見つかりませんでした。実機操作と Spaces / Mission Control の画面挙動は別途検証してください。")
+            findings.append(
+                "診断範囲では致命的な問題は見つかりませんでした。実機操作と Spaces / Mission Control の画面挙動は別途検証してください。")
         }
 
         return DoctorReport(
@@ -120,11 +125,14 @@ struct DoctorCommand {
         )
     }
 
-    private func makeInventory(settings: NapeGestureSettings, findings: inout [String]) -> DoctorInventory {
+    private func makeInventory(settings: NapeGestureSettings, findings: inout [String])
+        -> DoctorInventory
+    {
         do {
             let allDevices = try DeviceInventory.allDevices()
             let pointingDevices = try DeviceInventory.pointingDevices()
-            let matchedDevices = settings.targetDevices.isEmpty
+            let matchedDevices =
+                settings.targetDevices.isEmpty
                 ? []
                 : allDevices.filter { device in
                     settings.targetDevices.contains { $0.matches(device) }
@@ -133,7 +141,8 @@ struct DoctorCommand {
             if settings.requireMatchingTargetDevice && settings.targetDevices.isEmpty {
                 findings.append("対象デバイス一致が必須ですが、対象デバイス条件が空です。")
             } else if settings.requireMatchingTargetDevice && matchedDevices.isEmpty {
-                findings.append("設定に一致する対象デバイスが見つかりません。`devices --all --json` と `hid-log` で識別情報を確認してください。")
+                findings.append(
+                    "設定に一致する対象デバイスが見つかりません。`devices --all --json` と `hid-log` で識別情報を確認してください。")
             } else if !settings.targetDevices.isEmpty && matchedDevices.isEmpty {
                 findings.append("対象条件はありますが現在一致デバイスは未検出です。必須ではないため起動は止めません。")
             }
@@ -178,12 +187,14 @@ struct DoctorCommand {
         let gate = SharedTargetDeviceGate(
             configuration: TargetDeviceGateConfiguration(settings: settings)
         )
-        let monitor = HIDInputMonitor(settings: settings, gate: gate, matchedDevices: matchedDevices)
+        let monitor = HIDInputMonitor(
+            settings: settings, gate: gate, matchedDevices: matchedDevices)
 
         do {
             try monitor.start()
             monitor.stop()
-            return DoctorHIDProbe(requested: true, succeeded: true, error: nil, failureCode: nil, remediation: nil)
+            return DoctorHIDProbe(
+                requested: true, succeeded: true, error: nil, failureCode: nil, remediation: nil)
         } catch {
             monitor.stop()
             let message = describe(error)
@@ -218,21 +229,23 @@ struct DoctorCommand {
     }
 
     private func remediation(for error: Error) -> String? {
-        guard case let ToolError.hidManagerOpenFailed(code) = error else {
+        guard case ToolError.hidManagerOpenFailed(let code) = error else {
             return nil
         }
         switch code {
         case kIOReturnNotPermitted:
-            return "システム設定 > プライバシーとセキュリティ > 入力監視で、Codex、実行元ターミナル、または NapeGesture.app を許可してから再起動してください。"
+            return
+                "システム設定 > プライバシーとセキュリティ > 入力監視で、Codex、実行元ターミナル、または NapeGesture.app を許可してから再起動してください。"
         case kIOReturnExclusiveAccess:
-            return "`hid-log --all` ではなく、`devices --all --json` で確認した vendor/product/usage 条件を指定してください。"
+            return
+                "`hid-log --all` ではなく、`devices --all --json` で確認した vendor/product/usage 条件を指定してください。"
         default:
             return IOReturnDiagnostic.describe(code)
         }
     }
 
     private func hidProbeFailureCode(for error: Error) -> String? {
-        guard case let ToolError.hidManagerOpenFailed(code) = error else {
+        guard case ToolError.hidManagerOpenFailed(let code) = error else {
             return nil
         }
         switch code {
@@ -280,7 +293,9 @@ struct DoctorCommand {
             "ポインティングデバイス数: \(formatOptional(report.pointingDeviceCount))",
             "一致対象デバイス数: \(report.matchedTargetDeviceCount)",
             "trackpad output contract: \(report.outputContract.status)",
-            "runtime ready: \(report.runtimeReadiness.ready ? "はい" : "いいえ")"
+            "確定family: \(report.outputContract.confirmedFamilies.joined(separator: ", "))",
+            "試用family: \(report.outputContract.trialFamilies.joined(separator: ", "))",
+            "runtime ready: \(report.runtimeReadiness.ready ? "はい" : "いいえ")",
         ]
 
         for device in report.matchedTargetDevices {
@@ -290,8 +305,10 @@ struct DoctorCommand {
         if !report.targetDeviceDiagnostics.candidates.isEmpty {
             lines.append("対象デバイス候補:")
             for candidate in report.targetDeviceDiagnostics.candidates.prefix(5) {
-                let score = "\(candidate.bestEvaluation.matchedConditionCount)/\(candidate.bestEvaluation.conditionCount)"
-                let mismatchFields = candidate.bestEvaluation.mismatches.map(\.field).joined(separator: ",")
+                let score =
+                    "\(candidate.bestEvaluation.matchedConditionCount)/\(candidate.bestEvaluation.conditionCount)"
+                let mismatchFields = candidate.bestEvaluation.mismatches.map(\.field).joined(
+                    separator: ",")
                 lines.append(
                     "- \(candidate.device.displayName) stableId=\(candidate.device.stableID) matcher=\(candidate.bestMatcherIndex) score=\(score) pointing=\(candidate.isPointingDevice ? "yes" : "no") mismatches=\(mismatchFields.isEmpty ? "-" : mismatchFields)"
                 )
@@ -317,11 +334,13 @@ struct DoctorCommand {
         lines.append(BenchmarkFormatter.format(report.benchmark))
         if !report.settingsValidationIssues.isEmpty {
             lines.append("設定バリデーション:")
-            lines.append(contentsOf: report.settingsValidationIssues.map { "- \($0.path): \($0.message)" })
+            lines.append(
+                contentsOf: report.settingsValidationIssues.map { "- \($0.path): \($0.message)" })
         }
         if !report.runtimeReadiness.failures.isEmpty {
             lines.append("runtime ready 不足:")
-            lines.append(contentsOf: report.runtimeReadiness.failures.map { "- \($0.code): \($0.message)" })
+            lines.append(
+                contentsOf: report.runtimeReadiness.failures.map { "- \($0.code): \($0.message)" })
         }
         lines.append("所見:")
         lines.append(contentsOf: report.findings.map { "- \($0)" })
@@ -385,12 +404,17 @@ private struct DoctorTargetDeviceDiagnostics: Codable {
         }
 
         let pointingDeviceKeys = Set((pointingDevices ?? []).map(Self.deviceDiagnosticKey))
-        let allCandidates = Self.uniqueDevices(allDevices ?? []).compactMap { device -> DoctorTargetDeviceCandidate? in
-            guard let best = Self.bestEvaluation(for: device, matchers: settings.targetDevices) else {
+        let allCandidates = Self.uniqueDevices(allDevices ?? []).compactMap {
+            device -> DoctorTargetDeviceCandidate? in
+            guard let best = Self.bestEvaluation(for: device, matchers: settings.targetDevices)
+            else {
                 return nil
             }
             let isPointingDevice = pointingDeviceKeys.contains(Self.deviceDiagnosticKey(device))
-            guard best.evaluation.isMatch || best.evaluation.matchedConditionCount > 0 || isPointingDevice else {
+            guard
+                best.evaluation.isMatch || best.evaluation.matchedConditionCount > 0
+                    || isPointingDevice
+            else {
                 return nil
             }
             return DoctorTargetDeviceCandidate(
@@ -417,7 +441,8 @@ private struct DoctorTargetDeviceDiagnostics: Codable {
                     return !lhs.evaluation.isMatch && rhs.evaluation.isMatch
                 }
                 if lhs.evaluation.matchedConditionCount != rhs.evaluation.matchedConditionCount {
-                    return lhs.evaluation.matchedConditionCount < rhs.evaluation.matchedConditionCount
+                    return lhs.evaluation.matchedConditionCount
+                        < rhs.evaluation.matchedConditionCount
                 }
                 if lhs.evaluation.conditionCount != rhs.evaluation.conditionCount {
                     return lhs.evaluation.conditionCount < rhs.evaluation.conditionCount
@@ -434,7 +459,8 @@ private struct DoctorTargetDeviceDiagnostics: Codable {
             return lhs.bestEvaluation.isMatch && !rhs.bestEvaluation.isMatch
         }
         if lhs.bestEvaluation.matchedConditionCount != rhs.bestEvaluation.matchedConditionCount {
-            return lhs.bestEvaluation.matchedConditionCount > rhs.bestEvaluation.matchedConditionCount
+            return lhs.bestEvaluation.matchedConditionCount
+                > rhs.bestEvaluation.matchedConditionCount
         }
         if lhs.isPointingDevice != rhs.isPointingDevice {
             return lhs.isPointingDevice && !rhs.isPointingDevice
@@ -576,18 +602,22 @@ private struct DoctorRuntimeReadiness: Codable {
                     code: "inputMonitoring.probeFailed",
                     category: "tcc",
                     message: "HID 入力監視プローブに失敗しました。",
-                    remediation: hidProbe.remediation ?? "runtimeIdentity の実行主体をシステム設定の入力監視で許可し、プロセスを再起動してください。"
+                    remediation: hidProbe.remediation
+                        ?? "runtimeIdentity の実行主体をシステム設定の入力監視で許可し、プロセスを再起動してください。"
                 )
             )
         }
         if !outputContract.supported {
-            let isMismatch = outputContract.status == ProductGestureOutputCapability.Status.contractMismatch.rawValue
+            let isMismatch =
+                outputContract.status
+                == ProductGestureOutputCapability.Status.contractMismatch.rawValue
             let isMissingFamily = outputContract.status == "missingFamilies"
             failures.append(
                 DoctorRuntimeReadinessFailure(
                     code: isMismatch
                         ? "outputContract.contractMismatch"
-                        : (isMissingFamily ? "outputContract.missingFamilies" : "outputContract.unsupported"),
+                        : (isMissingFamily
+                            ? "outputContract.missingFamilies" : "outputContract.unsupported"),
                     category: "outputContract",
                     message: isMismatch
                         ? "trackpad driver出力contractが現在のmacOS buildと一致しません。"
@@ -615,6 +645,8 @@ private struct DoctorOutputContractStatus: Codable {
     var osVersion: String?
     var osBuild: String?
     var supportedFamilies: [String]
+    var confirmedFamilies: [String]
+    var trialFamilies: [String]
     var missingRequiredFamilies: [String]
     var reason: String?
 
@@ -623,7 +655,8 @@ private struct DoctorOutputContractStatus: Codable {
         missingRequiredFamilies: Set<TrackpadOutputEventFamily> = []
     ) {
         let missing = missingRequiredFamilies.map(\.rawValue).sorted()
-        status = capability.isSupported && !missing.isEmpty
+        status =
+            capability.isSupported && !missing.isEmpty
             ? "missingFamilies"
             : capability.status.rawValue
         supported = capability.isSupported && missing.isEmpty
@@ -634,6 +667,8 @@ private struct DoctorOutputContractStatus: Codable {
         osVersion = capability.contract?.osVersion
         osBuild = capability.contract?.osBuild
         supportedFamilies = capability.supportedFamilies.map(\.rawValue).sorted()
+        confirmedFamilies = capability.confirmedFamilies.map(\.rawValue).sorted()
+        trialFamilies = capability.trialFamilies.map(\.rawValue).sorted()
         self.missingRequiredFamilies = missing
         reason = capability.reason
     }
@@ -745,8 +780,8 @@ private struct DoctorRuntimeReadyAssertionError: LocalizedError {
     var errorDescription: String? {
         let details = failures.map { "- \($0)" }.joined(separator: "\n")
         return """
-        runtime ready 診断を満たしていません。
-        \(details)
-        """
+            runtime ready 診断を満たしていません。
+            \(details)
+            """
     }
 }

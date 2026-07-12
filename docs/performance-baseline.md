@@ -42,15 +42,17 @@ tap-to-post は、権限済み実行主体で `--performance-log` または `NAP
 
 - IOHID または CGEvent tap へ入力が届くまでの遅延
 - tap callbackからtrackpad output adapterの最初のevent投稿までの処理時間
-- 同一frameのscroll + companion gesture、またはDockSwipe / NavigationSwipe / magnification系列の投稿完了までの処理時間
+- 同一frameのscroll + companion gesture、または製品runtimeのDockSwipe / magnification系列の投稿完了までの処理時間
+- NavigationSwipe candidate fixture / analyzerの処理時間。製品runtime latencyと混ぜず、候補調査の指標として分離する
 - 投稿イベントが AppKit や対象アプリに届くまでの遅延
-- WindowServer、Spaces、Mission Control の画面反映時間
+- WindowServer配送後の縦横scroll、application navigation、Space切替、Mission Control、App Exposé、Zoomの画面反映時間。低レベルevent投稿時間と別に測る
 - Nape Pro 実機の連続操作中 CPU 使用率
 - スリープ復帰、デバイス抜き差し、権限変更後の復旧時 CPU 使用率
 
 raw event loggerはtap callback内のcopy時間、callback外queue待ち、field scan / encode時間、queue depth、drop countを分離する。logger自身がevent timingを歪めていないことと、trackpad output系列の作成・投稿数が一致することはIssue #132でbaseline化する。
 
 tap-to-post は runtime 性能 JSON Lines から自動集計する。
+現行schema 2はユーザー入力の`mode`と実際に投稿した`outputFamily`を分け、`modeCounts`と`outputFamilyCounts`を別々に集計する。schema 1の旧`action`は読込時だけ移行する。
 この値を完了条件に含める PR では、イベントタップ受信時刻、投稿直前/直後時刻、投稿コマンド数を同じ操作 ID で記録した `RuntimePerformanceRecord` と、`analyze-performance-log --json --assert-baseline` の出力を添付する。
 投稿から AppKit 受信までの遅延と画面反映時間は runtime 性能ログだけでは算出できないため、Reference Target App の target log または同等の実測証跡を別途添付する。
 

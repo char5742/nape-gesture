@@ -1,6 +1,6 @@
 # ADR-0012: 設定 UI の GestureAction 網羅性
 
-> 置換済み: 方向別割り当てを廃止したため、現在の方針は[ADR-0047](0047-fixed-continuous-2d-trackpad-input.md)を正とする。
+> 置換済み: 方向別割り当てと結果別`GestureAction`を製品surfaceから廃止した。現在のmodeと用語境界は[ADR-0048](0048-separate-input-mode-event-family-os-result-and-evidence.md)を正とする。
 
 - 状態: 採択
 - 日付: 2026-07-09

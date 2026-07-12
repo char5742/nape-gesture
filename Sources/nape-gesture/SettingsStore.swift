@@ -44,7 +44,7 @@ enum SettingsStore {
         if FileManager.default.fileExists(atPath: path) {
             let data = try Data(contentsOf: url)
             let settings = try decoder.decode(NapeGestureSettings.self, from: data)
-            if try SettingsMigration.containsDeprecatedGestureKeys(in: data) {
+            if try SettingsMigration.requiresCanonicalRewrite(in: data) {
                 try write(settings, to: path)
             }
             return settings

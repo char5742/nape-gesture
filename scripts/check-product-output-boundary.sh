@@ -19,6 +19,40 @@ record_failure() {
   failure_count=$((failure_count + 1))
 }
 
+for removed_path in \
+  Sources/NapeGestureCore/GestureAction.swift \
+  Sources/nape-gesture/GestureActionExecutor.swift
+do
+  if [ -e "$removed_path" ]; then
+    printf '%s\n' "禁止: 結果名を混在させた旧GestureAction境界を復元しないでください: $removed_path" >&2
+    record_failure
+  fi
+done
+
+gesture_action_matches=$(
+  grep -nEH 'GestureAction|GestureActionExecutor' \
+    Sources/NapeGestureCore/*.swift \
+    Sources/NapeGestureProductOutput/*.swift \
+    Sources/nape-gesture/*.swift 2>/dev/null || true
+)
+
+if [ -n "$gesture_action_matches" ]; then
+  printf '%s\n' "禁止: 製品runtimeへ結果名ベースのGestureActionを再導入しないでください。" >&2
+  printf '%s\n' "$gesture_action_matches" >&2
+  record_failure
+fi
+
+navigation_builder_matches=$(
+  grep -nEH 'eventTypeRaw[[:space:]]*=[[:space:]]*30|classifier[[:space:]]*=[[:space:]]*23|configureNavigationSwipe' \
+    Sources/NapeGestureProductOutput/*.swift 2>/dev/null || true
+)
+
+if [ -n "$navigation_builder_matches" ]; then
+  printf '%s\n' "禁止: NavigationSwipe候補を製品event builderへ再導入しないでください。" >&2
+  printf '%s\n' "$navigation_builder_matches" >&2
+  record_failure
+fi
+
 require_text() {
   file_path=$1
   required_text=$2
@@ -35,7 +69,7 @@ product_matches=$(
   grep -nEH \
     'keyboardEventSource|postToPid|CGEventPostToPid|CGEventPostToPSN|AXUIElement|forcedHorizontal|DiagnosticEvent|GenerateScrollCommand|SystemBehaviorTestCommand|kVK_[[:alnum:]_]+' \
     Sources/NapeGestureProductOutput/*.swift \
-    Sources/nape-gesture/GestureActionExecutor.swift \
+    Sources/nape-gesture/GestureOutputExecutor.swift \
     Sources/nape-gesture/NapeGestureDaemon.swift \
     Sources/nape-gesture/NapeGestureRuntime.swift 2>/dev/null || true
 )
@@ -50,7 +84,7 @@ product_time_matches=$(
   grep -nEH \
     'timeIntervalSince1970|timeIntervalSinceReferenceDate|timeIntervalSinceNow|CFAbsoluteTimeGetCurrent|CACurrentMediaTime|mach_absolute_time|mach_continuous_time|clock_gettime|ContinuousClock|SuspendingClock|Date[[:space:]]*\(|systemUptime|uptimeNanoseconds' \
     Sources/NapeGestureProductOutput/*.swift \
-    Sources/nape-gesture/GestureActionExecutor.swift \
+    Sources/nape-gesture/GestureOutputExecutor.swift \
     Sources/nape-gesture/NapeGestureDaemon.swift \
     Sources/nape-gesture/NapeGestureRuntime.swift 2>/dev/null || true
 )
@@ -114,13 +148,13 @@ require_text \
   "診断posterを診断専用targetに置く"
 
 require_text \
-  "Sources/nape-gesture/GestureActionExecutor.swift" \
+  "Sources/nape-gesture/GestureOutputExecutor.swift" \
   "import NapeGestureProductOutput" \
   "製品executorをproduct output targetへ接続する"
 
 require_text \
   "Sources/nape-gesture/NapeGestureDaemon.swift" \
-  "try actionExecutor.ensureOutputAvailable()" \
+  "try outputExecutor.ensureOutputAvailable()" \
   "event tap開始前にoutput contractを検査する"
 
 require_text \

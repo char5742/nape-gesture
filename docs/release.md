@@ -5,13 +5,16 @@
 ## Trackpad event compatibility
 
 [ADR-0036](adr/0036-emulate-trackpad-driver-output-events.md)により、製品出力はtrackpad driver上位出力相当のevent contractをsystem-wide streamへ送る。DriverKit System Extension、`.dext`、DriverKit entitlementは使わない。
+[ADR-0048](adr/0048-separate-input-mode-event-family-os-result-and-evidence.md)により、release gateでは入力mode、低レベルevent family、OS/App結果、証跡状態を分離する。
 
 通常SDKに公開されていないevent contractをcompatibility adapterで扱うため、配布はDeveloper ID Application署名と公証による直接配布を正とし、Mac App Store提出を前提にしない。release buildでは次を検査する。
 
 - private contractがcompatibility adapter外へ漏れていない
 - binaryのobject、linked library、同梱resourceがbuild入力と依存通知の一覧に一致する
-- runtime / doctorがOS build、contract schema、fixture ID / SHA-256、supported / unsupported / contractMismatchを表示する
-- 対応対象のmacOS buildでtrackpad scroll、DockSwipe、NavigationSwipe、magnificationのcontract smokeが成功する
+- runtime / doctorがOS build、contract schema、fixture ID / SHA-256、supported / unsupported / contractMismatchと、`supportedFamilies` / `confirmedFamilies` / `trialFamilies`を表示する
+- 対応対象のmacOS buildで製品runtimeの`scroll`、`DockSwipe`、`magnification` 3経路のcontract smokeが成功する
+- `NavigationSwipe`候補をsupported capabilityまたは独立製品機能に数えず、candidate fixture / analyzerの調査結果として分離する
+- 縦横scroll、application navigation、Space切替、Mission Control、App Exposé、ZoomのOS/App結果を、署名・contract smokeとは別の受入証跡で判定する
 - 未知のOS version、symbol不在、fixture不一致ではevent投稿前にfail closedになる
 - AX、対象PID配送、application別分岐、keyboard shortcut fallbackを含まない
 
@@ -102,7 +105,7 @@ spctl --assess --type execute --verbose=4 .build/NapeGesture.app
 権限付与後に反映されない場合は、`NapeGesture.app` を終了して再起動する。確認には次を使う。
 
 ```sh
-.build/release/nape-gesture doctor --probe-hid
+.build/NapeGesture.app/Contents/MacOS/nape-gesture doctor --probe-hid --json --assert-runtime-ready
 ```
 
-`doctor --json` の `runtimeIdentity` に表示される実行ファイル、bundle path、bundle ID が、権限を付与した `.app` と一致していることを確認する。
+終了コードが`0`であることに加え、JSONの`runtimeIdentity`に表示される実行ファイル、bundle path、bundle IDが、権限を付与した`.build/NapeGesture.app`と一致していることを確認する。standaloneの`.build/release/nape-gesture`を実行して配布`.app`のTCC状態を代用しない。

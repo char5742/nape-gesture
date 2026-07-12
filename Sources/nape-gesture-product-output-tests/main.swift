@@ -84,22 +84,26 @@ private func modelData() -> Data {
 }
 
 private func identity25F80() -> ProductGestureOutputSystemIdentity {
-    guard let identity = ProductGestureOutputSystemIdentity(
-        osVersion: "26.5.1",
-        osBuild: "25F80"
-    ) else {
+    guard
+        let identity = ProductGestureOutputSystemIdentity(
+            osVersion: "26.5.1",
+            osBuild: "25F80"
+        )
+    else {
         fatalError("25F80 identityを構成できません")
     }
     return identity
 }
 
 private func productTraceContext() -> ProductGestureOutputTraceContext {
-    guard let context = ProductGestureOutputTraceContext(
-        captureRunToken: "00000000-0000-0000-0000-000000000119",
-        scenarioID: "issue-119-product-output-tests",
-        repoHeadSHA: String(repeating: "a", count: 40),
-        executableSHA256: String(repeating: "b", count: 64)
-    ) else {
+    guard
+        let context = ProductGestureOutputTraceContext(
+            captureRunToken: "00000000-0000-0000-0000-000000000119",
+            scenarioID: "issue-119-product-output-tests",
+            repoHeadSHA: String(repeating: "a", count: 40),
+            executableSHA256: String(repeating: "b", count: 64)
+        )
+    else {
         fatalError("product output trace contextを構成できません")
     }
     return context
@@ -213,11 +217,15 @@ private func assertInputCancellationBatch(_ events: [CGEvent], label: String) {
     guard events.count == 3 else {
         return
     }
-    expect(events.map { $0.type.rawValue } == [22, 29, 29], "\(label)をscroll、envelope、companionの順で投稿する")
+    expect(
+        events.map { $0.type.rawValue } == [22, 29, 29], "\(label)をscroll、envelope、companionの順で投稿する"
+    )
     expect(events[0].getIntegerValueField(rawField(99)) == 4, "\(label)のscroll phaseをendedにする")
     expect(events[1].getIntegerValueField(rawField(132)) == 4, "\(label)のenvelope phaseをendedにする")
     expect(events[2].getIntegerValueField(rawField(132)) == 4, "\(label)のcompanion phaseをendedにする")
-    expect(events.dropFirst().allSatisfy { $0.timestamp == events[0].timestamp }, "\(label)の3 eventを同一timestampにする")
+    expect(
+        events.dropFirst().allSatisfy { $0.timestamp == events[0].timestamp },
+        "\(label)の3 eventを同一timestampにする")
     assertPositiveZeroTerminal(events[0], label: label)
 }
 
@@ -225,7 +233,7 @@ private func assertPositiveZeroTerminal(_ event: CGEvent, label: String) {
     let integerFields: [CGEventField] = [
         .scrollWheelEventDeltaAxis1,
         .scrollWheelEventDeltaAxis2,
-        .scrollWheelEventDeltaAxis3
+        .scrollWheelEventDeltaAxis3,
     ]
     let doubleFields: [CGEventField] = [
         .scrollWheelEventFixedPtDeltaAxis1,
@@ -233,9 +241,11 @@ private func assertPositiveZeroTerminal(_ event: CGEvent, label: String) {
         .scrollWheelEventFixedPtDeltaAxis3,
         .scrollWheelEventPointDeltaAxis1,
         .scrollWheelEventPointDeltaAxis2,
-        .scrollWheelEventPointDeltaAxis3
+        .scrollWheelEventPointDeltaAxis3,
     ]
-    expect(integerFields.allSatisfy { event.getIntegerValueField($0) == 0 }, "\(label)のinteger terminal deltaが0ではない")
+    expect(
+        integerFields.allSatisfy { event.getIntegerValueField($0) == 0 },
+        "\(label)のinteger terminal deltaが0ではない")
     expect(
         doubleFields.allSatisfy {
             event.getDoubleValueField($0).bitPattern == Double(0.0).bitPattern
@@ -249,17 +259,30 @@ private func testLifecycleAndFields() {
     let adapter = makeAdapter(collector: collector)
     expect(adapter.capability.isSupported, "25F80 contractをsupportedとして検証する")
     expect(adapter.supports(.scroll), "scroll familyを対応扱いする")
-    expect(TrackpadOutputEventFamily.allCases.allSatisfy(adapter.supports), "25F80で4 familyを対応扱いする")
+    expect(
+        ProductGestureOutputCapability.runtimeFamilies.allSatisfy(adapter.supports),
+        "製品runtimeの3 familyを対応扱いする")
+    expect(adapter.capability.confirmedFamilies == [.scroll], "純正contract確定familyをscrollだけに限定する")
+    expect(
+        adapter.capability.trialFamilies == [.dockSwipe, .magnification],
+        "試用familyをDockSwipeとmagnificationに限定する")
+    expect(!adapter.supports(.navigationSwipe), "NavigationSwipe候補を独立した製品familyとして公開しない")
 
     let results = [
         adapter.post(inputEvent(sessionID: 1, order: 0, phase: .began, deltaX: 12, deltaY: -8)),
         adapter.post(inputEvent(sessionID: 1, order: 1, phase: .changed, deltaX: 24, deltaY: -16)),
-        adapter.post(inputEvent(sessionID: 1, order: 2, phase: .ended, continuation: .momentum, deltaX: 0, deltaY: 0)),
+        adapter.post(
+            inputEvent(
+                sessionID: 1, order: 2, phase: .ended, continuation: .momentum, deltaX: 0, deltaY: 0
+            )),
         adapter.post(momentumEvent(sessionID: 1, order: 3, phase: .began, deltaX: 8, deltaY: -4)),
-        adapter.post(momentumEvent(sessionID: 1, order: 4, phase: .continued, deltaX: 4, deltaY: -2)),
-        adapter.post(momentumEvent(sessionID: 1, order: 5, phase: .ended, deltaX: 0, deltaY: 0))
+        adapter.post(
+            momentumEvent(sessionID: 1, order: 4, phase: .continued, deltaX: 4, deltaY: -2)),
+        adapter.post(momentumEvent(sessionID: 1, order: 5, phase: .ended, deltaX: 0, deltaY: 0)),
     ]
-    expect(results.map(\.generatedEventCount) == [3, 3, 3, 1, 1, 1], "inputは3 event、momentumは1 eventを完全生成する: \(results)")
+    expect(
+        results.map(\.generatedEventCount) == [3, 3, 3, 1, 1, 1],
+        "inputは3 event、momentumは1 eventを完全生成する: \(results)")
     expect(results.allSatisfy { $0.failure == nil }, "正常lifecycleをfailureにしない: \(results)")
     let events = collector.events
     expect(events.count == 12, "scroll/momentum lifecycleの全eventを投稿する")
@@ -299,14 +322,19 @@ private func testLifecycleAndFields() {
     }
 
     let expectedTypes: [UInt32] = [22, 29, 29, 22, 29, 29, 22, 29, 29, 22, 22, 22]
-    expect(events.map { $0.type.rawValue } == expectedTypes, "type22 -> envelope -> companionとmomentum type22の順序を守る")
+    expect(
+        events.map { $0.type.rawValue } == expectedTypes,
+        "type22 -> envelope -> companionとmomentum type22の順序を守る")
     expect(events[0].getIntegerValueField(rawField(99)) == 1, "scroll began phaseを1にする")
     expect(events[3].getIntegerValueField(rawField(99)) == 2, "scroll changed phaseを2にする")
     expect(events[6].getIntegerValueField(rawField(99)) == 4, "scroll ended phaseを4にする")
     expect(events[9].getIntegerValueField(rawField(123)) == 1, "momentum began phaseを1にする")
     expect(events[10].getIntegerValueField(rawField(123)) == 2, "momentum continued phaseを2にする")
     expect(events[11].getIntegerValueField(rawField(123)) == 3, "momentum ended phaseを3にする")
-    expect(events.filter { $0.type.rawValue == 22 }.allSatisfy { $0.getIntegerValueField(rawField(88)) == 1 }, "全type22をcontinuousにする")
+    expect(
+        events.filter { $0.type.rawValue == 22 }.allSatisfy {
+            $0.getIntegerValueField(rawField(88)) == 1
+        }, "全type22をcontinuousにする")
 
     let envelope = events[1]
     let companion = events[2]
@@ -317,10 +345,21 @@ private func testLifecycleAndFields() {
     expect(companion.getIntegerValueField(rawField(135)) == 1, "companion constant 135を1にする")
     let xMotion = Float(12)
     let yMotion = Float(-8)
-    expect([113, 114, 116, 118].allSatisfy { companion.getDoubleValueField(rawField($0)) == Double(xMotion) }, "companion X double aliasを一致させる")
-    expect([115, 117, 164].allSatisfy { companion.getIntegerValueField(rawField($0)) == Int64(xMotion.bitPattern) }, "companion X Float aliasを一致させる")
-    expect([119, 139].allSatisfy { companion.getDoubleValueField(rawField($0)) == Double(yMotion) }, "companion Y double aliasを一致させる")
-    expect([123, 165].allSatisfy { companion.getIntegerValueField(rawField($0)) == Int64(yMotion.bitPattern) }, "companion Y Float aliasを一致させる")
+    expect(
+        [113, 114, 116, 118].allSatisfy {
+            companion.getDoubleValueField(rawField($0)) == Double(xMotion)
+        }, "companion X double aliasを一致させる")
+    expect(
+        [115, 117, 164].allSatisfy {
+            companion.getIntegerValueField(rawField($0)) == Int64(xMotion.bitPattern)
+        }, "companion X Float aliasを一致させる")
+    expect(
+        [119, 139].allSatisfy { companion.getDoubleValueField(rawField($0)) == Double(yMotion) },
+        "companion Y double aliasを一致させる")
+    expect(
+        [123, 165].allSatisfy {
+            companion.getIntegerValueField(rawField($0)) == Int64(yMotion.bitPattern)
+        }, "companion Y Float aliasを一致させる")
     assertPositiveZeroTerminal(events[6], label: "scroll ended")
     assertPositiveZeroTerminal(events[11], label: "momentum ended")
 }
@@ -329,8 +368,11 @@ private func testCancellationStates() {
     let inputCollector = EventCollector()
     let inputAdapter = makeAdapter(collector: inputCollector)
     _ = inputAdapter.post(inputEvent(sessionID: 2, order: 0, phase: .began, deltaX: 5, deltaY: 0))
-    let inputCancellation = inputAdapter.post(cancellationEvent(sessionID: 2, order: 1, reason: .killSwitch))
-    expect(inputCancellation.generatedEventCount == 3, "input active cancelはscroll ended + companionで閉じる: \(inputCancellation)")
+    let inputCancellation = inputAdapter.post(
+        cancellationEvent(sessionID: 2, order: 1, reason: .killSwitch))
+    expect(
+        inputCancellation.generatedEventCount == 3,
+        "input active cancelはscroll ended + companionで閉じる: \(inputCancellation)")
     if inputCollector.events.count > 3 {
         assertPositiveZeroTerminal(inputCollector.events[3], label: "input cancel")
     }
@@ -338,18 +380,34 @@ private func testCancellationStates() {
     let waitingCollector = EventCollector()
     let waitingAdapter = makeAdapter(collector: waitingCollector)
     _ = waitingAdapter.post(inputEvent(sessionID: 3, order: 0, phase: .began, deltaX: 5, deltaY: 0))
-    _ = waitingAdapter.post(inputEvent(sessionID: 3, order: 1, phase: .ended, continuation: .momentum, deltaX: 0, deltaY: 0))
-    let waitingCancellation = waitingAdapter.post(cancellationEvent(sessionID: 3, order: 2, reason: .runtimeStop))
-    expect(waitingCancellation.generatedEventCount == 0, "awaiting momentumは既にscroll ended済みなので重複terminalを出さない")
+    _ = waitingAdapter.post(
+        inputEvent(
+            sessionID: 3, order: 1, phase: .ended, continuation: .momentum, deltaX: 0, deltaY: 0)
+    )
+    let waitingCancellation = waitingAdapter.post(
+        cancellationEvent(sessionID: 3, order: 2, reason: .runtimeStop))
+    expect(
+        waitingCancellation.generatedEventCount == 0,
+        "awaiting momentumは既にscroll ended済みなので重複terminalを出さない")
 
     let momentumCollector = EventCollector()
     let momentumAdapter = makeAdapter(collector: momentumCollector)
-    _ = momentumAdapter.post(inputEvent(sessionID: 4, order: 0, phase: .began, deltaX: 5, deltaY: 0))
-    _ = momentumAdapter.post(inputEvent(sessionID: 4, order: 1, phase: .ended, continuation: .momentum, deltaX: 0, deltaY: 0))
-    _ = momentumAdapter.post(momentumEvent(sessionID: 4, order: 2, phase: .began, deltaX: 3, deltaY: 0))
-    let momentumCancellation = momentumAdapter.post(cancellationEvent(sessionID: 4, order: 3, reason: .inputLifecycle))
-    expect(momentumCancellation.generatedEventCount == 1, "momentum active cancelはmomentum endedで閉じる: \(momentumCancellation)")
-    expect(momentumCollector.events.last?.getIntegerValueField(rawField(123)) == 3, "cancel時のmomentum phaseを3にする")
+    _ = momentumAdapter.post(
+        inputEvent(sessionID: 4, order: 0, phase: .began, deltaX: 5, deltaY: 0))
+    _ = momentumAdapter.post(
+        inputEvent(
+            sessionID: 4, order: 1, phase: .ended, continuation: .momentum, deltaX: 0, deltaY: 0)
+    )
+    _ = momentumAdapter.post(
+        momentumEvent(sessionID: 4, order: 2, phase: .began, deltaX: 3, deltaY: 0))
+    let momentumCancellation = momentumAdapter.post(
+        cancellationEvent(sessionID: 4, order: 3, reason: .inputLifecycle))
+    expect(
+        momentumCancellation.generatedEventCount == 1,
+        "momentum active cancelはmomentum endedで閉じる: \(momentumCancellation)")
+    expect(
+        momentumCollector.events.last?.getIntegerValueField(rawField(123)) == 3,
+        "cancel時のmomentum phaseを3にする")
     if let terminal = momentumCollector.events.last {
         assertPositiveZeroTerminal(terminal, label: "momentum cancel")
     }
@@ -372,7 +430,10 @@ private func testFailClosedPaths() {
         modelData: modifiedModel,
         systemIdentity: identity25F80()
     )
-    expect(modelMismatch.capability.status == .contractMismatch, "output model byte改変をcontract mismatchにする")
+    expect(
+        modelMismatch.capability.status == .contractMismatch,
+        "output model byte改変をcontract mismatchにする"
+    )
     expect(!modelMismatch.supports(.scroll), "改変output modelではscrollを有効化しない")
 
     var postedAfterCreationFailure = 0
@@ -478,16 +539,24 @@ private func testChangedCreationFailureRecovery() {
     expect(changed.generatedEventCount == 0, "changed batch作成失敗frameの生成済みevent数を0にする: \(changed)")
     expect(changed.failedEventCreationCount == 1, "changed batch作成失敗を1件記録する: \(changed)")
     expect(collector.events.count == postCountBeforeFailure, "changed batch作成失敗frameでは1件も投稿しない")
-    expect(collector.postedTrace.count == traceCountBeforeFailure, "changed batch作成失敗frameではpost traceも増やさない")
+    expect(
+        collector.postedTrace.count == traceCountBeforeFailure,
+        "changed batch作成失敗frameではpost traceも増やさない")
 
     shouldCreateBaseEvent = true
     let cancellation = adapter.post(
         cancellationEvent(sessionID: 13, order: 1, reason: .outputFailure)
     )
-    expect(cancellation.failure == nil, "factory復旧後のoutputFailure cancellationを成功させる: \(cancellation)")
-    expect(cancellation.generatedEventCount == 3, "outputFailure cancellationで3 eventを投稿する: \(cancellation)")
-    expect(collector.events.count == postCountBeforeFailure + 3, "失敗frameを飛ばしてcancellationの3 eventだけを追加する")
-    assertInputCancellationBatch(Array(collector.events.suffix(3)), label: "adapter outputFailure cancellation")
+    expect(
+        cancellation.failure == nil, "factory復旧後のoutputFailure cancellationを成功させる: \(cancellation)")
+    expect(
+        cancellation.generatedEventCount == 3,
+        "outputFailure cancellationで3 eventを投稿する: \(cancellation)")
+    expect(
+        collector.events.count == postCountBeforeFailure + 3,
+        "失敗frameを飛ばしてcancellationの3 eventだけを追加する")
+    assertInputCancellationBatch(
+        Array(collector.events.suffix(3)), label: "adapter outputFailure cancellation")
 
     let repeatedCancellation = adapter.post(
         cancellationEvent(sessionID: 13, order: 2, reason: .outputFailure)
@@ -560,7 +629,8 @@ private func testSessionCoordinatorProducesFixedTwoDimensionalScrollAndMomentum(
     let collector = EventCollector()
     let adapter = makeAdapter(collector: collector)
     let coordinator = ProductGestureSessionCoordinator(output: adapter)
-    expect(coordinator.unsupportedRequiredFamilies.isEmpty, "固定drag/scroll familyの起動前capability検査を通る")
+    expect(
+        coordinator.unsupportedRequiredFamilies.isEmpty, "固定drag/scroll familyの起動前capability検査を通る")
 
     let began = coordinator.post(
         command: GestureCommand(
@@ -612,8 +682,18 @@ private func testSessionCoordinatorProducesFixedTwoDimensionalScrollAndMomentum(
         )
     )
 
-    expect([began.action, ended.action, momentumBegan.action, momentumEnded.action].allSatisfy { $0 == .smoothScroll }, "wheel由来momentumまでactive actionをsmoothScrollへ固定する")
-    expect([began.result, ended.result, momentumBegan.result, momentumEnded.result].allSatisfy { $0.failure == nil }, "2D scroll lifecycleをsession coordinatorで完結する")
+    expect(
+        [began.mode, ended.mode, momentumBegan.mode, momentumEnded.mode].allSatisfy {
+            $0 == .twoFingerSwipe
+        }, "wheel由来momentumまで2本指modeを維持する")
+    expect(
+        [began.family, ended.family, momentumBegan.family, momentumEnded.family].allSatisfy {
+            $0 == .scroll
+        }, "wheel由来momentumまでscroll familyを維持する")
+    expect(
+        [began.result, ended.result, momentumBegan.result, momentumEnded.result].allSatisfy {
+            $0.failure == nil
+        }, "2D scroll lifecycleをsession coordinatorで完結する")
     guard collector.events.count == 8 else {
         failures.append("2D scroll coordinator lifecycleのevent数が8ではない: \(collector.events.count)")
         return
@@ -621,15 +701,24 @@ private func testSessionCoordinatorProducesFixedTwoDimensionalScrollAndMomentum(
     let inputScroll = collector.events[0]
     let inputCompanion = collector.events[2]
     let firstMomentum = collector.events[6]
-    expect(inputScroll.getDoubleValueField(.scrollWheelEventPointDeltaAxis1) != 0, "2D wheel inputのY point deltaを保持する")
-    expect(inputScroll.getDoubleValueField(.scrollWheelEventPointDeltaAxis2) != 0, "2D wheel inputのX point deltaを保持する")
+    expect(
+        inputScroll.getDoubleValueField(.scrollWheelEventPointDeltaAxis1) != 0,
+        "2D wheel inputのY point deltaを保持する")
+    expect(
+        inputScroll.getDoubleValueField(.scrollWheelEventPointDeltaAxis2) != 0,
+        "2D wheel inputのX point deltaを保持する")
     expect(inputCompanion.getDoubleValueField(rawField(113)) == 20, "2D companionのX motionを保持する")
     expect(inputCompanion.getDoubleValueField(rawField(119)) == -40, "2D companionのY motionを保持する")
     expect(firstMomentum.getIntegerValueField(rawField(123)) == 1, "最初のmomentum commandをbeganへ変換する")
-    expect(firstMomentum.getDoubleValueField(.scrollWheelEventPointDeltaAxis1) != 0, "momentumのY deltaを維持する")
-    expect(firstMomentum.getDoubleValueField(.scrollWheelEventPointDeltaAxis2) != 0, "momentumのX deltaを維持する")
+    expect(
+        firstMomentum.getDoubleValueField(.scrollWheelEventPointDeltaAxis1) != 0,
+        "momentumのY deltaを維持する")
+    expect(
+        firstMomentum.getDoubleValueField(.scrollWheelEventPointDeltaAxis2) != 0,
+        "momentumのX deltaを維持する")
 
-    let fixedCoordinator = ProductGestureSessionCoordinator(output: makeAdapter(collector: EventCollector()))
+    let fixedCoordinator = ProductGestureSessionCoordinator(
+        output: makeAdapter(collector: EventCollector()))
     expect(fixedCoordinator.unsupportedRequiredFamilies.isEmpty, "固定出力の全familyを起動可能にする")
 }
 
@@ -675,24 +764,6 @@ private func testCandidateGestureFamilies() {
             payload: .dockSwipe(axis: .horizontal, progress: 0, velocity: 0)
         ),
         candidateInputEvent(
-            sessionID: 121,
-            order: 0,
-            phase: .began,
-            payload: .navigationSwipe(direction: .left, progress: -0.1, velocity: -0.5)
-        ),
-        candidateInputEvent(
-            sessionID: 121,
-            order: 1,
-            phase: .changed,
-            payload: .navigationSwipe(direction: .left, progress: -0.7, velocity: -1.4)
-        ),
-        candidateInputEvent(
-            sessionID: 121,
-            order: 2,
-            phase: .ended,
-            payload: .navigationSwipe(direction: .left, progress: 0, velocity: 0)
-        ),
-        candidateInputEvent(
             sessionID: 122,
             order: 0,
             phase: .began,
@@ -709,26 +780,59 @@ private func testCandidateGestureFamilies() {
             order: 2,
             phase: .ended,
             payload: .magnification(progress: 0, scaleDelta: 0, velocity: 0)
-        )
+        ),
     ]
     let results = posts.map(adapter.post)
-    expect(results.allSatisfy { $0.failure == nil && $0.generatedEventCount == 1 }, "3 candidate familyを各1 eventで投稿する")
-    guard collector.events.count == 9 else {
-        failures.append("candidate familyのevent数が9ではない: \(collector.events.count) results=\(results)")
+    expect(
+        results.allSatisfy { $0.failure == nil && $0.generatedEventCount == 1 },
+        "製品modeへ接続する2 candidate familyを各1 eventで投稿する")
+    let navigationResult = adapter.post(
+        candidateInputEvent(
+            sessionID: 121,
+            order: 0,
+            phase: .began,
+            payload: .navigationSwipe(direction: .left, progress: -0.1, velocity: -0.5)
+        )
+    )
+    expect(navigationResult.failure == .unsupported, "NavigationSwipe候補を製品runtimeから拒否する")
+    expect(navigationResult.generatedEventCount == 0, "NavigationSwipe候補を投稿しない")
+    guard collector.events.count == 6 else {
+        failures.append(
+            "candidate familyのevent数が6ではない: \(collector.events.count) results=\(results)")
         return
     }
-    expect(collector.events.map { $0.type.rawValue } == [29, 29, 29, 30, 30, 30, 29, 29, 29], "candidate familyのevent typeを固定する")
-    expect(collector.events.prefix(3).allSatisfy { $0.getIntegerValueField(rawField(110)) == 32 }, "DockSwipe classifierを32にする")
-    expect(collector.events[3..<6].allSatisfy { $0.getIntegerValueField(rawField(110)) == 23 }, "NavigationSwipe classifierを23にする")
-    expect(collector.events.suffix(3).allSatisfy { $0.getIntegerValueField(rawField(110)) == 8 }, "magnification classifierを8にする")
-    expect(collector.events.map { $0.getIntegerValueField(rawField(132)) } == [1, 2, 4, 1, 2, 4, 1, 2, 4], "candidate lifecycle phaseをbegan/changed/endedにする")
-    expect(collector.events[2].getIntegerValueField(rawField(143)) == 0, "DockSwipe terminal activeを0にする")
-    expect(collector.events[4].getDoubleValueField(rawField(124)) < 0, "NavigationSwipe leftのprogressを負にする")
-    expect(collector.events[7].getDoubleValueField(rawField(113)) > 0, "zoom-inのscale fieldを正にする")
-    expect(collector.events.allSatisfy { $0.getIntegerValueField(.eventSourceUserData) == NapeGestureGeneratedEventMarker.value }, "全candidate eventへ生成markerを付ける")
-    expect(collector.events.allSatisfy { $0.getIntegerValueField(rawField(55)) == Int64($0.type.rawValue) }, "candidate eventのcontract type field 55を一致させる")
-    expect(collector.events.allSatisfy { $0.getIntegerValueField(rawField(58)) == Int64($0.timestamp) }, "candidate eventのcontract timestamp field 58を一致させる")
-    expect(Set(collector.postedTrace.map(\.family)) == [.dockSwipe, .navigationSwipe, .magnification], "traceへ3 familyを記録する")
+    expect(
+        collector.events.map { $0.type.rawValue } == [29, 29, 29, 29, 29, 29],
+        "candidate familyのevent typeを固定する")
+    expect(
+        collector.events.prefix(3).allSatisfy { $0.getIntegerValueField(rawField(110)) == 32 },
+        "DockSwipe classifierを32にする")
+    expect(
+        collector.events.suffix(3).allSatisfy { $0.getIntegerValueField(rawField(110)) == 8 },
+        "magnification classifierを8にする")
+    expect(
+        collector.events.map { $0.getIntegerValueField(rawField(132)) } == [1, 2, 4, 1, 2, 4],
+        "candidate lifecycle phaseをbegan/changed/endedにする")
+    expect(
+        collector.events[2].getIntegerValueField(rawField(143)) == 0,
+        "DockSwipe terminal activeを0にする")
+    expect(collector.events[4].getDoubleValueField(rawField(113)) > 0, "pinchのscale fieldを正にする")
+    expect(
+        collector.events.allSatisfy {
+            $0.getIntegerValueField(.eventSourceUserData) == NapeGestureGeneratedEventMarker.value
+        }, "全candidate eventへ生成markerを付ける")
+    expect(
+        collector.events.allSatisfy {
+            $0.getIntegerValueField(rawField(55)) == Int64($0.type.rawValue)
+        }, "candidate eventのcontract type field 55を一致させる")
+    expect(
+        collector.events.allSatisfy {
+            $0.getIntegerValueField(rawField(58)) == Int64($0.timestamp)
+        },
+        "candidate eventのcontract timestamp field 58を一致させる")
+    expect(
+        Set(collector.postedTrace.map(\.family)) == [.dockSwipe, .magnification],
+        "traceへ製品mode接続済みの2 candidate familyを記録する")
 }
 
 private func testCoordinatorFixesDragAxisAndSessionAcrossDirectionReversal() {
@@ -740,7 +844,7 @@ private func testCoordinatorFixesDragAxisAndSessionAcrossDirectionReversal() {
     )
     let commands = [
         GestureCommand(
-            mode: .spacesAndMissionControl,
+            mode: .systemSwipe,
             kind: .drag,
             phase: .began,
             direction: .right,
@@ -751,7 +855,7 @@ private func testCoordinatorFixesDragAxisAndSessionAcrossDirectionReversal() {
             timestamp: MonotonicEventClock.nowSeconds
         ),
         GestureCommand(
-            mode: .spacesAndMissionControl,
+            mode: .systemSwipe,
             kind: .drag,
             phase: .changed,
             direction: .left,
@@ -762,7 +866,7 @@ private func testCoordinatorFixesDragAxisAndSessionAcrossDirectionReversal() {
             timestamp: MonotonicEventClock.nowSeconds
         ),
         GestureCommand(
-            mode: .spacesAndMissionControl,
+            mode: .systemSwipe,
             kind: .drag,
             phase: .ended,
             direction: .left,
@@ -771,23 +875,27 @@ private func testCoordinatorFixesDragAxisAndSessionAcrossDirectionReversal() {
             velocityX: -50,
             velocityY: 1_200,
             timestamp: MonotonicEventClock.nowSeconds
-        )
+        ),
     ]
     let results = commands.map { coordinator.post(command: $0) }
-    expect(results.allSatisfy { $0.action == .dockSwipe }, "drag actionをDockSwipeへ固定する")
+    expect(
+        results.allSatisfy { $0.mode == .systemSwipe && $0.family == .dockSwipe },
+        "システムスワイプをDockSwipe familyへ固定する")
     expect(results.allSatisfy { $0.result.failure == nil }, "方向反転を含むdrag sessionを完結する")
 
     let frames = output.postedEvents.compactMap { event -> TrackpadOutputInputFrame? in
-        guard case let .input(frame) = event else { return nil }
+        guard case .input(let frame) = event else { return nil }
         return frame
     }
     expect(frames.count == 3, "drag lifecycleを3 input frameとして投稿する")
     expect(Set(frames.map(\.sessionID)).count == 1, "方向反転後も同一session IDを維持する")
-    expect(frames.first?.sessionID == TrackpadOutputSessionID(rawValue: 144), "指定sequenceのsession IDを使用する")
+    expect(
+        frames.first?.sessionID == TrackpadOutputSessionID(rawValue: 144),
+        "指定sequenceのsession IDを使用する")
     expect(frames.map(\.captureOrder) == [0, 1, 2], "方向反転後もcapture orderを連続させる")
     expect(frames.allSatisfy { $0.payload.family == .dockSwipe }, "drag familyをDockSwipeへ固定する")
     let payloads = frames.compactMap { frame -> (TrackpadOutputAxis, Double)? in
-        guard case let .dockSwipe(axis, progress, _) = frame.payload else { return nil }
+        guard case .dockSwipe(let axis, let progress, _) = frame.payload else { return nil }
         return (axis, progress)
     }
     expect(payloads.count == 3, "全drag frameをDockSwipe payloadにする")
@@ -802,7 +910,7 @@ private func testCoordinatorRoutesButtonModesWithoutDirectionBindings() {
     let scrollCoordinator = ProductGestureSessionCoordinator(output: scrollOutput)
     let scrollPost = scrollCoordinator.post(
         command: GestureCommand(
-            mode: .scrollAndNavigate,
+            mode: .twoFingerSwipe,
             kind: .drag,
             phase: .began,
             direction: .right,
@@ -813,18 +921,21 @@ private func testCoordinatorRoutesButtonModesWithoutDirectionBindings() {
             timestamp: MonotonicEventClock.nowSeconds
         )
     )
-    expect(scrollPost.action == .smoothScroll, "Scroll & Navigate modeをscroll familyへ接続する")
+    expect(
+        scrollPost.mode == .twoFingerSwipe && scrollPost.family == .scroll,
+        "2本指modeをscroll familyへ接続する"
+    )
     let scrollFamily = scrollOutput.postedEvents.compactMap { event -> TrackpadOutputEventFamily? in
-        guard case let .input(frame) = event else { return nil }
+        guard case .input(let frame) = event else { return nil }
         return frame.payload.family
     }.first
     expect(scrollFamily == .scroll, "mouse moveの2次元deltaをscroll payloadへ渡す")
 
-    let zoomOutput = PermissiveProductOutput(capability: capability)
-    let zoomCoordinator = ProductGestureSessionCoordinator(output: zoomOutput)
-    let zoomPost = zoomCoordinator.post(
+    let pinchOutput = PermissiveProductOutput(capability: capability)
+    let pinchCoordinator = ProductGestureSessionCoordinator(output: pinchOutput)
+    let pinchPost = pinchCoordinator.post(
         command: GestureCommand(
-            mode: .zoom,
+            mode: .pinch,
             kind: .drag,
             phase: .began,
             direction: .up,
@@ -835,12 +946,14 @@ private func testCoordinatorRoutesButtonModesWithoutDirectionBindings() {
             timestamp: MonotonicEventClock.nowSeconds
         )
     )
-    expect(zoomPost.action == .magnification, "Zoom modeをmagnification familyへ接続する")
-    let zoomFamily = zoomOutput.postedEvents.compactMap { event -> TrackpadOutputEventFamily? in
-        guard case let .input(frame) = event else { return nil }
+    expect(
+        pinchPost.mode == .pinch && pinchPost.family == .magnification,
+        "ピンチmodeをmagnification familyへ接続する")
+    let pinchFamily = pinchOutput.postedEvents.compactMap { event -> TrackpadOutputEventFamily? in
+        guard case .input(let frame) = event else { return nil }
         return frame.payload.family
     }.first
-    expect(zoomFamily == .magnification, "mouse moveをmagnification payloadへ渡す")
+    expect(pinchFamily == .magnification, "mouse moveをmagnification payloadへ渡す")
 }
 
 private func testCoordinatorChangedCreationFailureRecovery() {
@@ -883,7 +996,9 @@ private func testCoordinatorChangedCreationFailureRecovery() {
             timestamp: MonotonicEventClock.nowSeconds
         )
     )
-    expect(changed.result.failure == .eventCreationFailed, "coordinator経由のchanged batch作成失敗を明示する: \(changed.result)")
+    expect(
+        changed.result.failure == .eventCreationFailed,
+        "coordinator経由のchanged batch作成失敗を明示する: \(changed.result)")
     expect(changed.result.generatedEventCount == 0, "coordinator経由の失敗frameでは生成済みevent数を0にする")
     expect(collector.events.count == postCountBeforeFailure, "coordinator経由の失敗frameでは1件も投稿しない")
 
@@ -892,20 +1007,29 @@ private func testCoordinatorChangedCreationFailureRecovery() {
         reason: .outputFailure,
         at: MonotonicEventClock.nowSeconds
     )
-    expect(cancellation.failure == nil, "coordinatorが保持したsessionをoutputFailure cancellationで閉じる: \(cancellation)")
-    expect(cancellation.generatedEventCount == 3, "coordinatorのoutputFailure cancellationで3 eventを投稿する")
-    expect(collector.events.count == postCountBeforeFailure + 3, "coordinator復旧時はcancellationの3 eventだけを追加する")
-    assertInputCancellationBatch(Array(collector.events.suffix(3)), label: "coordinator outputFailure cancellation")
+    expect(
+        cancellation.failure == nil,
+        "coordinatorが保持したsessionをoutputFailure cancellationで閉じる: \(cancellation)")
+    expect(
+        cancellation.generatedEventCount == 3, "coordinatorのoutputFailure cancellationで3 eventを投稿する"
+    )
+    expect(
+        collector.events.count == postCountBeforeFailure + 3,
+        "coordinator復旧時はcancellationの3 eventだけを追加する")
+    assertInputCancellationBatch(
+        Array(collector.events.suffix(3)), label: "coordinator outputFailure cancellation")
 
     let repeatedCancellation = coordinator.cancelActive(
         reason: .outputFailure,
         at: MonotonicEventClock.nowSeconds
     )
     expect(repeatedCancellation.failure == nil, "閉じたcoordinator sessionの再cancellationを失敗扱いしない")
-    expect(repeatedCancellation.generatedEventCount == 0, "閉じたcoordinator sessionの再cancellationでは投稿しない")
+    expect(
+        repeatedCancellation.generatedEventCount == 0, "閉じたcoordinator sessionの再cancellationでは投稿しない"
+    )
 }
 
-private func testCoordinatorPreservesActiveActionAcrossChangedCommandKind() {
+private func testCoordinatorPreservesActiveModeAcrossChangedCommandKind() {
     let output = PermissiveProductOutput(
         capability: makeAdapter(collector: EventCollector()).capability
     )
@@ -922,7 +1046,7 @@ private func testCoordinatorPreservesActiveActionAcrossChangedCommandKind() {
             timestamp: MonotonicEventClock.nowSeconds
         )
     )
-    expect(began.result.failure == nil, "action不一致復旧テストのbeganを成功させる")
+    expect(began.result.failure == nil, "mode不一致復旧テストのbeganを成功させる")
 
     let changed = coordinator.post(
         command: GestureCommand(
@@ -936,13 +1060,15 @@ private func testCoordinatorPreservesActiveActionAcrossChangedCommandKind() {
             timestamp: MonotonicEventClock.nowSeconds
         )
     )
-    expect(changed.action == .smoothScroll, "後続command kindにかかわらず開始時actionを維持する")
-    expect(changed.result.failure == nil, "開始時actionでchangedを継続する")
+    expect(
+        changed.mode == .twoFingerSwipe && changed.family == .scroll,
+        "後続command kindにかかわらず開始時modeとfamilyを維持する")
+    expect(changed.result.failure == nil, "開始時modeでchangedを継続する")
     guard output.postedEvents.count == 2,
-          case let .input(beganFrame) = output.postedEvents[0],
-          case let .input(changedFrame) = output.postedEvents[1]
+        case .input(let beganFrame) = output.postedEvents[0],
+        case .input(let changedFrame) = output.postedEvents[1]
     else {
-        failures.append("active action継続検査のinput frameが2件ではない")
+        failures.append("active mode継続検査のinput frameが2件ではない")
         return
     }
     expect(changedFrame.sessionID == beganFrame.sessionID, "command kind変更後も同一session IDを維持する")
@@ -953,8 +1079,69 @@ private func testCoordinatorPreservesActiveActionAcrossChangedCommandKind() {
         reason: .inputLifecycle,
         at: MonotonicEventClock.nowSeconds
     )
-    expect(cancellation.failure == nil, "action継続後もactive sessionをcancelできる")
+    expect(cancellation.failure == nil, "mode継続後もactive sessionをcancelできる")
     expect(cancellation.generatedEventCount == 1, "permissive outputへcancellationを1 frame渡す")
+}
+
+private func testCoordinatorRejectsModeChangeWithinActiveSession() {
+    let output = PermissiveProductOutput(
+        capability: makeAdapter(collector: EventCollector()).capability
+    )
+    let coordinator = ProductGestureSessionCoordinator(output: output)
+    let began = coordinator.post(
+        command: GestureCommand(
+            mode: .twoFingerSwipe,
+            kind: .drag,
+            phase: .began,
+            direction: .up,
+            deltaX: 0,
+            deltaY: -8,
+            velocityX: 0,
+            velocityY: -80,
+            timestamp: MonotonicEventClock.nowSeconds
+        )
+    )
+    expect(began.result.failure == nil, "mode変更拒否検査のsessionを開始する")
+    let postedCount = output.postedEvents.count
+
+    let mismatched = coordinator.post(
+        command: GestureCommand(
+            mode: .pinch,
+            kind: .drag,
+            phase: .changed,
+            direction: .up,
+            deltaX: 0,
+            deltaY: -4,
+            velocityX: 0,
+            velocityY: -40,
+            timestamp: MonotonicEventClock.nowSeconds
+        )
+    )
+    expect(mismatched.mode == .pinch, "拒否結果へ実際に要求されたmodeを記録する")
+    expect(mismatched.family == .magnification, "拒否結果へ要求されたfamilyを記録する")
+    expect(mismatched.result.failure == .invalidSession, "active session中のmode変更を拒否する")
+    expect(output.postedEvents.count == postedCount, "mode不一致時はeventを投稿しない")
+
+    let valid = coordinator.post(
+        command: GestureCommand(
+            mode: .twoFingerSwipe,
+            kind: .drag,
+            phase: .changed,
+            direction: .up,
+            deltaX: 0,
+            deltaY: -4,
+            velocityX: 0,
+            velocityY: -40,
+            timestamp: MonotonicEventClock.nowSeconds
+        )
+    )
+    expect(valid.result.failure == nil, "mode不一致拒否後も元sessionを継続できる")
+
+    let cancellation = coordinator.cancelActive(
+        reason: .inputLifecycle,
+        at: MonotonicEventClock.nowSeconds
+    )
+    expect(cancellation.failure == nil, "mode不一致拒否後のsessionをcancelできる")
 }
 
 private func testCoordinatorInvalidPhasePreservesCancellation() {
@@ -1223,7 +1410,9 @@ private func testPartialTerminalRetriesWithoutDuplicates() {
         let firstCancellation = adapter.post(
             cancellationEvent(sessionID: sessionID, order: 1, reason: .outputFailure)
         )
-        expect(firstCancellation.failure == .eventPostFailed, "terminalの\(failureAttempt)件目post失敗を明示する")
+        expect(
+            firstCancellation.failure == .eventPostFailed, "terminalの\(failureAttempt)件目post失敗を明示する"
+        )
         expect(
             firstCancellation.generatedEventCount == failureAttempt - 1,
             "terminal失敗前の成功数を保持する: \(firstCancellation)"
@@ -1624,7 +1813,7 @@ private func testOddSymmetricQuantizationOnBothAxes() {
             .scrollWheelEventDeltaAxis2,
             .scrollWheelEventFixedPtDeltaAxis2,
             .scrollWheelEventPointDeltaAxis2
-        )
+        ),
     ]
     for (label, lineField, fixedField, pointField) in axes {
         let positiveLine = positiveScroll.getIntegerValueField(lineField)
@@ -1693,8 +1882,9 @@ private func testActiveSessionRejectsEveryNewBegan() {
     expect(began.result.failure == nil, "active began拒否検査の旧sessionを開始する")
     let eventCountBeforeRejection = collector.events.count
 
-    let noneBegan = coordinator.post(
+    let conflictingBegan = coordinator.post(
         command: GestureCommand(
+            mode: .pinch,
             kind: .drag,
             phase: .began,
             direction: .up,
@@ -1705,8 +1895,13 @@ private func testActiveSessionRejectsEveryNewBegan() {
             timestamp: MonotonicEventClock.nowSeconds
         )
     )
-    expect(noneBegan.action == .smoothScroll, "active中の新規beganでも既存actionを返す")
-    expect(noneBegan.result.failure == .invalidSession, "active中の別kind beganを成功扱いしない")
+    expect(
+        conflictingBegan.mode == .pinch && conflictingBegan.family == .magnification,
+        "active中の新規began拒否へ要求されたmodeとfamilyを返す")
+    expect(
+        conflictingBegan.result.failure == .invalidSession,
+        "active中の別mode beganを成功扱いしない"
+    )
 
     let mappedBegan = coordinator.post(
         command: GestureCommand(
@@ -1760,7 +1955,8 @@ private func testCancellationTimestampRegressionIsNormalized() {
         reason: .outputFailure,
         at: max(0, beganAt - 1)
     )
-    expect(cancellation.failure == nil, "逆行cancel timestampをlast timestamp以上へ正規化する: \(cancellation)")
+    expect(
+        cancellation.failure == nil, "逆行cancel timestampをlast timestamp以上へ正規化する: \(cancellation)")
     expect(cancellation.generatedEventCount == 3, "正規化したcancelでterminal 3件を投稿する")
     expect(
         collector.events.suffix(3).allSatisfy { $0.timestamp >= beganTimestamp },
@@ -1773,7 +1969,8 @@ private func testCoordinatorClosesPartialBeganAndRetriesPartialCancellation() {
         let beganCollector = EventCollector()
         let beganSink = InjectedPostSink(collector: beganCollector)
         beganSink.configure(failureAttempt: failureAttempt)
-        let beganCoordinator = ProductGestureSessionCoordinator(output: makeInjectedAdapter(sink: beganSink))
+        let beganCoordinator = ProductGestureSessionCoordinator(
+            output: makeInjectedAdapter(sink: beganSink))
         let beganAt = MonotonicEventClock.nowSeconds
         let partialBegan = beganCoordinator.post(
             command: GestureCommand(
@@ -1787,7 +1984,9 @@ private func testCoordinatorClosesPartialBeganAndRetriesPartialCancellation() {
                 timestamp: beganAt
             )
         )
-        expect(partialBegan.result.failure == .eventPostFailed, "coordinator beganの\(failureAttempt)件目失敗を明示する")
+        expect(
+            partialBegan.result.failure == .eventPostFailed,
+            "coordinator beganの\(failureAttempt)件目失敗を明示する")
         expect(
             partialBegan.result.generatedEventCount == failureAttempt - 1,
             "coordinatorが途中beganの投稿数を保持する"
@@ -1807,7 +2006,8 @@ private func testCoordinatorClosesPartialBeganAndRetriesPartialCancellation() {
         let terminalCollector = EventCollector()
         let terminalSink = InjectedPostSink(collector: terminalCollector)
         terminalSink.configure(failureAttempt: nil)
-        let terminalCoordinator = ProductGestureSessionCoordinator(output: makeInjectedAdapter(sink: terminalSink))
+        let terminalCoordinator = ProductGestureSessionCoordinator(
+            output: makeInjectedAdapter(sink: terminalSink))
         let terminalBeganAt = MonotonicEventClock.nowSeconds
         _ = terminalCoordinator.post(
             command: GestureCommand(
@@ -1826,7 +2026,9 @@ private func testCoordinatorClosesPartialBeganAndRetriesPartialCancellation() {
             reason: .outputFailure,
             at: MonotonicEventClock.nowSeconds
         )
-        expect(partialCancellation.failure == .eventPostFailed, "coordinator terminalの\(failureAttempt)件目失敗を明示する")
+        expect(
+            partialCancellation.failure == .eventPostFailed,
+            "coordinator terminalの\(failureAttempt)件目失敗を明示する")
         expect(
             partialCancellation.generatedEventCount == failureAttempt - 1,
             "coordinatorが途中terminalの投稿数を保持する"
@@ -1851,7 +2053,9 @@ private func testCoordinatorClosesPartialBeganAndRetriesPartialCancellation() {
             reason: .outputFailure,
             at: MonotonicEventClock.nowSeconds
         )
-        expect(afterClosed.failure == nil && afterClosed.generatedEventCount == 0, "再試行成功後のcoordinator sessionを閉じる")
+        expect(
+            afterClosed.failure == nil && afterClosed.generatedEventCount == 0,
+            "再試行成功後のcoordinator sessionを閉じる")
     }
 }
 
@@ -1866,7 +2070,8 @@ testCandidateGestureFamilies()
 testCoordinatorFixesDragAxisAndSessionAcrossDirectionReversal()
 testCoordinatorRoutesButtonModesWithoutDirectionBindings()
 testCoordinatorChangedCreationFailureRecovery()
-testCoordinatorPreservesActiveActionAcrossChangedCommandKind()
+testCoordinatorPreservesActiveModeAcrossChangedCommandKind()
+testCoordinatorRejectsModeChangeWithinActiveSession()
 testCoordinatorInvalidPhasePreservesCancellation()
 testCoordinatorValidatesTransitionBeforeOutput()
 testCoordinatorRetriesFailedCancellation()

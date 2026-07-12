@@ -3,7 +3,10 @@ import NapeGestureCore
 import NapeGestureProductOutput
 
 @discardableResult
-func expect(_ condition: @autoclosure () -> Bool, _ message: String, file: StaticString = #file, line: UInt = #line) -> Bool {
+func expect(
+    _ condition: @autoclosure () -> Bool, _ message: String, file: StaticString = #file,
+    line: UInt = #line
+) -> Bool {
     if condition() {
         return true
     }
@@ -32,6 +35,19 @@ func expectApproximatelyEqual(
     fputs("失敗: \(message)。期待値 \(expected)、実測値 \(actual) (\(file):\(line))\n", stderr)
     failures += 1
     return false
+}
+
+func expectThrows(
+    _ message: String,
+    file: StaticString = #file,
+    line: UInt = #line,
+    _ operation: () throws -> Void
+) {
+    do {
+        try operation()
+        fputs("失敗: \(message) (\(file):\(line))\n", stderr)
+        failures += 1
+    } catch {}
 }
 
 var failures = 0
@@ -136,7 +152,8 @@ func makeRuntimePerformanceRecord(
     return RuntimePerformanceRecord(
         operationID: "\(source.rawValue)-\(index)",
         source: source,
-        action: .smoothScroll,
+        mode: .twoFingerSwipe,
+        outputFamily: .scroll,
         commandKind: .drag,
         commandPhase: index == 0 ? .began : .changed,
         commandTimestamp: Double(index),
@@ -159,6 +176,54 @@ func testPassesThroughWhenActivationButtonIsNotPressed() {
     expect(!decision.shouldSuppressOriginal, "通常移動は通過する")
     expect(decision.commands.isEmpty, "通常移動ではコマンドを出さない")
     expect(recognizer.isIdle, "通常移動後も idle のまま")
+}
+
+func testMouseButtonRejectsUnsupportedNumbers() {
+    expect(MouseButton(buttonNumber: 3) == .button3, "button 3を正規化する")
+    expect(MouseButton(buttonNumber: 5) == .button5, "button 5を正規化する")
+    expect(MouseButton(buttonNumber: 6) == nil, "button 6以降をbutton 3へ誤変換しない")
+    expect(MouseButton(buttonNumber: -1) == nil, "負のbutton番号を拒否する")
+}
+
+func testOtherMouseButtonInputRejectsUnsupportedNumbers() {
+    expect(
+        RawInputEvent.otherMouseButton(buttonNumber: 3, isDown: true, time: 1)
+            == .buttonDown(button: .button3, time: 1),
+        "otherMouseDownのbutton 3を入力へ変換する"
+    )
+    expect(
+        RawInputEvent.otherMouseButton(buttonNumber: 5, isDown: false, time: 2)
+            == .buttonUp(button: .button5, time: 2),
+        "otherMouseUpのbutton 5を入力へ変換する"
+    )
+    expect(
+        RawInputEvent.otherMouseButton(buttonNumber: 6, isDown: true, time: 3) == nil,
+        "未知のotherMouseDownをgesture入力へ変換しない"
+    )
+    expect(
+        RawInputEvent.otherMouseButton(buttonNumber: 6, isDown: false, time: 4) == nil,
+        "未知のotherMouseUpをgesture入力へ変換しない"
+    )
+}
+
+func testTrackpadGestureModesDescribeInputSeries() {
+    expect(
+        TrackpadGestureMode.allCases == [.none, .twoFingerSwipe, .systemSwipe, .pinch],
+        "設定UIのmodeを入力系列の4択に限定する"
+    )
+    expect(TrackpadGestureMode.none.displayName == "通常", "未押下時と同じ通常mouse modeを表示する")
+    expect(
+        TrackpadGestureMode.twoFingerSwipe.displayName == "2本指スクロール / スワイプ",
+        "2本指入力系列をOS/App結果名で表示しない"
+    )
+    expect(
+        TrackpadGestureMode.systemSwipe.displayName == "システムスワイプ",
+        "3本指相当の入力系列を特定のOS結果名で表示しない"
+    )
+    expect(
+        TrackpadGestureMode.pinch.displayName == "ピンチ",
+        "pinch入力系列をZoom結果名で表示しない"
+    )
 }
 
 func testActivationButtonSuppressesOriginalInputBeforeThreshold() {
@@ -443,7 +508,7 @@ func testMomentumDecaysAndEventuallyEnds() {
         )
     )
     let command = GestureCommand(
-        mode: .zoom,
+        mode: .pinch,
         kind: .drag,
         phase: .ended,
         direction: .right,
@@ -459,7 +524,7 @@ func testMomentumDecaysAndEventuallyEnds() {
 
     expect(first?.kind == .momentum, "慣性コマンドを出す")
     expect(first?.phase == .momentum, "慣性フェーズを出す")
-    expect(first?.mode == .zoom, "慣性コマンドへ開始元のmodeを継承する")
+    expect(first?.mode == .pinch, "慣性コマンドへ開始元のmodeを継承する")
     expect((first?.velocityX ?? 100) < 100, "速度が減衰する")
 
     var ended = false
@@ -535,15 +600,22 @@ func testDeviceMatcherEvaluationReportsMatchedAndMismatchedConditions() {
     expect(!evaluation.isMatch, "不一致条件が残る場合は対象一致にしない")
     expect(evaluation.matchedConditions.contains("vendorID"), "一致した vendorID を記録する")
     expect(evaluation.matchedConditions.contains("product"), "一致した product contains を記録する")
-    expect(evaluation.mismatches.contains { $0.field == "productID" && $0.expected == "999" && $0.actual == "456" }, "数値条件の不一致を記録する")
-    expect(evaluation.mismatches.contains { $0.field == "transport" && $0.relation == "contains" }, "contains 条件の不一致を記録する")
+    expect(
+        evaluation.mismatches.contains {
+            $0.field == "productID" && $0.expected == "999" && $0.actual == "456"
+        }, "数値条件の不一致を記録する")
+    expect(
+        evaluation.mismatches.contains { $0.field == "transport" && $0.relation == "contains" },
+        "contains 条件の不一致を記録する")
 }
 
 func testDeviceMatcherConditionPresenceIgnoresEmptyText() {
     expect(!DeviceMatcher(productContains: "").hasAnyCondition, "空文字の製品名条件は未指定として扱う")
     expect(!DeviceMatcher(productContains: "   ").hasAnyCondition, "空白だけの製品名条件は未指定として扱う")
     expect(DeviceMatcher(vendorID: 123).hasAnyCondition, "vendorID があれば条件ありとして扱う")
-    expect(DeviceMatcher(primaryUsagePage: 1, primaryUsage: 2).hasAnyCondition, "usage 条件があれば条件ありとして扱う")
+    expect(
+        DeviceMatcher(primaryUsagePage: 1, primaryUsage: 2).hasAnyCondition, "usage 条件があれば条件ありとして扱う"
+    )
 }
 
 func testDeviceMatcherWithoutConditionsDoesNotMatchEverything() {
@@ -559,7 +631,8 @@ func testDeviceMatcherWithoutConditionsDoesNotMatchEverything() {
 
     expect(!DeviceMatcher().matches(device), "条件なし matcher は全デバイス一致として扱わない")
     expect(!DeviceMatcher(productContains: "").matches(device), "空文字条件だけの matcher は全デバイス一致として扱わない")
-    expect(!DeviceMatcher(productContains: "   ").matches(device), "空白条件だけの matcher は全デバイス一致として扱わない")
+    expect(
+        !DeviceMatcher(productContains: "   ").matches(device), "空白条件だけの matcher は全デバイス一致として扱わない")
 }
 
 func testDeviceIdentityEncodesStableID() {
@@ -582,33 +655,33 @@ func testDeviceIdentityEncodesStableID() {
 
 func testGestureConfigurationDecodesOldJSONWithDefaults() {
     let json = """
-    {
-      "activationButton" : 4,
-      "deadZonePoints" : 8,
-      "directionLockRatio" : 1.35,
-      "dragSensitivity" : 1,
-      "wheelSensitivity" : 1,
-      "bindings" : {
-        "dragDown" : "smoothScroll",
-        "dragLeft" : "spaceLeft",
-        "dragRight" : "spaceRight",
-        "dragUp" : "missionControl",
-        "wheel" : "horizontalScroll"
-      },
-      "cancellation" : {
-        "maximumDuration" : 10,
-        "maximumInactivityInterval" : 2,
-        "offAxisCancelRatio" : 0.5
-      },
-      "momentum" : {
-        "decayPerSecond" : 0.08,
-        "frameInterval" : 0.008333333333333333,
-        "isEnabled" : true,
-        "minimumStartVelocity" : 140,
-        "stopVelocity" : 8
-      }
-    }
-    """
+        {
+          "activationButton" : 4,
+          "deadZonePoints" : 8,
+          "directionLockRatio" : 1.35,
+          "dragSensitivity" : 1,
+          "wheelSensitivity" : 1,
+          "bindings" : {
+            "dragDown" : "smoothScroll",
+            "dragLeft" : "spaceLeft",
+            "dragRight" : "spaceRight",
+            "dragUp" : "missionControl",
+            "wheel" : "horizontalScroll"
+          },
+          "cancellation" : {
+            "maximumDuration" : 10,
+            "maximumInactivityInterval" : 2,
+            "offAxisCancelRatio" : 0.5
+          },
+          "momentum" : {
+            "decayPerSecond" : 0.08,
+            "frameInterval" : 0.008333333333333333,
+            "isEnabled" : true,
+            "minimumStartVelocity" : 140,
+            "stopVelocity" : 8
+          }
+        }
+        """
 
     let configuration = try? JSONDecoder().decode(GestureConfiguration.self, from: Data(json.utf8))
     let reencoded = configuration.flatMap { try? JSONEncoder().encode($0) }
@@ -616,58 +689,101 @@ func testGestureConfigurationDecodesOldJSONWithDefaults() {
 
     expect(configuration?.acceleration == .default, "古い設定JSONにはデフォルトの加速度設定を補う")
     expect(configuration?.cancellation == .default, "古い設定JSONにはデフォルトのキャンセル設定を補う")
-    expect(configuration?.button3Mode == .scrollAndNavigate, "旧設定をbutton 3の既定modeへ移行する")
-    expect(configuration?.button4Mode == .spacesAndMissionControl, "旧設定をbutton 4の既定modeへ移行する")
-    expect(configuration?.button5Mode == .zoom, "旧設定をbutton 5の既定modeへ移行する")
+    expect(configuration?.button3Mode == .twoFingerSwipe, "旧設定をbutton 3の既定modeへ移行する")
+    expect(configuration?.button4Mode == .systemSwipe, "旧設定をbutton 4の既定modeへ移行する")
+    expect(configuration?.button5Mode == .pinch, "旧設定をbutton 5の既定modeへ移行する")
     expect(!reencodedText.contains("activationButton"), "再エンコード時は旧activationButtonを除去する")
     expect(!reencodedText.contains("bindings"), "再エンコード時は廃止済み bindings を除去する")
     expect(!reencodedText.contains("directionLockRatio"), "再エンコード時は廃止済み directionLockRatio を除去する")
     expect(!reencodedText.contains("offAxisCancelRatio"), "再エンコード時は廃止済み offAxisCancelRatio を除去する")
 }
 
+func testGestureConfigurationMigratesResultNamedModes() {
+    let json = """
+        {
+          "button3Mode": "scrollAndNavigate",
+          "button4Mode": "spacesAndMissionControl",
+          "button5Mode": "zoom"
+        }
+        """
+
+    let configuration = try? JSONDecoder().decode(GestureConfiguration.self, from: Data(json.utf8))
+    let encoded = configuration.flatMap { try? JSONEncoder().encode($0) }
+    let encodedText = encoded.map { String(decoding: $0, as: UTF8.self) } ?? ""
+
+    expect(configuration?.button3Mode == .twoFingerSwipe, "旧Scroll & Navigate modeを2本指modeへ移行する")
+    expect(
+        configuration?.button4Mode == .systemSwipe, "旧Spaces & Mission Control modeをシステムスワイプへ移行する")
+    expect(configuration?.button5Mode == .pinch, "旧Zoom modeをピンチへ移行する")
+    expect(encodedText.contains("twoFingerSwipe"), "保存時は物理ジェスチャー名を使用する")
+    expect(encodedText.contains("systemSwipe"), "保存時はOS結果名をmode値へ残さない")
+    expect(encodedText.contains("pinch"), "保存時はピンチmodeを使用する")
+    expect(!encodedText.contains("scrollAndNavigate"), "旧結果名modeを再保存しない")
+    expect(!encodedText.contains("spacesAndMissionControl"), "旧システム結果名modeを再保存しない")
+    expect(!encodedText.contains("\"zoom\""), "旧Zoom modeを再保存しない")
+}
+
 func testSettingsMigrationDetectsOnlyDeprecatedGestureKeys() {
-    let oldJSON = Data("""
-    {
-      "gesture": {
-        "activationButton": 4,
-        "bindings": { "dragUp": "missionControl" },
-        "cancellation": { "offAxisCancelRatio": 2.5 }
-      }
-    }
-    """.utf8)
-    let currentJSON = Data("""
-    {
-      "gesture": {
-        "deadZonePoints": 8,
-        "cancellation": { "maximumDuration": 10 }
-      }
-    }
-    """.utf8)
+    let oldJSON = Data(
+        """
+        {
+          "gesture": {
+            "activationButton": 4,
+            "bindings": { "dragUp": "missionControl" },
+            "cancellation": { "offAxisCancelRatio": 2.5 }
+          }
+        }
+        """.utf8)
+    let currentJSON = Data(
+        """
+        {
+          "gesture": {
+            "deadZonePoints": 8,
+            "cancellation": { "maximumDuration": 10 }
+          }
+        }
+        """.utf8)
 
     expect(
-        (try? SettingsMigration.containsDeprecatedGestureKeys(in: oldJSON)) == true,
+        (try? SettingsMigration.requiresCanonicalRewrite(in: oldJSON)) == true,
         "旧方向別gesture設定をmigration対象として検出する"
     )
     expect(
-        (try? SettingsMigration.containsDeprecatedGestureKeys(in: currentJSON)) == false,
+        (try? SettingsMigration.requiresCanonicalRewrite(in: currentJSON)) == false,
         "現行gesture設定を不要にmigrationしない"
+    )
+
+    let legacyModeJSON = Data(
+        """
+        {
+          "gesture": {
+            "button3Mode": "scrollAndNavigate",
+            "button4Mode": "spacesAndMissionControl",
+            "button5Mode": "zoom"
+          }
+        }
+        """.utf8
+    )
+    expect(
+        (try? SettingsMigration.requiresCanonicalRewrite(in: legacyModeJSON)) == true,
+        "旧結果名mode値だけの設定もcanonical再保存対象にする"
     )
 }
 
 func testGestureConfigurationUsesCanonicalButtonModeDefaults() {
     let configuration = GestureConfiguration.default
 
-    expect(configuration.button3Mode == .scrollAndNavigate, "button 3の既定modeはscrollAndNavigate")
-    expect(configuration.button4Mode == .spacesAndMissionControl, "button 4の既定modeはspacesAndMissionControl")
-    expect(configuration.button5Mode == .zoom, "button 5の既定modeはzoom")
+    expect(configuration.button3Mode == .twoFingerSwipe, "button 3の既定modeは2本指スクロール / スワイプ")
+    expect(configuration.button4Mode == .systemSwipe, "button 4の既定modeはシステムスワイプ")
+    expect(configuration.button5Mode == .pinch, "button 5の既定modeはピンチ")
     expect(configuration.mode(for: .left) == .none, "通常ボタンにはtrackpad gesture modeを割り当てない")
 }
 
 func testRecognizerFixesButtonModeForSessionAndWaitsForMatchingRelease() {
     let configuration = GestureConfiguration(
-        button3Mode: .scrollAndNavigate,
-        button4Mode: .spacesAndMissionControl,
-        button5Mode: .zoom,
+        button3Mode: .twoFingerSwipe,
+        button4Mode: .systemSwipe,
+        button5Mode: .pinch,
         deadZonePoints: 1
     )
     var recognizer = GestureRecognizer(configuration: configuration)
@@ -678,10 +794,10 @@ func testRecognizerFixesButtonModeForSessionAndWaitsForMatchingRelease() {
     let changed = recognizer.handle(.move(deltaX: 1, deltaY: 0, time: 1.03))
     let ended = recognizer.handle(.buttonUp(button: .button5, time: 1.04))
 
-    expect(began.commands.first?.mode == .zoom, "押下ボタンのmodeを開始コマンドへ固定する")
+    expect(began.commands.first?.mode == .pinch, "押下ボタンのmodeを開始コマンドへ固定する")
     expect(!unrelatedRelease.shouldSuppressOriginal, "別ボタンの解放は通過させる")
-    expect(changed.commands.first?.mode == .zoom, "セッション中は押下時のmodeを維持する")
-    expect(ended.commands.first?.mode == .zoom, "対応ボタンの終了コマンドにもmodeを維持する")
+    expect(changed.commands.first?.mode == .pinch, "セッション中は押下時のmodeを維持する")
+    expect(ended.commands.first?.mode == .pinch, "対応ボタンの終了コマンドにもmodeを維持する")
     expect(recognizer.isIdle, "対応ボタンの解放でのみセッションを終了する")
 }
 
@@ -702,22 +818,22 @@ func testNoneModeButtonPassesThrough() {
 
 func testNapeGestureSettingsDecodesOldJSONWithDefaultAssociationWindow() {
     let json = """
-    {
-      "gesture" : {
-        "activationButton" : 4,
-        "deadZonePoints" : 8,
-        "directionLockRatio" : 1.35,
-        "dragSensitivity" : 1,
-        "wheelSensitivity" : 1
-      },
-      "requireMatchingTargetDevice" : true,
-      "targetDevices" : [
         {
-          "productContains" : "Nape Pro"
+          "gesture" : {
+            "activationButton" : 4,
+            "deadZonePoints" : 8,
+            "directionLockRatio" : 1.35,
+            "dragSensitivity" : 1,
+            "wheelSensitivity" : 1
+          },
+          "requireMatchingTargetDevice" : true,
+          "targetDevices" : [
+            {
+              "productContains" : "Nape Pro"
+            }
+          ]
         }
-      ]
-    }
-    """
+        """
 
     let settings = try? JSONDecoder().decode(NapeGestureSettings.self, from: Data(json.utf8))
 
@@ -807,7 +923,7 @@ func testSettingsValidatorRejectsInvalidTargetMatcherValues() {
         gesture: .default,
         targetDevices: [
             DeviceMatcher(vendorID: -1),
-            DeviceMatcher()
+            DeviceMatcher(),
         ],
         requireMatchingTargetDevice: true
     )
@@ -873,7 +989,7 @@ func testInputLogAnalyzerSuggestsDeadZone() {
             isContinuous: 1,
             keyCode: 0,
             flags: 0
-        )
+        ),
     ]
 
     let analysis = InputLogAnalyzer.analyze(records)
@@ -894,25 +1010,25 @@ func testInputLogAnalyzerSuggestsDeadZone() {
 
 func testInputLogRecordDecodesLegacyGeneratedField() {
     let json = """
-    {
-      "timestamp": 1,
-      "typeName": "scrollWheel",
-      "typeRaw": 22,
-      "generatedByMacGesture": true,
-      "buttonNumber": 0,
-      "deltaX": 0,
-      "deltaY": 0,
-      "scrollDeltaX": 10,
-      "scrollDeltaY": 0,
-      "pointDeltaX": 10,
-      "pointDeltaY": 0,
-      "scrollPhase": 4,
-      "momentumPhase": 0,
-      "isContinuous": 1,
-      "keyCode": 0,
-      "flags": 0
-    }
-    """
+        {
+          "timestamp": 1,
+          "typeName": "scrollWheel",
+          "typeRaw": 22,
+          "generatedByMacGesture": true,
+          "buttonNumber": 0,
+          "deltaX": 0,
+          "deltaY": 0,
+          "scrollDeltaX": 10,
+          "scrollDeltaY": 0,
+          "pointDeltaX": 10,
+          "pointDeltaY": 0,
+          "scrollPhase": 4,
+          "momentumPhase": 0,
+          "isContinuous": 1,
+          "keyCode": 0,
+          "flags": 0
+        }
+        """
 
     let record = try? JSONDecoder().decode(InputLogRecord.self, from: Data(json.utf8))
     let encoded = record.flatMap { try? JSONEncoder().encode($0) }
@@ -982,16 +1098,20 @@ func testTrackpadDriverEventLogRoundTrips() {
                 integerValue: 2,
                 doubleValue: 2,
                 doubleBitPattern: Double(2).bitPattern
-            )
+            ),
         ],
         serializedEventBase64: serializedEvent.base64EncodedString()
     )
     let encoded = try? JSONEncoder().encode(record)
-    let decoded = encoded.flatMap { try? JSONDecoder().decode(TrackpadDriverEventLog.self, from: $0) }
+    let decoded = encoded.flatMap {
+        try? JSONDecoder().decode(TrackpadDriverEventLog.self, from: $0)
+    }
     let decodedSerializedEvent = decoded?.serializedEventBase64.flatMap { Data(base64Encoded: $0) }
 
     expect(decoded == record, "トラックパッド診断イベントを JSON round-trip する")
-    expect(decoded?.schemaVersion == TrackpadDriverEventLog.currentSchemaVersion, "現行 schemaVersion を保持する")
+    expect(
+        decoded?.schemaVersion == TrackpadDriverEventLog.currentSchemaVersion,
+        "現行 schemaVersion を保持する")
     expect(decoded?.metadata == metadata, "OS・logger・scenario・device・repo metadata を保持する")
     expect(
         decoded?.metadata?.loggerVersion == TrackpadDriverEventLogMetadata.currentLoggerVersion,
@@ -1008,17 +1128,17 @@ func testTrackpadDriverEventLogRoundTrips() {
 
 func testTrackpadDriverEventLogDecodesLegacyRecordWithDefaults() {
     let json = """
-    {
-      "timestamp": 123,
-      "typeRaw": 30,
-      "typeName": "raw-30",
-      "flags": 256,
-      "scrollDeltaY": -3,
-      "rawFields": {
-        "42": { "integerValue": 7 }
-      }
-    }
-    """
+        {
+          "timestamp": 123,
+          "typeRaw": 30,
+          "typeName": "raw-30",
+          "flags": 256,
+          "scrollDeltaY": -3,
+          "rawFields": {
+            "42": { "integerValue": 7 }
+          }
+        }
+        """
 
     let record = try? JSONDecoder().decode(TrackpadDriverEventLog.self, from: Data(json.utf8))
 
@@ -1061,7 +1181,9 @@ func testTrackpadDriverEventLogRawFieldsUseStableNumericOrder() {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys]
     let encoded = try? encoder.encode(record)
-    let decoded = encoded.flatMap { try? JSONDecoder().decode(TrackpadDriverEventLog.self, from: $0) }
+    let decoded = encoded.flatMap {
+        try? JSONDecoder().decode(TrackpadDriverEventLog.self, from: $0)
+    }
     let reencoded = decoded.flatMap { try? encoder.encode($0) }
     let decodedFieldNumbers = decoded?.rawFields.map(\.fieldNumber) ?? []
 
@@ -1069,9 +1191,12 @@ func testTrackpadDriverEventLogRawFieldsUseStableNumericOrder() {
     expect(decodedFieldNumbers == fieldNumbers, "raw fieldをfieldNumberの数値昇順で保持する")
     expect(decoded?.rawField(number: 0)?.integerValue == 0, "integer fieldのzero値を捨てない")
     expect(decoded?.rawField(number: 0)?.doubleValue == 0, "double fieldのzero値を捨てない")
-    expect(decoded?.rawField(number: 0)?.doubleBitPattern == Double(0).bitPattern, "double fieldのzero bit patternを保持する")
     expect(
-        decoded?.metadata?.rawFieldScanPolicy == TrackpadDriverEventLogMetadata.allRawFieldValuesPolicy,
+        decoded?.rawField(number: 0)?.doubleBitPattern == Double(0).bitPattern,
+        "double fieldのzero bit patternを保持する")
+    expect(
+        decoded?.metadata?.rawFieldScanPolicy
+            == TrackpadDriverEventLogMetadata.allRawFieldValuesPolicy,
         "全raw field値をzero込みで保存するpolicyを明示する"
     )
     expect(encoded == reencoded, "ordered raw field arrayを安定して再エンコードする")
@@ -1088,13 +1213,17 @@ func testTrackpadDriverEventLogPreservesNonFiniteNamedDoubleBitPatterns() {
         scrollPointDeltaYBitPattern: Double.infinity.bitPattern
     )
     let encoded = try? JSONEncoder().encode(record)
-    let decoded = encoded.flatMap { try? JSONDecoder().decode(TrackpadDriverEventLog.self, from: $0) }
+    let decoded = encoded.flatMap {
+        try? JSONDecoder().decode(TrackpadDriverEventLog.self, from: $0)
+    }
 
     expect(encoded != nil, "非有限named doubleでもJSON encodeを失敗させない")
     expect(decoded?.scrollFixedDeltaX == nil, "NaNの有限値を捏造しない")
     expect(decoded?.scrollFixedDeltaXBitPattern == Double.nan.bitPattern, "NaNのbit patternを保持する")
     expect(decoded?.scrollPointDeltaY == nil, "infinityの有限値を捏造しない")
-    expect(decoded?.scrollPointDeltaYBitPattern == Double.infinity.bitPattern, "infinityのbit patternを保持する")
+    expect(
+        decoded?.scrollPointDeltaYBitPattern == Double.infinity.bitPattern,
+        "infinityのbit patternを保持する")
 }
 
 func testTrackpadDriverEventLogJSONLinesPreserveCaptureOrder() {
@@ -1144,9 +1273,11 @@ func testTrackpadDriverEventLogJSONLinesPreserveCaptureOrder() {
 }
 
 func monotonicTimestamp(_ nanosecondsSinceStartup: UInt64) -> MonotonicEventTimestamp {
-    guard let timestamp = MonotonicEventClock.timestamp(
-        nanosecondsSinceStartup: nanosecondsSinceStartup
-    ) else {
+    guard
+        let timestamp = MonotonicEventClock.timestamp(
+            nanosecondsSinceStartup: nanosecondsSinceStartup
+        )
+    else {
         fatalError("test timestampが現在bootのuptimeを超えています。")
     }
     return timestamp
@@ -1271,7 +1402,8 @@ func testTrackpadOutputSessionSequenceIsUniqueAcrossConcurrentCallers() {
     let sequence = TrackpadOutputSessionSequence(startingAt: 1)
     let resultLock = NSLock()
     let group = DispatchGroup()
-    let queue = DispatchQueue(label: "trackpad-output-session-sequence-test", attributes: .concurrent)
+    let queue = DispatchQueue(
+        label: "trackpad-output-session-sequence-test", attributes: .concurrent)
     var rawValues: [UInt64] = []
 
     for _ in 0..<1_000 {
@@ -1398,8 +1530,9 @@ func testTrackpadOutputSessionPreservesGestureProgressAndDecision() {
     expect(terminal?.kind == .inputEnded, "gesture input endedをterminalとして保持する")
     expect(terminal?.decision == .commit, "gestureのcommit判断を保持する")
     expect(terminal?.finalPayload?.family == .navigationSwipe, "gesture terminalに最終payloadを保持する")
-    if case let .input(endedFrame) = ended,
-       case let .navigationSwipe(direction, progress, velocity) = endedFrame.payload {
+    if case .input(let endedFrame) = ended,
+        case .navigationSwipe(let direction, let progress, let velocity) = endedFrame.payload
+    {
         expect(direction == .left, "navigation swipeの方向を保持する")
         expectApproximatelyEqual(progress, 0.9, "終了時progressを保持する")
         expectApproximatelyEqual(velocity, 2.5, "終了時velocityを保持する")
@@ -1408,7 +1541,9 @@ func testTrackpadOutputSessionPreservesGestureProgressAndDecision() {
     }
 
     let encoded = try? JSONEncoder().encode(ended)
-    let decoded = encoded.flatMap { try? JSONDecoder().decode(TrackpadOutputSessionEvent.self, from: $0) }
+    let decoded = encoded.flatMap {
+        try? JSONDecoder().decode(TrackpadOutputSessionEvent.self, from: $0)
+    }
     expect(decoded == ended, "session eventをJSON round-tripする")
 }
 
@@ -1435,7 +1570,7 @@ func testTrackpadOutputSessionSupportsDockSwipeAndMagnification() {
                 terminalDecision: .commit,
                 payload: .dockSwipe(axis: .horizontal, progress: 1, velocity: 2)
             )
-        )
+        ),
     ]
     for event in dockEvents {
         do {
@@ -1480,7 +1615,7 @@ func testTrackpadOutputSessionSupportsDockSwipeAndMagnification() {
                 terminalDecision: .cancel,
                 payload: .magnification(progress: 0.5, scaleDelta: 0, velocity: 0.2)
             )
-        )
+        ),
     ]
     for event in magnificationEvents {
         do {
@@ -1489,7 +1624,9 @@ func testTrackpadOutputSessionSupportsDockSwipeAndMagnification() {
             expect(false, "magnificationの正常sessionを受理する: \(error)")
         }
     }
-    expect((try? magnificationMachine.requireTerminal())?.decision == .cancel, "magnificationのcancelを保持する")
+    expect(
+        (try? magnificationMachine.requireTerminal())?.decision == .cancel,
+        "magnificationのcancelを保持する")
 }
 
 func testTrackpadOutputSessionEventCodableCoversEveryEventKind() {
@@ -1514,12 +1651,14 @@ func testTrackpadOutputSessionEventCodableCoversEveryEventKind() {
             family: .scroll,
             reason: .runtimeStop,
             payload: .scroll(deltaX: 0, deltaY: 0, velocityX: 0, velocityY: 0)
-        )
+        ),
     ]
 
     for event in events {
         let encoded = try? JSONEncoder().encode(event)
-        let decoded = encoded.flatMap { try? JSONDecoder().decode(TrackpadOutputSessionEvent.self, from: $0) }
+        let decoded = encoded.flatMap {
+            try? JSONDecoder().decode(TrackpadOutputSessionEvent.self, from: $0)
+        }
         expect(decoded == event, "input / momentum / cancellationの各event kindをJSON round-tripする")
     }
 }
@@ -1586,10 +1725,11 @@ func testTrackpadOutputSessionRejectsInvalidOrderAndDoubleTerminalAtomically() {
         receivedError = error
     } catch {}
     expect(
-        receivedError == .timestampRegression(
-            previous: monotonicTimestamp(300),
-            actual: monotonicTimestamp(299)
-        ),
+        receivedError
+            == .timestampRegression(
+                previous: monotonicTimestamp(300),
+                actual: monotonicTimestamp(299)
+            ),
         "session内の時刻逆行を拒否する"
     )
     expect(machine.lastCaptureOrder == 0, "時刻違反でcapture orderを消費しない")
@@ -1652,7 +1792,9 @@ func testTrackpadOutputSessionRejectsStuckAndInvalidFamilyMetadata() {
     } catch let error as TrackpadOutputSessionError {
         receivedError = error
     } catch {}
-    expect(receivedError == .sessionIncomplete(.awaitingMomentum), "momentum未開始のstuck sessionを完了扱いにしない")
+    expect(
+        receivedError == .sessionIncomplete(.awaitingMomentum), "momentum未開始のstuck sessionを完了扱いにしない"
+    )
 
     receivedError = nil
     do {
@@ -1700,7 +1842,10 @@ func testTrackpadOutputSessionRejectsStuckAndInvalidFamilyMetadata() {
     } catch let error as TrackpadOutputSessionError {
         receivedError = error
     } catch {}
-    expect(receivedError == .invalidInputMetadata(phase: .ended), "gesture terminalのcommit / cancel欠落を拒否する")
+    expect(
+        receivedError == .invalidInputMetadata(phase: .ended),
+        "gesture terminalのcommit / cancel欠落を拒否する"
+    )
     expect(dockMachine.state == .inputActive, "metadata違反でgesture stateをterminalにしない")
 
     let nonFinite = TrackpadOutputSessionEvent.input(
@@ -1784,10 +1929,13 @@ func testTrackpadOutputSessionCancelsEveryNonterminalState() {
     try? inputActive.accept(dockCancellation)
     let dockTerminal = try? inputActive.requireTerminal()
     expect(dockTerminal?.cancellationReason == .killSwitch, "input activeをkill switchで閉じる")
-    expect(dockTerminal?.finalPayload?.family == .dockSwipe, "DockSwipe cancelにaxis / progress / velocity payloadを保持する")
+    expect(
+        dockTerminal?.finalPayload?.family == .dockSwipe,
+        "DockSwipe cancelにaxis / progress / velocity payloadを保持する")
 
     let awaitingMomentumID = TrackpadOutputSessionID(rawValue: 82)
-    var awaitingMomentum = TrackpadOutputSessionMachine(sessionID: awaitingMomentumID, family: .scroll)
+    var awaitingMomentum = TrackpadOutputSessionMachine(
+        sessionID: awaitingMomentumID, family: .scroll)
     try? awaitingMomentum.accept(
         makeTrackpadScrollInputEvent(
             sessionID: awaitingMomentumID,
@@ -1817,7 +1965,9 @@ func testTrackpadOutputSessionCancelsEveryNonterminalState() {
     )
     let awaitingMomentumTerminal = try? awaitingMomentum.requireTerminal()
     expect(awaitingMomentumTerminal?.cancellationReason == .systemSleep, "momentum待ちをsleepで閉じる")
-    expect(awaitingMomentumTerminal?.finalPayload?.family == .scroll, "momentum待ちcancelに最終scroll payloadを保持する")
+    expect(
+        awaitingMomentumTerminal?.finalPayload?.family == .scroll,
+        "momentum待ちcancelに最終scroll payloadを保持する")
 
     let momentumActiveID = TrackpadOutputSessionID(rawValue: 83)
     var momentumActive = TrackpadOutputSessionMachine(sessionID: momentumActiveID, family: .scroll)
@@ -1856,10 +2006,15 @@ func testTrackpadOutputSessionCancelsEveryNonterminalState() {
     )
     try? momentumActive.accept(cancellation)
     let momentumTerminal = try? momentumActive.requireTerminal()
-    expect(momentumTerminal?.cancellationReason == .outputFailure, "momentum activeをoutput failureで閉じる")
-    expect(momentumTerminal?.finalPayload?.family == .scroll, "momentum cancelに最終scroll payloadを保持する")
+    expect(
+        momentumTerminal?.cancellationReason == .outputFailure, "momentum activeをoutput failureで閉じる"
+    )
+    expect(
+        momentumTerminal?.finalPayload?.family == .scroll, "momentum cancelに最終scroll payloadを保持する")
     let encoded = try? JSONEncoder().encode(cancellation)
-    let decoded = encoded.flatMap { try? JSONDecoder().decode(TrackpadOutputSessionEvent.self, from: $0) }
+    let decoded = encoded.flatMap {
+        try? JSONDecoder().decode(TrackpadOutputSessionEvent.self, from: $0)
+    }
     expect(decoded == cancellation, "session cancellationをJSON round-tripする")
     let dockEncoded = try? JSONEncoder().encode(dockCancellation)
     expect(encoded != dockEncoded, "familyが異なるcancellationを同一表現にしない")
@@ -1932,8 +2087,8 @@ func testTrackpadOutputSessionRejectsSessionAndFamilyMixing() {
 
 func testTrackpadOutputSessionRejectsFutureBootTimeAndPreterminalOrderExhaustion() {
     let epochJSON = """
-    {"nanosecondsSinceStartup":1700000000000000000}
-    """
+        {"nanosecondsSinceStartup":1700000000000000000}
+        """
     let decodedEpoch = try? JSONDecoder().decode(
         MonotonicEventTimestamp.self,
         from: Data(epochJSON.utf8)
@@ -2002,7 +2157,9 @@ func testTrackpadOutputSessionRejectsFutureBootTimeAndPreterminalOrderExhaustion
             continuation: .complete
         )
     )
-    expect((try? boundedMachine.requireTerminal())?.kind == .inputEnded, "最終orderをterminal eventには使用できる")
+    expect(
+        (try? boundedMachine.requireTerminal())?.kind == .inputEnded,
+        "最終orderをterminal eventには使用できる")
 }
 
 func testMomentumTerminatesOnBackwardMonotonicTime() {
@@ -2228,7 +2385,7 @@ func testInputLogAnalyzerCountsKeyEvents() {
             isContinuous: 0,
             keyCode: 126,
             flags: 262144
-        )
+        ),
     ]
 
     let analysis = InputLogAnalyzer.analyze(candidate)
@@ -2239,7 +2396,9 @@ func testInputLogAnalyzerCountsKeyEvents() {
     expect(analysis.unmarkedKeyEvents == 0, "未生成キーイベント数を数える")
     expect(analysis.keyCounts["keyDown:126"] == 1, "keyDown と keyCode を集計する")
     expect(analysis.keyCounts["keyUp:126"] == 1, "keyUp と keyCode を集計する")
-    expect(analysis.keySignatureCounts["generated:keyDown:126:262144"] == 1, "生成 marker と flags を含むキー署名を集計する")
+    expect(
+        analysis.keySignatureCounts["generated:keyDown:126:262144"] == 1,
+        "生成 marker と flags を含むキー署名を集計する")
     expect(comparison.keyEventDelta == 2, "キーイベント数差を出す")
     expect(comparison.keyDelta["keyDown:126"] == 1, "keyDown の差を出す")
     expect(comparison.findings.contains { $0.contains("キーイベント") }, "キーイベント差を所見に出す")
@@ -2260,7 +2419,7 @@ func testInputLogAnalyzerDoesNotTreatUnmarkedKeysAsPassthroughInput() {
             generatedByNapeGesture: false,
             keyCode: 5,
             flags: 1
-        )
+        ),
     ]
 
     let analysis = InputLogAnalyzer.analyze(records)
@@ -2277,7 +2436,7 @@ func testInputLogAnalyzerCountsNormalClickDragAndWheelSeparately() {
         makeInputLogRecord(timestamp: 3, typeName: "leftMouseDown"),
         makeInputLogRecord(timestamp: 4, typeName: "leftMouseUp"),
         makeInputLogRecord(timestamp: 5, typeName: "leftMouseDragged", deltaX: 8),
-        makeInputLogRecord(timestamp: 6, typeName: "scrollWheel", scrollDeltaY: -20)
+        makeInputLogRecord(timestamp: 6, typeName: "scrollWheel", scrollDeltaY: -20),
     ]
 
     let analysis = InputLogAnalyzer.analyze(records)
@@ -2299,7 +2458,7 @@ func testLogDerivedTuningAnalyzerDerivesAccelerationAndMomentum() {
         (1_016_000_000, 2),
         (1_032_000_000, 4),
         (1_048_000_000, 6),
-        (1_064_000_000, 8)
+        (1_064_000_000, 8),
     ]
     let moveRecords = moveSamples.map { timestamp, deltaX in
         makeInputLogRecord(
@@ -2308,24 +2467,24 @@ func testLogDerivedTuningAnalyzerDerivesAccelerationAndMomentum() {
             deltaX: deltaX
         )
     }
-    let scrollSamples: [
-        (
+    let scrollSamples:
+        [(
             timestamp: UInt64,
             pointDeltaY: Double,
             scrollDeltaY: Int64,
             scrollPhase: Int64,
             momentumPhase: Int64
-        )
-    ] = [
-        (2_000_000_000, -24.0, -240, 1, 0),
-        (2_016_000_000, -20.0, -200, 2, 0),
-        (2_032_000_000, -16.0, -160, 2, 0),
-        (2_048_000_000, -12.0, -120, 0, 1),
-        (2_064_000_000, -11.52, -115, 0, 2),
-        (2_080_000_000, -11.06, -111, 0, 2),
-        (2_096_000_000, -10.62, -106, 0, 4)
-    ]
-    let scrollRecords = scrollSamples.map { timestamp, pointDeltaY, scrollDeltaY, scrollPhase, momentumPhase in
+        )] = [
+            (2_000_000_000, -24.0, -240, 1, 0),
+            (2_016_000_000, -20.0, -200, 2, 0),
+            (2_032_000_000, -16.0, -160, 2, 0),
+            (2_048_000_000, -12.0, -120, 0, 1),
+            (2_064_000_000, -11.52, -115, 0, 2),
+            (2_080_000_000, -11.06, -111, 0, 2),
+            (2_096_000_000, -10.62, -106, 0, 4),
+        ]
+    let scrollRecords = scrollSamples.map {
+        timestamp, pointDeltaY, scrollDeltaY, scrollPhase, momentumPhase in
         makeInputLogRecord(
             timestamp: timestamp,
             typeName: "scrollWheel",
@@ -2342,10 +2501,14 @@ func testLogDerivedTuningAnalyzerDerivesAccelerationAndMomentum() {
     expect(report.sourceEventCount == 12, "元ログ件数を保持する")
     expectApproximatelyEqual(report.suggestedDeadZonePoints, 12, "移動量分布から deadZone 候補を出す")
     expect(report.moveVelocitySamples.count == 4, "移動速度サンプルを正の時刻差分から作る")
-    expectApproximatelyEqual(report.suggestedAcceleration?.thresholdVelocity, 375, "移動速度 p75 を加速度しきい値候補にする")
+    expectApproximatelyEqual(
+        report.suggestedAcceleration?.thresholdVelocity, 375, "移動速度 p75 を加速度しきい値候補にする")
     expect(report.momentumVelocitySamples.count == 3, "慣性速度サンプルを momentumPhase 区間から作る")
-    expectApproximatelyEqual(report.suggestedMomentum?.minimumStartVelocity, 1_250, "active scroll と momentum の速度分布から慣性開始速度を出す")
-    expectApproximatelyEqual(report.suggestedMomentum?.frameInterval, 0.016, "スクロール間隔 p50 を frameInterval 候補にする")
+    expectApproximatelyEqual(
+        report.suggestedMomentum?.minimumStartVelocity, 1_250,
+        "active scroll と momentum の速度分布から慣性開始速度を出す")
+    expectApproximatelyEqual(
+        report.suggestedMomentum?.frameInterval, 0.016, "スクロール間隔 p50 を frameInterval 候補にする")
     expect((report.suggestedMomentum?.decayPerSecond ?? 0) > 0.05, "減衰率候補は 0 より大きい")
     expect((report.suggestedMomentum?.decayPerSecond ?? 1) < 0.10, "減衰率候補は合成ログの減衰に近い")
     expect(report.warnings.isEmpty, "十分なサンプルがある場合は未導出警告を出さない")
@@ -2357,10 +2520,13 @@ func testLogDerivedTuningAnalyzerReportsMissingSamples() {
 
     expect(report.suggestedAcceleration == nil, "移動速度が足りない場合は加速度候補を出さない")
     expect(report.suggestedMomentum == nil, "慣性速度が足りない場合は慣性候補を出さない")
-    expect(report.warnings.contains { $0.contains("acceleration.thresholdVelocity") }, "加速度未導出理由を残す")
+    expect(
+        report.warnings.contains { $0.contains("acceleration.thresholdVelocity") }, "加速度未導出理由を残す")
     expect(report.warnings.contains { $0.contains("momentum") }, "慣性未導出理由を残す")
     expect(!report.hasCompleteTuningEvidence, "未導出があるログは完了証跡として扱わない")
-    expect(report.completeTuningEvidenceFailures.contains { $0.contains("入力イベント") }, "完了証跡に足りない理由を列挙する")
+    expect(
+        report.completeTuningEvidenceFailures.contains { $0.contains("入力イベント") }, "完了証跡に足りない理由を列挙する"
+    )
 }
 
 func testLogDerivedTuningAnalyzerRejectsSyntheticTimestampAsCompleteEvidence() {
@@ -2368,11 +2534,21 @@ func testLogDerivedTuningAnalyzerRejectsSyntheticTimestampAsCompleteEvidence() {
         makeInputLogRecord(timestamp: 1, typeName: "mouseMoved", deltaX: 1),
         makeInputLogRecord(timestamp: 2, typeName: "mouseMoved", deltaX: 2),
         makeInputLogRecord(timestamp: 3, typeName: "mouseMoved", deltaX: 3),
-        makeInputLogRecord(timestamp: 10, typeName: "scrollWheel", scrollDeltaY: -30, pointDeltaY: -30, scrollPhase: 1),
-        makeInputLogRecord(timestamp: 11, typeName: "scrollWheel", scrollDeltaY: -24, pointDeltaY: -24, scrollPhase: 2),
-        makeInputLogRecord(timestamp: 12, typeName: "scrollWheel", scrollDeltaY: -18, pointDeltaY: -18, momentumPhase: 1),
-        makeInputLogRecord(timestamp: 13, typeName: "scrollWheel", scrollDeltaY: -12, pointDeltaY: -12, momentumPhase: 2),
-        makeInputLogRecord(timestamp: 14, typeName: "scrollWheel", scrollDeltaY: -8, pointDeltaY: -8, momentumPhase: 2)
+        makeInputLogRecord(
+            timestamp: 10, typeName: "scrollWheel", scrollDeltaY: -30, pointDeltaY: -30,
+            scrollPhase: 1),
+        makeInputLogRecord(
+            timestamp: 11, typeName: "scrollWheel", scrollDeltaY: -24, pointDeltaY: -24,
+            scrollPhase: 2),
+        makeInputLogRecord(
+            timestamp: 12, typeName: "scrollWheel", scrollDeltaY: -18, pointDeltaY: -18,
+            momentumPhase: 1),
+        makeInputLogRecord(
+            timestamp: 13, typeName: "scrollWheel", scrollDeltaY: -12, pointDeltaY: -12,
+            momentumPhase: 2),
+        makeInputLogRecord(
+            timestamp: 14, typeName: "scrollWheel", scrollDeltaY: -8, pointDeltaY: -8,
+            momentumPhase: 2),
     ]
 
     let report = LogDerivedTuningAnalyzer.derive(from: records)
@@ -2429,7 +2605,7 @@ func testHIDInputLogAnalyzerGroupsByDeviceAndUsage() {
             logicalMax: 1,
             physicalMin: 0,
             physicalMax: 1
-        )
+        ),
     ]
 
     let analysis = HIDInputLogAnalyzer.analyze(records)
@@ -2449,13 +2625,14 @@ func testInputAssociationAnalyzerMeasuresWindowDistribution() {
     let hidRecords = [
         makeHIDRecord(time: 2.0),
         makeHIDRecord(time: 2.2),
-        makeHIDRecord(time: 3.0, usagePage: 1, usage: 56)
+        makeHIDRecord(time: 3.0, usagePage: 1, usage: 56),
     ]
     let eventRecords = [
         makeInputLogRecord(timestamp: 1_500_000_000, typeName: "mouseMoved"),
         makeInputLogRecord(timestamp: 2_050_000_000, typeName: "mouseMoved"),
         makeInputLogRecord(timestamp: 2_350_000_000, typeName: "scrollWheel"),
-        makeInputLogRecord(timestamp: 2_060_000_000, typeName: "mouseMoved", generatedByNapeGesture: true)
+        makeInputLogRecord(
+            timestamp: 2_060_000_000, typeName: "mouseMoved", generatedByNapeGesture: true),
     ]
 
     let analysis = InputAssociationAnalyzer.analyze(
@@ -2480,7 +2657,9 @@ func testInputAssociationAnalyzerMeasuresWindowDistribution() {
     expectApproximatelyEqual(analysis.maximumTimeDifferenceSeconds, 0.65, "最大時刻差秒を出す")
     expectApproximatelyEqual(analysis.p95TimeDifferenceSeconds, 0.65, "p95 時刻差秒を出す")
     expectApproximatelyEqual(analysis.p99TimeDifferenceSeconds, 0.65, "p99 時刻差秒を出す")
-    expect(analysis.suggestedAssociationWindowSeconds >= analysis.p99TimeDifferenceSeconds, "推奨 associationWindow は p99 以上にする")
+    expect(
+        analysis.suggestedAssociationWindowSeconds >= analysis.p99TimeDifferenceSeconds,
+        "推奨 associationWindow は p99 以上にする")
 }
 
 func testInputAssociationAnalyzerCountsUnmatchedWhenHIDLogIsEmpty() {
@@ -2524,7 +2703,8 @@ func testInputAssociationAnalyzerKeepsZeroValueHIDReleaseEvents() {
     expect(analysis.incompatibleHIDCandidateEventCount == 0, "互換する release HID を非互換として扱わない")
     expect(analysis.withinWindowCount == 1, "release 由来のイベントタップ入力も associationWindow 内判定できる")
     expect(analysis.hasValidAssociationWindowEvidence, "候補なしも window 外もない解析対象は有効な紐づけ証跡として扱う")
-    expectApproximatelyEqual(analysis.matches.first?.timeDifferenceSeconds, 0.02, "release の時刻差秒を算出する")
+    expectApproximatelyEqual(
+        analysis.matches.first?.timeDifferenceSeconds, 0.02, "release の時刻差秒を算出する")
 }
 
 func testInputAssociationAnalyzerUsesNearestHIDByAbsoluteTimeDifference() {
@@ -2544,7 +2724,8 @@ func testInputAssociationAnalyzerUsesNearestHIDByAbsoluteTimeDifference() {
 
     expect(analysis.hidCandidateEventCount == 1, "イベント時刻より後の近い HID も時刻差判定に使う")
     expect(analysis.withinWindowCount == 1, "前後どちらの HID でも associationWindow 内を判定する")
-    expectApproximatelyEqual(analysis.matches.first?.timeDifferenceSeconds, 0.02, "HID とイベントタップの絶対時刻差を算出する")
+    expectApproximatelyEqual(
+        analysis.matches.first?.timeDifferenceSeconds, 0.02, "HID とイベントタップの絶対時刻差を算出する")
 }
 
 func testInputAssociationAnalyzerRejectsIncompatibleHIDUsage() {
@@ -2563,7 +2744,9 @@ func testInputAssociationAnalyzerRejectsIncompatibleHIDUsage() {
     expect(analysis.missingHIDCandidateEventCount == 1, "互換 HID がなければ候補なしとして数える")
     expect(analysis.incompatibleHIDCandidateEventCount == 1, "近傍 HID が非互換なら非互換数へ入れる")
     expect(analysis.matches.first?.nearestIncompatibleHID?.usage == 48, "非互換の近傍 HID を記録する")
-    expect(analysis.matches.first?.expectedHIDUsages.contains("GenericDesktop:Wheel") == true, "期待 HID usage を matches に残す")
+    expect(
+        analysis.matches.first?.expectedHIDUsages.contains("GenericDesktop:Wheel") == true,
+        "期待 HID usage を matches に残す")
     expect(!analysis.hasValidAssociationWindowEvidence, "非互換 HID 近傍は有効な紐づけ証跡として扱わない")
 }
 
@@ -2581,7 +2764,9 @@ func testInputAssociationAnalyzerRejectsRuntimeUnsupportedACPan() {
 
     expect(analysis.hidCandidateEventCount == 0, "runtime が記録しない AC Pan をスクロール候補として採用しない")
     expect(analysis.incompatibleHIDCandidateEventCount == 1, "AC Pan は非互換 HID 近傍として数える")
-    expect(analysis.matches.first?.expectedHIDUsages == ["GenericDesktop:Wheel"], "scrollWheel の期待 usage は runtime と同じ GenericDesktop:Wheel に限定する")
+    expect(
+        analysis.matches.first?.expectedHIDUsages == ["GenericDesktop:Wheel"],
+        "scrollWheel の期待 usage は runtime と同じ GenericDesktop:Wheel に限定する")
     expect(!analysis.hasValidAssociationWindowEvidence, "AC Pan だけのログは有効な紐づけ証跡として扱わない")
 }
 
@@ -2591,7 +2776,8 @@ func testInputAssociationAnalyzerRejectsButtonUsageMismatch() {
             makeHIDRecord(time: 2.0, usagePage: 9, usage: 4)
         ],
         eventTapRecords: [
-            makeInputLogRecord(timestamp: 2_010_000_000, typeName: "otherMouseDown", buttonNumber: 4)
+            makeInputLogRecord(
+                timestamp: 2_010_000_000, typeName: "otherMouseDown", buttonNumber: 4)
         ],
         associationWindowSeconds: 0.12,
         targetStableID: sampleDeviceIdentity().stableID
@@ -2599,7 +2785,9 @@ func testInputAssociationAnalyzerRejectsButtonUsageMismatch() {
 
     expect(analysis.hidCandidateEventCount == 0, "異なる HID button usage をボタン候補として採用しない")
     expect(analysis.incompatibleHIDCandidateEventCount == 1, "ボタン usage 不一致を非互換 HID 近傍として数える")
-    expect(analysis.matches.first?.expectedHIDUsages == ["Button:5"], "buttonNumber に対応する HID usage だけを期待値に残す")
+    expect(
+        analysis.matches.first?.expectedHIDUsages == ["Button:5"],
+        "buttonNumber に対応する HID usage だけを期待値に残す")
     expect(!analysis.hasValidAssociationWindowEvidence, "ボタン usage 不一致は有効な紐づけ証跡として扱わない")
 }
 
@@ -2607,19 +2795,23 @@ func testInputAssociationAnalyzerAcceptsCanonicalButtonUsageMapping() {
     let analysis = InputAssociationAnalyzer.analyze(
         hidRecords: [
             makeHIDRecord(time: 2.0, usagePage: 9, usage: 1),
-            makeHIDRecord(time: 2.1, usagePage: 9, usage: 2)
+            makeHIDRecord(time: 2.1, usagePage: 9, usage: 2),
         ],
         eventTapRecords: [
-            makeInputLogRecord(timestamp: 2_010_000_000, typeName: "leftMouseDown", buttonNumber: 0),
-            makeInputLogRecord(timestamp: 2_110_000_000, typeName: "rightMouseDown", buttonNumber: 1)
+            makeInputLogRecord(
+                timestamp: 2_010_000_000, typeName: "leftMouseDown", buttonNumber: 0),
+            makeInputLogRecord(
+                timestamp: 2_110_000_000, typeName: "rightMouseDown", buttonNumber: 1),
         ],
         associationWindowSeconds: 0.12,
         targetStableID: sampleDeviceIdentity().stableID
     )
 
-    expect(analysis.hidCandidateEventCount == 2, "CGEvent buttonNumber + 1 の HID Button usage を採用する")
+    expect(
+        analysis.hidCandidateEventCount == 2, "CGEvent buttonNumber + 1 の HID Button usage を採用する")
     expect(analysis.missingHIDCandidateEventCount == 0, "canonical な button usage を候補なしにしない")
-    expect(analysis.hasValidAssociationWindowEvidence, "対象デバイスの canonical な button usage は有効な証跡として扱う")
+    expect(
+        analysis.hasValidAssociationWindowEvidence, "対象デバイスの canonical な button usage は有効な証跡として扱う")
 }
 
 func testInputAssociationAnalyzerRejectsSingleNonTargetHIDDevice() {
@@ -2637,7 +2829,9 @@ func testInputAssociationAnalyzerRejectsSingleNonTargetHIDDevice() {
     expect(analysis.hidCandidateEventCount == 0, "対象外デバイスだけなら候補として採用しない")
     expect(analysis.missingHIDCandidateEventCount == 1, "対象デバイスの互換 HID がなければ候補なしとして数える")
     expect(analysis.targetHIDDeviceMismatchEventCount == 1, "対象外の互換 HID 近傍を mismatch として数える")
-    expect(analysis.matches.first?.nearestTargetMismatchHID?.device.stableID == secondaryDeviceIdentity().stableID, "対象外の近傍 HID を matches に残す")
+    expect(
+        analysis.matches.first?.nearestTargetMismatchHID?.device.stableID
+            == secondaryDeviceIdentity().stableID, "対象外の近傍 HID を matches に残す")
     expect(!analysis.hasValidAssociationWindowEvidence, "対象外デバイス単体のログは有効な紐づけ証跡として扱わない")
 }
 
@@ -2645,11 +2839,11 @@ func testInputAssociationAnalyzerRejectsCloserNonTargetHIDDevice() {
     let analysis = InputAssociationAnalyzer.analyze(
         hidRecords: [
             makeHIDRecord(time: 2.0, device: sampleDeviceIdentity(), usagePage: 1, usage: 48),
-            makeHIDRecord(time: 2.1, device: secondaryDeviceIdentity(), usagePage: 1, usage: 48)
+            makeHIDRecord(time: 2.1, device: secondaryDeviceIdentity(), usagePage: 1, usage: 48),
         ],
         eventTapRecords: [
             makeInputLogRecord(timestamp: 2_010_000_000, typeName: "mouseMoved"),
-            makeInputLogRecord(timestamp: 2_110_000_000, typeName: "mouseMoved")
+            makeInputLogRecord(timestamp: 2_110_000_000, typeName: "mouseMoved"),
         ],
         associationWindowSeconds: 0.12,
         targetStableID: sampleDeviceIdentity().stableID
@@ -2688,7 +2882,8 @@ func testScrollGenerationPlannerAutoPhases() {
         startTime: 10
     )
 
-    expect(commands.map(\.phase) == [.began, .changed, .ended], "複数ステップでは began/changed/ended を生成する")
+    expect(
+        commands.map(\.phase) == [.began, .changed, .ended], "複数ステップでは began/changed/ended を生成する")
     expect(commands.map(\.deltaY) == [-30, -30, -30], "総量をステップ数で分割する")
     expect(abs((commands.last?.timestamp ?? 0) - 10.02) < 0.000001, "interval に従って timestamp を進める")
 }
@@ -2748,15 +2943,18 @@ func testScrollEventPhaseEncoderSeparatesScrollAndMomentumPhases() {
     )
 
     expect(
-        ScrollEventPhaseEncoder.encode(command: normalEnded) == ScrollEventPhaseEncoding(scrollPhase: .ended, momentumPhase: nil),
+        ScrollEventPhaseEncoder.encode(command: normalEnded)
+            == ScrollEventPhaseEncoding(scrollPhase: .ended, momentumPhase: nil),
         "通常スクロールの ended は scrollPhase だけに出す"
     )
     expect(
-        ScrollEventPhaseEncoder.encode(command: momentumChanged) == ScrollEventPhaseEncoding(scrollPhase: nil, momentumPhase: .changed),
+        ScrollEventPhaseEncoder.encode(command: momentumChanged)
+            == ScrollEventPhaseEncoding(scrollPhase: nil, momentumPhase: .changed),
         "慣性中は momentumPhase changed として出す"
     )
     expect(
-        ScrollEventPhaseEncoder.encode(command: momentumEnded) == ScrollEventPhaseEncoding(scrollPhase: nil, momentumPhase: .ended),
+        ScrollEventPhaseEncoder.encode(command: momentumEnded)
+            == ScrollEventPhaseEncoding(scrollPhase: nil, momentumPhase: .ended),
         "慣性終了は momentumPhase ended として出す"
     )
 }
@@ -2801,7 +2999,7 @@ func testTargetDeviceGateUsesAssociationWindowFromSettings() {
         gesture: GestureConfiguration(
             button3Mode: .none,
             button4Mode: .none,
-            button5Mode: .zoom
+            button5Mode: .pinch
         ),
         targetDeviceAssociation: TargetDeviceAssociationConfiguration(associationWindow: 0.04),
         targetDevices: [DeviceMatcher(productContains: "Nape Pro")],
@@ -2834,18 +3032,13 @@ func testTargetDeviceGatePassesThroughNonTargetClickDragAndWheel() {
     gate.record(.pointer(deltaX: 1, deltaY: 0, time: 2))
 
     expect(!gate.shouldHandle(.buttonDown(button: .left, time: 2.10)), "紐づけ秒を超えた対象外クリック押下は処理しない")
-    expect(!gate.shouldHandle(.buttonDown(button: .button4, time: 2.10)), "紐づけ秒を超えた対象外ジェスチャーボタン押下は処理しない")
-    expect(!gate.shouldHandle(.buttonUp(button: .button4, time: 2.10)), "紐づけ秒を超えた対象外ジェスチャーボタン解放は処理しない")
+    expect(
+        !gate.shouldHandle(.buttonDown(button: .button4, time: 2.10)),
+        "紐づけ秒を超えた対象外ジェスチャーボタン押下は処理しない")
+    expect(
+        !gate.shouldHandle(.buttonUp(button: .button4, time: 2.10)), "紐づけ秒を超えた対象外ジェスチャーボタン解放は処理しない")
     expect(!gate.shouldHandle(.move(deltaX: 8, deltaY: 1, time: 2.11)), "紐づけ秒を超えた対象外ドラッグは処理しない")
     expect(!gate.shouldHandle(.wheel(deltaX: 0, deltaY: -6, time: 2.12)), "紐づけ秒を超えた対象外ホイールは処理しない")
-}
-
-func testGestureActionMomentumSupport() {
-    expect(GestureAction.smoothScroll.supportsMomentum, "smoothScroll は慣性を持てる")
-    expect(GestureAction.horizontalScroll.supportsMomentum, "horizontalScroll は慣性を持てる")
-    expect(!GestureAction.spaceLeft.supportsMomentum, "spaceLeft はDockSwipe familyなのでscroll momentumを使わない")
-    expect(!GestureAction.missionControl.supportsMomentum, "Mission Control は離散アクションなので慣性を持たない")
-    expect(!GestureAction.pageBack.supportsMomentum, "ページ戻るは離散アクションなので慣性を持たない")
 }
 
 func testSettingsUIFieldCatalogCoversEditableSettings() {
@@ -2879,7 +3072,7 @@ func testSettingsUIFieldCatalogCoversEditableSettings() {
         "targetDevices[0].transportContains",
         "targetDevices[0].primaryUsagePage",
         "targetDevices[0].primaryUsage",
-        "requireMatchingTargetDevice"
+        "requireMatchingTargetDevice",
     ]
 
     expect(descriptorFields == SettingsUIField.allCases, "設定UIフィールド catalog は全ケースを順序通り公開する")
@@ -2897,7 +3090,8 @@ func testSettingsUIFieldCatalogCoversEditableSettings() {
 }
 
 func testSettingsUIFieldCatalogKindsAndSections() {
-    let descriptorsByField = Dictionary(uniqueKeysWithValues: SettingsUIField.descriptors.map { ($0.field, $0) })
+    let descriptorsByField = Dictionary(
+        uniqueKeysWithValues: SettingsUIField.descriptors.map { ($0.field, $0) })
     let numberFields: Set<SettingsUIField> = [
         .targetDeviceAssociationWindow,
         .deadZonePoints,
@@ -2915,36 +3109,48 @@ func testSettingsUIFieldCatalogKindsAndSections() {
         .targetVendorID,
         .targetProductID,
         .targetUsagePage,
-        .targetUsage
+        .targetUsage,
     ]
     let textFields: Set<SettingsUIField> = [
         .targetManufacturerContains,
         .targetProductContains,
-        .targetTransportContains
+        .targetTransportContains,
     ]
     let checkboxFields: Set<SettingsUIField> = [
         .accelerationEnabled,
         .momentumEnabled,
-        .requireMatchingTargetDevice
+        .requireMatchingTargetDevice,
     ]
     let popupFields: Set<SettingsUIField> = [.button3Mode, .button4Mode, .button5Mode]
     for field in numberFields {
-        expect(descriptorsByField[field]?.controlKind == .numberTextField, "\(field.rawValue) は数値入力として扱う")
+        expect(
+            descriptorsByField[field]?.controlKind == .numberTextField,
+            "\(field.rawValue) は数値入力として扱う")
     }
     for field in textFields {
         expect(descriptorsByField[field]?.controlKind == .textField, "\(field.rawValue) は文字入力として扱う")
     }
     for field in checkboxFields {
-        expect(descriptorsByField[field]?.controlKind == .checkbox, "\(field.rawValue) はチェックボックスとして扱う")
+        expect(
+            descriptorsByField[field]?.controlKind == .checkbox, "\(field.rawValue) はチェックボックスとして扱う")
     }
     for field in popupFields {
         expect(descriptorsByField[field]?.controlKind == .popup, "\(field.rawValue) はpopupとして扱う")
-        expect(descriptorsByField[field]?.section == .gesture, "\(field.rawValue) はgesture sectionに置く")
+        expect(
+            descriptorsByField[field]?.section == .gesture, "\(field.rawValue) はgesture sectionに置く")
     }
-    expect(descriptorsByField[.accelerationEnabled]?.section == .acceleration, "加速度 enable は acceleration section に置く")
-    expect(descriptorsByField[.momentumEnabled]?.section == .momentum, "慣性 enable は momentum section に置く")
-    expect(descriptorsByField[.cancellationMaximumDuration]?.section == .cancellation, "キャンセル条件は cancellation section に置く")
-    expect(descriptorsByField[.targetVendorID]?.section == .targetDevice, "対象デバイス条件は targetDevice section に置く")
+    expect(
+        descriptorsByField[.accelerationEnabled]?.section == .acceleration,
+        "加速度 enable は acceleration section に置く")
+    expect(
+        descriptorsByField[.momentumEnabled]?.section == .momentum,
+        "慣性 enable は momentum section に置く")
+    expect(
+        descriptorsByField[.cancellationMaximumDuration]?.section == .cancellation,
+        "キャンセル条件は cancellation section に置く")
+    expect(
+        descriptorsByField[.targetVendorID]?.section == .targetDevice,
+        "対象デバイス条件は targetDevice section に置く")
 }
 
 func testSettingsUIFieldCatalogJSONRoundTrip() {
@@ -3088,7 +3294,7 @@ func testRuntimeRecoveryRetriesRecoverableFailures() {
         .accessibilityPermissionMissing,
         .eventTapCreationFailed,
         .hidAccessUnavailable,
-        .targetDeviceNotFound
+        .targetDeviceNotFound,
     ]
 
     for failure in recoverableFailures {
@@ -3108,7 +3314,7 @@ func testRuntimeRecoveryDoesNotRetryNonRetryableFailures() {
         .outputContractUnsupported,
         .outputContractMismatch,
         .outputPostingFailed,
-        .unrecoverable
+        .unrecoverable,
     ]
 
     for failure in nonRetryableFailures {
@@ -3179,7 +3385,11 @@ func testRuntimeRecoveryConsumesPendingRetryWhenReady() {
     let retry = state.retryIfReady(at: 10)
 
     expect(retry.shouldStartRuntime, "自動復旧可能な失敗は ready 時刻で再試行を開始する")
-    expect(state.mode == .starting(reason: .automaticRetry(.runtimeFailure(.hidAccessUnavailable)), requestedAt: 10), "再試行開始理由を保持する")
+    expect(
+        state.mode
+            == .starting(
+                reason: .automaticRetry(.runtimeFailure(.hidAccessUnavailable)), requestedAt: 10),
+        "再試行開始理由を保持する")
     expect(state.pendingRetry == nil, "再試行開始時に予約を消費する")
     expect(!state.shouldShowAutoRetry, "予約消費後は自動再試行表示を消す")
 
@@ -3199,7 +3409,10 @@ func testRuntimeRecoveryClampsNegativeWakeDelayToImmediateRetry() {
     expectApproximatelyEqual(notBefore, 20, "負の wake retryDelay は 0 に丸める")
     expect(retry.shouldStartRuntime, "負の wake retryDelay は即時再試行可能として扱う")
     expect(state.pendingRetry == nil, "即時再試行後は予約を消費する")
-    expect(state.mode == .starting(reason: .automaticRetry(.wake), requestedAt: 20), "wake 由来の自動再試行として開始する")
+    expect(
+        state.mode == .starting(reason: .automaticRetry(.wake), requestedAt: 20),
+        "wake 由来の自動再試行として開始する"
+    )
 }
 
 func testRuntimeRecoveryDoesNotRetryAfterWakeFromInitialStop() {
@@ -3240,7 +3453,9 @@ func testRuntimeRecoveryRetriesAfterWakeWhenRecoverableRetryWasPending() {
     let retry = state.retryIfReady(at: 21.5)
 
     expect(retry.shouldStartRuntime, "自動復旧可能な予約中だった場合は wake 後に再試行する")
-    expect(state.mode == .starting(reason: .automaticRetry(.wake), requestedAt: 21.5), "wake 由来の自動再試行として開始する")
+    expect(
+        state.mode == .starting(reason: .automaticRetry(.wake), requestedAt: 21.5),
+        "wake 由来の自動再試行として開始する")
 }
 
 func testRuntimeRecoveryKeepsWakeRetryWhenSleepNotificationRepeats() {
@@ -3253,15 +3468,19 @@ func testRuntimeRecoveryKeepsWakeRetryWhenSleepNotificationRepeats() {
     let retry = state.retryIfReady(at: 21)
 
     expect(retry.shouldStartRuntime, "sleep 通知が重複しても wake 後再試行対象を維持する")
-    expect(state.mode == .starting(reason: .automaticRetry(.wake), requestedAt: 21), "重複 sleep 後も wake 由来の自動再試行として開始する")
+    expect(
+        state.mode == .starting(reason: .automaticRetry(.wake), requestedAt: 21),
+        "重複 sleep 後も wake 由来の自動再試行として開始する")
 }
 
 func testRuntimeStatusPresenterShowsRunningAndStoppedStates() {
-    let running = RuntimeStatusPresenter.present(isRuntimeRunning: true, recoveryState: RuntimeRecoveryState())
+    let running = RuntimeStatusPresenter.present(
+        isRuntimeRunning: true, recoveryState: RuntimeRecoveryState())
 
     var stoppedState = RuntimeRecoveryState()
     _ = stoppedState.requestManualStop(at: 1)
-    let stopped = RuntimeStatusPresenter.present(isRuntimeRunning: false, recoveryState: stoppedState)
+    let stopped = RuntimeStatusPresenter.present(
+        isRuntimeRunning: false, recoveryState: stoppedState)
 
     expect(running.stateTitle == "状態: 実行中", "実行中表示を出す")
     expect(!running.startEnabled, "実行中は開始を無効化する")
@@ -3276,12 +3495,14 @@ func testRuntimeStatusPresenterShowsRunningAndStoppedStates() {
 func testRuntimeStatusPresenterShowsAutoRetryAndSleepStates() {
     var retryState = RuntimeRecoveryState()
     _ = retryState.recordRuntimeFailure(.targetDeviceNotFound, at: 10)
-    let retryPresentation = RuntimeStatusPresenter.present(isRuntimeRunning: false, recoveryState: retryState)
+    let retryPresentation = RuntimeStatusPresenter.present(
+        isRuntimeRunning: false, recoveryState: retryState)
 
     var sleepState = RuntimeRecoveryState()
     sleepState.recordRuntimeStarted()
     _ = sleepState.handleWillSleep(at: 20)
-    let sleepPresentation = RuntimeStatusPresenter.present(isRuntimeRunning: false, recoveryState: sleepState)
+    let sleepPresentation = RuntimeStatusPresenter.present(
+        isRuntimeRunning: false, recoveryState: sleepState)
 
     expect(retryPresentation.stateTitle == "状態: 停止中（自動再試行中）", "自動再試行中表示を出す")
     expect(retryPresentation.startEnabled, "自動再試行中でも手動開始できる")
@@ -3297,7 +3518,8 @@ func testPermissionRecoveryPresenterShowsSeparatePermissionActions() {
     let presentation = PermissionRecoveryPresenter.present(
         accessibilityTrusted: false,
         inputMonitoringGranted: false,
-        permissionTargetDescription: "/Applications/NapeGesture.app (bundle ID: dev.char5742.nape-gesture)"
+        permissionTargetDescription:
+            "/Applications/NapeGesture.app (bundle ID: dev.char5742.nape-gesture)"
     )
 
     expect(presentation.permissionTargetDescription.contains("NapeGesture.app"), "権限付与対象を表示する")
@@ -3306,7 +3528,8 @@ func testPermissionRecoveryPresenterShowsSeparatePermissionActions() {
     expect(presentation.accessibility.shouldOpenSettings, "アクセシビリティ未許可時は設定を開く導線を出す")
     expect(presentation.accessibility.settingsButtonTitle == "アクセシビリティ設定を開く", "アクセシビリティ設定ボタン名を固定する")
     expect(
-        presentation.accessibility.settingsURLString == "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+        presentation.accessibility.settingsURLString
+            == "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
         "アクセシビリティの System Settings URL を固定する"
     )
 
@@ -3315,7 +3538,8 @@ func testPermissionRecoveryPresenterShowsSeparatePermissionActions() {
     expect(presentation.inputMonitoring.shouldOpenSettings, "入力監視未許可時は設定を開く導線を出す")
     expect(presentation.inputMonitoring.settingsButtonTitle == "入力監視設定を開く", "入力監視設定ボタン名を固定する")
     expect(
-        presentation.inputMonitoring.settingsURLString == "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent",
+        presentation.inputMonitoring.settingsURLString
+            == "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent",
         "入力監視の System Settings URL を固定する"
     )
     expect(presentation.restartNotice.contains("再起動"), "権限変更後の再起動案内を出す")
@@ -3361,6 +3585,8 @@ func testRuntimePerformanceAnalyzerComputesTapToPostDistributions() {
     expect(report.eventTapPostedRecordCount == 20, "event tap 由来の投稿ありレコード数を集計する")
     expect(report.missingPostRecordCount == 0, "投稿なしレコードがないことを集計する")
     expect(report.generatedEventCount == 20, "生成イベント数を集計する")
+    expect(report.modeCounts == ["twoFingerSwipe": 20], "性能reportをユーザーmode単位で集計する")
+    expect(report.outputFamilyCounts == ["scroll": 20], "性能reportを実出力family単位で集計する")
     expectApproximatelyEqual(
         report.tapToFirstPostNanoseconds.p95Nanoseconds,
         1_900_000,
@@ -3379,6 +3605,109 @@ func testRuntimePerformanceAnalyzerComputesTapToPostDistributions() {
     expect(evaluation.passed, "既定の runtime 性能基準内なら合格する")
 }
 
+func testRuntimePerformanceRecordMigratesLegacyAction() {
+    let json = """
+        {
+          "schemaVersion": 1,
+          "operationID": "legacy-page-back",
+          "source": "eventTap",
+          "action": "pageBack",
+          "commandKind": "drag",
+          "commandPhase": "began",
+          "commandTimestamp": 1,
+          "inputEventTimestampNanoseconds": 10,
+          "tapCallbackStartedAtNanoseconds": 11,
+          "recognizerFinishedAtNanoseconds": 12,
+          "postStartedAtNanoseconds": 13,
+          "postFinishedAtNanoseconds": 14,
+          "generatedEventCount": 1,
+          "failedEventCreationCount": 0,
+          "suppressedOriginal": true
+        }
+        """
+
+    let record = try? JSONDecoder().decode(RuntimePerformanceRecord.self, from: Data(json.utf8))
+    let encoded = record.flatMap { try? JSONEncoder().encode($0) }
+    let encodedText = encoded.map { String(decoding: $0, as: UTF8.self) } ?? ""
+
+    expect(record?.mode == .twoFingerSwipe, "旧pageBack actionを2本指modeへ移行する")
+    expect(
+        record?.outputFamily == .navigationSwipe,
+        "旧pageBack actionの実出力familyをNavigationSwipe候補として保持する"
+    )
+    expect(
+        record?.schemaVersion == RuntimePerformanceRecord.currentSchemaVersion,
+        "旧性能recordを現行schemaへ移行する")
+    expect(encodedText.contains("twoFingerSwipe"), "再保存時はmodeを記録する")
+    expect(encodedText.contains("outputFamily"), "再保存時は実出力familyを記録する")
+    expect(!encodedText.contains("\"action\""), "再保存時は曖昧なaction fieldを除去する")
+}
+
+func testRuntimePerformanceRecordDoesNotInferMissingOutputFamily() {
+    let json = """
+        {
+          "schemaVersion": 2,
+          "operationID": "missing-family",
+          "source": "eventTap",
+          "mode": "twoFingerSwipe",
+          "commandKind": "drag",
+          "commandPhase": "began",
+          "commandTimestamp": 1,
+          "inputEventTimestampNanoseconds": 10,
+          "tapCallbackStartedAtNanoseconds": 11,
+          "recognizerFinishedAtNanoseconds": 12,
+          "postStartedAtNanoseconds": 13,
+          "postFinishedAtNanoseconds": 14,
+          "generatedEventCount": 0,
+          "failedEventCreationCount": 1,
+          "suppressedOriginal": true
+        }
+        """
+
+    let record = try? JSONDecoder().decode(RuntimePerformanceRecord.self, from: Data(json.utf8))
+
+    expect(record?.mode == .twoFingerSwipe, "schema 2の入力modeを保持する")
+    expect(record?.outputFamily == nil, "欠落した実出力familyをmodeから推測しない")
+}
+
+func testRuntimePerformanceRecordRejectsMismatchedSchemaShape() {
+    let schema2WithLegacyAction = """
+        {
+          "schemaVersion": 2,
+          "operationID": "schema2-action",
+          "source": "eventTap",
+          "action": "smoothScroll",
+          "commandKind": "drag",
+          "commandPhase": "began",
+          "commandTimestamp": 1,
+          "tapCallbackStartedAtNanoseconds": 11,
+          "recognizerFinishedAtNanoseconds": 12,
+          "postStartedAtNanoseconds": 13,
+          "postFinishedAtNanoseconds": 14,
+          "generatedEventCount": 1,
+          "failedEventCreationCount": 0,
+          "suppressedOriginal": true
+        }
+        """
+    let futureSchema = schema2WithLegacyAction.replacingOccurrences(
+        of: "\"schemaVersion\": 2",
+        with: "\"schemaVersion\": 3"
+    )
+
+    expectThrows("schema 2で旧actionだけのrecordを受理しない") {
+        _ = try JSONDecoder().decode(
+            RuntimePerformanceRecord.self,
+            from: Data(schema2WithLegacyAction.utf8)
+        )
+    }
+    expectThrows("未知のruntime performance schemaを現行schemaとして解釈しない") {
+        _ = try JSONDecoder().decode(
+            RuntimePerformanceRecord.self,
+            from: Data(futureSchema.utf8)
+        )
+    }
+}
+
 func testRuntimePerformanceAnalyzerRejectsMissingAndSlowPosts() {
     let records = [
         makeRuntimePerformanceRecord(
@@ -3392,7 +3721,7 @@ func testRuntimePerformanceAnalyzerRejectsMissingAndSlowPosts() {
             tapToPostFinishedNanoseconds: 1_100_000,
             generatedEventCount: 0,
             failedEventCreationCount: 1
-        )
+        ),
     ]
 
     let report = RuntimePerformanceAnalyzer.analyze(records: records)
@@ -3427,12 +3756,17 @@ func testRuntimePerformanceAnalyzerDoesNotTreatMomentumAsTapToPost() {
 
     expect(report.postedRecordCount == 1, "momentum timer の投稿数自体は集計する")
     expect(report.eventTapPostedRecordCount == 0, "momentum timer の投稿を event tap 由来として扱わない")
-    expect(report.tapToFirstPostNanoseconds.sampleCount == 0, "momentum timer の投稿を tap-to-post 分布に混ぜない")
+    expect(
+        report.tapToFirstPostNanoseconds.sampleCount == 0, "momentum timer の投稿を tap-to-post 分布に混ぜない"
+    )
     expect(!evaluation.passed, "momentum timer だけでは tap-to-post 証跡として合格しない")
     expect(failedItems.contains("eventTapPostedRecordCount"), "event tap 由来投稿がないことを基準違反にする")
 }
 
 testPassesThroughWhenActivationButtonIsNotPressed()
+testMouseButtonRejectsUnsupportedNumbers()
+testOtherMouseButtonInputRejectsUnsupportedNumbers()
+testTrackpadGestureModesDescribeInputSeries()
 testActivationButtonSuppressesOriginalInputBeforeThreshold()
 testDragBeginsAfterDeadZoneWithDominantDirection()
 testActiveDragEmitsChangedThenEnded()
@@ -3457,6 +3791,7 @@ testDeviceMatcherConditionPresenceIgnoresEmptyText()
 testDeviceMatcherWithoutConditionsDoesNotMatchEverything()
 testDeviceIdentityEncodesStableID()
 testGestureConfigurationDecodesOldJSONWithDefaults()
+testGestureConfigurationMigratesResultNamedModes()
 testSettingsMigrationDetectsOnlyDeprecatedGestureKeys()
 testGestureConfigurationUsesCanonicalButtonModeDefaults()
 testRecognizerFixesButtonModeForSessionAndWaitsForMatchingRelease()
@@ -3521,7 +3856,6 @@ testTargetDeviceGateOnlyHandlesRecentTargetActivity()
 testTargetDeviceGateKeepsHandlingWhileActivationButtonIsDown()
 testTargetDeviceGateUsesAssociationWindowFromSettings()
 testTargetDeviceGatePassesThroughNonTargetClickDragAndWheel()
-testGestureActionMomentumSupport()
 testSettingsUIFieldCatalogCoversEditableSettings()
 testSettingsUIFieldCatalogKindsAndSections()
 testSettingsUIFieldCatalogJSONRoundTrip()
@@ -3550,6 +3884,9 @@ testRuntimeStatusPresenterShowsAutoRetryAndSleepStates()
 testPermissionRecoveryPresenterShowsSeparatePermissionActions()
 testPermissionRecoveryPresenterDoesNotOfferGrantedActions()
 testRuntimePerformanceAnalyzerComputesTapToPostDistributions()
+testRuntimePerformanceRecordMigratesLegacyAction()
+testRuntimePerformanceRecordDoesNotInferMissingOutputFamily()
+testRuntimePerformanceRecordRejectsMismatchedSchemaShape()
 testRuntimePerformanceAnalyzerRejectsMissingAndSlowPosts()
 testRuntimePerformanceAnalyzerDoesNotTreatMomentumAsTapToPost()
 

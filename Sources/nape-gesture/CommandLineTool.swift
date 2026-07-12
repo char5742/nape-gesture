@@ -11,7 +11,8 @@ final class CommandLineTool {
 
     func run() throws {
         let command = arguments.dropFirst().first ?? defaultCommand()
-        let options = Array(arguments.dropFirst(command == defaultCommand() && arguments.count == 1 ? 1 : 2))
+        let options = Array(
+            arguments.dropFirst(command == defaultCommand() && arguments.count == 1 ? 1 : 2))
 
         switch command {
         case "help", "--help", "-h":
@@ -30,7 +31,8 @@ final class CommandLineTool {
             let performanceRecorder = try RuntimePerformanceLogWriter.make(
                 path: SettingsStore.value(for: "--performance-log", in: options)
             )
-            let monitor = try makeHIDInputMonitor(settings: settings, gate: gate, matchedDevices: matchedDevices)
+            let monitor = try makeHIDInputMonitor(
+                settings: settings, gate: gate, matchedDevices: matchedDevices)
             let daemon = NapeGestureDaemon(
                 configuration: settings.gesture,
                 targetGate: gate,
@@ -74,7 +76,8 @@ final class CommandLineTool {
         case "target":
             try ReferenceTargetApp.run(options: options)
         case "devices":
-            try DeviceLister.printDevices(json: options.contains("--json"), includeAll: options.contains("--all"))
+            try DeviceLister.printDevices(
+                json: options.contains("--json"), includeAll: options.contains("--all"))
         case "hid-log":
             try HIDLogCommand(options: options).run()
         case "system-test":
@@ -101,7 +104,7 @@ final class CommandLineTool {
                   runtime を開始せずに active macOS GUI session 上で通常 GUI activation policy、設定ウィンドウ、status item NG、通常アプリメニュー、status menu を AppKit 内で作成して検査します。--assert で期待 UI と一致しない場合に失敗します。--config 未指定時は一時 config を使います。
 
               nape-gesture run [--performance-log <path>]
-                  button 3 / 4 / 5の押下中入力を、設定したScroll & Navigate、Spaces & Mission Control、Zoomへ変換します。通常modeのbuttonは変換しません。
+                  button 3 / 4 / 5の押下中入力を、設定した2本指スクロール / スワイプ、システムスワイプ、ピンチへ変換します。通常modeのbuttonは変換しません。
                   --config <path> でbutton mode、対象デバイス、感度を読み込みます。--performance-log で runtime 性能 JSON Lines を保存します。
 
               nape-gesture log [--duration <秒>] [--out <path>] [--exclude-generated|--only-generated]
@@ -238,7 +241,7 @@ final class CommandLineTool {
             "--product-contains",
             "--transport-contains",
             "--usage-page",
-            "--usage"
+            "--usage",
         ].contains { options.contains($0) }
 
         let targetDeviceAssociation = TargetDeviceAssociationConfiguration(
@@ -301,7 +304,9 @@ final class CommandLineTool {
         return value
     }
 
-    private func validateTargetDevicesIfNeeded(_ settings: NapeGestureSettings) throws -> [DeviceIdentity] {
+    private func validateTargetDevicesIfNeeded(_ settings: NapeGestureSettings) throws
+        -> [DeviceIdentity]
+    {
         guard !settings.targetDevices.isEmpty else {
             if settings.requireMatchingTargetDevice {
                 throw ToolError.targetDeviceMatcherRequired
@@ -322,7 +327,9 @@ final class CommandLineTool {
         return matched
     }
 
-    private func validateRequiredTargetDevices(_ settings: NapeGestureSettings) throws -> [DeviceIdentity] {
+    private func validateRequiredTargetDevices(_ settings: NapeGestureSettings) throws
+        -> [DeviceIdentity]
+    {
         guard !settings.targetDevices.isEmpty else {
             throw ToolError.targetDeviceMatcherRequired
         }
@@ -351,7 +358,9 @@ final class CommandLineTool {
             print("ポインティングデバイスは見つかりませんでした。")
         } else {
             for device in devices {
-                print("- \(device.displayName) vendorId=\(device.vendorID) productId=\(device.productID) transport=\(device.transport)")
+                print(
+                    "- \(device.displayName) vendorId=\(device.vendorID) productId=\(device.productID) transport=\(device.transport)"
+                )
             }
         }
 
@@ -386,11 +395,16 @@ final class CommandLineTool {
         }
     }
 
-    private func probeHIDInputMonitor(settings: NapeGestureSettings, matchedDevices: [DeviceIdentity]) throws {
+    private func probeHIDInputMonitor(
+        settings: NapeGestureSettings, matchedDevices: [DeviceIdentity]
+    )
+        throws
+    {
         let gate = SharedTargetDeviceGate(
             configuration: TargetDeviceGateConfiguration(settings: settings)
         )
-        let monitor = HIDInputMonitor(settings: settings, gate: gate, matchedDevices: matchedDevices)
+        let monitor = HIDInputMonitor(
+            settings: settings, gate: gate, matchedDevices: matchedDevices)
         try monitor.start()
         monitor.stop()
         print("HID 入力監視を開始できました。")
@@ -414,7 +428,8 @@ final class CommandLineTool {
             return nil
         }
 
-        let monitor = HIDInputMonitor(settings: settings, gate: gate, matchedDevices: matchedDevices)
+        let monitor = HIDInputMonitor(
+            settings: settings, gate: gate, matchedDevices: matchedDevices)
         try monitor.start()
         print("対象デバイスの HID 入力監視を開始しました。")
         return monitor
@@ -444,14 +459,15 @@ enum ToolError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case let .unknownCommand(command):
+        case .unknownCommand(let command):
             return "未知のコマンドです: \(command)"
-        case let .missingValue(name):
+        case .missingValue(let name):
             return "\(name) の値がありません。"
-        case let .invalidValue(name, value):
+        case .invalidValue(let name, let value):
             return "\(name) の値が不正です: \(value)"
-        case let .invalidSettings(issues):
-            let details = issues
+        case .invalidSettings(let issues):
+            let details =
+                issues
                 .map { "- \($0.path): \($0.message)" }
                 .joined(separator: "\n")
             return "設定ファイルの値が不正です。\n\(details)"
@@ -459,31 +475,32 @@ enum ToolError: LocalizedError {
             return "アクセシビリティ権限が必要です。システム設定でこの実行ファイルを許可してください。"
         case .eventTapCreationFailed:
             return "イベントタップを作成できませんでした。権限、入力監視、または他プロセスによる制限を確認してください。"
-        case let .hidManagerOpenFailed(code):
+        case .hidManagerOpenFailed(let code):
             return "IOHIDManager を開けませんでした。code=\(code) (\(IOReturnDiagnostic.describe(code)))"
-        case let .hidRegistryQueryFailed(code):
+        case .hidRegistryQueryFailed(let code):
             return "IORegistry から HID デバイスを取得できませんでした。code=\(code)"
         case .targetDeviceMatcherRequired:
-            return "対象デバイス一致が必須ですが、対象デバイス条件が空です。設定で対象製品名などを指定するか、明示的に requireMatchingTargetDevice を false にしてください。"
+            return
+                "対象デバイス一致が必須ですが、対象デバイス条件が空です。設定で対象製品名などを指定するか、明示的に requireMatchingTargetDevice を false にしてください。"
         case .targetDeviceNotFound:
             return "設定に一致する対象デバイスが見つかりませんでした。`nape-gesture devices` で識別情報を確認してください。"
-        case let .bundleOutputAlreadyExists(path):
+        case .bundleOutputAlreadyExists(let path):
             return "出力先が既に存在します: \(path)。上書きする場合は --replace を指定してください。"
-        case let .bundleVerificationFailed(message):
+        case .bundleVerificationFailed(let message):
             return "アプリバンドル検証に失敗しました。\n\(message)"
         case .executablePathUnavailable:
             return "現在の実行ファイルのパスを取得できませんでした。"
-        case let .targetApplicationNotFound(name):
+        case .targetApplicationNotFound(let name):
             return "\(name) を見つけられませんでした。"
-        case let .benchmarkBaselineFailed(message):
+        case .benchmarkBaselineFailed(let message):
             return "benchmark の純粋ロジック基準を満たしていません。\n\(message)"
-        case let .guiSmokeFailed(message):
+        case .guiSmokeFailed(let message):
             return "GUI smoke 検証に失敗しました。\n\(message)"
-        case let .trackpadOutputContractUnavailable(reason):
+        case .trackpadOutputContractUnavailable(let reason):
             return "trackpad driver出力contractを利用できないため、入力抑制を開始しません。\n\(reason)"
-        case let .trackpadOutputContractMismatch(reason):
+        case .trackpadOutputContractMismatch(let reason):
             return "trackpad driver出力contractが現在のmacOSと一致しないため、入力抑制を開始しません。\n\(reason)"
-        case let .trackpadOutputPostingFailed(reason):
+        case .trackpadOutputPostingFailed(let reason):
             return "trackpad driver出力に失敗したため、元入力を通過させてruntimeを安全停止しました。\n\(reason)"
         }
     }
@@ -493,13 +510,15 @@ enum IOReturnDiagnostic {
     static func describe(_ code: IOReturn) -> String {
         switch code {
         case kIOReturnNotPermitted:
-            return "入力監視が許可されていません。システム設定 > プライバシーとセキュリティ > 入力監視で、Codex、実行元ターミナル、または NapeGesture.app を許可してください。"
+            return
+                "入力監視が許可されていません。システム設定 > プライバシーとセキュリティ > 入力監視で、Codex、実行元ターミナル、または NapeGesture.app を許可してください。"
         case kIOReturnNotPrivileged:
             return "権限が不足しています。入力監視とアクセシビリティの許可状態を確認してください。"
         case kIOReturnNoDevice:
             return "対象デバイスが見つかりません。接続状態を確認してください。"
         case kIOReturnExclusiveAccess:
-            return "他のプロセスがデバイスを排他的に使用している可能性があります。`hid-log --all` ではなく、`devices --all --json` で確認した `--vendor-id` / `--product-id` を指定してください。"
+            return
+                "他のプロセスがデバイスを排他的に使用している可能性があります。`hid-log --all` ではなく、`devices --all --json` で確認した `--vendor-id` / `--product-id` を指定してください。"
         default:
             return "未分類の IOKit エラーです。入力監視権限、対象デバイス、他プロセスの占有を確認してください。"
         }

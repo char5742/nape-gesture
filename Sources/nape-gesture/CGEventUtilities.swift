@@ -21,7 +21,7 @@ enum CGEventUtilities {
         .keyDown,
         .keyUp,
         .tapDisabledByTimeout,
-        .tapDisabledByUserInput
+        .tapDisabledByUserInput,
     ]
 
     static func eventMask(for types: [CGEventType]) -> CGEventMask {
@@ -35,9 +35,17 @@ enum CGEventUtilities {
 
         switch type {
         case .otherMouseDown:
-            return .buttonDown(button: MouseButton(buttonNumber: event.getIntegerValueField(.mouseEventButtonNumber)), time: timestamp)
+            return RawInputEvent.otherMouseButton(
+                buttonNumber: event.getIntegerValueField(.mouseEventButtonNumber),
+                isDown: true,
+                time: timestamp
+            )
         case .otherMouseUp:
-            return .buttonUp(button: MouseButton(buttonNumber: event.getIntegerValueField(.mouseEventButtonNumber)), time: timestamp)
+            return RawInputEvent.otherMouseButton(
+                buttonNumber: event.getIntegerValueField(.mouseEventButtonNumber),
+                isDown: false,
+                time: timestamp
+            )
         case .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged:
             let deltaX = Double(event.getIntegerValueField(.mouseEventDeltaX))
             let deltaY = Double(event.getIntegerValueField(.mouseEventDeltaY))
@@ -45,8 +53,12 @@ enum CGEventUtilities {
         case .scrollWheel:
             let pointDeltaX = event.getDoubleValueField(.scrollWheelEventPointDeltaAxis2)
             let pointDeltaY = event.getDoubleValueField(.scrollWheelEventPointDeltaAxis1)
-            let fixedDeltaX = pointDeltaX != 0 ? pointDeltaX : Double(event.getIntegerValueField(.scrollWheelEventDeltaAxis2))
-            let fixedDeltaY = pointDeltaY != 0 ? pointDeltaY : Double(event.getIntegerValueField(.scrollWheelEventDeltaAxis1))
+            let fixedDeltaX =
+                pointDeltaX != 0
+                ? pointDeltaX : Double(event.getIntegerValueField(.scrollWheelEventDeltaAxis2))
+            let fixedDeltaY =
+                pointDeltaY != 0
+                ? pointDeltaY : Double(event.getIntegerValueField(.scrollWheelEventDeltaAxis1))
             return .wheel(deltaX: fixedDeltaX, deltaY: fixedDeltaY, time: timestamp)
         default:
             return nil

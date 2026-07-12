@@ -1,5 +1,7 @@
 # ADR-0042: 25F80 scroll / momentum契約を独立fixtureで比較する
 
+> `NavigationSwipe`を含むcandidate観測の現在の位置付けは[ADR-0048](0048-separate-input-mode-event-family-os-result-and-evidence.md)を正とする。本ADRのscroll / momentum fixture identityと比較規則は維持する。
+
 - 状態: 採択
 - 日付: 2026-07-11
 

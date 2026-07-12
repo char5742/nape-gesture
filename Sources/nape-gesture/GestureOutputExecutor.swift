@@ -2,7 +2,7 @@ import Foundation
 import NapeGestureCore
 import NapeGestureProductOutput
 
-final class GestureActionExecutor {
+final class GestureOutputExecutor {
     private let coordinator: ProductGestureSessionCoordinator
 
     init(
@@ -24,7 +24,7 @@ final class GestureActionExecutor {
             guard unsupported.isEmpty else {
                 let names = unsupported.map(\.rawValue).sorted().joined(separator: ", ")
                 throw ToolError.trackpadOutputContractUnavailable(
-                    "固定ジェスチャーに必要なproduct output familyが未対応です: \(names)"
+                    "設定中のmodeに必要なproduct output familyが未対応です: \(names)"
                 )
             }
         case .unsupported:
@@ -41,9 +41,13 @@ final class GestureActionExecutor {
     func post(
         command: GestureCommand,
         continuation: TrackpadOutputContinuation? = nil
-    ) -> GestureActionPostResult {
+    ) -> GestureOutputPostResult {
         let post = coordinator.post(command: command, continuation: continuation)
-        return GestureActionPostResult(action: post.action, productResult: post.result)
+        return GestureOutputPostResult(
+            mode: post.mode,
+            family: post.family,
+            productResult: post.result
+        )
     }
 
     func supportsMomentum(for command: GestureCommand) -> Bool {
@@ -63,21 +67,28 @@ final class GestureActionExecutor {
     }
 }
 
-struct GestureActionPostResult: Equatable {
-    var action: GestureAction
+struct GestureOutputPostResult: Equatable {
+    var mode: TrackpadGestureMode
+    var family: TrackpadOutputEventFamily?
     var generatedEventCount: Int
     var failedEventCreationCount: Int
     var outputFailure: ProductGestureOutputFailure?
 
-    init(action: GestureAction) {
-        self.action = action
+    init(mode: TrackpadGestureMode, family: TrackpadOutputEventFamily? = nil) {
+        self.mode = mode
+        self.family = family
         generatedEventCount = 0
         failedEventCreationCount = 0
         outputFailure = nil
     }
 
-    init(action: GestureAction, productResult: ProductGestureOutputResult) {
-        self.action = action
+    init(
+        mode: TrackpadGestureMode,
+        family: TrackpadOutputEventFamily?,
+        productResult: ProductGestureOutputResult
+    ) {
+        self.mode = mode
+        self.family = family
         generatedEventCount = productResult.generatedEventCount
         failedEventCreationCount = productResult.failedEventCreationCount
         outputFailure = productResult.failure

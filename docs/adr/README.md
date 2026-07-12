@@ -47,6 +47,7 @@
 | [ADR-0044](0044-atomic-app-bundle-installation.md) | 検証済みapp bundleを原子的に導入する | bundle-app、renameatx_np、fingerprint、既存bundle保持、strict CLI |
 | [ADR-0046](0046-trial-output-for-remaining-trackpad-families.md) | 残るtrackpad familyを25F80試用出力として有効化する | DockSwipe、NavigationSwipe、magnification、試用、25F80 |
 | [ADR-0047](0047-fixed-continuous-2d-trackpad-input.md) | 方向別bindingを廃止しボタンごとのtrackpad modeへ接続する | Issue #144、button 3 / 4 / 5、mode、DockSwipe、scroll、NavigationSwipe、magnification |
+| [ADR-0048](0048-separate-input-mode-event-family-os-result-and-evidence.md) | 入力mode・event family・OS/App結果・証跡状態を分離する | mode、scroll、DockSwipe、magnification、NavigationSwipe候補、OS/App結果、証跡状態 |
 
 ## 置換済み
 

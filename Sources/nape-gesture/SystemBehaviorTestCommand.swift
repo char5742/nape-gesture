@@ -98,7 +98,8 @@ struct SystemBehaviorTestCommand {
         let productTraceOutputPath = value("--product-trace-out", in: options)
         let productRunToken = value("--product-run-token", in: options)
         let productRepoHeadSHA = value("--product-repo-head-sha", in: options)
-        let directionValue = value("--direction", in: options)
+        let directionValue =
+            value("--direction", in: options)
             ?? (scenario == .verticalScroll ? "up" : "right")
         let scrollSign: Int
         switch scenario {
@@ -126,7 +127,8 @@ struct SystemBehaviorTestCommand {
         let interval = try doubleValue("--interval", in: options, defaultValue: 0.008)
         let postToPid = try optionalPIDValue("--post-to-pid", in: options)
         if postToPid != nil && !scenario.supportsProcessTargetPosting {
-            throw ToolError.invalidValue("--post-to-pid", "\(scenario.rawValue) は process 直接投稿診断に未対応です。")
+            throw ToolError.invalidValue(
+                "--post-to-pid", "\(scenario.rawValue) は process 直接投稿診断に未対応です。")
         }
         let plan = try SystemTestPlan(
             scenario: scenario,
@@ -149,7 +151,7 @@ struct SystemBehaviorTestCommand {
             throw ToolError.invalidValue("--out", "--log-json と併用してください: \(outputPath)")
         }
         if productTraceOutputPath != nil,
-           dryRun || ![.horizontalScroll, .verticalScroll].contains(scenario)
+            dryRun || ![.horizontalScroll, .verticalScroll].contains(scenario)
         {
             throw ToolError.invalidValue(
                 "--product-trace-out",
@@ -159,7 +161,7 @@ struct SystemBehaviorTestCommand {
         let productTraceContext: ProductGestureOutputTraceContext?
         if productTraceOutputPath != nil {
             guard let productRunToken,
-                  UUID(uuidString: productRunToken)?.uuidString.lowercased() == productRunToken
+                UUID(uuidString: productRunToken)?.uuidString.lowercased() == productRunToken
             else {
                 throw ToolError.invalidValue(
                     "--product-run-token",
@@ -167,14 +169,14 @@ struct SystemBehaviorTestCommand {
                 )
             }
             guard let productRepoHeadSHA,
-                  Self.isCanonicalGitObjectID(productRepoHeadSHA),
-                  let scenarioID = scenario.productEvidenceScenarioID,
-                  let context = ProductGestureOutputTraceContext(
+                Self.isCanonicalGitObjectID(productRepoHeadSHA),
+                let scenarioID = scenario.productEvidenceScenarioID,
+                let context = ProductGestureOutputTraceContext(
                     captureRunToken: productRunToken,
                     scenarioID: scenarioID,
                     repoHeadSHA: productRepoHeadSHA,
                     executableSHA256: try TrackpadDriverEventLogger.runningExecutableSHA256()
-                  )
+                )
             else {
                 throw ToolError.invalidValue(
                     "--product-repo-head-sha",
@@ -265,7 +267,8 @@ struct SystemBehaviorTestCommand {
         case .killSwitch:
             try postUnmarkedInputEvents(unmarkedInputEvents(for: plan, startTime: now), to: nil)
         case .gestureDrag, .gestureWheel, .gestureWheelThenKillSwitch, .normalAfterRelease:
-            try postUnmarkedInputEvents(unmarkedInputEvents(for: plan, startTime: now), to: plan.postToPid)
+            try postUnmarkedInputEvents(
+                unmarkedInputEvents(for: plan, startTime: now), to: plan.postToPid)
         }
     }
 
@@ -366,9 +369,10 @@ struct SystemBehaviorTestCommand {
             throw ToolError.invalidValue("product scroll command", "入力列が空です。")
         }
         let firstCommand = commands[0]
-        let action = GestureAction.smoothScroll
+        let expectedMode = TrackpadGestureMode.twoFingerSwipe
         var postedTrace: [ProductGestureOutputPostedEventTrace] = []
-        let traceObserver: ProductPostedEventObserver? = traceOutputPath == nil
+        let traceObserver: ProductPostedEventObserver? =
+            traceOutputPath == nil
             ? nil
             : { postedTrace.append($0) }
         let adapter = TrackpadGestureOutputAdapter(
@@ -384,6 +388,7 @@ struct SystemBehaviorTestCommand {
         }
 
         let coordinator = ProductGestureSessionCoordinator(
+            enabledModes: [.twoFingerSwipe],
             output: adapter
         )
         guard coordinator.unsupportedRequiredFamilies.isEmpty else {
@@ -426,10 +431,11 @@ struct SystemBehaviorTestCommand {
                 command: postingCommand,
                 continuation: postingCommand.phase == .ended ? .momentum : nil
             )
-            guard post.action == action,
-                  post.result.failure == nil,
-                  post.result.failedEventCreationCount == 0,
-                  post.result.generatedEventCount == 3
+            guard post.mode == expectedMode,
+                post.family == .scroll,
+                post.result.failure == nil,
+                post.result.failedEventCreationCount == 0,
+                post.result.generatedEventCount == 3
             else {
                 try failAfterClosingSession(
                     post.result.failure?.rawValue ?? "incomplete_product_scroll_batch"
@@ -453,10 +459,11 @@ struct SystemBehaviorTestCommand {
                     timestamp: MonotonicEventClock.nowSeconds
                 )
             )
-            guard post.action == action,
-                  post.result.failure == nil,
-                  post.result.failedEventCreationCount == 0,
-                  post.result.generatedEventCount == 1
+            guard post.mode == expectedMode,
+                post.family == .scroll,
+                post.result.failure == nil,
+                post.result.failedEventCreationCount == 0,
+                post.result.generatedEventCount == 1
             else {
                 try failAfterClosingSession(
                     post.result.failure?.rawValue
@@ -477,10 +484,11 @@ struct SystemBehaviorTestCommand {
                 timestamp: MonotonicEventClock.nowSeconds
             )
         )
-        guard terminal.action == action,
-              terminal.result.failure == nil,
-              terminal.result.failedEventCreationCount == 0,
-              terminal.result.generatedEventCount == 1
+        guard terminal.mode == expectedMode,
+            terminal.family == .scroll,
+            terminal.result.failure == nil,
+            terminal.result.failedEventCreationCount == 0,
+            terminal.result.generatedEventCount == 1
         else {
             try failAfterClosingSession(
                 terminal.result.failure?.rawValue ?? "missing_product_momentum_terminal"
@@ -496,7 +504,7 @@ struct SystemBehaviorTestCommand {
         to path: String
     ) throws {
         guard !trace.isEmpty,
-              trace.enumerated().allSatisfy({ $0.element.postIndex == UInt64($0.offset) })
+            trace.enumerated().allSatisfy({ $0.element.postIndex == UInt64($0.offset) })
         else {
             throw ToolError.invalidValue(
                 "product posted trace",
@@ -581,7 +589,9 @@ struct SystemBehaviorTestCommand {
         }
     }
 
-    private func logRecords(for plan: SystemTestPlan, startTime: TimeInterval) throws -> [InputLogRecord] {
+    private func logRecords(for plan: SystemTestPlan, startTime: TimeInterval) throws
+        -> [InputLogRecord]
+    {
         let records: [InputLogRecord]
         switch plan.scenario {
         case .spaceLeft:
@@ -597,19 +607,28 @@ struct SystemBehaviorTestCommand {
             records = try makeVerticalCommands(sign: -1, plan: plan, now: startTime)
                 .map { try scrollRecord(command: $0, mode: .free) }
         case .missionControl:
-            records = try shortcutRecords(keyCode: CGKeyCode(kVK_UpArrow), flags: .maskControl, startTime: startTime)
+            records = try shortcutRecords(
+                keyCode: CGKeyCode(kVK_UpArrow), flags: .maskControl, startTime: startTime)
         case .pageBack:
-            records = try shortcutRecords(keyCode: CGKeyCode(kVK_LeftArrow), flags: .maskCommand, startTime: startTime)
+            records = try shortcutRecords(
+                keyCode: CGKeyCode(kVK_LeftArrow), flags: .maskCommand, startTime: startTime)
         case .pageForward:
-            records = try shortcutRecords(keyCode: CGKeyCode(kVK_RightArrow), flags: .maskCommand, startTime: startTime)
+            records = try shortcutRecords(
+                keyCode: CGKeyCode(kVK_RightArrow), flags: .maskCommand, startTime: startTime)
         case .zoomIn:
-            records = try shortcutRecords(keyCode: CGKeyCode(kVK_ANSI_Equal), flags: .maskCommand, startTime: startTime)
+            records = try shortcutRecords(
+                keyCode: CGKeyCode(kVK_ANSI_Equal), flags: .maskCommand, startTime: startTime)
         case .zoomOut:
-            records = try shortcutRecords(keyCode: CGKeyCode(kVK_ANSI_Minus), flags: .maskCommand, startTime: startTime)
+            records = try shortcutRecords(
+                keyCode: CGKeyCode(kVK_ANSI_Minus), flags: .maskCommand, startTime: startTime)
         case .killSwitch:
-            records = try unmarkedInputEvents(for: plan, startTime: startTime).map { try $0.logRecord() }
+            records = try unmarkedInputEvents(for: plan, startTime: startTime).map {
+                try $0.logRecord()
+            }
         case .gestureDrag, .gestureWheel, .gestureWheelThenKillSwitch, .normalAfterRelease:
-            records = try unmarkedInputEvents(for: plan, startTime: startTime).map { try $0.logRecord() }
+            records = try unmarkedInputEvents(for: plan, startTime: startTime).map {
+                try $0.logRecord()
+            }
         }
         return annotateSystemTestRecords(records, scenario: plan.scenario)
     }
@@ -626,7 +645,9 @@ struct SystemBehaviorTestCommand {
         }
     }
 
-    private func scrollRecord(command: GestureCommand, mode: ScrollPostMode) throws -> InputLogRecord {
+    private func scrollRecord(command: GestureCommand, mode: ScrollPostMode) throws
+        -> InputLogRecord
+    {
         let posted = mode.deltas(for: command)
         let phases = CGEventUtilities.phaseValues(for: command)
         return InputLogRecord(
@@ -671,7 +692,7 @@ struct SystemBehaviorTestCommand {
                 flags: flags,
                 time: startTime + 0.01,
                 generatedByNapeGesture: generatedByNapeGesture
-            )
+            ),
         ]
     }
 
@@ -703,7 +724,9 @@ struct SystemBehaviorTestCommand {
         )
     }
 
-    private func unmarkedInputEvents(for plan: SystemTestPlan, startTime: TimeInterval) -> [UnmarkedInputEvent] {
+    private func unmarkedInputEvents(for plan: SystemTestPlan, startTime: TimeInterval)
+        -> [UnmarkedInputEvent]
+    {
         switch plan.scenario {
         case .gestureDrag:
             return unmarkedGestureDragEvents(plan: plan, startTime: startTime)
@@ -716,19 +739,21 @@ struct SystemBehaviorTestCommand {
         case .killSwitch:
             return unmarkedKillSwitchEvents(plan: plan, startTime: startTime)
         case .spaceLeft,
-             .spaceRight,
-             .horizontalScroll,
-             .verticalScroll,
-             .missionControl,
-             .pageBack,
-             .pageForward,
-             .zoomIn,
-             .zoomOut:
+            .spaceRight,
+            .horizontalScroll,
+            .verticalScroll,
+            .missionControl,
+            .pageBack,
+            .pageForward,
+            .zoomIn,
+            .zoomOut:
             return []
         }
     }
 
-    private func unmarkedKillSwitchEvents(plan: SystemTestPlan, startTime: TimeInterval) -> [UnmarkedInputEvent] {
+    private func unmarkedKillSwitchEvents(plan: SystemTestPlan, startTime: TimeInterval)
+        -> [UnmarkedInputEvent]
+    {
         [
             unmarkedKeyEvent(
                 type: .keyDown,
@@ -741,11 +766,13 @@ struct SystemBehaviorTestCommand {
                 time: startTime + plan.interval,
                 keyCode: Int64(killSwitchKeyCode),
                 flags: killSwitchFlags.rawValue
-            )
+            ),
         ]
     }
 
-    private func unmarkedGestureDragEvents(plan: SystemTestPlan, startTime: TimeInterval) -> [UnmarkedInputEvent] {
+    private func unmarkedGestureDragEvents(plan: SystemTestPlan, startTime: TimeInterval)
+        -> [UnmarkedInputEvent]
+    {
         var events = [
             unmarkedMouseEvent(
                 type: .otherMouseDown,
@@ -774,7 +801,9 @@ struct SystemBehaviorTestCommand {
         return events
     }
 
-    private func unmarkedGestureWheelEvents(plan: SystemTestPlan, startTime: TimeInterval) -> [UnmarkedInputEvent] {
+    private func unmarkedGestureWheelEvents(plan: SystemTestPlan, startTime: TimeInterval)
+        -> [UnmarkedInputEvent]
+    {
         var events = [
             unmarkedMouseEvent(
                 type: .otherMouseDown,
@@ -849,7 +878,9 @@ struct SystemBehaviorTestCommand {
         return events
     }
 
-    private func unmarkedNormalAfterReleaseEvents(plan: SystemTestPlan, startTime: TimeInterval) -> [UnmarkedInputEvent] {
+    private func unmarkedNormalAfterReleaseEvents(plan: SystemTestPlan, startTime: TimeInterval)
+        -> [UnmarkedInputEvent]
+    {
         var events = [
             unmarkedMouseEvent(
                 type: .otherMouseDown,
@@ -860,7 +891,7 @@ struct SystemBehaviorTestCommand {
                 type: .otherMouseUp,
                 time: startTime + plan.interval,
                 buttonNumber: plan.activationButtonNumber
-            )
+            ),
         ]
         let deltas = quantizedDeltas(total: plan.amount, steps: plan.steps)
         for (index, deltaX) in deltas.enumerated() {
@@ -906,7 +937,8 @@ struct SystemBehaviorTestCommand {
                 time: dragDownTime + (2 * plan.interval)
             )
         )
-        let wheelDelta = -max(Int64(1), abs(quantizeInt64(plan.amount / Double(max(plan.steps, 1)))))
+        let wheelDelta = -max(
+            Int64(1), abs(quantizeInt64(plan.amount / Double(max(plan.steps, 1)))))
         events.append(
             unmarkedScrollEvent(
                 time: dragDownTime + (3 * plan.interval),
@@ -982,23 +1014,27 @@ struct SystemBehaviorTestCommand {
 
     private func postUnmarkedInputEvents(_ events: [UnmarkedInputEvent], to pid: pid_t?) throws {
         guard !events.isEmpty,
-              events.allSatisfy({ $0.time.isFinite && $0.time >= 0 }),
-              zip(events, events.dropFirst()).allSatisfy({ pair in
-                  pair.0.time <= pair.1.time
-              })
+            events.allSatisfy({ $0.time.isFinite && $0.time >= 0 }),
+            zip(events, events.dropFirst()).allSatisfy({ pair in
+                pair.0.time <= pair.1.time
+            })
         else {
             throw ToolError.invalidValue("CGEvent sequence", "未マーク入力列の時刻順序が不正です。")
         }
 
         let source = CGEventSource(stateID: .hidSystemState)
-        source?.setLocalEventsFilterDuringSuppressionState([], state: .eventSuppressionStateSuppressionInterval)
+        source?.setLocalEventsFilterDuringSuppressionState(
+            [], state: .eventSuppressionStateSuppressionInterval)
         var cursorPosition = currentPointerLocation()
         var previousTime: TimeInterval?
         var preparedEvents: [DiagnosticPreparedEvent] = []
         preparedEvents.reserveCapacity(events.count)
 
         for plannedEvent in events {
-            guard let event = plannedEvent.makeCGEvent(source: source, cursorPosition: &cursorPosition) else {
+            guard
+                let event = plannedEvent.makeCGEvent(
+                    source: source, cursorPosition: &cursorPosition)
+            else {
                 throw ToolError.invalidValue(
                     "CGEvent sequence",
                     "イベント列を投稿前に全件生成できませんでした。"
@@ -1091,12 +1127,18 @@ struct SystemBehaviorTestCommand {
 
         switch target {
         case .finder:
-            guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.finder") else {
+            guard
+                let url = NSWorkspace.shared.urlForApplication(
+                    withBundleIdentifier: "com.apple.finder")
+            else {
                 throw ToolError.targetApplicationNotFound("Finder")
             }
             NSWorkspace.shared.openApplication(at: url, configuration: configuration)
         case .safari:
-            guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Safari") else {
+            guard
+                let url = NSWorkspace.shared.urlForApplication(
+                    withBundleIdentifier: "com.apple.Safari")
+            else {
                 throw ToolError.targetApplicationNotFound("Safari")
             }
             NSWorkspace.shared.openApplication(at: url, configuration: configuration)
@@ -1111,7 +1153,9 @@ struct SystemBehaviorTestCommand {
         try SettingsStore.requiredValue(for: name, in: options)
     }
 
-    private func doubleValue(_ name: String, in options: [String], defaultValue: Double) throws -> Double {
+    private func doubleValue(_ name: String, in options: [String], defaultValue: Double) throws
+        -> Double
+    {
         guard options.contains(name) else {
             return defaultValue
         }
@@ -1145,9 +1189,10 @@ struct SystemBehaviorTestCommand {
     }
 
     private static func isCanonicalGitObjectID(_ value: String) -> Bool {
-        [40, 64].contains(value.count) && value.unicodeScalars.allSatisfy { scalar in
-            (48...57).contains(scalar.value) || (97...102).contains(scalar.value)
-        }
+        [40, 64].contains(value.count)
+            && value.unicodeScalars.allSatisfy { scalar in
+                (48...57).contains(scalar.value) || (97...102).contains(scalar.value)
+            }
     }
 }
 
@@ -1214,7 +1259,7 @@ private struct SystemTestPlan {
             "amount=\(amount)",
             "steps=\(steps)",
             "interval=\(interval)",
-            "postToPid=\(postToPid.map(String.init) ?? "none")"
+            "postToPid=\(postToPid.map(String.init) ?? "none")",
         ].joined(separator: "\n")
     }
 }
@@ -1242,16 +1287,16 @@ private enum SystemTestScenario: String {
         case .gestureWheel, .gestureWheelThenKillSwitch:
             return 240
         case .spaceLeft,
-             .spaceRight,
-             .horizontalScroll,
-             .verticalScroll,
-             .missionControl,
-             .pageBack,
-             .pageForward,
-             .zoomIn,
-             .zoomOut,
-             .killSwitch,
-             .gestureDrag:
+            .spaceRight,
+            .horizontalScroll,
+            .verticalScroll,
+            .missionControl,
+            .pageBack,
+            .pageForward,
+            .zoomIn,
+            .zoomOut,
+            .killSwitch,
+            .gestureDrag:
             return 1600
         }
     }
@@ -1261,18 +1306,18 @@ private enum SystemTestScenario: String {
         case .normalAfterRelease:
             return 2
         case .spaceLeft,
-             .spaceRight,
-             .horizontalScroll,
-             .verticalScroll,
-             .missionControl,
-             .pageBack,
-             .pageForward,
-             .zoomIn,
-             .zoomOut,
-             .killSwitch,
-             .gestureDrag,
-             .gestureWheel,
-             .gestureWheelThenKillSwitch:
+            .spaceRight,
+            .horizontalScroll,
+            .verticalScroll,
+            .missionControl,
+            .pageBack,
+            .pageForward,
+            .zoomIn,
+            .zoomOut,
+            .killSwitch,
+            .gestureDrag,
+            .gestureWheel,
+            .gestureWheelThenKillSwitch:
             return 32
         }
     }
@@ -1280,20 +1325,20 @@ private enum SystemTestScenario: String {
     var supportsProcessTargetPosting: Bool {
         switch self {
         case .gestureDrag,
-             .gestureWheel,
-             .gestureWheelThenKillSwitch,
-             .normalAfterRelease:
+            .gestureWheel,
+            .gestureWheelThenKillSwitch,
+            .normalAfterRelease:
             return true
         case .spaceLeft,
-             .spaceRight,
-             .horizontalScroll,
-             .verticalScroll,
-             .missionControl,
-             .pageBack,
-             .pageForward,
-             .zoomIn,
-             .zoomOut,
-             .killSwitch:
+            .spaceRight,
+            .horizontalScroll,
+            .verticalScroll,
+            .missionControl,
+            .pageBack,
+            .pageForward,
+            .zoomIn,
+            .zoomOut,
+            .killSwitch:
             return false
         }
     }
@@ -1305,17 +1350,17 @@ private enum SystemTestScenario: String {
         case .verticalScroll:
             "pure-trackpad-vertical-scroll"
         case .spaceLeft,
-             .spaceRight,
-             .missionControl,
-             .pageBack,
-             .pageForward,
-             .zoomIn,
-             .zoomOut,
-             .killSwitch,
-             .gestureDrag,
-             .gestureWheel,
-             .gestureWheelThenKillSwitch,
-             .normalAfterRelease:
+            .spaceRight,
+            .missionControl,
+            .pageBack,
+            .pageForward,
+            .zoomIn,
+            .zoomOut,
+            .killSwitch,
+            .gestureDrag,
+            .gestureWheel,
+            .gestureWheelThenKillSwitch,
+            .normalAfterRelease:
             nil
         }
     }
@@ -1412,10 +1457,12 @@ private struct UnmarkedInputEvent {
         return event
     }
 
-    var releaseDomains: (
-        opens: Set<DiagnosticEventReleaseDomain>,
-        closes: Set<DiagnosticEventReleaseDomain>
-    ) {
+    var releaseDomains:
+        (
+            opens: Set<DiagnosticEventReleaseDomain>,
+            closes: Set<DiagnosticEventReleaseDomain>
+        )
+    {
         switch type {
         case .keyDown:
             return ([.key(keyCode)], [])
@@ -1481,8 +1528,8 @@ private struct UnmarkedInputEvent {
             return .right
         case .otherMouseDown, .otherMouseUp, .otherMouseDragged:
             guard buttonNumber >= 0,
-                  buttonNumber <= Int64(UInt32.max),
-                  let button = CGMouseButton(rawValue: UInt32(buttonNumber))
+                buttonNumber <= Int64(UInt32.max),
+                let button = CGMouseButton(rawValue: UInt32(buttonNumber))
             else {
                 return .center
             }

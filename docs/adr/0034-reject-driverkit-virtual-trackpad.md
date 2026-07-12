@@ -1,5 +1,7 @@
 # ADR-0034: DriverKit virtual trackpad案を却下する
 
+> 現行の入力mode、3つの製品runtime経路、NavigationSwipe候補、OS/App結果の用語境界は[ADR-0048](0048-separate-input-mode-event-family-os-result-and-evidence.md)を正とする。本ADRのDriverKit virtual trackpadを採用しない判断は維持する。
+
 - 状態: 却下
 - 日付: 2026-07-11
 
