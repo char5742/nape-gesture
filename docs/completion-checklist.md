@@ -67,7 +67,7 @@ artifacts/completion/YYYY-MM-DD/<repo-sha>/<scenario-id>/
 | ProductOutput | 2本指はtype 22 scroll + type 29 companion、3本指はtype 30 DockSwipe motion 1 / 2、4本指はtype 30 DockSwipe motion 4をclass固有contractでsystem-wide投稿する | 3 classのfamily mapping、field、phase、単位、batch、system-wide direct post smoke | Nape Proから5473 eventを生成し、DockがSpace、Mission Control、motion 4を受理。純正trackpadとの最終比較は残る | `統合検証中` |
 | session terminal | 正常終了と全cancel原因がsingle terminalへ収束し、部分投稿後も順序を保って閉じる | release、cancel、kill switch、runtime stop、sleep、disconnect、TCC喪失、作成 / 投稿失敗、partial batch retry | 正常解放と少なくともkill switch、disconnect、sleepまたはTCC喪失 | `統合検証中` |
 | passthrough | 未押下、対象外button、対象外device、session終了後に通常click、move、drag、wheelを変更・抑制・再生成しない | event種別identity、生成0、抑制0、解放境界、failure後復帰 | 23 session後の通常操作復帰を確認。異常終了後の実機復帰は残る | `統合検証中` |
-| cursor固定 | gesture session中はmouseとcursorのQuartz連動を停止し、全terminalで通常追従へ戻す | began / ended / cancelled / stop / tap中断 / 出力失敗の連動状態遷移 | Nape Pro操作中のcursor位置と解放後の追従を確認 | `実機待ち` |
+| cursor固定 | gesture session中はmouseとcursorのQuartz連動を停止し、全terminalで通常追従へ戻す | began / ended / cancelled / stop / tap中断 / 出力失敗の連動状態遷移 | ユーザー受入により、Nape Pro操作中のcursor固定と解放後の通常追従を正常動作として確定 | `完了` |
 | fail closed | unsupported build、scroll contract / model / DockSwipe templateのfixture / hash / schema不一致、device不一致、TCC不足、session不整合、event失敗でruntime全体の新規抑制を開始せず、別経路へfallbackしない | failure injection、readiness、明示path不正、partial post、terminal retry、product boundary guard | 現行`.app`の正常経路は誤出力0。異常条件の実機復旧は残る | `統合検証中` |
 | 配布 | 日常利用するbinaryの署名、公証、stapler、Gatekeeper、performance、recoveryが合格する | release build、bundle identity、doctor identity、性能report | 配布物の初回起動、TCC導線、再起動、sleep、device抜き差し | `未達` |
 
