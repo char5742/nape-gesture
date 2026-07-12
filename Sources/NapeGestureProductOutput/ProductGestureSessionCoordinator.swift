@@ -15,6 +15,7 @@ public final class ProductGestureSessionCoordinator {
     private struct ActiveSession {
         var action: GestureAction
         var machine: TrackpadOutputSessionMachine
+        var dockSwipeAxis: TrackpadOutputAxis?
         var nextCaptureOrder: UInt64
         var cancellationTimestampFloor: MonotonicEventTimestamp?
     }
@@ -32,17 +33,14 @@ public final class ProductGestureSessionCoordinator {
         requiredFamilies.filter { !output.supports($0) }
     }
 
-    private let bindings: GestureBindings
     private let output: any ProductGestureOutput
     private let sessionSequence: TrackpadOutputSessionSequence
     private var activeSession: ActiveSession?
 
     public init(
-        bindings: GestureBindings,
         output: any ProductGestureOutput,
         sessionSequence: TrackpadOutputSessionSequence = TrackpadOutputSessionSequence()
     ) {
-        self.bindings = bindings
         self.output = output
         self.sessionSequence = sessionSequence
     }
@@ -51,9 +49,7 @@ public final class ProductGestureSessionCoordinator {
         command: GestureCommand,
         continuation: TrackpadOutputContinuation? = nil
     ) -> ProductGestureSessionPost {
-        let action = command.kind == .momentum
-            ? (activeSession?.action ?? bindings.action(for: command))
-            : bindings.action(for: command)
+        let action = activeSession?.action ?? Self.action(for: command)
         if command.phase == .began, activeSession != nil {
             return ProductGestureSessionPost(action: action, result: .rejected(.invalidSession))
         }
@@ -77,7 +73,7 @@ public final class ProductGestureSessionCoordinator {
         }
         guard let timestamp = MonotonicEventClock.timestamp(
             fromSecondsSinceStartup: command.timestamp
-        ), let payload = Self.payload(action: action, command: command) else {
+        ), let payload = payload(action: action, command: command) else {
             return ProductGestureSessionPost(action: action, result: .rejected(.invalidSession))
         }
 
@@ -120,9 +116,7 @@ public final class ProductGestureSessionCoordinator {
     }
 
     public func supportsMomentum(for command: GestureCommand) -> Bool {
-        let action = command.kind == .momentum
-            ? (activeSession?.action ?? bindings.action(for: command))
-            : bindings.action(for: command)
+        let action = activeSession?.action ?? Self.action(for: command)
         guard let family = Self.family(for: action) else {
             return false
         }
@@ -178,14 +172,7 @@ public final class ProductGestureSessionCoordinator {
     }
 
     private var requiredFamilies: Set<TrackpadOutputEventFamily> {
-        let actions = [
-            bindings.dragUp,
-            bindings.dragDown,
-            bindings.dragLeft,
-            bindings.dragRight,
-            bindings.wheel
-        ]
-        return Set(actions.compactMap(Self.family(for:)))
+        [.dockSwipe, .scroll]
     }
 
     private func makeSessionEvent(
@@ -245,6 +232,7 @@ public final class ProductGestureSessionCoordinator {
             activeSession = ActiveSession(
                 action: action,
                 machine: TrackpadOutputSessionMachine(sessionID: sessionID, family: family),
+                dockSwipeAxis: family == .dockSwipe ? Self.dominantAxis(for: command) : nil,
                 nextCaptureOrder: 0,
                 cancellationTimestampFloor: nil
             )
@@ -330,7 +318,7 @@ public final class ProductGestureSessionCoordinator {
             nil
         case .smoothScroll, .horizontalScroll:
             .scroll
-        case .missionControl, .spaceLeft, .spaceRight:
+        case .missionControl, .spaceLeft, .spaceRight, .dockSwipe:
             .dockSwipe
         case .pageBack, .pageForward:
             .navigationSwipe
@@ -339,7 +327,16 @@ public final class ProductGestureSessionCoordinator {
         }
     }
 
-    private static func payload(
+    private static func action(for command: GestureCommand) -> GestureAction {
+        switch command.kind {
+        case .drag:
+            .dockSwipe
+        case .wheel, .momentum:
+            .smoothScroll
+        }
+    }
+
+    private func payload(
         action: GestureAction,
         command: GestureCommand
     ) -> TrackpadOutputPayload? {
@@ -357,51 +354,64 @@ public final class ProductGestureSessionCoordinator {
             let delta = useX ? command.deltaX : command.deltaY
             let velocity = useX ? command.velocityX : command.velocityY
             return .scroll(deltaX: delta, deltaY: 0, velocityX: velocity, velocityY: 0)
+        case .dockSwipe:
+            let axis = activeSession?.dockSwipeAxis ?? Self.dominantAxis(for: command)
+            let delta = axis == .horizontal ? command.deltaX : command.deltaY
+            let velocity = axis == .horizontal ? command.velocityX : command.velocityY
+            return .dockSwipe(
+                axis: axis,
+                progress: Self.normalizedProgress(delta),
+                velocity: Self.normalizedVelocity(velocity)
+            )
         case .missionControl:
             return .dockSwipe(
                 axis: .vertical,
-                progress: normalizedProgress(-abs(command.deltaY)),
-                velocity: normalizedVelocity(-abs(command.velocityY))
+                progress: Self.normalizedProgress(-abs(command.deltaY)),
+                velocity: Self.normalizedVelocity(-abs(command.velocityY))
             )
         case .spaceLeft:
             return .dockSwipe(
                 axis: .horizontal,
-                progress: normalizedProgress(abs(command.deltaX)),
-                velocity: normalizedVelocity(abs(command.velocityX))
+                progress: Self.normalizedProgress(abs(command.deltaX)),
+                velocity: Self.normalizedVelocity(abs(command.velocityX))
             )
         case .spaceRight:
             return .dockSwipe(
                 axis: .horizontal,
-                progress: normalizedProgress(-abs(command.deltaX)),
-                velocity: normalizedVelocity(-abs(command.velocityX))
+                progress: Self.normalizedProgress(-abs(command.deltaX)),
+                velocity: Self.normalizedVelocity(-abs(command.velocityX))
             )
         case .pageBack:
             return .navigationSwipe(
                 direction: .right,
-                progress: normalizedProgress(abs(command.deltaX)),
-                velocity: normalizedVelocity(abs(command.velocityX))
+                progress: Self.normalizedProgress(abs(command.deltaX)),
+                velocity: Self.normalizedVelocity(abs(command.velocityX))
             )
         case .pageForward:
             return .navigationSwipe(
                 direction: .left,
-                progress: normalizedProgress(-abs(command.deltaX)),
-                velocity: normalizedVelocity(-abs(command.velocityX))
+                progress: Self.normalizedProgress(-abs(command.deltaX)),
+                velocity: Self.normalizedVelocity(-abs(command.velocityX))
             )
         case .zoomIn:
             return .magnification(
-                progress: normalizedProgress(abs(command.deltaY)),
-                scaleDelta: normalizedScale(abs(command.deltaY)),
-                velocity: normalizedVelocity(abs(command.velocityY))
+                progress: Self.normalizedProgress(abs(command.deltaY)),
+                scaleDelta: Self.normalizedScale(abs(command.deltaY)),
+                velocity: Self.normalizedVelocity(abs(command.velocityY))
             )
         case .zoomOut:
             return .magnification(
-                progress: normalizedProgress(-abs(command.deltaY)),
-                scaleDelta: normalizedScale(-abs(command.deltaY)),
-                velocity: normalizedVelocity(-abs(command.velocityY))
+                progress: Self.normalizedProgress(-abs(command.deltaY)),
+                scaleDelta: Self.normalizedScale(-abs(command.deltaY)),
+                velocity: Self.normalizedVelocity(-abs(command.velocityY))
             )
         case .none:
             return nil
         }
+    }
+
+    private static func dominantAxis(for command: GestureCommand) -> TrackpadOutputAxis {
+        abs(command.deltaX) > abs(command.deltaY) ? .horizontal : .vertical
     }
 
     private static func normalizedProgress(_ value: Double) -> Double {

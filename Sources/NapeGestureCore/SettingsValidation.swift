@@ -25,7 +25,6 @@ public enum SettingsValidator {
 
     private static func validate(_ gesture: GestureConfiguration, issues: inout [SettingsValidationIssue]) {
         requireFinite(gesture.deadZonePoints, path: "gesture.deadZonePoints", message: "0以上の有限値にしてください。", issues: &issues) { $0 >= 0 }
-        requireFinite(gesture.directionLockRatio, path: "gesture.directionLockRatio", message: "1以上の有限値にしてください。", issues: &issues) { $0 >= 1 }
         requireFinite(gesture.dragSensitivity, path: "gesture.dragSensitivity", message: "0より大きい有限値にしてください。", issues: &issues) { $0 > 0 }
         requireFinite(gesture.wheelSensitivity, path: "gesture.wheelSensitivity", message: "0より大きい有限値にしてください。", issues: &issues) { $0 > 0 }
 
@@ -37,7 +36,6 @@ public enum SettingsValidator {
         let cancellation = gesture.cancellation
         requireFinite(cancellation.maximumDuration, path: "gesture.cancellation.maximumDuration", message: "0以上の有限値にしてください。0で無効化できます。", issues: &issues) { $0 >= 0 }
         requireFinite(cancellation.maximumInactivityInterval, path: "gesture.cancellation.maximumInactivityInterval", message: "0以上の有限値にしてください。0で無効化できます。", issues: &issues) { $0 >= 0 }
-        requireFinite(cancellation.offAxisCancelRatio, path: "gesture.cancellation.offAxisCancelRatio", message: "0以上の有限値にしてください。0で無効化できます。", issues: &issues) { $0 >= 0 }
 
         let momentum = gesture.momentum
         requireFinite(momentum.minimumStartVelocity, path: "gesture.momentum.minimumStartVelocity", message: "0以上の有限値にしてください。", issues: &issues) { $0 >= 0 }

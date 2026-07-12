@@ -10,7 +10,6 @@ final class SettingsWindowController: NSWindowController {
     private let activationButtonField = NSTextField()
     private let associationWindowField = NSTextField()
     private let deadZoneField = NSTextField()
-    private let directionLockField = NSTextField()
     private let dragSensitivityField = NSTextField()
     private let wheelSensitivityField = NSTextField()
     private let accelerationEnabledCheck = NSButton(
@@ -32,7 +31,6 @@ final class SettingsWindowController: NSWindowController {
     private let momentumFrameIntervalField = NSTextField()
     private let maximumDurationField = NSTextField()
     private let maximumInactivityField = NSTextField()
-    private let offAxisCancelRatioField = NSTextField()
     private let targetVendorIDField = NSTextField()
     private let targetProductIDField = NSTextField()
     private let targetManufacturerField = NSTextField()
@@ -45,11 +43,6 @@ final class SettingsWindowController: NSWindowController {
         target: nil,
         action: nil
     )
-    private let dragUpPopup = NSPopUpButton()
-    private let dragDownPopup = NSPopUpButton()
-    private let dragLeftPopup = NSPopUpButton()
-    private let dragRightPopup = NSPopUpButton()
-    private let wheelPopup = NSPopUpButton()
 
     init(settings: NapeGestureSettings, configPath: String) {
         self.settings = settings
@@ -83,16 +76,7 @@ final class SettingsWindowController: NSWindowController {
         stack.translatesAutoresizingMaskIntoConstraints = false
 
         stack.addArrangedSubview(label("設定ファイル: \(configPath)", fontSize: 11))
-        configurePopup(dragUpPopup)
-        configurePopup(dragDownPopup)
-        configurePopup(dragLeftPopup)
-        configurePopup(dragRightPopup)
-        configurePopup(wheelPopup)
-
         for field in SettingsUIField.allCases {
-            if field == .bindingDragUp {
-                stack.addArrangedSubview(separator())
-            }
             let control = control(for: field)
             if field.descriptor.controlKind == .checkbox {
                 stack.addArrangedSubview(control)
@@ -141,7 +125,6 @@ final class SettingsWindowController: NSWindowController {
         activationButtonField.stringValue = String(settings.gesture.activationButton.rawValue)
         associationWindowField.stringValue = String(settings.targetDeviceAssociation.associationWindow)
         deadZoneField.stringValue = String(settings.gesture.deadZonePoints)
-        directionLockField.stringValue = String(settings.gesture.directionLockRatio)
         dragSensitivityField.stringValue = String(settings.gesture.dragSensitivity)
         wheelSensitivityField.stringValue = String(settings.gesture.wheelSensitivity)
         accelerationEnabledCheck.state = settings.gesture.acceleration.isEnabled ? .on : .off
@@ -155,7 +138,6 @@ final class SettingsWindowController: NSWindowController {
         momentumFrameIntervalField.stringValue = String(settings.gesture.momentum.frameInterval)
         maximumDurationField.stringValue = String(settings.gesture.cancellation.maximumDuration)
         maximumInactivityField.stringValue = String(settings.gesture.cancellation.maximumInactivityInterval)
-        offAxisCancelRatioField.stringValue = String(settings.gesture.cancellation.offAxisCancelRatio)
         let matcher = settings.targetDevices.first
         targetVendorIDField.stringValue = string(for: matcher?.vendorID)
         targetProductIDField.stringValue = string(for: matcher?.productID)
@@ -165,11 +147,6 @@ final class SettingsWindowController: NSWindowController {
         targetUsagePageField.stringValue = string(for: matcher?.primaryUsagePage)
         targetUsageField.stringValue = string(for: matcher?.primaryUsage)
         requireTargetCheck.state = settings.requireMatchingTargetDevice ? .on : .off
-        select(settings.gesture.bindings.dragUp, in: dragUpPopup)
-        select(settings.gesture.bindings.dragDown, in: dragDownPopup)
-        select(settings.gesture.bindings.dragLeft, in: dragLeftPopup)
-        select(settings.gesture.bindings.dragRight, in: dragRightPopup)
-        select(settings.gesture.bindings.wheel, in: wheelPopup)
     }
 
     @objc private func save() {
@@ -177,7 +154,6 @@ final class SettingsWindowController: NSWindowController {
             let activationButton = Int(activationButtonField.stringValue),
             let associationWindow = Double(associationWindowField.stringValue),
             let deadZone = Double(deadZoneField.stringValue),
-            let directionLockRatio = Double(directionLockField.stringValue),
             let dragSensitivity = Double(dragSensitivityField.stringValue),
             let wheelSensitivity = Double(wheelSensitivityField.stringValue),
             let accelerationThreshold = Double(accelerationThresholdField.stringValue),
@@ -188,8 +164,7 @@ final class SettingsWindowController: NSWindowController {
             let momentumDecay = Double(momentumDecayField.stringValue),
             let momentumFrameInterval = Double(momentumFrameIntervalField.stringValue),
             let maximumDuration = Double(maximumDurationField.stringValue),
-            let maximumInactivity = Double(maximumInactivityField.stringValue),
-            let offAxisCancelRatio = Double(offAxisCancelRatioField.stringValue)
+            let maximumInactivity = Double(maximumInactivityField.stringValue)
         else {
             showError("数値項目の形式が不正です。")
             return
@@ -197,7 +172,6 @@ final class SettingsWindowController: NSWindowController {
 
         guard associationWindow > 0,
               deadZone >= 0,
-              directionLockRatio >= 1,
               dragSensitivity > 0,
               wheelSensitivity > 0,
               accelerationThreshold >= 0,
@@ -209,10 +183,9 @@ final class SettingsWindowController: NSWindowController {
               momentumDecay <= 1,
               momentumFrameInterval > 0,
               maximumDuration >= 0,
-              maximumInactivity >= 0,
-              offAxisCancelRatio >= 0
+              maximumInactivity >= 0
         else {
-            showError("数値項目は、デッドゾーン、加速度しきい速度、加速度指数、慣性速度、キャンセル秒数は0以上、方向ロック比と加速度最大倍率は1以上、対象入力の紐づけ秒、慣性減衰率、感度、慣性フレーム間隔は0より大きい値にしてください。慣性減衰率は1以下にしてください。")
+            showError("数値項目は、デッドゾーン、加速度しきい速度、加速度指数、慣性速度、キャンセル秒数は0以上、加速度最大倍率は1以上、対象入力の紐づけ秒、慣性減衰率、感度、慣性フレーム間隔は0より大きい値にしてください。慣性減衰率は1以下にしてください。")
             return
         }
 
@@ -245,7 +218,6 @@ final class SettingsWindowController: NSWindowController {
             gesture: GestureConfiguration(
                 activationButton: MouseButton(rawValue: activationButton) ?? .button4,
                 deadZonePoints: deadZone,
-                directionLockRatio: directionLockRatio,
                 dragSensitivity: dragSensitivity,
                 wheelSensitivity: wheelSensitivity,
                 acceleration: GestureAccelerationConfiguration(
@@ -256,8 +228,7 @@ final class SettingsWindowController: NSWindowController {
                 ),
                 cancellation: GestureCancellationConfiguration(
                     maximumDuration: maximumDuration,
-                    maximumInactivityInterval: maximumInactivity,
-                    offAxisCancelRatio: offAxisCancelRatio
+                    maximumInactivityInterval: maximumInactivity
                 ),
                 momentum: MomentumConfiguration(
                     isEnabled: momentumEnabledCheck.state == .on,
@@ -265,13 +236,6 @@ final class SettingsWindowController: NSWindowController {
                     stopVelocity: momentumStopVelocity,
                     decayPerSecond: momentumDecay,
                     frameInterval: momentumFrameInterval
-                ),
-                bindings: GestureBindings(
-                    dragUp: selectedAction(dragUpPopup),
-                    dragDown: selectedAction(dragDownPopup),
-                    dragLeft: selectedAction(dragLeftPopup),
-                    dragRight: selectedAction(dragRightPopup),
-                    wheel: selectedAction(wheelPopup)
                 )
             ),
             targetDeviceAssociation: TargetDeviceAssociationConfiguration(
@@ -287,20 +251,6 @@ final class SettingsWindowController: NSWindowController {
 
     @objc private func closeWindow() {
         close()
-    }
-
-    private func configurePopup(_ popup: NSPopUpButton) {
-        for action in GestureAction.settingsSelectableActions {
-            popup.addItem(withTitle: action.rawValue)
-        }
-    }
-
-    private func select(_ action: GestureAction, in popup: NSPopUpButton) {
-        popup.selectItem(withTitle: action.rawValue)
-    }
-
-    private func selectedAction(_ popup: NSPopUpButton) -> GestureAction {
-        GestureAction(rawValue: popup.titleOfSelectedItem ?? "") ?? .none
     }
 
     private func optionalText(_ field: NSTextField) -> String? {
@@ -335,8 +285,6 @@ final class SettingsWindowController: NSWindowController {
             return associationWindowField
         case .deadZonePoints:
             return deadZoneField
-        case .directionLockRatio:
-            return directionLockField
         case .dragSensitivity:
             return dragSensitivityField
         case .wheelSensitivity:
@@ -363,8 +311,6 @@ final class SettingsWindowController: NSWindowController {
             return maximumDurationField
         case .cancellationMaximumInactivityInterval:
             return maximumInactivityField
-        case .cancellationOffAxisCancelRatio:
-            return offAxisCancelRatioField
         case .targetVendorID:
             return targetVendorIDField
         case .targetProductID:
@@ -381,16 +327,6 @@ final class SettingsWindowController: NSWindowController {
             return targetUsageField
         case .requireMatchingTargetDevice:
             return requireTargetCheck
-        case .bindingDragUp:
-            return dragUpPopup
-        case .bindingDragDown:
-            return dragDownPopup
-        case .bindingDragLeft:
-            return dragLeftPopup
-        case .bindingDragRight:
-            return dragRightPopup
-        case .bindingWheel:
-            return wheelPopup
         }
     }
 

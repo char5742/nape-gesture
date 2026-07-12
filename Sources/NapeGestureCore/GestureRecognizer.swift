@@ -70,7 +70,7 @@ public struct GestureRecognizer: Sendable {
                 return GestureDecision(shouldSuppressOriginal: true)
             }
 
-            let direction = lockedDirection(deltaX: nextX, deltaY: nextY)
+            let direction = GestureDirection.dominant(deltaX: nextX, deltaY: nextY)
             let accelerated = acceleratedDeltas(
                 deltaX: nextX,
                 deltaY: nextY,
@@ -101,10 +101,6 @@ public struct GestureRecognizer: Sendable {
             let velocity = velocity(deltaX: deltaX, deltaY: deltaY, previousTime: lastTime, time: time)
             lastVelocityX = velocity.x
             lastVelocityY = velocity.y
-
-            if shouldCancelForOffAxisMovement(direction: direction, totalX: nextX, totalY: nextY) {
-                return finish(at: time, cancelled: true)
-            }
 
             let accelerated = acceleratedDeltas(
                 deltaX: deltaX,
@@ -245,15 +241,6 @@ public struct GestureRecognizer: Sendable {
         }
     }
 
-    private func lockedDirection(deltaX: Double, deltaY: Double) -> GestureDirection? {
-        let absoluteX = abs(deltaX)
-        let absoluteY = abs(deltaY)
-        guard max(absoluteX, absoluteY) >= min(absoluteX, absoluteY) * configuration.directionLockRatio else {
-            return nil
-        }
-        return GestureDirection.dominant(deltaX: deltaX, deltaY: deltaY)
-    }
-
     private func velocity(deltaX: Double, deltaY: Double, previousTime: TimeInterval, time: TimeInterval) -> (x: Double, y: Double) {
         let elapsed = max(time - previousTime, 0.001)
         return (deltaX / elapsed, deltaY / elapsed)
@@ -318,33 +305,6 @@ public struct GestureRecognizer: Sendable {
         }
     }
 
-    private func shouldCancelForOffAxisMovement(
-        direction: GestureDirection?,
-        totalX: Double,
-        totalY: Double
-    ) -> Bool {
-        guard let direction else {
-            return false
-        }
-
-        let ratio = configuration.cancellation.offAxisCancelRatio
-        guard ratio > 0 else {
-            return false
-        }
-
-        let alongAxis: Double
-        let offAxis: Double
-        switch direction {
-        case .left, .right:
-            alongAxis = abs(totalX)
-            offAxis = abs(totalY)
-        case .up, .down:
-            alongAxis = abs(totalY)
-            offAxis = abs(totalX)
-        }
-
-        return offAxis >= configuration.deadZonePoints && offAxis > alongAxis * ratio
-    }
 }
 
 public enum GestureState: Equatable, Sendable {

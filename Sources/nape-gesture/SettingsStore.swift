@@ -42,7 +42,12 @@ enum SettingsStore {
     static func loadOrCreateDefault(at path: String) throws -> NapeGestureSettings {
         let url = URL(fileURLWithPath: path)
         if FileManager.default.fileExists(atPath: path) {
-            return try load(fromPath: path)
+            let data = try Data(contentsOf: url)
+            let settings = try decoder.decode(NapeGestureSettings.self, from: data)
+            if try SettingsMigration.containsDeprecatedGestureKeys(in: data) {
+                try write(settings, to: path)
+            }
+            return settings
         }
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(),

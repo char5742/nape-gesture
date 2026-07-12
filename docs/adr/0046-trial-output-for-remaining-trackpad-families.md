@@ -1,5 +1,7 @@
 # ADR-0046: 残るtrackpad familyを25F80試用出力として有効化する
 
+> bindingによるfamily選択の記述は[ADR-0047](0047-fixed-continuous-2d-trackpad-input.md)で置換済み。候補event contractの決定記録として保持する。
+
 - 状態: 採択
 - 日付: 2026-07-12
 

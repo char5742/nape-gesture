@@ -362,9 +362,11 @@ struct SystemBehaviorTestCommand {
         traceOutputPath: String?,
         traceContext: ProductGestureOutputTraceContext?
     ) throws {
-        guard let firstCommand = commands.first else {
+        guard !commands.isEmpty else {
             throw ToolError.invalidValue("product scroll command", "入力列が空です。")
         }
+        let firstCommand = commands[0]
+        let action = GestureAction.smoothScroll
         var postedTrace: [ProductGestureOutputPostedEventTrace] = []
         let traceObserver: ProductPostedEventObserver? = traceOutputPath == nil
             ? nil
@@ -381,17 +383,7 @@ struct SystemBehaviorTestCommand {
             )
         }
 
-        let action: GestureAction = firstCommand.deltaX == 0
-            ? .smoothScroll
-            : .horizontalScroll
         let coordinator = ProductGestureSessionCoordinator(
-            bindings: GestureBindings(
-                dragUp: action,
-                dragDown: action,
-                dragLeft: action,
-                dragRight: action,
-                wheel: action
-            ),
             output: adapter
         )
         guard coordinator.unsupportedRequiredFamilies.isEmpty else {

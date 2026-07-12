@@ -32,7 +32,7 @@ final class NapeGestureDaemon {
         self.hidInputMonitor = hidInputMonitor
         self.performanceRecorder = performanceRecorder
         self.onTerminalFailure = onTerminalFailure
-        actionExecutor = GestureActionExecutor(bindings: configuration.bindings, output: productOutput)
+        actionExecutor = GestureActionExecutor(output: productOutput)
         recognizer = GestureRecognizer(configuration: configuration)
         momentum = MomentumEngine(configuration: configuration.momentum)
     }

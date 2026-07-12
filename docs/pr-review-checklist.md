@@ -41,7 +41,7 @@
 - デッドゾーン内の微小揺れをジェスチャー確定にしていない
 - ボタン解放後に必ず通常状態へ戻る
 - scrollの`began` / `changed` / `ended` / `cancelled`とmomentumの`began` / `continued` / `ended`を別のlifecycleとして扱っている
-- 方向ロック、加速度、キャンセル条件、慣性のテストが追加または更新されている
+- 連続2D入力、加速度、方向非依存のキャンセル条件、慣性のテストが追加または更新されている
 
 ## Runtime / Event Tap 変更
 
@@ -105,7 +105,7 @@
 - scroll phaseとmomentum phaseを分離し、begin / change / end / cancelとmomentum begin / continue / endを完結させる
 - daemonがmomentum timerと停止理由、coordinatorがactive action、session ID、順序、continuation、明示cancelを管理し、input active / awaiting momentum / momentum activeを重複なくterminalへ収束させる
 - 部分投稿失敗では未投稿offsetと予約済みpost indexを保持し、同じeventの再送または明示cancelで解消するまで別sessionを拒否して、trace順序と実投稿順を一致させる
-- scroll familyだけの変更では`DockSwipe` / `NavigationSwipe` / `magnification`を未実装と明記してcapabilityへ含めず、必要なbindingを`outputContract.missingFamilies`として起動前に停止する。scroll実装をアプリ全体の完成と表現していない
+- 固定操作体系に必要なfamilyが不足する場合は`outputContract.missingFamilies`として起動前に停止し、方向別bindingによる回避を追加していない
 - アプリ全体の完成を主張する場合は、Spaces / Mission ControlをDockSwipe、page navigationをNavigationSwipe、zoomをmagnificationとして別途実装・検証し、forced horizontal scrollやkeyboard shortcutで代替していない
 - 純正trackpad logとtype、subtype、field、順序、timestamp、phase、momentumを同一schemaで比較している
 - trackpad output eventのfield番号、定数、状態遷移、係数、調整値が、Apple公式資料、Apple OSS、capture manifest、fixture、自前ログまで追跡できる

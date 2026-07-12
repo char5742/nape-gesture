@@ -61,7 +61,6 @@ struct DoctorCommand {
         let inventory = makeInventory(settings: settings, findings: &findings)
         let outputAdapter = TrackpadGestureOutputAdapter()
         let outputCoordinator = ProductGestureSessionCoordinator(
-            bindings: settings.gesture.bindings,
             output: outputAdapter
         )
         let outputContract = DoctorOutputContractStatus(
@@ -592,10 +591,10 @@ private struct DoctorRuntimeReadiness: Codable {
                     message: isMismatch
                         ? "trackpad driver出力contractが現在のmacOS buildと一致しません。"
                         : (isMissingFamily
-                            ? "現在のbindingに必要なproduct output familyが未実装です: \(outputContract.missingRequiredFamilies.joined(separator: ", "))"
+                            ? "固定ジェスチャーに必要なproduct output familyが未実装です: \(outputContract.missingRequiredFamilies.joined(separator: ", "))"
                             : "このmacOS build用のtrackpad driver出力contractが未対応です。"),
                     remediation: isMissingFamily
-                        ? "未実装familyのadapterとcontractを完成させるか、対応済みfamilyだけのbindingで検証してください。"
+                        ? "未実装familyのadapterとcontractを完成させてください。"
                         : "純正trackpad fixtureからcontractを導出し、対応OS buildとしてadapterを検証してください。"
                 )
             )

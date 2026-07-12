@@ -1,5 +1,7 @@
 # ADR-0021: 設定 UI 編集項目 catalog の機械証跡化
 
+> 一部置換済み: `gesture.bindings.*`、方向ロック、軸ずれcancelは廃止した。現在の方針は[ADR-0047](0047-fixed-continuous-2d-trackpad-input.md)を正とする。
+
 - 状態: 採択
 - 日付: 2026-07-09
 
