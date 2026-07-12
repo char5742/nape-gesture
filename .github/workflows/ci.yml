@@ -22,6 +22,9 @@ jobs:
       - name: Check provenance guard
         run: sh scripts/check-provenance.sh
 
+      - name: Test provenance guard
+        run: sh scripts/test-check-provenance.sh
+
       - name: Check product output boundary
         run: sh scripts/check-product-output-boundary.sh
 

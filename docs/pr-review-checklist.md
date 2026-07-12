@@ -15,7 +15,8 @@
 - ユーザーが見る挙動、GUI、権限導線、検証手順、完成状態、配布手順を変えた場合、README を更新している。更新不要の場合は PR 本文で理由を明記している
 - 未検証事項を「完了」と表現していない
 - 実装contract、field番号、状態遷移、係数、調整値に、Apple公式資料、Apple OSS、自前ログからの導出根拠がある
-- 由来や配布物に影響する変更では `sh scripts/check-provenance.sh` が成功している
+- 実装上必要な実依存の識別子と法定通知を除き、README、実装、コメント、テスト名、ユーザー向け文書に不要な第三者プロジェクトの固有名、コンポーネント名、参照実装由来と読める表現がない
+- 由来や配布物に影響する変更では `sh scripts/check-provenance.sh` と `sh scripts/test-check-provenance.sh` が成功している
 - Grok CLIによる独立監査、補助レビュー、発散、PR差分レビューを実行していない
 - 外部モデルの出力を設計判断、PR review、完成判定、CI gate、runtime証跡に混ぜていない
 - computer-use で代替できる GUI 操作を `need:human` にしていない。OS セキュリティ設定を変更する UI 操作では直前確認を取っている

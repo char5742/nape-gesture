@@ -6,24 +6,26 @@
 ## 背景
 
 Nape Gestureのevent contractとパラメータは、Apple公式資料、Apple OSS、このリポジトリの純正trackpad / Nape Proログを正本とする。
-製品surfaceの識別子は、Nape Gesture自身の仕様と、実際の依存関係・法定通知に必要なものへ限定する。文書だけでは、tracked filesへ不要な外部固有識別子が混入する退行をCIで止められない。
+実装と製品surfaceに置く外部固有名は、実装上必要な実依存の識別子と法定通知に限定する。実際に利用する依存のimport名、module / API名、ライセンス上必要な文書は除外対象ではなく、参照実装として不要な外部固有名を持ち込むことだけを禁止する。
 
-このリポジトリの自動検証では、tracked filesの中だけを対象に、正本方針と識別子境界を確認する早期検出ガードを置く。
+既知の外部プロジェクト名、コンポーネント名、作者名、domain、URLをdenylistとして保持すると、guard自体が特定プロジェクト専用の参照を残す。任意の外部固有名を一般的なpatternで正確に判定することもできない。このリポジトリの自動検証では、一般化した正本方針と識別子境界の必須文言を確認し、個別の固有名監査はtracked files全体のレビューで行う。
 
 ## 決定
 
 - `scripts/check-provenance.sh` を追加し、`sh scripts/check-provenance.sh` で実行する。
+- `scripts/test-check-provenance.sh` は隔離した一時リポジトリで、必須文言が揃う正常系と欠落時の失敗を検証する。
 - CI は build / test 前に provenance guard を実行する。
-- completion evidence は `provenance/check-provenance.log` として同じ guard の実行結果を保存する。
-- guard は製品surfaceから除外する外部固有名について、大文字小文字、空白、hyphen、underscore の表記揺れと reverse-domain 形式を tracked files 全体で禁止する。
-- guard 自身に固有名を残さないため、検出 pattern は固有名の各語要素から実行時に組み立て、allowlist を設けない。
-- guard は README、PR template、PR review checklist に、一般化したrepo-local由来方針が残っていることも確認する。`THIRD_PARTY_NOTICES.md`と配布通知 fallbackは、実際に同梱する依存関係の通知だけに使う。
+- completion evidence は `provenance/check-provenance.log` と `provenance/test-check-provenance.log` に、guard本体と回帰テストの実行結果を独立して保存する。
+- guard は README、AGENTS、requirements、PR template、PR review checklist に、一般化したrepo-local由来方針と、実装上必要な実依存識別子を許容する境界が残っていることを確認する。
+- guard に特定の外部プロジェクトを識別する語断片、コンポーネント名、作者名、domain、URL、表記揺れpatternを持たせず、固有名denylistのallowlistも設けない。
+- 実依存または派生物を追加した場合は、その利用に必要なimport名、module / API名、設定識別子と、`THIRD_PARTY_NOTICES.md`や配布通知に必要な固有名、著作権表示、通知を残す。この境界を不要な外部参照と混同しない。
+- README、実装、コメント、テスト名、ユーザー向け文書を含むtracked files全体の不要な外部固有名監査は、PRレビューと完成判定で明示的に行う。
 
 ## 影響
 
-- tracked filesだけで、正本方針の削除や不要な固有名の混入をCIで止められる。
-- このguardは法的な非侵害証明ではない。採用根拠の追跡、PRレビュー、テスト、ログからの再導出を補助する機械チェックとして扱う。
-- 新しい依存関係または派生物を追加する場合は、必要な著作権表示や由来通知を消さず、先にライセンス要件、ADR、通知方針、guardの例外範囲を更新する。
+- 一般化した正本方針やレビュー項目の削除はCIで止められる。
+- このguardは任意の外部固有名の自動検出や法的な非侵害証明ではない。採用根拠の追跡、tracked files全体のPRレビュー、テスト、ログからの再導出を補助する機械チェックとして扱う。
+- 新しい依存関係または派生物を追加する場合は、必要な著作権表示や由来通知を消さず、先にライセンス要件、ADR、通知方針、製品surfaceとの境界を更新する。
 - 完成判定では、ライセンス / 由来行の機械証跡として採用するが、公開配布物の最終目視や法務判断が必要な場合は別の人間作業として扱う。
 
 ## 関連
