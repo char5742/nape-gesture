@@ -200,6 +200,12 @@ run_combined_success \
   sh scripts/check-provenance.sh
 
 run_combined_success \
+  "由来ガード回帰テスト" \
+  "$provenance_dir/test-check-provenance.log" \
+  "sh scripts/test-check-provenance.sh" \
+  sh scripts/test-check-provenance.sh
+
+run_combined_success \
   "製品gesture出力境界ガード" \
   "$provenance_dir/check-product-output-boundary.log" \
   "sh scripts/check-product-output-boundary.sh" \
