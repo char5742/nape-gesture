@@ -7,9 +7,9 @@
 
 Nape Gestureの完成形は、特定ボタン押下中のmouse操作を、scroll / page navigation、Spaces / Mission Control、magnificationに対応するtrackpad driver上位出力相当のevent列としてmacOSへ認識させることである。AX scrollbar、対象PIDへのevent配送、keyboard shortcutによるgesture代替は、前面applicationごとの分岐と不完全な挙動を生むため採用しない。
 
-外部 reference implementation の構成は設計方向の確認にだけ用い、通常配布物がinput event tapとhelper内の出力moduleで構成される点を参考にした。二本指相当の経路はcontinuous scroll eventと対応するgesture eventをphase / momentum付きで送り、Spaces / Mission Control相当の経路は連続progressとphaseを持つDockSwipe eventを送る。page navigationとmagnificationもtrackpad driverの上位出力に相当するgesture eventとして扱う。
+Nape Gesture自身の操作要件では、二本指相当の経路はcontinuous scroll eventと対応するgesture eventをphase / momentum付きで送り、Spaces / Mission Control相当の経路は連続progressとphaseを持つDockSwipe eventを送る。page navigationとmagnificationもtrackpad driverの上位出力に相当するgesture eventとして扱う。
 
-外部 reference implementation は製品実装の正本にせず、第三者プロジェクトのコード、field番号、定数、係数、調整値、状態遷移をコピーしない。実装由来を混ぜない境界を維持し、Apple公式資料、Apple OSS、このリポジトリの純正trackpad / Nape Proログからevent contractを再導出する。
+event contractとパラメータの正本は、Apple公式資料、Apple OSS、このリポジトリの純正trackpad / Nape Proログとする。採用するfield、定数、係数、調整値、状態遷移を、対応する資料または収録証跡まで追跡できる形で再導出する。
 
 ## 決定
 
@@ -25,7 +25,7 @@ Nape Gestureの完成形は、特定ボタン押下中のmouse操作を、scroll
 - DriverKit virtual trackpad、digitizer contact、System Extensionを前提にしない。
 - event type、subtype、field、順序、timestamp、phase、momentumの正本は、AppleのIOHIDFamily OSSにあるevent taxonomyと、このリポジトリのlisten-only loggerで取得した純正trackpad logから再導出する。
 - 通常SDKに公開されていないevent fieldやbridgeが必要な場合は、最小のcompatibility adapterへ隔離し、OS versionごとのfixtureと実機証跡を持つ。未知versionやcontract不一致では誤ったeventを送らずfail closedにする。
-- 第三者プロジェクト由来の名前、field番号、定数、係数、調整値、状態遷移、header、実装断片はproduction code、fixture、testへ持ち込まない。
+- production code、fixture、testへ採用する名前、field番号、定数、係数、調整値、状態遷移、headerは、前項の正本と収録証跡へ追跡可能であること。
 - [ADR-0037](0037-separate-product-and-diagnostic-event-output.md)に従い、製品adapterと旧単純scroll / shortcut /対象PID配送を含む診断出力をmodule境界で分離する。
 
 ## 影響

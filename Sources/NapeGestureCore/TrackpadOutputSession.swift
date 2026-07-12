@@ -37,7 +37,7 @@ public final class TrackpadOutputSessionSequence: @unchecked Sendable {
     }
 }
 
-public enum TrackpadOutputEventFamily: String, Codable, CaseIterable, Equatable, Sendable {
+public enum TrackpadOutputEventFamily: String, Codable, CaseIterable, Equatable, Hashable, Sendable {
     case scroll
     case dockSwipe
     case navigationSwipe

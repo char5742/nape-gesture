@@ -33,7 +33,7 @@ require_text() {
 
 product_matches=$(
   grep -nEH \
-    'keyboardEventSource|postToPid|AXUIElement|forcedHorizontal|DiagnosticEvent|GenerateScrollCommand|SystemBehaviorTestCommand|kVK_[[:alnum:]_]+' \
+    'keyboardEventSource|postToPid|CGEventPostToPid|CGEventPostToPSN|AXUIElement|forcedHorizontal|DiagnosticEvent|GenerateScrollCommand|SystemBehaviorTestCommand|kVK_[[:alnum:]_]+' \
     Sources/NapeGestureProductOutput/*.swift \
     Sources/nape-gesture/GestureActionExecutor.swift \
     Sources/nape-gesture/NapeGestureDaemon.swift \
@@ -122,6 +122,26 @@ require_text \
   "Sources/nape-gesture/NapeGestureDaemon.swift" \
   "try actionExecutor.ensureOutputAvailable()" \
   "event tap開始前にoutput contractを検査する"
+
+require_text \
+  "Sources/NapeGestureProductOutput/TrackpadGestureOutputAdapter.swift" \
+  "event.post(tap: .cghidEventTap)" \
+  "製品eventをcghid system-wide streamへ投稿する"
+
+require_text \
+  "Sources/NapeGestureProductOutput/TrackpadGestureOutputAdapter.swift" \
+  "event.getIntegerValueField(rawField(39)) == 0" \
+  "投稿前eventでtarget process serial numberを設定しない"
+
+require_text \
+  "Sources/NapeGestureProductOutput/TrackpadGestureOutputAdapter.swift" \
+  "event.getIntegerValueField(rawField(40)) == 0" \
+  "投稿前eventでtarget PIDを設定しない"
+
+require_text \
+  "Sources/NapeGestureProductOutput/TrackpadGestureOutputAdapter.swift" \
+  "delivery: .systemWide" \
+  "直接投稿traceへsystem-wide配送を記録する"
 
 require_text \
   "Sources/NapeGestureCore/TrackpadOutputSession.swift" \

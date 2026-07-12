@@ -44,6 +44,8 @@
 | [ADR-0040](0040-capture-order-and-event-timestamp.md) | capture順とevent timestampを分離する | 純正trackpad実測、captureIndex、manifest開始・終了時刻 |
 | [ADR-0041](0041-physical-capture-readiness-and-fixture-privacy.md) | 物理captureのready同期と公開fixture境界を固定する | 排他的ready lease、安定化waiter、生成marker、fixture privacy、need:human |
 | [ADR-0042](0042-versioned-scroll-momentum-contract-comparison.md) | 25F80 scroll / momentum契約を独立fixtureで比較する | version fixture、lifecycle、terminal、scroll companion、CLI差分report |
+| [ADR-0043](0043-trackpad-scroll-product-output.md) | 25F80 trackpad scrollを製品出力として構成する | 軸別odd quadratic、967 pair、type 22 / 29、system-wide、provenance、field 39 / 40 |
+| [ADR-0044](0044-atomic-app-bundle-installation.md) | 検証済みapp bundleを原子的に導入する | bundle-app、renameatx_np、fingerprint、既存bundle保持、strict CLI |
 
 ## 置換済み
 

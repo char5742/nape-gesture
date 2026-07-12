@@ -3,19 +3,21 @@ import NapeGestureCore
 
 private let manifestTestExecutableSHA256 = String(repeating: "b", count: 64)
 private let manifestTestRepoHeadSHA = String(repeating: "a", count: 40)
-private let manifestTestReadyRunToken = "11111111-2222-3333-4444-555555555555"
+private let manifestTestReadyRunToken = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
 
 private func manifestTestMetadata(
     scenarioID: String? = "space-right",
     deviceLabel: String? = "built-in-trackpad",
-    repoHeadSHA: String? = manifestTestRepoHeadSHA
+    repoHeadSHA: String? = manifestTestRepoHeadSHA,
+    captureRunToken: String? = manifestTestReadyRunToken
 ) -> TrackpadDriverEventLogMetadata {
     TrackpadDriverEventLogMetadata(
         osVersion: "26.0.0",
         osBuild: "25A123",
         scenarioID: scenarioID,
         deviceLabel: deviceLabel,
-        repoHeadSHA: repoHeadSHA
+        repoHeadSHA: repoHeadSHA,
+        captureRunToken: captureRunToken
     )
 }
 
@@ -436,6 +438,7 @@ private func testCaptureManifestCodableRoundTripPreservesEveryField() {
         expect(decoded.schemaVersion == 2, "capture manifest schemaVersionを保持する")
         expect(decoded.evidenceKind == .generatedProduct, "evidenceKindを保持する")
         expect(decoded.loggerExecutableSHA256 == manifestTestExecutableSHA256, "executable SHAを保持する")
+        expect(decoded.captureRunToken == manifestTestReadyRunToken, "capture run tokenを保持する")
         expect(decoded.captureStartedAt.contains("T"), "capture開始wall-clockをISO 8601で保持する")
         expect(decoded.captureCompletedAt.contains("T"), "capture完了wall-clockをISO 8601で保持する")
     } catch {
@@ -659,6 +662,25 @@ private func testCaptureManifestRequiresMetadataForAdoptableEvidence() {
                 "\(evidenceKind.rawValue)はrepoHeadSHAを必須にする"
             )
         }
+
+        var generated = synthetic
+        generated.evidenceKind = .generatedProduct
+        generated.scenarioID = "space-right"
+        generated.deviceLabel = "generated-product"
+        generated.repoHeadSHA = manifestTestRepoHeadSHA
+        generated.captureRunToken = nil
+        expectManifestValidationError(
+            .missingCaptureRunToken(evidenceKind: .generatedProduct),
+            manifest: generated,
+            "generatedProductはcaptureRunTokenを必須にする"
+        )
+
+        generated.captureRunToken = manifestTestReadyRunToken.uppercased()
+        expectManifestValidationError(
+            .invalidCaptureRunToken,
+            manifest: generated,
+            "captureRunTokenをcanonical lowercase UUIDに固定する"
+        )
     } catch {
         expect(false, "evidence kind別metadata validationを実行できる: \(error)")
     }

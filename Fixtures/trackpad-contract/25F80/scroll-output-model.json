@@ -1,0 +1,318 @@
+{
+  "schemaVersion": 1,
+  "fixtureID": "trackpad-scroll-output-model-25F80-v1",
+  "modelID": "trackpad-scroll-output-model-v1",
+  "status": "derived",
+  "osVersion": "26.5.1",
+  "osBuild": "25F80",
+  "referenceDeviceLabel": "built-in-trackpad",
+  "sourceContract": {
+    "path": "Fixtures/trackpad-contract/25F80/scroll-momentum-contract.json",
+    "sha256": "8e2a1841ef23a47fcb274c1c8e7c7c39be43e8ab7c8792caf2cd874242a61294",
+    "fixtureID": "trackpad-scroll-momentum-25F80-v1",
+    "contractID": "trackpad-scroll-momentum-v1"
+  },
+  "derivation": {
+    "script": "scripts/derive-trackpad-scroll-output-model.rb",
+    "captureDirectory": "artifacts/trackpad-contract/2026-07-11-b50e607",
+    "referenceSelection": "captureIndex < contractPrefixEventCount",
+    "modelSelection": "analysisStartCaptureIndex <= captureIndex < contractPrefixEventCount",
+    "terminalSelection": "scroll phase != ended",
+    "coefficientFit": "odd-quadratic ordinary-least-squares with zero intercept",
+    "zeroPolicy": "retain all nonterminal zero observations in error metrics and map zero input to positive zero"
+  },
+  "sourceCaptures": [
+    {
+      "scenarioID": "pure-trackpad-vertical-scroll",
+      "sourceFile": "vertical-scroll.jsonl",
+      "sourceLogSHA256": "67e6d0bfa59d4ee256ceb2aa631047ce1e802af78b1721a0aabe557ed42995a9",
+      "sourceEventCount": 1228,
+      "contractPrefixEventCount": 1200,
+      "analysisStartCaptureIndex": 10,
+      "captureStartedAt": "2026-07-11T10:04:35.877Z",
+      "captureCompletedAt": "2026-07-11T10:05:05.881Z",
+      "referencePairableScrollSampleCount": 252,
+      "referencePairedSampleCount": 250,
+      "analysisPairableScrollSampleCount": 252,
+      "analysisPairedSampleCount": 250,
+      "referenceTerminalPairCount": 3,
+      "analysisTerminalPairCount": 3
+    },
+    {
+      "scenarioID": "pure-trackpad-horizontal-scroll",
+      "sourceFile": "horizontal-scroll.jsonl",
+      "sourceLogSHA256": "791b2a8fa9c13b7b069de240300f551646da4f116d4fe03d777903fd4946c65f",
+      "sourceEventCount": 1565,
+      "contractPrefixEventCount": 1502,
+      "analysisStartCaptureIndex": 622,
+      "captureStartedAt": "2026-07-11T10:06:07.294Z",
+      "captureCompletedAt": "2026-07-11T10:06:52.301Z",
+      "referencePairableScrollSampleCount": 392,
+      "referencePairedSampleCount": 390,
+      "analysisPairableScrollSampleCount": 212,
+      "analysisPairedSampleCount": 211,
+      "referenceTerminalPairCount": 4,
+      "analysisTerminalPairCount": 3
+    },
+    {
+      "scenarioID": "pure-trackpad-momentum-stop",
+      "sourceFile": "momentum-stop.jsonl",
+      "sourceLogSHA256": "84a863aa1d4f9f3f7271d132d941586415fcd91b93a2123845aa0275fe9ee927",
+      "sourceEventCount": 440,
+      "contractPrefixEventCount": 403,
+      "analysisStartCaptureIndex": 38,
+      "captureStartedAt": "2026-07-11T09:56:50.518Z",
+      "captureCompletedAt": "2026-07-11T09:57:35.526Z",
+      "referencePairableScrollSampleCount": 30,
+      "referencePairedSampleCount": 29,
+      "analysisPairableScrollSampleCount": 30,
+      "analysisPairedSampleCount": 29,
+      "referenceTerminalPairCount": 5,
+      "analysisTerminalPairCount": 5
+    },
+    {
+      "scenarioID": "pure-trackpad-cancel-reverse",
+      "sourceFile": "cancel-reverse.jsonl",
+      "sourceLogSHA256": "e92834b5a8dbf3eb91526a581559201e9c53124f3c9a9af045461fb0bd375762",
+      "sourceEventCount": 3143,
+      "contractPrefixEventCount": 2925,
+      "analysisStartCaptureIndex": 881,
+      "captureStartedAt": "2026-07-11T10:03:10.519Z",
+      "captureCompletedAt": "2026-07-11T10:04:10.526Z",
+      "referencePairableScrollSampleCount": 498,
+      "referencePairedSampleCount": 496,
+      "analysisPairableScrollSampleCount": 498,
+      "analysisPairedSampleCount": 496,
+      "referenceTerminalPairCount": 8,
+      "analysisTerminalPairCount": 8
+    }
+  ],
+  "eventFields": {
+    "scrollEventTypeRaw": 22,
+    "scrollPhaseRawField": 99,
+    "terminalScrollPhaseValue": 4,
+    "companionEventTypeRaw": 29,
+    "companionClassifierRawField": 110,
+    "companionClassifierValue": 6,
+    "companionPhaseRawField": 132,
+    "xGestureDoubleFields": [
+      113,
+      114,
+      116,
+      118
+    ],
+    "yGestureDoubleFields": [
+      119,
+      139
+    ]
+  },
+  "associationRule": {
+    "preserveOrder": true,
+    "phaseMustMatch": true,
+    "maximumCaptureIndexDistance": 8,
+    "candidateSelection": "minimum-absolute-timestamp-difference-then-capture-index-distance",
+    "unmatchedCompanionAllowed": false,
+    "unmatchedScrollAllowed": true,
+    "requiredMatchedScrollPhaseValues": [
+      1,
+      4,
+      128
+    ],
+    "allowedUnmatchedScrollPhaseValues": [
+      2
+    ],
+    "minimumPairingCoverage": {
+      "paired": 29,
+      "pairableScroll": 30
+    },
+    "requiresScrollTimestampEquality": false,
+    "requiresFixedCaptureIndexDelta": false
+  },
+  "pairingStatistics": {
+    "contractPrefix": {
+      "pairableScrollSampleCount": 1172,
+      "pairedSampleCount": 1165,
+      "unmatchedScrollSampleCount": 7,
+      "terminalPairCount": 20,
+      "phaseCounts": {
+        "1": 19,
+        "2": 1122,
+        "4": 20,
+        "128": 4
+      },
+      "captureIndexDeltaValues": [
+        -1,
+        2,
+        3,
+        4
+      ],
+      "equalTimestampPairCount": 0
+    },
+    "analyzerWindow": {
+      "pairableScrollSampleCount": 992,
+      "pairedSampleCount": 986,
+      "unmatchedScrollSampleCount": 6,
+      "terminalPairCount": 19,
+      "phaseCounts": {
+        "1": 19,
+        "2": 944,
+        "4": 19,
+        "128": 4
+      },
+      "captureIndexDeltaValues": [
+        -1,
+        2,
+        3,
+        4
+      ],
+      "equalTimestampPairCount": 0,
+      "excludedBeforeAnalysisStartPairCount": 179,
+      "terminalExcludedModelSampleCount": 967
+    }
+  },
+  "samplePolicy": {
+    "terminalPairsExcludedFromModel": true,
+    "terminalNamedDeltasRequirePositiveZero": true,
+    "zeroInputMapsToPositiveZero": true,
+    "zeroObservationsIncludedInErrorMetrics": true,
+    "signSymmetryRequiredForNonzeroObservations": true
+  },
+  "axes": {
+    "x": {
+      "fields": {
+        "line": "scrollDeltaX",
+        "fixed": "scrollFixedDeltaX",
+        "point": "scrollPointDeltaX",
+        "gestureDoubleField": 113
+      },
+      "pairedSampleCount": 986,
+      "excludedTerminalSampleCount": 19,
+      "modelSampleCount": 967,
+      "models": {
+        "gestureToLine": {
+          "kind": "odd-quadratic-least-squares-with-symmetric-rounding",
+          "formula": "continuous = linearCoefficient * gesture + quadraticCoefficient * gesture * abs(gesture)",
+          "coefficientFit": "ordinary-least-squares-with-zero-intercept",
+          "linearCoefficient": 0.027153379676470378,
+          "quadraticCoefficient": 0.0005139088775698634,
+          "sampleCount": 967,
+          "informativeInputSampleCount": 787,
+          "zeroCounts": {
+            "inputZeroOutputZero": 180,
+            "inputZeroOutputNonzero": 0,
+            "inputNonzeroOutputZero": 501,
+            "inputNonzeroOutputNonzero": 286
+          },
+          "output": "roundHalfAwayFromZero(continuous)",
+          "quantization": "round-half-away-from-zero",
+          "continuousFitRMSE": 0.3694046687661226,
+          "continuousFitMaxAbsoluteError": 2.6359566967924835,
+          "rmse": 0.4444300813489782,
+          "maxAbsoluteError": 3.0
+        },
+        "gestureToFixed": {
+          "kind": "odd-quadratic-least-squares",
+          "formula": "continuous = linearCoefficient * gesture + quadraticCoefficient * gesture * abs(gesture)",
+          "coefficientFit": "ordinary-least-squares-with-zero-intercept",
+          "linearCoefficient": 0.027354705543959693,
+          "quadraticCoefficient": 0.0005445077231600865,
+          "sampleCount": 967,
+          "informativeInputSampleCount": 787,
+          "zeroCounts": {
+            "inputZeroOutputZero": 180,
+            "inputZeroOutputNonzero": 0,
+            "inputNonzeroOutputZero": 501,
+            "inputNonzeroOutputNonzero": 286
+          },
+          "rmse": 0.2635563761866114,
+          "maxAbsoluteError": 2.9546204474224638
+        },
+        "gestureToPoint": {
+          "kind": "odd-quadratic-least-squares",
+          "formula": "continuous = linearCoefficient * gesture + quadraticCoefficient * gesture * abs(gesture)",
+          "coefficientFit": "ordinary-least-squares-with-zero-intercept",
+          "linearCoefficient": 0.3029054468831232,
+          "quadraticCoefficient": 0.0052276557862058984,
+          "sampleCount": 967,
+          "informativeInputSampleCount": 787,
+          "zeroCounts": {
+            "inputZeroOutputZero": 141,
+            "inputZeroOutputNonzero": 39,
+            "inputNonzeroOutputZero": 0,
+            "inputNonzeroOutputNonzero": 787
+          },
+          "rmse": 2.172363171814867,
+          "maxAbsoluteError": 29.058072222101202
+        }
+      }
+    },
+    "y": {
+      "fields": {
+        "line": "scrollDeltaY",
+        "fixed": "scrollFixedDeltaY",
+        "point": "scrollPointDeltaY",
+        "gestureDoubleField": 119
+      },
+      "pairedSampleCount": 986,
+      "excludedTerminalSampleCount": 19,
+      "modelSampleCount": 967,
+      "models": {
+        "gestureToLine": {
+          "kind": "odd-quadratic-least-squares-with-symmetric-rounding",
+          "formula": "continuous = linearCoefficient * gesture + quadraticCoefficient * gesture * abs(gesture)",
+          "coefficientFit": "ordinary-least-squares-with-zero-intercept",
+          "linearCoefficient": 0.022231527900124576,
+          "quadraticCoefficient": 0.0004970101926676257,
+          "sampleCount": 967,
+          "informativeInputSampleCount": 893,
+          "zeroCounts": {
+            "inputZeroOutputZero": 74,
+            "inputZeroOutputNonzero": 0,
+            "inputNonzeroOutputZero": 289,
+            "inputNonzeroOutputNonzero": 604
+          },
+          "output": "roundHalfAwayFromZero(continuous)",
+          "quantization": "round-half-away-from-zero",
+          "continuousFitRMSE": 0.3639425657324573,
+          "continuousFitMaxAbsoluteError": 1.279408875806682,
+          "rmse": 0.45930571227882033,
+          "maxAbsoluteError": 1.0
+        },
+        "gestureToFixed": {
+          "kind": "odd-quadratic-least-squares",
+          "formula": "continuous = linearCoefficient * gesture + quadraticCoefficient * gesture * abs(gesture)",
+          "coefficientFit": "ordinary-least-squares-with-zero-intercept",
+          "linearCoefficient": 0.027469676804179777,
+          "quadraticCoefficient": 0.0004945992512013199,
+          "sampleCount": 967,
+          "informativeInputSampleCount": 893,
+          "zeroCounts": {
+            "inputZeroOutputZero": 74,
+            "inputZeroOutputNonzero": 0,
+            "inputNonzeroOutputZero": 289,
+            "inputNonzeroOutputNonzero": 604
+          },
+          "rmse": 0.15762239835099265,
+          "maxAbsoluteError": 1.1392878225084804
+        },
+        "gestureToPoint": {
+          "kind": "odd-quadratic-least-squares",
+          "formula": "continuous = linearCoefficient * gesture + quadraticCoefficient * gesture * abs(gesture)",
+          "coefficientFit": "ordinary-least-squares-with-zero-intercept",
+          "linearCoefficient": 0.2912417154163434,
+          "quadraticCoefficient": 0.004863123350457081,
+          "sampleCount": 967,
+          "informativeInputSampleCount": 893,
+          "zeroCounts": {
+            "inputZeroOutputZero": 50,
+            "inputZeroOutputNonzero": 24,
+            "inputNonzeroOutputZero": 0,
+            "inputNonzeroOutputNonzero": 893
+          },
+          "rmse": 1.1643340500085404,
+          "maxAbsoluteError": 10.65624434690315
+        }
+      }
+    }
+  }
+}

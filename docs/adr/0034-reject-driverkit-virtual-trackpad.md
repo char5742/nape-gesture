@@ -7,7 +7,7 @@
 
 AX scrollbar、対象PIDへのevent配送、keyboard shortcutによるgesture代替を却下した後、HIDDriverKitでvirtual trackpadのdigitizer contactを生成する案を検討した。
 
-しかし、外部 reference implementation を設計調査として再確認した結果と目標挙動を突き合わせると、必要なのは DriverKit System Extension ではなく、mouse 入力を trackpad driver の上位出力に相当する gesture event 列へ変換する構成である。Nape Gesture が必要とするのも、物理 touch surface の追加ではなく、scroll、Spaces、Mission Control、page navigation、magnification を macOS の標準 gesture 処理へ渡すことである。
+しかし、Nape Gestureの入力境界と目標挙動を整理すると、DriverKit System Extensionで物理touch surfaceを追加する必要はない。必要なのは、mouse入力をtrackpad driverの上位出力に相当するgesture event列へ変換し、scroll、Spaces、Mission Control、page navigation、magnificationをmacOSの標準gesture処理へ渡す構成である。
 
 ## 決定
 

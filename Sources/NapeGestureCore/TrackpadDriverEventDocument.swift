@@ -82,6 +82,7 @@ extension TrackpadDriverEventDocument {
         "scenarioID",
         "deviceLabel",
         "repoHeadSHA",
+        "captureRunToken",
         "canonicalEventRepresentation",
         "rawFieldScanPolicy"
     ]

@@ -4,7 +4,7 @@
 
 Issue #125として、macOS 26.5.1（build 25F80）の純正トラックパッドから、scroll、momentum、page swipe、pinch、Spaces、Mission Control / App Exposé、途中反転の同一raw schema収録を試行した。Mission Control / App Exposéだけは取得窓不成立で識別payloadを得ていない。
 
-本証跡は、第三者プロジェクトや生成eventの値を正本にせず、`physicalTrackpad` captureだけからfieldと順序を再導出する。
+本証跡では、`physicalTrackpad` captureを正本としてfieldと順序を再導出する。
 
 ## Logger
 

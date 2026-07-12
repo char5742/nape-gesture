@@ -16,9 +16,10 @@ public enum GestureAction: String, Codable, Equatable, Sendable, CaseIterable {
 
     public var supportsMomentum: Bool {
         switch self {
-        case .smoothScroll, .horizontalScroll, .spaceLeft, .spaceRight:
+        case .smoothScroll, .horizontalScroll:
             return true
-        case .none, .missionControl, .pageBack, .pageForward, .zoomIn, .zoomOut:
+        case .none, .missionControl, .spaceLeft, .spaceRight,
+             .pageBack, .pageForward, .zoomIn, .zoomOut:
             return false
         }
     }

@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# 既知の第三者プロジェクト固有名と、第三者コード非取込方針の退行を確認する。
+# 製品surfaceから除外する外部固有識別子と、repo-local由来方針の退行を確認する。
 # これは法的な完全証明ではなく、リポジトリ内の誤混入を早期に止めるための機械ガードです。
 # 実行ビットは不要です。`sh scripts/check-provenance.sh` で実行してください。
 
@@ -56,10 +56,23 @@ name_separator='[[:space:]_-]*'
 full_name_pattern="${name_part_1}${name_separator}${name_part_2}${name_separator}${name_part_3}"
 short_name_pattern="${name_part_2}${name_separator}${name_part_3}"
 reverse_domain_pattern="com\\.[[:alnum:]._-]*${name_part_2}[[:alnum:]._-]*${name_part_3}"
+class_pattern_1='Gesture''Scroll''Simulator'
+class_pattern_2='Touch''Simulator'
+class_pattern_3='Modified''Drag'
 
 specific_name_matches=$(
-  git grep -n -I -E "${full_name_pattern}|${short_name_pattern}|${reverse_domain_pattern}" -- . 2>/dev/null || true
+  git grep -n -I -E \
+    "${full_name_pattern}|${short_name_pattern}|${reverse_domain_pattern}|${class_pattern_1}|${class_pattern_2}|${class_pattern_3}" \
+    -- . 2>/dev/null
 )
+specific_name_status=$?
+case "$specific_name_status" in
+  0 | 1) ;;
+  *)
+    printf '%s\n' "禁止識別子のtracked file走査に失敗しました: status=$specific_name_status" >&2
+    exit 1
+    ;;
+esac
 report_matches "禁止: 既知の第三者プロジェクト固有名が tracked files に含まれています。" "$specific_name_matches"
 
 require_text \

@@ -3,50 +3,63 @@ import NapeGestureCore
 import NapeGestureProductOutput
 
 final class GestureActionExecutor {
-    private let bindings: GestureBindings
-    private let output: any ProductGestureOutput
+    private let coordinator: ProductGestureSessionCoordinator
 
     init(
         bindings: GestureBindings,
-        output: any ProductGestureOutput = TrackpadGestureOutputAdapter()
+        output: any ProductGestureOutput = TrackpadGestureOutputAdapter(),
+        sessionSequence: TrackpadOutputSessionSequence = TrackpadOutputSessionSequence()
     ) {
-        self.bindings = bindings
-        self.output = output
-    }
-
-    func ensureOutputAvailable() throws {
-        switch output.capability.status {
-        case .supported:
-            return
-        case .unsupported:
-            throw ToolError.trackpadOutputContractUnavailable(
-                output.capability.reason ?? "trackpad output contractが未対応です。"
-            )
-        case .contractMismatch:
-            throw ToolError.trackpadOutputContractMismatch(
-                output.capability.reason ?? "trackpad output contractが現在のOSと一致しません。"
-            )
-        }
-    }
-
-    func post(command: GestureCommand) -> GestureActionPostResult {
-        let action = bindings.action(for: command)
-
-        guard action != .none else {
-            return GestureActionPostResult(action: action)
-        }
-        return GestureActionPostResult(
-            action: action,
-            productResult: output.post(action: action, command: command)
+        coordinator = ProductGestureSessionCoordinator(
+            bindings: bindings,
+            output: output,
+            sessionSequence: sessionSequence
         )
     }
 
-    func supportsMomentum(for command: GestureCommand) -> Bool {
-        output.supportsMomentum(for: bindings.action(for: command))
+    func ensureOutputAvailable() throws {
+        switch coordinator.capability.status {
+        case .supported:
+            let unsupported = coordinator.unsupportedRequiredFamilies
+            guard unsupported.isEmpty else {
+                let names = unsupported.map(\.rawValue).sorted().joined(separator: ", ")
+                throw ToolError.trackpadOutputContractUnavailable(
+                    "現在のbindingに必要なproduct output familyが未対応です: \(names)"
+                )
+            }
+        case .unsupported:
+            throw ToolError.trackpadOutputContractUnavailable(
+                coordinator.capability.reason ?? "trackpad output contractが未対応です。"
+            )
+        case .contractMismatch:
+            throw ToolError.trackpadOutputContractMismatch(
+                coordinator.capability.reason ?? "trackpad output contractが現在のOSと一致しません。"
+            )
+        }
     }
 
-    func cancelAll() {
-        output.cancelAll()
+    func post(
+        command: GestureCommand,
+        continuation: TrackpadOutputContinuation? = nil
+    ) -> GestureActionPostResult {
+        let post = coordinator.post(command: command, continuation: continuation)
+        return GestureActionPostResult(action: post.action, productResult: post.result)
+    }
+
+    func supportsMomentum(for command: GestureCommand) -> Bool {
+        coordinator.supportsMomentum(for: command)
+    }
+
+    @discardableResult
+    func cancelActive(
+        reason: TrackpadOutputCancellationReason,
+        at time: TimeInterval
+    ) -> ProductGestureOutputResult {
+        coordinator.cancelActive(reason: reason, at: time)
+    }
+
+    func reset() {
+        coordinator.reset()
     }
 }
 

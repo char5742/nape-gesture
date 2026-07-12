@@ -38,7 +38,7 @@ final class NapeGestureDaemon {
     }
 
     deinit {
-        stop()
+        _ = stop()
         hidInputMonitor?.stop()
     }
 
@@ -81,7 +81,8 @@ final class NapeGestureDaemon {
         CGEvent.tapEnable(tap: tap, enable: true)
     }
 
-    func stop() {
+    @discardableResult
+    func stop() -> Error? {
         if let eventTap {
             CGEvent.tapEnable(tap: eventTap, enable: false)
         }
@@ -91,7 +92,19 @@ final class NapeGestureDaemon {
         eventTap = nil
         runLoopSource = nil
         cancelMomentum()
-        actionExecutor.cancelAll()
+        let cancellation = actionExecutor.cancelActive(
+            reason: .runtimeStop,
+            at: MonotonicEventClock.nowSeconds
+        )
+        guard let failure = cancellation.failure else {
+            return nil
+        }
+        let error = ToolError.trackpadOutputPostingFailed(failure.rawValue)
+        if terminalError == nil {
+            terminalError = error
+            writeOperationalLog(error.localizedDescription)
+        }
+        return error
     }
 
     fileprivate func handle(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
@@ -132,6 +145,18 @@ final class NapeGestureDaemon {
             return Unmanaged.passUnretained(event)
         }
 
+        if case let .buttonDown(button, time) = input,
+           button == configuration.activationButton,
+           case .running = momentum.state
+        {
+            cancelMomentum()
+            let cancellation = actionExecutor.cancelActive(reason: .inputLifecycle, at: time)
+            if let failure = cancellation.failure {
+                transitionToTerminalFailure(failure)
+                return Unmanaged.passUnretained(event)
+            }
+        }
+
         let decision = recognizer.handle(input)
         let performanceContext: RuntimePerformanceContext?
         if performanceRecorder == nil {
@@ -166,9 +191,13 @@ final class NapeGestureDaemon {
         allowsMomentumStart: Bool = true
     ) -> Bool {
         for command in commands {
+            let continuation = prepareContinuation(
+                for: command,
+                allowsMomentumStart: allowsMomentumStart
+            )
             let shouldRecordPerformance = performanceContext != nil
             let postStartedAt = shouldRecordPerformance ? MonotonicEventClock.nowTimestampNanoseconds : 0
-            let postResult = actionExecutor.post(command: command)
+            let postResult = actionExecutor.post(command: command, continuation: continuation)
             let postFinishedAt = shouldRecordPerformance ? MonotonicEventClock.nowTimestampNanoseconds : 0
             recordRuntimePerformance(
                 command: command,
@@ -181,12 +210,13 @@ final class NapeGestureDaemon {
             let outputFailure = postResult.outputFailure
                 ?? (postResult.failedEventCreationCount > 0 ? .eventCreationFailed : nil)
             if let outputFailure {
+                cancelMomentum()
                 transitionToTerminalFailure(outputFailure)
                 return false
             }
 
-            if allowsMomentumStart && command.phase == .ended && actionExecutor.supportsMomentum(for: command) {
-                startMomentumIfNeeded(from: command)
+            if continuation == .momentum {
+                scheduleMomentumTimer()
             } else if command.phase == .cancelled {
                 cancelMomentum()
             }
@@ -194,14 +224,23 @@ final class NapeGestureDaemon {
         return true
     }
 
-    private func startMomentumIfNeeded(from command: GestureCommand) {
-        momentum.start(from: command)
-
-        guard case .running = momentum.state else {
+    private func prepareContinuation(
+        for command: GestureCommand,
+        allowsMomentumStart: Bool
+    ) -> TrackpadOutputContinuation? {
+        guard command.kind != .momentum, command.phase == .ended else {
+            return nil
+        }
+        guard allowsMomentumStart, actionExecutor.supportsMomentum(for: command) else {
             cancelMomentum()
-            return
+            return .complete
         }
 
+        momentum.start(from: command)
+        return momentum.state.isRunning ? .momentum : .complete
+    }
+
+    private func scheduleMomentumTimer() {
         momentumTimer?.cancel()
         let timer = DispatchSource.makeTimerSource(queue: .main)
         timer.schedule(deadline: .now() + configuration.momentum.frameInterval, repeating: configuration.momentum.frameInterval)
@@ -215,6 +254,13 @@ final class NapeGestureDaemon {
     private func tickMomentum() {
         guard safetyState.regularInputDecision().shouldProcessGestureInput else {
             cancelMomentum()
+            let cancellation = actionExecutor.cancelActive(
+                reason: .killSwitch,
+                at: MonotonicEventClock.nowSeconds
+            )
+            if let failure = cancellation.failure {
+                transitionToTerminalFailure(failure)
+            }
             return
         }
 
@@ -267,7 +313,7 @@ final class NapeGestureDaemon {
             CGEvent.tapEnable(tap: eventTap, enable: false)
         }
         cancelMomentum()
-        actionExecutor.cancelAll()
+        _ = actionExecutor.cancelActive(reason: .outputFailure, at: MonotonicEventClock.nowSeconds)
         writeOperationalLog(error.localizedDescription)
 
         if let onTerminalFailure {
@@ -292,7 +338,10 @@ final class NapeGestureDaemon {
             let cancelDecision = recognizer.handle(.cancel(time: time))
             handle(commands: cancelDecision.commands)
         }
-        actionExecutor.cancelAll()
+        let cancellation = actionExecutor.cancelActive(reason: .killSwitch, at: time)
+        if let failure = cancellation.failure {
+            transitionToTerminalFailure(failure)
+        }
         if decision.didEnterStoppedState {
             writeOperationalLog("キルスイッチによりジェスチャーを無効化しました。再開するには常駐UIの停止/開始、またはプロセス再起動を行ってください。")
         }
@@ -338,6 +387,15 @@ final class NapeGestureDaemon {
         return "\(source.rawValue)-\(performanceOperationSequence)"
     }
 
+}
+
+private extension MomentumState {
+    var isRunning: Bool {
+        if case .running = self {
+            return true
+        }
+        return false
+    }
 }
 
 private struct RuntimePerformanceContext {
