@@ -249,7 +249,7 @@ private func testLifecycleAndFields() {
     let adapter = makeAdapter(collector: collector)
     expect(adapter.capability.isSupported, "25F80 contractをsupportedとして検証する")
     expect(adapter.supports(.scroll), "scroll familyを対応扱いする")
-    expect(!adapter.supports(.dockSwipe), "未実装DockSwipe familyを対応扱いしない")
+    expect(TrackpadOutputEventFamily.allCases.allSatisfy(adapter.supports), "25F80で4 familyを対応扱いする")
 
     let results = [
         adapter.post(inputEvent(sessionID: 1, order: 0, phase: .began, deltaX: 12, deltaY: -8)),
@@ -639,7 +639,149 @@ private func testSessionCoordinatorTransformsHorizontalAndMomentum() {
         bindings: .default,
         output: makeAdapter(collector: EventCollector())
     )
-    expect(defaultCoordinator.unsupportedRequiredFamilies == [.dockSwipe], "未実装DockSwipeをdefault bindingの起動前に可視化する")
+    expect(defaultCoordinator.unsupportedRequiredFamilies.isEmpty, "default bindingの全familyを起動可能にする")
+}
+
+private func candidateInputEvent(
+    sessionID: UInt64,
+    order: UInt64,
+    phase: TrackpadOutputInputPhase,
+    payload: TrackpadOutputPayload
+) -> TrackpadOutputSessionEvent {
+    .input(
+        TrackpadOutputInputFrame(
+            sessionID: TrackpadOutputSessionID(rawValue: sessionID),
+            captureOrder: order,
+            timestamp: MonotonicEventClock.now,
+            phase: phase,
+            continuation: phase == .ended ? .complete : nil,
+            terminalDecision: phase == .ended ? .commit : (phase == .cancelled ? .cancel : nil),
+            payload: payload
+        )
+    )
+}
+
+private func testCandidateGestureFamilies() {
+    let collector = EventCollector()
+    let adapter = makeAdapter(collector: collector)
+    let posts: [TrackpadOutputSessionEvent] = [
+        candidateInputEvent(
+            sessionID: 120,
+            order: 0,
+            phase: .began,
+            payload: .dockSwipe(axis: .horizontal, progress: 0.1, velocity: 0.5)
+        ),
+        candidateInputEvent(
+            sessionID: 120,
+            order: 1,
+            phase: .changed,
+            payload: .dockSwipe(axis: .horizontal, progress: 0.6, velocity: 1.2)
+        ),
+        candidateInputEvent(
+            sessionID: 120,
+            order: 2,
+            phase: .ended,
+            payload: .dockSwipe(axis: .horizontal, progress: 0, velocity: 0)
+        ),
+        candidateInputEvent(
+            sessionID: 121,
+            order: 0,
+            phase: .began,
+            payload: .navigationSwipe(direction: .left, progress: -0.1, velocity: -0.5)
+        ),
+        candidateInputEvent(
+            sessionID: 121,
+            order: 1,
+            phase: .changed,
+            payload: .navigationSwipe(direction: .left, progress: -0.7, velocity: -1.4)
+        ),
+        candidateInputEvent(
+            sessionID: 121,
+            order: 2,
+            phase: .ended,
+            payload: .navigationSwipe(direction: .left, progress: 0, velocity: 0)
+        ),
+        candidateInputEvent(
+            sessionID: 122,
+            order: 0,
+            phase: .began,
+            payload: .magnification(progress: 0.1, scaleDelta: 0.03, velocity: 0.2)
+        ),
+        candidateInputEvent(
+            sessionID: 122,
+            order: 1,
+            phase: .changed,
+            payload: .magnification(progress: 0.5, scaleDelta: 0.08, velocity: 0.4)
+        ),
+        candidateInputEvent(
+            sessionID: 122,
+            order: 2,
+            phase: .ended,
+            payload: .magnification(progress: 0, scaleDelta: 0, velocity: 0)
+        )
+    ]
+    let results = posts.map(adapter.post)
+    expect(results.allSatisfy { $0.failure == nil && $0.generatedEventCount == 1 }, "3 candidate familyを各1 eventで投稿する")
+    guard collector.events.count == 9 else {
+        failures.append("candidate familyのevent数が9ではない: \(collector.events.count) results=\(results)")
+        return
+    }
+    expect(collector.events.map { $0.type.rawValue } == [29, 29, 29, 30, 30, 30, 29, 29, 29], "candidate familyのevent typeを固定する")
+    expect(collector.events.prefix(3).allSatisfy { $0.getIntegerValueField(rawField(110)) == 32 }, "DockSwipe classifierを32にする")
+    expect(collector.events[3..<6].allSatisfy { $0.getIntegerValueField(rawField(110)) == 23 }, "NavigationSwipe classifierを23にする")
+    expect(collector.events.suffix(3).allSatisfy { $0.getIntegerValueField(rawField(110)) == 8 }, "magnification classifierを8にする")
+    expect(collector.events.map { $0.getIntegerValueField(rawField(132)) } == [1, 2, 4, 1, 2, 4, 1, 2, 4], "candidate lifecycle phaseをbegan/changed/endedにする")
+    expect(collector.events[2].getIntegerValueField(rawField(143)) == 0, "DockSwipe terminal activeを0にする")
+    expect(collector.events[4].getDoubleValueField(rawField(124)) < 0, "NavigationSwipe leftのprogressを負にする")
+    expect(collector.events[7].getDoubleValueField(rawField(113)) > 0, "zoom-inのscale fieldを正にする")
+    expect(collector.events.allSatisfy { $0.getIntegerValueField(.eventSourceUserData) == NapeGestureGeneratedEventMarker.value }, "全candidate eventへ生成markerを付ける")
+    expect(collector.events.allSatisfy { $0.getIntegerValueField(rawField(55)) == Int64($0.type.rawValue) }, "candidate eventのcontract type field 55を一致させる")
+    expect(collector.events.allSatisfy { $0.getIntegerValueField(rawField(58)) == Int64($0.timestamp) }, "candidate eventのcontract timestamp field 58を一致させる")
+    expect(Set(collector.postedTrace.map(\.family)) == [.dockSwipe, .navigationSwipe, .magnification], "traceへ3 familyを記録する")
+}
+
+private func testCoordinatorProducesCandidatePayloads() {
+    let capability = makeAdapter(collector: EventCollector()).capability
+    let cases: [(GestureAction, GestureDirection, TrackpadOutputEventFamily)] = [
+        (.missionControl, .up, .dockSwipe),
+        (.spaceLeft, .left, .dockSwipe),
+        (.spaceRight, .right, .dockSwipe),
+        (.pageBack, .right, .navigationSwipe),
+        (.pageForward, .left, .navigationSwipe),
+        (.zoomIn, .up, .magnification),
+        (.zoomOut, .down, .magnification)
+    ]
+    for (action, direction, expectedFamily) in cases {
+        let output = PermissiveProductOutput(capability: capability)
+        let coordinator = ProductGestureSessionCoordinator(
+            bindings: GestureBindings(
+                dragUp: action,
+                dragDown: action,
+                dragLeft: action,
+                dragRight: action,
+                wheel: .smoothScroll
+            ),
+            output: output
+        )
+        let result = coordinator.post(
+            command: GestureCommand(
+                kind: .drag,
+                phase: .began,
+                direction: direction,
+                deltaX: direction == .left ? -60 : (direction == .right ? 60 : 0),
+                deltaY: direction == .up ? -60 : (direction == .down ? 60 : 0),
+                velocityX: direction == .left ? -600 : (direction == .right ? 600 : 0),
+                velocityY: direction == .up ? -600 : (direction == .down ? 600 : 0),
+                timestamp: MonotonicEventClock.nowSeconds
+            )
+        )
+        expect(result.result.failure == nil, "\(action)のcandidate payloadを生成する")
+        guard case let .input(frame)? = output.postedEvents.first else {
+            failures.append("\(action)のinput frameがありません")
+            continue
+        }
+        expect(frame.payload.family == expectedFamily, "\(action)を\(expectedFamily) payloadへ変換する")
+    }
 }
 
 private func testCoordinatorChangedCreationFailureRecovery() {
@@ -1695,6 +1837,8 @@ testExplicitResourceOverridesFailClosed()
 testChangedCreationFailureRecovery()
 testChangedValidationAndPostFailureRecovery()
 testSessionCoordinatorTransformsHorizontalAndMomentum()
+testCandidateGestureFamilies()
+testCoordinatorProducesCandidatePayloads()
 testCoordinatorChangedCreationFailureRecovery()
 testCoordinatorActionMismatchPreservesCancellation()
 testCoordinatorInvalidPhasePreservesCancellation()
