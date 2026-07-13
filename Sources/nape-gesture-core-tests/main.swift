@@ -3274,7 +3274,7 @@ func testGUIAppLaunchPresentationUsesRegularAppMode() {
     expect(presentation.activationPolicy == "regular", ".app は通常 GUI アプリとして起動する")
     expect(presentation.opensSettingsWindowOnLaunch, ".app 起動時に設定ウィンドウを開く")
     expect(presentation.reopensSettingsWindowFromDock, "Dock から再度開いたとき設定ウィンドウを再表示できる")
-    expect(presentation.keepsStatusMenu, "メニューバーの NG 常駐 UI を維持する")
+    expect(presentation.keepsStatusMenu, "メニューバーの常駐 UI を維持する")
     expect(!presentation.bundleLSUIElement, "LSUIElement は false として Dock 表示を維持する")
 }
 

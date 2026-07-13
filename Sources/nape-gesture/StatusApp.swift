@@ -94,7 +94,17 @@ final class StatusApp: NSObject, NSApplicationDelegate {
 
     private func installStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.title = "NG"
+        if let image = NSImage(
+            systemSymbolName: "hand.draw",
+            accessibilityDescription: "Nape Gesture"
+        ) {
+            image.isTemplate = true
+            item.button?.image = image
+            item.button?.imagePosition = .imageOnly
+        } else {
+            item.button?.title = "NG"
+        }
+        item.button?.toolTip = "Nape Gesture"
         statusItem = item
     }
 
@@ -109,7 +119,7 @@ final class StatusApp: NSObject, NSApplicationDelegate {
         let appMenuItem = NSMenuItem()
         let appMenu = NSMenu()
 
-        let settingsItem = NSMenuItem(title: "設定...", action: #selector(openSettings), keyEquivalent: ",")
+        let settingsItem = NSMenuItem(title: "設定…", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
         appMenu.addItem(settingsItem)
 
@@ -117,13 +127,17 @@ final class StatusApp: NSObject, NSApplicationDelegate {
         permissionsItem.target = self
         appMenu.addItem(permissionsItem)
 
-        let accessibilitySettingsItem = NSMenuItem(title: "アクセシビリティ設定を開く", action: #selector(openAccessibilitySettings), keyEquivalent: "")
+        let systemSettingsItem = NSMenuItem(title: "システム設定", action: nil, keyEquivalent: "")
+        let systemSettingsMenu = NSMenu(title: "システム設定")
+        let accessibilitySettingsItem = NSMenuItem(title: "アクセシビリティ", action: #selector(openAccessibilitySettings), keyEquivalent: "")
         accessibilitySettingsItem.target = self
-        appMenu.addItem(accessibilitySettingsItem)
+        systemSettingsMenu.addItem(accessibilitySettingsItem)
 
-        let inputMonitoringSettingsItem = NSMenuItem(title: "入力監視設定を開く", action: #selector(openInputMonitoringSettings), keyEquivalent: "")
+        let inputMonitoringSettingsItem = NSMenuItem(title: "入力監視", action: #selector(openInputMonitoringSettings), keyEquivalent: "")
         inputMonitoringSettingsItem.target = self
-        appMenu.addItem(inputMonitoringSettingsItem)
+        systemSettingsMenu.addItem(inputMonitoringSettingsItem)
+        systemSettingsItem.submenu = systemSettingsMenu
+        appMenu.addItem(systemSettingsItem)
 
         appMenu.addItem(.separator())
 
@@ -156,6 +170,10 @@ final class StatusApp: NSObject, NSApplicationDelegate {
             isRuntimeRunning: runtime.isRunning,
             recoveryState: recoveryState
         )
+        settingsWindow?.updateRuntimeStatus(
+            presentation,
+            errorMessage: runtime.lastError?.localizedDescription
+        )
         menu.addItem(NSMenuItem(title: presentation.stateTitle, action: nil, keyEquivalent: ""))
 
         if let error = runtime.lastError {
@@ -163,13 +181,23 @@ final class StatusApp: NSObject, NSApplicationDelegate {
         }
 
         menu.addItem(.separator())
-        menu.addItem(menuItem("開始", action: #selector(startRuntime), enabled: presentation.startEnabled))
-        menu.addItem(menuItem("緊急停止", action: #selector(stopRuntime), enabled: presentation.emergencyStopEnabled))
-        menu.addItem(menuItem("停止", action: #selector(stopRuntime), enabled: presentation.stopEnabled))
-        menu.addItem(menuItem("設定...", action: #selector(openSettings), enabled: true))
+        if presentation.startEnabled {
+            menu.addItem(menuItem("ジェスチャーを開始", action: #selector(startRuntime), enabled: true))
+        }
+        if runtime.isRunning {
+            menu.addItem(menuItem("ジェスチャーを停止", action: #selector(stopRuntime), enabled: true))
+        } else if recoveryState.shouldShowAutoRetry {
+            menu.addItem(menuItem("自動再試行を停止", action: #selector(stopRuntime), enabled: true))
+        }
+        menu.addItem(menuItem("設定…", action: #selector(openSettings), enabled: true))
         menu.addItem(menuItem("権限とデバイスを確認", action: #selector(checkPermissions), enabled: true))
-        menu.addItem(menuItem("アクセシビリティ設定を開く", action: #selector(openAccessibilitySettings), enabled: true))
-        menu.addItem(menuItem("入力監視設定を開く", action: #selector(openInputMonitoringSettings), enabled: true))
+
+        let systemSettingsItem = NSMenuItem(title: "システム設定", action: nil, keyEquivalent: "")
+        let systemSettingsMenu = NSMenu(title: "システム設定")
+        systemSettingsMenu.addItem(menuItem("アクセシビリティ", action: #selector(openAccessibilitySettings), enabled: true))
+        systemSettingsMenu.addItem(menuItem("入力監視", action: #selector(openInputMonitoringSettings), enabled: true))
+        systemSettingsItem.submenu = systemSettingsMenu
+        menu.addItem(systemSettingsItem)
         menu.addItem(.separator())
         menu.addItem(menuItem("終了", action: #selector(quit), enabled: true))
         statusItem?.menu = menu
@@ -205,7 +233,19 @@ final class StatusApp: NSObject, NSApplicationDelegate {
             return
         }
 
-        let controller = SettingsWindowController(settings: settings, configPath: configPath)
+        let runtimePresentation = RuntimeStatusPresenter.present(
+            isRuntimeRunning: runtime.isRunning,
+            recoveryState: recoveryState
+        )
+        let controller = SettingsWindowController(
+            settings: settings,
+            configPath: configPath,
+            runtimePresentation: runtimePresentation,
+            runtimeErrorMessage: runtime.lastError?.localizedDescription
+        )
+        controller.onCheckPermissions = { [weak self] in
+            self?.checkPermissions()
+        }
         controller.onSave = { [weak self] updated in
             guard let self else {
                 return
@@ -482,6 +522,7 @@ final class StatusApp: NSObject, NSApplicationDelegate {
 
     private func makeSmokeSnapshot() -> StatusAppSmokeSnapshot {
         let launchPresentation = GUIAppLaunchPresenter.regularGUIApp
+        let settingsContentSize = settingsWindow?.window?.contentView?.bounds.size
         return StatusAppSmokeSnapshot(
             runtimeIdentity: RuntimeIdentity.current,
             activationPolicy: NSApp.activationPolicy().smokeValue,
@@ -491,10 +532,14 @@ final class StatusApp: NSObject, NSApplicationDelegate {
             keepsStatusMenu: launchPresentation.keepsStatusMenu,
             bundleLSUIElement: launchPresentation.bundleLSUIElement,
             statusItemTitle: statusItem?.button?.title,
+            statusItemUsesSystemImage: statusItem?.button?.image != nil,
             statusMenuItems: statusItem?.menu?.items.map(StatusAppSmokeMenuItem.init) ?? [],
             applicationMenuItems: NSApp.mainMenu?.items.first?.submenu?.items.map(StatusAppSmokeMenuItem.init) ?? [],
             settingsWindowTitle: settingsWindow?.window?.title,
-            settingsWindowIsVisible: settingsWindow?.window?.isVisible ?? false
+            settingsWindowIsVisible: settingsWindow?.window?.isVisible ?? false,
+            settingsToolbarItems: settingsWindow?.window?.toolbar?.items.map(\.label) ?? [],
+            settingsWindowContentWidth: settingsContentSize.map { Double($0.width) },
+            settingsWindowContentHeight: settingsContentSize.map { Double($0.height) }
         )
     }
 
@@ -515,57 +560,69 @@ struct StatusAppSmokeSnapshot: Codable {
     var keepsStatusMenu: Bool
     var bundleLSUIElement: Bool
     var statusItemTitle: String?
+    var statusItemUsesSystemImage: Bool
     var statusMenuItems: [StatusAppSmokeMenuItem]
     var applicationMenuItems: [StatusAppSmokeMenuItem]
     var settingsWindowTitle: String?
     var settingsWindowIsVisible: Bool
+    var settingsToolbarItems: [String]
+    var settingsWindowContentWidth: Double?
+    var settingsWindowContentHeight: Double?
 
     func assertRegularGUI() throws {
         var failures: [String] = []
         if activationPolicy != expectedActivationPolicy {
             failures.append("activationPolicy が \(expectedActivationPolicy) ではありません: \(activationPolicy)")
         }
-        if statusItemTitle != "NG" {
-            failures.append("status item title が NG ではありません: \(statusItemTitle ?? "なし")")
+        if !statusItemUsesSystemImage && statusItemTitle != "NG" {
+            failures.append("status item に system image または NG fallback がありません。")
         }
-        if settingsWindowTitle != "Nape Gesture 設定" {
-            failures.append("設定ウィンドウ title が Nape Gesture 設定ではありません: \(settingsWindowTitle ?? "なし")")
+        let expectedSettingsWindowTitles = [
+            "Nape Gesture - ジェスチャー",
+            "Nape Gesture - 詳細",
+        ]
+        if !expectedSettingsWindowTitles.contains(settingsWindowTitle ?? "") {
+            failures.append("設定ウィンドウ title が有効なpaneを示していません: \(settingsWindowTitle ?? "なし")")
         }
         if !settingsWindowIsVisible {
             failures.append("設定ウィンドウが表示状態ではありません。")
+        }
+        if settingsToolbarItems != ["ジェスチャー", "詳細"] {
+            failures.append("設定toolbarがジェスチャー / 詳細の固定paneではありません: \(settingsToolbarItems)")
+        }
+        if abs((settingsWindowContentWidth ?? 0) - 680) > 1
+            || abs((settingsWindowContentHeight ?? 0) - 560) > 1
+        {
+            failures.append(
+                "設定ウィンドウのcontent sizeが680x560ではありません: "
+                    + "\(settingsWindowContentWidth ?? 0)x\(settingsWindowContentHeight ?? 0)"
+            )
         }
 
         let statusTitles = statusMenuItems.map(\.title)
         let expectedStatusTitles = [
             "状態: 停止中",
-            "開始",
-            "緊急停止",
-            "停止",
-            "設定...",
+            "ジェスチャーを開始",
+            "設定…",
             "権限とデバイスを確認",
-            "アクセシビリティ設定を開く",
-            "入力監視設定を開く",
+            "システム設定",
             "終了"
         ]
         for title in expectedStatusTitles where !statusTitles.contains(title) {
             failures.append("status menu に \(title) がありません。")
         }
-        if statusMenuItems.first(where: { $0.title == "開始" })?.enabled != true {
-            failures.append("停止中の status menu で 開始 が有効ではありません。")
+        if statusMenuItems.first(where: { $0.title == "ジェスチャーを開始" })?.enabled != true {
+            failures.append("停止中の status menu で ジェスチャーを開始 が有効ではありません。")
         }
-        if statusMenuItems.first(where: { $0.title == "緊急停止" })?.enabled != true {
-            failures.append("自動再試行が有効な停止中の status menu で 緊急停止 が有効ではありません。")
-        }
-        if statusMenuItems.first(where: { $0.title == "停止" })?.enabled != true {
-            failures.append("自動再試行が有効な停止中の status menu で 停止 が有効ではありません。")
+        if statusTitles.contains("ジェスチャーを停止") || statusTitles.contains("自動再試行を停止") {
+            failures.append("待機中の status menu に不要な停止操作があります。")
         }
 
         let applicationTitles = applicationMenuItems.map(\.title)
         let expectedApplicationTitles = [
-            "設定...",
+            "設定…",
             "権限とデバイスを確認",
-            "アクセシビリティ設定を開く",
-            "入力監視設定を開く",
+            "システム設定",
             "Nape Gesture を終了"
         ]
         for title in expectedApplicationTitles where !applicationTitles.contains(title) {

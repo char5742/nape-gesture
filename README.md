@@ -70,13 +70,13 @@ CGEventUtilities
 
 ## GUIと設定
 
-GUIは次の固定対応を読み取り専用で表示します。
+設定ウィンドウは、日常的に確認する「ジェスチャー」と低頻度の「詳細」をtoolbarで分離します。「ジェスチャー」paneではruntime状態、通常mouseへの復帰条件、次の固定対応を読み取り専用で表示します。
 
 - button 3 = 2本指スクロール / スワイプ
 - button 4 = 3本指システムスワイプ
 - button 5 = 4本指system pinch
 
-buttonごとのmode selector、無効化、感度、方向別binding、application別設定はありません。保存済みの旧modeや調整値はmigration時にcanonical設定から除去し、移行失敗時は原本を保持してruntimeを開始しません。対象device条件、cancel時間、診断など、gestureの意味を変更しない運用項目だけを設定対象にします。「権限とデバイス」にはAccessibility、Input Monitoring、対象device、macOS version / build、output contract / fixture、必須family、runtime状態、fail-closed理由を表示します。
+buttonごとのmode selector、無効化、感度、方向別binding、application別設定はありません。保存済みの旧modeや調整値はmigration時にcanonical設定から除去し、移行失敗時は原本を保持してruntimeを開始しません。「詳細」paneにはgestureの意味を変更しないcancel条件と対象device条件だけを置き、低レベルの識別条件は開示するまで隠します。変更がある場合だけ「変更を適用」を有効にし、適用時にruntimeを再起動します。「権限とデバイス」にはAccessibility、Input Monitoring、対象device、macOS version / build、output contract / fixture、必須family、runtime状態、fail-closed理由を表示します。メニューバーには文字列`NG`ではなく、accessibility label付きのsystem symbolを表示します。
 
 `.app`内の実行ファイルをterminalから`doctor`として起動した場合、TCC判定はNape Gesture.appではなく実行元terminalまたは親applicationに帰属します。GUI本体の権限とruntime状態は、LaunchServices経由で起動したアプリ内の「権限とデバイスを確認」を正とします。ad-hoc署名を更新した後、権限一覧がONでも拒否される場合は、旧Nape Gesture登録を一覧から削除し、現在の`/Applications/Nape Gesture.app`を再追加してから再起動します。
 
