@@ -101,7 +101,7 @@ final class CommandLineTool {
                   通常 GUI アプリを起動し、設定ウィンドウとメニューバー常駐UIを表示します。環境変数 NAPE_RUNTIME_PERFORMANCE_LOG で runtime 性能 JSON Lines を保存できます。
 
               nape-gesture gui-smoke [--config <path>] [--json] [--assert]
-                  runtime を開始せずに active macOS GUI session 上で通常 GUI activation policy、設定ウィンドウ、status item NG、通常アプリメニュー、status menu を AppKit 内で作成して検査します。--assert で期待 UI と一致しない場合に失敗します。--config 未指定時は一時 config を使います。
+                  runtime を開始せずに active macOS GUI session 上で通常 GUI activation policy、設定ウィンドウ、status item symbol、通常アプリメニュー、status menu を AppKit 内で作成して検査します。--assert で期待 UI と一致しない場合に失敗します。--config 未指定時は一時 config を使います。
 
               nape-gesture run [--performance-log <path>]
                   button 3 / 4 / 5の押下中入力を、固定された2本指スクロール / スワイプ、3本指システムスワイプ、4本指システムピンチへ変換します。対象button未押下時は通常mouse入力をそのまま通します。
@@ -219,7 +219,10 @@ final class CommandLineTool {
 
         print("通常 GUI app smoke: 成功")
         print("activationPolicy: \(snapshot.activationPolicy)")
-        print("status item: \(snapshot.statusItemTitle ?? "なし")")
+        let statusItemDescription = snapshot.statusItemUsesSystemImage
+            ? "system image"
+            : (snapshot.statusItemTitle ?? "なし")
+        print("status item: \(statusItemDescription)")
         print("settings window: \(snapshot.settingsWindowTitle ?? "なし")")
     }
 

@@ -96,7 +96,7 @@ Issue #148が複数段階に現れるのは、名称変更ではなく設定、G
 ## Computer Use による GUI 操作
 
 Computer Use の使い分けは [ADR-0030](adr/0030-computer-use-gui-operation-evidence.md) を正とする。
-メインスレッドは、`.app` 起動、設定ウィンドウ、メニューバー `NG`、System Settings pane 表示、スクリーンショット取得など、ローカル Mac UI が必要な作業を computer-use で前進させる。
+メインスレッドは、`.app` 起動、設定ウィンドウ、メニューバーのsystem symbol、System Settings pane 表示、スクリーンショット取得など、ローカル Mac UI が必要な作業を computer-use で前進させる。
 
 運用ルール:
 
@@ -211,7 +211,7 @@ Computer Use の使い分けは [ADR-0030](adr/0030-computer-use-gui-operation-e
 - 設定保存前に不正値を止めるか
 - `.app` が Dock に表示される通常 GUI アプリとして起動するか
 - 起動時と Dock 再オープン時に設定ウィンドウを表示できるか
-- メニューバーの `NG` 常駐 UI を維持しているか
+- メニューバーのsystem symbolによる常駐 UI を維持しているか
 - 権限付与対象が分かるか
 - UI で実行状態と自動再試行状態が分かるか
 

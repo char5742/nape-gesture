@@ -374,7 +374,7 @@ Labels: `area:runtime`, `area:ui`, `type:feature`, `priority:p0`
 - `.app` が Dock に表示される通常 GUI アプリとして起動する
 - `.app` 起動時に設定ウィンドウが前面に出る
 - Dock から再度開いたとき、表示中ウィンドウがなければ設定ウィンドウが再表示される
-- メニューバーの `NG` 常駐 UI が維持される
+- メニューバーのsystem symbolによる常駐 UI が維持される
 - 設定UIにbuttonごとのmode選択、方向別action、application別設定がなく、固定button→finger count対応を変更できない
 - 常駐 UI の権限確認に同じ情報が出る
 - アクセシビリティ未許可、入力監視未許可の復旧導線が別々に出る

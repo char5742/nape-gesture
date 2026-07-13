@@ -118,7 +118,7 @@
 
 移行後:
 
-- メニューバー表示は `NG`
+- メニューバー表示はaccessibility label付きのsystem symbol
 - Dock 表示名は `Nape Gesture`
 - 設定ウィンドウや Reference Target App に `Nape Gesture` が残る
 

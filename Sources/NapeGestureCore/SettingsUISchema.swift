@@ -78,27 +78,27 @@ public enum SettingsUIField: String, Codable, Equatable, Sendable, CaseIterable 
         case .fixedButton5Gesture:
             return fixed("ボタン5", "4本指システムピンチ")
         case .targetDeviceAssociationWindow:
-            return number("対象入力の紐づけ秒", .targetDevice, "targetDeviceAssociation.associationWindow")
+            return number("入力の関連付け時間", .targetDevice, "targetDeviceAssociation.associationWindow")
         case .cancellationMaximumDuration:
-            return number("最大ジェスチャー秒", .cancellation, "gesture.cancellation.maximumDuration")
+            return number("最大継続時間", .cancellation, "gesture.cancellation.maximumDuration")
         case .cancellationMaximumInactivityInterval:
-            return number("無入力キャンセル秒", .cancellation, "gesture.cancellation.maximumInactivityInterval")
+            return number("無操作でキャンセル", .cancellation, "gesture.cancellation.maximumInactivityInterval")
         case .targetVendorID:
-            return number("対象 vendor ID", .targetDevice, "targetDevices[0].vendorID")
+            return number("Vendor ID", .targetDevice, "targetDevices[0].vendorID")
         case .targetProductID:
-            return number("対象 product ID", .targetDevice, "targetDevices[0].productID")
+            return number("Product ID", .targetDevice, "targetDevices[0].productID")
         case .targetManufacturerContains:
-            return text("対象メーカーに含む文字", .targetDevice, "targetDevices[0].manufacturerContains")
+            return text("メーカー名を含む", .targetDevice, "targetDevices[0].manufacturerContains")
         case .targetProductContains:
-            return text("対象製品名に含む文字", .targetDevice, "targetDevices[0].productContains")
+            return text("製品名を含む", .targetDevice, "targetDevices[0].productContains")
         case .targetTransportContains:
-            return text("対象 transport に含む文字", .targetDevice, "targetDevices[0].transportContains")
+            return text("接続方式を含む", .targetDevice, "targetDevices[0].transportContains")
         case .targetUsagePage:
-            return number("対象 usagePage", .targetDevice, "targetDevices[0].primaryUsagePage")
+            return number("Usage Page", .targetDevice, "targetDevices[0].primaryUsagePage")
         case .targetUsage:
-            return number("対象 usage", .targetDevice, "targetDevices[0].primaryUsage")
+            return number("Usage", .targetDevice, "targetDevices[0].primaryUsage")
         case .requireMatchingTargetDevice:
-            return checkbox("対象デバイス一致を必須にする", .targetDevice, "requireMatchingTargetDevice")
+            return checkbox("一致するデバイスだけで動作", .targetDevice, "requireMatchingTargetDevice")
         }
     }
 
