@@ -3,10 +3,10 @@ import NapeGestureCore
 
 enum DeviceLister {
     static func printDevices(json: Bool, includeAll: Bool) throws {
-        let devices = try includeAll ? DeviceInventory.allDevices() : DeviceInventory.pointingDevices()
+        let devices = try includeAll ? DeviceInventory.allDevices() : DeviceInventory.mouseInterfaces()
 
         guard !devices.isEmpty else {
-            print(includeAll ? "HIDデバイスは見つかりませんでした。" : "マウス系デバイスは見つかりませんでした。")
+            print(includeAll ? "HIDデバイスは見つかりませんでした。" : "マウスインターフェースは見つかりませんでした。")
             return
         }
 

@@ -1,5 +1,31 @@
 import Foundation
 
+public enum MouseHIDInterface {
+    public static let primaryUsagePage = 0x01
+    public static let primaryUsage = 0x02
+
+    public static func includes(primaryUsagePage: Int, primaryUsage: Int) -> Bool {
+        primaryUsagePage == self.primaryUsagePage && primaryUsage == self.primaryUsage
+    }
+
+    public static func interfaces(in devices: [DeviceIdentity]) -> [DeviceIdentity] {
+        devices.filter(\.isMouseInterface)
+    }
+
+    public static func matching(
+        in devices: [DeviceIdentity],
+        matchers: [DeviceMatcher]
+    ) -> [DeviceIdentity] {
+        let interfaces = interfaces(in: devices)
+        guard !matchers.isEmpty else {
+            return interfaces
+        }
+        return interfaces.filter { device in
+            matchers.contains { $0.matchesMouseInterface(device) }
+        }
+    }
+}
+
 public struct DeviceIdentity: Codable, Equatable, Sendable {
     public var manufacturer: String
     public var product: String
@@ -29,6 +55,13 @@ public struct DeviceIdentity: Codable, Equatable, Sendable {
 
     public var displayName: String {
         "\(manufacturer) / \(product)"
+    }
+
+    public var isMouseInterface: Bool {
+        MouseHIDInterface.includes(
+            primaryUsagePage: primaryUsagePage,
+            primaryUsage: primaryUsage
+        )
     }
 
     public var stableID: String {
@@ -112,6 +145,10 @@ public struct DeviceMatcher: Codable, Equatable, Sendable {
 
     public func matches(_ device: DeviceIdentity) -> Bool {
         evaluate(device).isMatch
+    }
+
+    public func matchesMouseInterface(_ device: DeviceIdentity) -> Bool {
+        device.isMouseInterface && matches(device)
     }
 
     public func evaluate(_ device: DeviceIdentity) -> DeviceMatcherEvaluation {

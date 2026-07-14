@@ -350,15 +350,15 @@ final class CommandLineTool {
         let settings = loaded.settings
         let shouldProbeHID = options.contains("--probe-hid")
         let allDevices = try DeviceInventory.allDevices()
-        let devices = DeviceInventory.pointingDevices(in: allDevices)
+        let devices = DeviceInventory.mouseInterfaces(in: allDevices)
         print("設定ファイル: \(loaded.path)")
         print("設定バリデーション: 成功")
         print("対象入力の紐づけ秒: \(settings.targetDeviceAssociation.associationWindow)")
         print("検出したHIDデバイス数: \(allDevices.count)")
-        print("検出したポインティングデバイス数: \(devices.count)")
+        print("検出したマウスインターフェース数: \(devices.count)")
 
         if devices.isEmpty {
-            print("ポインティングデバイスは見つかりませんでした。")
+            print("マウスインターフェースは見つかりませんでした。")
         } else {
             for device in devices {
                 print(

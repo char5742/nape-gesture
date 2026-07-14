@@ -15,6 +15,7 @@
 - classごとにevent type、field、phase、companion、単位変換が異なることを必須とする。
 - button mappingは固定し、mode selector、割り当て、感度、application別設定を持たない。
 - system-wide投稿だけを使い、AX、対象PID、keyboard shortcut、DriverKit、virtual HID、raw digitizerを使わない。
+- 複合HID deviceは`Generic Desktop / Mouse`インターフェースだけを入力監視で開き、同一物理deviceのkeyboard、consumer control、vendor-definedインターフェースを除外する。
 - accepted source sampleは1 sampleから1 commandへ変換し、欠落、重複、coalescing、並べ替えを行わない。
 - 1 commandから生成する低レベルevent数はclass contractに従う。scroll companion batchをsample重複とは数えない。
 - gesture session中はmouseとcursorのQuartz連動を停止し、button解放、cancel、tap中断、runtime停止、出力失敗では通常のcursor追従へ戻す。

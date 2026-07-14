@@ -8,27 +8,24 @@ enum DeviceInventory {
         try hidDevices(filter: .all)
     }
 
-    static func pointingDevices() throws -> [DeviceIdentity] {
-        try hidDevices(filter: .pointing)
+    static func mouseInterfaces() throws -> [DeviceIdentity] {
+        try hidDevices(filter: .mouse)
     }
 
-    static func pointingDevices(in devices: [DeviceIdentity]) -> [DeviceIdentity] {
-        devices.filter {
-            DeviceFilter.pointing.includes(
-                usagePage: $0.primaryUsagePage,
-                usage: $0.primaryUsage
-            )
-        }
+    static func mouseInterfaces(in devices: [DeviceIdentity]) -> [DeviceIdentity] {
+        MouseHIDInterface.interfaces(in: devices)
     }
 
     static func matchedDevices(settings: NapeGestureSettings) throws -> [DeviceIdentity] {
         let devices = try allDevices()
-        guard !settings.targetDevices.isEmpty else {
-            return devices
-        }
-        return devices.filter { device in
-            settings.targetDevices.contains { $0.matches(device) }
-        }
+        return matchedDevices(in: devices, settings: settings)
+    }
+
+    static func matchedDevices(
+        in devices: [DeviceIdentity],
+        settings: NapeGestureSettings
+    ) -> [DeviceIdentity] {
+        MouseHIDInterface.matching(in: devices, matchers: settings.targetDevices)
     }
 
     private static func hidDevices(filter: DeviceFilter) throws -> [DeviceIdentity] {
@@ -92,15 +89,17 @@ enum DeviceInventory {
 
 private enum DeviceFilter {
     case all
-    case pointing
+    case mouse
 
     func includes(usagePage: Int, usage: Int) -> Bool {
         switch self {
         case .all:
             return true
-        case .pointing:
-            return usagePage == kHIDPage_GenericDesktop
-                && (usage == kHIDUsage_GD_Mouse || usage == kHIDUsage_GD_Pointer)
+        case .mouse:
+            return MouseHIDInterface.includes(
+                primaryUsagePage: usagePage,
+                primaryUsage: usage
+            )
         }
     }
 }

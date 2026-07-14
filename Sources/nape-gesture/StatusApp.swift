@@ -306,7 +306,7 @@ final class StatusApp: NSObject, NSApplicationDelegate {
             "設定ファイル: \(configPath)",
             "対象入力の紐づけ秒: \(settings.targetDeviceAssociation.associationWindow)",
             "HIDデバイス数: \(inventory.allDeviceCountDescription)",
-            "ポインティングデバイス数: \(inventory.pointingDeviceCountDescription)",
+            "マウスインターフェース数: \(inventory.mouseInterfaceCountDescription)",
             "対象一致数: \(inventory.matchedDeviceCountDescription)",
             "自動再試行: \(recoveryState.autoRetryEnabled ? "有効" : "無効")"
         ]
@@ -774,22 +774,21 @@ struct StatusAppSmokeMenuItem: Codable {
 
 private struct PermissionDeviceInventory {
     var allDevices: [DeviceIdentity]?
-    var pointingDevices: [DeviceIdentity]?
+    var mouseInterfaces: [DeviceIdentity]?
     var matchedDevices: [DeviceIdentity]
     var error: String?
 
     static func load(settings: NapeGestureSettings) -> PermissionDeviceInventory {
         do {
             let allDevices = try DeviceInventory.allDevices()
-            let pointingDevices = DeviceInventory.pointingDevices(in: allDevices)
-            let matchedDevices = settings.targetDevices.isEmpty
-                ? allDevices
-                : allDevices.filter { device in
-                    settings.targetDevices.contains { $0.matches(device) }
-                }
+            let mouseInterfaces = DeviceInventory.mouseInterfaces(in: allDevices)
+            let matchedDevices = DeviceInventory.matchedDevices(
+                in: allDevices,
+                settings: settings
+            )
             return PermissionDeviceInventory(
                 allDevices: allDevices,
-                pointingDevices: pointingDevices,
+                mouseInterfaces: mouseInterfaces,
                 matchedDevices: matchedDevices,
                 error: nil
             )
@@ -802,15 +801,15 @@ private struct PermissionDeviceInventory {
         let failed = failure("smoke")
         let empty = PermissionDeviceInventory(
             allDevices: [],
-            pointingDevices: [],
+            mouseInterfaces: [],
             matchedDevices: [],
             error: nil
         )
         return failed.allDeviceCountDescription == "取得失敗"
-            && failed.pointingDeviceCountDescription == "取得失敗"
+            && failed.mouseInterfaceCountDescription == "取得失敗"
             && failed.matchedDeviceCountDescription == "取得失敗"
             && empty.allDeviceCountDescription == "0"
-            && empty.pointingDeviceCountDescription == "0"
+            && empty.mouseInterfaceCountDescription == "0"
             && empty.matchedDeviceCountDescription == "0"
     }
 
@@ -818,8 +817,8 @@ private struct PermissionDeviceInventory {
         allDevices.map { String($0.count) } ?? "取得失敗"
     }
 
-    var pointingDeviceCountDescription: String {
-        pointingDevices.map { String($0.count) } ?? "取得失敗"
+    var mouseInterfaceCountDescription: String {
+        mouseInterfaces.map { String($0.count) } ?? "取得失敗"
     }
 
     var matchedDeviceCountDescription: String {
@@ -829,7 +828,7 @@ private struct PermissionDeviceInventory {
     private static func failure(_ message: String) -> PermissionDeviceInventory {
         PermissionDeviceInventory(
             allDevices: nil,
-            pointingDevices: nil,
+            mouseInterfaces: nil,
             matchedDevices: [],
             error: message
         )

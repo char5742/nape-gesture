@@ -3,15 +3,11 @@ import IOKit.hid
 import NapeGestureCore
 
 enum HIDDeviceMatch {
-    static func pointingMatches() -> [[String: Int]] {
+    static func mouseInterfaceMatches() -> [[String: Int]] {
         [
             [
-                kIOHIDDeviceUsagePageKey: kHIDPage_GenericDesktop,
-                kIOHIDDeviceUsageKey: kHIDUsage_GD_Mouse
-            ],
-            [
-                kIOHIDDeviceUsagePageKey: kHIDPage_GenericDesktop,
-                kIOHIDDeviceUsageKey: kHIDUsage_GD_Pointer
+                kIOHIDDeviceUsagePageKey: MouseHIDInterface.primaryUsagePage,
+                kIOHIDDeviceUsageKey: MouseHIDInterface.primaryUsage
             ]
         ]
     }
@@ -21,11 +17,12 @@ enum HIDDeviceMatch {
         var matches: [[String: Int]] = []
 
         for device in devices {
+            guard device.isMouseInterface else {
+                continue
+            }
             let match = matchDictionary(
                 vendorID: device.vendorID,
-                productID: device.productID,
-                usagePage: device.primaryUsagePage,
-                usage: device.primaryUsage
+                productID: device.productID
             )
             guard !match.isEmpty else {
                 continue
@@ -49,9 +46,7 @@ enum HIDDeviceMatch {
         for matcher in matchers {
             let match = matchDictionary(
                 vendorID: matcher.vendorID,
-                productID: matcher.productID,
-                usagePage: matcher.primaryUsagePage,
-                usage: matcher.primaryUsage
+                productID: matcher.productID
             )
             guard !match.isEmpty else {
                 continue
@@ -70,22 +65,17 @@ enum HIDDeviceMatch {
 
     private static func matchDictionary(
         vendorID: Int?,
-        productID: Int?,
-        usagePage: Int?,
-        usage: Int?
+        productID: Int?
     ) -> [String: Int] {
-        var match: [String: Int] = [:]
+        var match = [
+            kIOHIDDeviceUsagePageKey: MouseHIDInterface.primaryUsagePage,
+            kIOHIDDeviceUsageKey: MouseHIDInterface.primaryUsage
+        ]
         if let vendorID, vendorID >= 0 {
             match[kIOHIDVendorIDKey] = vendorID
         }
         if let productID, productID >= 0 {
             match[kIOHIDProductIDKey] = productID
-        }
-        if let usagePage, usagePage >= 0 {
-            match[kIOHIDDeviceUsagePageKey] = usagePage
-        }
-        if let usage, usage >= 0 {
-            match[kIOHIDDeviceUsageKey] = usage
         }
         return match
     }

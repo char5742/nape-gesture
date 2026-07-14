@@ -66,6 +66,8 @@ CGEventUtilities
 - eventを対象PIDへ直接投稿せず、AX、keyboard shortcut、application別分岐をfallbackにしない。
 - DriverKit、virtual HID、raw digitizer contactを製品出力に使わない。
 
+対象mouseが複数のHIDインターフェースを公開する場合も、入力監視で開くのは`Generic Desktop / Mouse`インターフェースだけです。同じ物理機器のkeyboard、consumer control、vendor-definedインターフェースは対象device条件に一致しても開かず、gesture入力にも使用しません。`devices --all`だけは診断用に全インターフェースを表示します。
+
 通常SDKに公開されないevent contractは最小のcompatibility adapterへ隔離します。macOS 26.5.1 / 25F80で収録した正負方向別template fixture `recognized-dockswipe-templates-25F80-v2`、SHA-256 `852c7d0b6e32ced7082ea5c06a65d05971d3868e6a36aaccfd6f422871bc32a6`を検証してtype 30 / IOHID `DockSwipe`を復元します。収録元OS情報はfixture、変換model、template間のprovenance照合にだけ使い、実行中macOSのversion / buildとは比較しません。ID、SHA-256、schema、contract ID、fixture実体のどれかが未知または改変済みなら、3 classすべてを非対応としてevent tapと入力抑制を開始しません。
 
 ## GUIと設定
@@ -89,7 +91,7 @@ buttonごとのmode selector、無効化、感度、方向別binding、applicati
 | 入力とsession | 3 classの量、符号、timestamp、capture order、sample順、single terminal、cancel / timeout / sleep / wake後の復帰 |
 | ProductOutput | class固有fieldとphase、system-wide配送、部分作成・部分投稿・terminal retry、session不一致、未知OS / fixture改変時のfail closed |
 | 設定 | 旧設定の原子的migration、冪等性、不正原本の保持、process間排他、lock file改変拒否、保存失敗後の再試行 |
-| GUIとdoctor | 固定mappingの読み取り専用表示、dirty / revert、pane / disclosure、複数device条件保持、起動identityとreadinessの整合 |
+| GUIとdoctor | 固定mappingの読み取り専用表示、dirty / revert、pane / disclosure、複数device条件保持、複合HIDのマウスインターフェース限定、起動identityとreadinessの整合 |
 | 配布bundle | Debug / Release build、警告のerror化、署名必須検証、署名後改変・symlink destination拒否、LaunchServices起動 |
 | メモリ安全性 | Core、ProductOutput、DiagnosticOutputをAddressSanitizer / UndefinedBehaviorSanitizer付きでCI実行 |
 
