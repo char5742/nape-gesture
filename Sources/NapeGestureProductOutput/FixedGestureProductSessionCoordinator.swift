@@ -18,6 +18,8 @@ public struct FixedGestureProductSessionPost: Equatable, Sendable {
 }
 
 public final class FixedGestureProductSessionCoordinator {
+    private static let pinchMotionScale = 0.5
+
     private struct PendingOutput {
         var event: TrackpadOutputSessionEvent
         var candidateMachine: FixedGestureSessionMachine
@@ -481,6 +483,6 @@ public final class FixedGestureProductSessionCoordinator {
     }
 
     private static func pinchMotion(x: Double, y: Double) -> Double {
-        y != 0 ? -y : x
+        (y != 0 ? -y : x) * pinchMotionScale
     }
 }

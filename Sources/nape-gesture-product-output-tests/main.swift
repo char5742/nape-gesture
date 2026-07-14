@@ -2294,6 +2294,63 @@ private func testFixedDockSwipeAccumulatesSessionProgress() {
     expect(abs(progress[2] - 0.2) < 0.000_001, "DockSwipe terminalでも累積progressを保持する")
 }
 
+private func testFixedPinchUsesHalfScaleForProgressAndTerminalVelocity() {
+    let output = PermissiveProductOutput(
+        capability: .validated(
+            fixtureData: contractData(),
+        )
+    )
+    let coordinator = FixedGestureProductSessionCoordinator(output: output)
+    let sessionID = TrackpadOutputSessionID(rawValue: 951)
+    let interval = MonotonicEventClock.nanosecondsPerSecond
+
+    func command(
+        order: UInt64,
+        sourceKind: GestureInputSourceKind,
+        phase: FixedGestureInputPhase,
+        deltaY: Double = 0
+    ) -> FixedGestureInputCommand {
+        FixedGestureInputCommand(
+            sessionID: sessionID,
+            sourceButton: .center,
+            gestureClass: .pinch,
+            captureOrder: order,
+            timestamp: MonotonicEventTimestamp(
+                nanosecondsSinceStartup: interval * (order + 1)
+            ),
+            sourceKind: sourceKind,
+            phase: phase,
+            deltaX: 0,
+            deltaY: deltaY
+        )
+    }
+
+    let posts = [
+        command(order: 0, sourceKind: .buttonDown, phase: .began),
+        command(order: 1, sourceKind: .move, phase: .changed, deltaY: -30),
+        command(order: 2, sourceKind: .move, phase: .changed, deltaY: -30),
+        command(order: 3, sourceKind: .buttonUp, phase: .ended),
+    ].map(coordinator.post)
+    expect(posts.allSatisfy { $0.result.failure == nil }, "4本指pinchのscale検証入力を完結する")
+
+    let payloads = output.postedEvents.compactMap { event -> (Double, Double)? in
+        guard case .input(let frame) = event,
+              case .dockSwipePinch(let progress, _, let terminalVelocity) = frame.payload
+        else {
+            return nil
+        }
+        return (progress, terminalVelocity)
+    }
+    expect(payloads.count == 3, "4本指pinch lifecycleを3 eventで保持する")
+    guard payloads.count == 3 else {
+        return
+    }
+    expect(abs(payloads[0].0 - 0.05) < 0.000_001, "mouse delta 30を4本指pinch progress 0.05へ変換する")
+    expect(abs(payloads[1].0 - 0.1) < 0.000_001, "4本指pinch progressを半分のscaleで累積する")
+    expect(abs(payloads[2].0 - 0.1) < 0.000_001, "4本指pinch terminalへ累積progressを保持する")
+    expect(abs(payloads[2].1 - 0.05) < 0.000_001, "4本指pinch terminal velocityへ半分のscaleを適用する")
+}
+
 private func testFixedGestureCoordinatorClosesPartialScrollBatch() {
     func command(
         order: UInt64,
@@ -2526,6 +2583,7 @@ testCancellationTimestampRegressionIsNormalized()
 testCoordinatorClosesPartialBeganAndRetriesPartialCancellation()
 testFixedGestureClassesReachProductFamiliesWithExactOrderAndTimestamp()
 testFixedDockSwipeAccumulatesSessionProgress()
+testFixedPinchUsesHalfScaleForProgressAndTerminalVelocity()
 testFixedGestureCoordinatorClosesPartialScrollBatch()
 testFixedScrollAcceptsMouseDeltaGrid()
 postFixedGestureSmokeIfRequested()
