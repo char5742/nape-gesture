@@ -71,7 +71,7 @@ macOS 26.5.1（build 25F80）について、純正trackpad captureからtype 22 
 
 ## 関連
 
-- [ADR-0049: buttonを固定GestureClassへ接続する](0049-fixed-button-to-finger-count-trackpad-input.md)
+- [ADR-0049: buttonを固定GestureClassへ接続する](0049-fixed-button-to-gesture-class-input.md)
 - [ADR-0036: trackpad driver上位eventを安全に再現する](0036-emulate-trackpad-driver-output-events.md)
 - [ADR-0038: 固定GestureClass sessionとmonotonic clockを共通化する](0038-trackpad-output-session-and-monotonic-clock.md)
 - [ADR-0039: trackpad eventログを厳格解析しcapture manifestへ固定する](0039-strict-trackpad-event-analysis-and-capture-manifest.md)

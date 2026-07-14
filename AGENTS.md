@@ -13,18 +13,19 @@
 
 ## 製品モデルの正本
 
-製品挙動については、この節、[README](README.md)、[ゴール要件](docs/requirements.md)、[ADR-0049](docs/adr/0049-fixed-button-to-finger-count-trackpad-input.md)が示す固定モデルを正本とする。実装、設定、テスト、ADR、検証文書をすべてこのモデルへ統一する。結果別modeやfamily別製品経路を正当化する誤ったADR、本文、図、リンクは現行treeから削除し、並存させない。
+製品挙動については、この節、[README](README.md)、[ゴール要件](docs/requirements.md)、[ADR-0049](docs/adr/0049-fixed-button-to-gesture-class-input.md)が示す固定モデルを正本とする。実装、設定、テスト、ADR、検証文書をすべてこのモデルへ統一する。結果別modeやfamily別製品経路を正当化する誤ったADR、本文、図、リンクは現行treeから削除し、並存させない。
 
-| mouse入力 | 生成するtrackpad入力 |
+| mouse入力 | 固定GestureClass |
 | --- | --- |
-| button 3押下中 | 2本指入力 |
-| button 4押下中 | 3本指入力 |
-| button 5押下中 | 4本指入力 |
+| button 3押下中 | 2本指scroll / swipe相当 |
+| button 4押下中 | 3本指system swipe相当 |
+| button 5押下中 | 4本指system pinch相当 |
 | button 3 / 4 / 5のいずれも未押下 | 通常mouse入力をそのまま通過 |
 
-- buttonとfinger countの対応は固定であり、ユーザー設定、既定値、application、移動方向、過去の設定値によって変えない。
-- 押下中の連続mouse event量を、対応するfinger countの連続trackpad入力量へ変換する。途中の方向転換を別action、別mode、別sessionとして再解釈しない。
-- 有効なsource sampleは欠落、重複、coalescing、並べ替えをせず、X/Y量、符号、timestampを個別に保持する。単一の計測済み単位変換以外に感度、加速度、dead zone、threshold、clampを適用しない。
+- buttonとGestureClassの対応は固定であり、ユーザー設定、既定値、application、移動方向、過去の設定値によって変えない。
+- 押下中の連続mouse event量をclass固有の上位event contractへ変換する。途中の方向転換を別action、別mode、別sessionとして再解釈しない。
+- 有効なsource sampleは欠落、重複、coalescing、並べ替えをせず、X/Y量、符号、timestampを個別に保持する。class固有contractで実測した単位変換以外に感度、加速度、dead zone、threshold、clampを適用しない。
+- 2 / 3 / 4本指はraw digitizer contact countやgeneric `fingerCount` transportではなく、上位GestureClassのユーザー向け説明である。class間でevent type、field、phase、companion、単位変換を同一にしない。
 - button解放時は対応するtrackpad入力sessionを正しく終了し、通常mouse passthroughへ確実に戻す。
 - button未押下時の通常クリック、移動、ドラッグ、wheel、その他の通常mouse入力を、gesture変換のために変更、抑制、再配送しない。
 
@@ -40,9 +41,9 @@
 ## 実装と移行
 
 - buttonごとの選択式mode、結果別action、方向別binding、application別設定が現行実装に残っている間は、製品モデル未達と扱う。
-- 固定finger-countモデルへの変更は、入力認識、session、出力、設定schema、設定UI、migration、状態表示、diagnostics、docs、testsを一貫して更新する。名称だけの変更や、廃止対象modeをfinger countへ読み替える互換処理では完了にしない。
+- 固定GestureClassモデルへの変更は、入力認識、session、出力、設定schema、設定UI、migration、状態表示、diagnostics、docs、testsを一貫して更新する。名称だけの変更や、廃止対象modeを別classへ読み替える互換処理では完了にしない。
 - 廃止対象の設定項目を削除する際は、結果別modeを新しい意味へ暗黙変換しない。固定対応を唯一のcanonical stateとして保存し、再起動後も廃止項目を復活させない。
-- 現行のADR、要件、README、検証文書、Issue、テスト名は固定button→finger countモデルだけを説明する。誤った設計の説明や参照が一つでも残る状態を文書移行完了にしない。
+- 現行のADR、要件、README、検証文書、Issue、テスト名は固定button→GestureClassモデルだけを説明する。誤った設計の説明や参照が一つでも残る状態を文書移行完了にしない。
 - ユーザーが見る挙動、GUI、権限導線、検証手順、完成状態、配布手順を変える場合はREADMEを更新する。更新不要ならPR本文で理由を明記する。
 
 ## 低レベルcontractと安全性
@@ -50,12 +51,12 @@
 - 通常SDKで公開されないevent contractは、最小のcompatibility adapterへ隔離する。
 - 未知のmacOS version / build、未登録fixture、schema不一致、contract ID不一致、SHA-256不一致、fixture実体不一致ではfail closedにする。入力抑制を始めてからfallbackへ切り替えない。
 - `supported`は、登録済みfixture ID、SHA-256、schema、contract ID、OS version / build、fixture実体、製品runtimeからの到達性がすべて一致するときだけ使う。
-- 低レベルeventを構築できること、dry-runが成功すること、画面が動くことだけでは、finger countの再現や製品完成の証拠にしない。
+- 低レベルeventを構築できること、dry-runが成功すること、画面が動くことだけでは、GestureClass contractの再現や製品完成の証拠にしない。
 - event tap、入力抑制、session終了、kill switch、通常入力復帰は一体で検証し、途中失敗でmouse操作を失わせない。
 
 ## 完成判定
 
-- button 3 / 4 / 5から2 / 3 / 4本指入力への固定対応を、core test、product boundary test、設定UI test、migration testで固定する。
+- button 3 / 4 / 5から3つの固定GestureClassへの対応を、core test、product boundary test、設定UI test、migration testで固定する。
 - 押下開始、連続量、方向転換、button解放、cancel、停止、復帰を同一sessionのlifecycleとして検証する。
 - button未押下時とsession終了後の通常mouse passthroughを、イベント種別ごとのtarget logと実利用経路で検証する。
 - 製品sourceとbundleに結果別mode、方向別action、application別設定、AX / PID / shortcut配送がないことを機械検査する。

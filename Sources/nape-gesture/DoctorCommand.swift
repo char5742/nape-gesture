@@ -11,6 +11,7 @@ struct DoctorCommand {
     }
 
     func run() throws {
+        try validateOptions()
         let benchmarkEvents = try intValue("--benchmark-events", defaultValue: 50_000)
         guard benchmarkEvents > 0 else {
             throw ToolError.invalidValue("--benchmark-events", String(benchmarkEvents))
@@ -40,6 +41,32 @@ struct DoctorCommand {
         }
     }
 
+    private func validateOptions() throws {
+        let valueOptions: Set<String> = ["--config", "--benchmark-events"]
+        let flagOptions: Set<String> = ["--json", "--probe-hid", "--assert-runtime-ready"]
+        var seen = Set<String>()
+        var index = 0
+
+        while index < options.count {
+            let option = options[index]
+            guard valueOptions.contains(option) || flagOptions.contains(option) else {
+                throw ToolError.invalidValue("doctor option", option)
+            }
+            guard seen.insert(option).inserted else {
+                throw ToolError.invalidValue(option, "重複しています。")
+            }
+
+            if valueOptions.contains(option) {
+                guard index + 1 < options.count, !options[index + 1].hasPrefix("--") else {
+                    throw ToolError.missingValue(option)
+                }
+                index += 2
+            } else {
+                index += 1
+            }
+        }
+    }
+
     private func makeReport(
         configPath: String,
         settings: NapeGestureSettings,
@@ -56,6 +83,11 @@ struct DoctorCommand {
         if runtimeIdentity.isAppBundle && runtimeIdentity.launchContext == .commandLine {
             findings.append(
                 "このdoctorは.app内の実行ファイルをCLIとして起動しています。TCC判定はNape Gesture.appではなく、実行元ターミナルまたは親アプリに帰属します。GUI本体の権限はアプリ内の「権限とデバイスを確認」で判定してください。"
+            )
+        }
+        if runtimeIdentity.launchContext == .unknown {
+            findings.append(
+                "起動元をLaunchServices GUIまたはCLIのどちらとも安全に判定できません。権限付与対象を推測せず、通常の.app起動または明示的なCLI起動で再実行してください。"
             )
         }
         if !accessibilityTrusted {
@@ -92,6 +124,7 @@ struct DoctorCommand {
             inputMonitoringRemediation: remediation(forInputMonitoringProbe: probe)
         )
         let runtimeReadiness = DoctorRuntimeReadiness(
+            runtimeIdentity: runtimeIdentity,
             settingsValidationIssues: settingsValidationIssues,
             accessibilityTrusted: accessibilityTrusted,
             inventoryError: inventory.error,
@@ -136,7 +169,7 @@ struct DoctorCommand {
     {
         do {
             let allDevices = try DeviceInventory.allDevices()
-            let pointingDevices = try DeviceInventory.pointingDevices()
+            let pointingDevices = DeviceInventory.pointingDevices(in: allDevices)
             let matchedDevices =
                 settings.targetDevices.isEmpty
                 ? []
@@ -537,6 +570,7 @@ private struct DoctorRuntimeReadiness: Codable {
     var failures: [DoctorRuntimeReadinessFailure]
 
     init(
+        runtimeIdentity: RuntimeIdentity,
         settingsValidationIssues: [SettingsValidationIssue],
         accessibilityTrusted: Bool,
         inventoryError: String?,
@@ -547,6 +581,16 @@ private struct DoctorRuntimeReadiness: Codable {
         outputContract: DoctorOutputContractStatus
     ) {
         var failures: [DoctorRuntimeReadinessFailure] = []
+        if runtimeIdentity.launchContext == .unknown {
+            failures.append(
+                DoctorRuntimeReadinessFailure(
+                    code: "runtimeIdentity.ambiguous",
+                    category: "tcc",
+                    message: "起動元とTCC権限の帰属先を安全に判定できません。",
+                    remediation: "通常の.app起動または明示的なCLI起動で再実行してください。"
+                )
+            )
+        }
         if !settingsValidationIssues.isEmpty {
             failures.append(
                 DoctorRuntimeReadinessFailure(
@@ -762,8 +806,7 @@ private struct DoctorTCCPermissionTarget: Codable {
 
     init(runtimeIdentity: RuntimeIdentity) {
         description = runtimeIdentity.permissionTargetDescription
-        preferredGrantTarget =
-            runtimeIdentity.tccAttribution == "appBundle" ? "appBundle" : "invokingProcess"
+        preferredGrantTarget = runtimeIdentity.tccAttribution
         attribution = runtimeIdentity.tccAttribution
         launchContext = runtimeIdentity.launchContext.rawValue
         processName = runtimeIdentity.processName

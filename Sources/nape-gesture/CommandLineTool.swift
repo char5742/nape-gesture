@@ -350,7 +350,7 @@ final class CommandLineTool {
         let settings = loaded.settings
         let shouldProbeHID = options.contains("--probe-hid")
         let allDevices = try DeviceInventory.allDevices()
-        let devices = try DeviceInventory.pointingDevices()
+        let devices = DeviceInventory.pointingDevices(in: allDevices)
         print("設定ファイル: \(loaded.path)")
         print("設定バリデーション: 成功")
         print("対象入力の紐づけ秒: \(settings.targetDeviceAssociation.associationWindow)")

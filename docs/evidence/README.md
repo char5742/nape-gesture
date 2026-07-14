@@ -2,12 +2,13 @@
 
 このdirectoryは、実行日時点のcommand、binary、fixture、物理capture、観測結果を再現するための記録である。製品要件、現在の設計、完成状態の正本ではない。
 
-現行の製品モデルは[ゴール要件](../requirements.md)と[ADR-0049](../adr/0049-fixed-button-to-finger-count-trackpad-input.md)だけを正とする。
+現行の製品モデルは[ゴール要件](../requirements.md)と[ADR-0049](../adr/0049-fixed-button-to-gesture-class-input.md)だけを正とする。
 
 証跡を現在の完成判定へ使うには、次をすべて満たす。
 
-- button 3 / 4 / 5 = 2 / 3 / 4本指の固定対応で取得した証跡である。
-- source button、finger count、変換前後のX/Y量、順序、timestamp、phase、session、terminalを対応付けられる。
+- button 3 / 4 / 5から3つの固定GestureClassへ接続した現行binaryの証跡である。
+- source button、GestureClass、class固有ProductOutput、変換前後のX/Y量、順序、timestamp、phase、session、terminalを対応付けられる。
+- 2 / 3 / 4本指をraw contact数またはgeneric `fingerCount` transportとして扱っていない。
 - 低レベルevent family名をユーザーmode、button assignment、独立製品機能として扱っていない。
 - OS / App結果、低レベルcontract、Nape Pro体感を別々に判定している。
 - 証跡のrepo SHA、binary identity、fixture、OS buildが検証対象と一致する。

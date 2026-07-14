@@ -24,10 +24,37 @@ symlink_app="$temporary_root/SymlinkResource.app"
 intermediate_symlink_app="$temporary_root/IntermediateSymlinkResource.app"
 identity_app="$temporary_root/InvalidIdentity.app"
 hostile_rebundled_app="$temporary_root/HostileRebundled.app"
+signed_app="$temporary_root/Signed.app"
+tampered_resource_app="$temporary_root/TamperedResource.app"
+tampered_executable_app="$temporary_root/TamperedExecutable.app"
+destination_symlink_app="$temporary_root/DestinationSymlink.app"
+destination_symlink_target="$temporary_root/DestinationSymlinkTarget.app"
 victim="$temporary_root/victim.app"
 
 "$binary" bundle-app --out "$app" >/dev/null
 "$binary" verify-bundle "$app" >/dev/null
+if "$binary" verify-bundle --require-signature "$app" >/dev/null 2>&1; then
+  printf '%s\n' "未署名bundleを署名必須検証が受理しました。" >&2
+  exit 1
+fi
+
+cp -R "$app" "$signed_app"
+codesign --force --deep --sign - "$signed_app" >/dev/null 2>&1
+"$binary" verify-bundle --require-signature "$signed_app" >/dev/null
+
+cp -R "$signed_app" "$tampered_resource_app"
+printf '%s\n' "tampered" >> "$tampered_resource_app/Contents/Resources/LICENSE.txt"
+if "$binary" verify-bundle --require-signature "$tampered_resource_app" >/dev/null 2>&1; then
+  printf '%s\n' "署名後にresourceを改変したbundleを受理しました。" >&2
+  exit 1
+fi
+
+cp -R "$signed_app" "$tampered_executable_app"
+printf '\0' >> "$tampered_executable_app/Contents/MacOS/nape-gesture"
+if "$binary" verify-bundle --require-signature "$tampered_executable_app" >/dev/null 2>&1; then
+  printf '%s\n' "署名後に実行ファイルを改変したbundleを受理しました。" >&2
+  exit 1
+fi
 
 before_inode=$(stat -f '%i' "$app")
 "$binary" bundle-app --out "$app" --replace >/dev/null
@@ -60,10 +87,32 @@ if [ -e "$temporary_root/--replace" ]; then
   printf '%s\n' "--replaceを誤って出力pathとして作成しました。" >&2
   exit 1
 fi
+if "$binary" bundle-app --out "$temporary_root/Duplicate.app" --out "$temporary_root/Other.app" >/dev/null 2>&1; then
+  printf '%s\n' "重複した--outを受理しました。" >&2
+  exit 1
+fi
+if "$binary" bundle-app --out "$temporary_root/DuplicateReplace.app" --replace --replace >/dev/null 2>&1; then
+  printf '%s\n' "重複した--replaceを受理しました。" >&2
+  exit 1
+fi
+if "$binary" bundle-app --out "$temporary_root/not-an-app" >/dev/null 2>&1; then
+  printf '%s\n' ".app以外の出力先を受理しました。" >&2
+  exit 1
+fi
 if "$binary" verify-bundle --require-signatures "$app" >/dev/null 2>&1; then
   printf '%s\n' "未知の署名optionを無視しました。" >&2
   exit 1
 fi
+
+mkdir "$destination_symlink_target"
+printf '%s\n' sentinel > "$destination_symlink_target/sentinel.txt"
+ln -s "$destination_symlink_target" "$destination_symlink_app"
+if "$binary" bundle-app --out "$destination_symlink_app" --replace >/dev/null 2>&1; then
+  printf '%s\n' "symlinkのdestinationを置換しました。" >&2
+  exit 1
+fi
+test -L "$destination_symlink_app"
+test "$(cat "$destination_symlink_target/sentinel.txt")" = sentinel
 
 "$binary" bundle-app --out "$symlink_app" >/dev/null
 model_dir="$symlink_app/Contents/Resources/TrackpadContracts/25F80"

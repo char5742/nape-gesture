@@ -250,17 +250,13 @@ final class StatusApp: NSObject, NSApplicationDelegate {
             guard let self else {
                 return
             }
-            do {
-                try SettingsStore.write(updated, to: configPath)
-                settings = updated
-                let decision = recoveryState.recordSettingsSaved(at: currentTime())
-                if decision.shouldStartRuntime {
-                    startRuntimeAndRecordResult()
-                }
-                refreshMenu()
-            } catch {
-                showAlert(title: "設定を保存できません", message: error.localizedDescription)
+            try SettingsStore.write(updated, to: configPath)
+            settings = updated
+            let decision = recoveryState.recordSettingsSaved(at: currentTime())
+            if decision.shouldStartRuntime {
+                startRuntimeAndRecordResult()
             }
+            refreshMenu()
         }
         settingsWindow = controller
         controller.showWindow(nil)
@@ -270,10 +266,10 @@ final class StatusApp: NSObject, NSApplicationDelegate {
     @objc private func checkPermissions() {
         let accessibilityTrusted = AccessibilityPermission.isTrusted
         let identity = RuntimeIdentity.current
-        let allDevices = (try? DeviceInventory.allDevices()) ?? []
-        let devices = (try? DeviceInventory.pointingDevices()) ?? []
-        let matched = (try? DeviceInventory.matchedDevices(settings: settings)) ?? []
-        let inputMonitoring = probeInputMonitoring(matchedDevices: matched)
+        let inventory = PermissionDeviceInventory.load(settings: settings)
+        let inputMonitoring = inventory.error == nil
+            ? probeInputMonitoring(matchedDevices: inventory.matchedDevices)
+            : .notProbed("HIDデバイス一覧の取得に失敗したため、入力監視を確認できません。")
         let systemIdentity = ProductGestureOutputSystemIdentity.current()
         let outputCapability = TrackpadGestureOutputAdapter().capability
         let requiredFamilies: Set<TrackpadOutputEventFamily> = [
@@ -309,9 +305,9 @@ final class StatusApp: NSObject, NSApplicationDelegate {
             "実行状態: \(runtime.isRunning ? "実行中" : "停止中")",
             "設定ファイル: \(configPath)",
             "対象入力の紐づけ秒: \(settings.targetDeviceAssociation.associationWindow)",
-            "HIDデバイス数: \(allDevices.count)",
-            "ポインティングデバイス数: \(devices.count)",
-            "対象一致数: \(matched.count)",
+            "HIDデバイス数: \(inventory.allDeviceCountDescription)",
+            "ポインティングデバイス数: \(inventory.pointingDeviceCountDescription)",
+            "対象一致数: \(inventory.matchedDeviceCountDescription)",
             "自動再試行: \(recoveryState.autoRetryEnabled ? "有効" : "無効")"
         ]
 
@@ -322,8 +318,11 @@ final class StatusApp: NSObject, NSApplicationDelegate {
             lines.append("fail-closed理由: \(reason)")
         }
 
-        if !matched.isEmpty {
-            lines.append("対象: " + matched.map(\.displayName).joined(separator: ", "))
+        if let inventoryError = inventory.error {
+            lines.append("HID inventoryエラー: \(inventoryError)")
+        }
+        if !inventory.matchedDevices.isEmpty {
+            lines.append("対象: " + inventory.matchedDevices.map(\.displayName).joined(separator: ", "))
         }
 
         if !accessibilityTrusted {
@@ -523,6 +522,7 @@ final class StatusApp: NSObject, NSApplicationDelegate {
     private func makeSmokeSnapshot() -> StatusAppSmokeSnapshot {
         let launchPresentation = GUIAppLaunchPresenter.regularGUIApp
         let settingsContentSize = settingsWindow?.window?.contentView?.bounds.size
+        let settingsWindowSmoke = settingsWindow?.makeSmokeSnapshot()
         return StatusAppSmokeSnapshot(
             runtimeIdentity: RuntimeIdentity.current,
             activationPolicy: NSApp.activationPolicy().smokeValue,
@@ -539,7 +539,10 @@ final class StatusApp: NSObject, NSApplicationDelegate {
             settingsWindowIsVisible: settingsWindow?.window?.isVisible ?? false,
             settingsToolbarItems: settingsWindow?.window?.toolbar?.items.map(\.label) ?? [],
             settingsWindowContentWidth: settingsContentSize.map { Double($0.width) },
-            settingsWindowContentHeight: settingsContentSize.map { Double($0.height) }
+            settingsWindowContentHeight: settingsContentSize.map { Double($0.height) },
+            settingsWindowSmoke: settingsWindowSmoke,
+            permissionInventoryFailureIsDistinct: PermissionDeviceInventory.smokeFailureIsDistinct,
+            runtimeIdentityClassificationIsStrict: RuntimeIdentitySmokeCheck.isStrict
         )
     }
 
@@ -568,6 +571,9 @@ struct StatusAppSmokeSnapshot: Codable {
     var settingsToolbarItems: [String]
     var settingsWindowContentWidth: Double?
     var settingsWindowContentHeight: Double?
+    var settingsWindowSmoke: SettingsWindowSmokeSnapshot?
+    var permissionInventoryFailureIsDistinct: Bool
+    var runtimeIdentityClassificationIsStrict: Bool
 
     func assertRegularGUI() throws {
         var failures: [String] = []
@@ -597,6 +603,85 @@ struct StatusAppSmokeSnapshot: Codable {
                 "設定ウィンドウのcontent sizeが680x560ではありません: "
                     + "\(settingsWindowContentWidth ?? 0)x\(settingsWindowContentHeight ?? 0)"
             )
+        }
+
+        if let settingsWindowSmoke {
+            let expectedToolbarIdentifier = "settings.\(settingsWindowSmoke.selectedPane)"
+            if settingsWindowSmoke.selectedToolbarItemIdentifier != expectedToolbarIdentifier {
+                failures.append(
+                    "選択paneとtoolbar itemが一致しません: "
+                        + "pane=\(settingsWindowSmoke.selectedPane) "
+                        + "toolbar=\(settingsWindowSmoke.selectedToolbarItemIdentifier ?? "なし")"
+                )
+            }
+            if settingsWindowSmoke.windowIsResizable {
+                failures.append("設定ウィンドウが意図せずresize可能です。")
+            }
+            if settingsWindowSmoke.initiallyApplyEnabled {
+                failures.append("未変更の設定で変更を適用が有効です。")
+            }
+            if !settingsWindowSmoke.initiallyAdvancedConditionsHidden {
+                failures.append("詳細な識別条件が初期状態で展開されています。")
+            }
+            let expectedMappings = [
+                "ボタン3  2本指スクロール／スワイプ",
+                "ボタン4  3本指システムスワイプ",
+                "ボタン5  4本指システムピンチ",
+            ]
+            if settingsWindowSmoke.fixedMappingTexts != expectedMappings {
+                failures.append(
+                    "固定button mappingの表示が製品契約と一致しません: "
+                        + "\(settingsWindowSmoke.fixedMappingTexts)"
+                )
+            }
+            let expectedPassthrough = "ボタン3、4、5を押していない間は、通常のマウスとして動作します。"
+            if settingsWindowSmoke.passthroughText != expectedPassthrough {
+                failures.append("通常mouseへの復帰条件が設定画面に表示されていません。")
+            }
+            if settingsWindowSmoke.runtimeStatusText.isEmpty
+                || !settingsWindowSmoke.runtimeStatusUsesSystemImage
+            {
+                failures.append("runtime状態がsystem image付きで表示されていません。")
+            }
+            if !settingsWindowSmoke.dirtyEditEnablesApply
+                || !settingsWindowSmoke.revertingEditDisablesApply
+            {
+                failures.append("設定変更または復元時の適用button状態が不正です。")
+            }
+            if !settingsWindowSmoke.disclosureExpands
+                || !settingsWindowSmoke.disclosureCollapses
+            {
+                failures.append("詳細な識別条件の開閉が完結しません。")
+            }
+            if !settingsWindowSmoke.paneSwitchesContent {
+                failures.append("ジェスチャー / 詳細paneの切り替えが内容へ反映されません。")
+            }
+            if settingsWindowSmoke.gesturePaneHasEditableSettingControl {
+                failures.append("固定ジェスチャーpaneに変更可能なmodeまたは感度controlがあります。")
+            }
+            if settingsWindowSmoke.detailsEditableTextFieldCount != 10
+                || settingsWindowSmoke.detailsCheckboxCount != 1
+            {
+                failures.append(
+                    "詳細paneの安全設定control数が不正です: "
+                        + "text=\(settingsWindowSmoke.detailsEditableTextFieldCount) "
+                        + "checkbox=\(settingsWindowSmoke.detailsCheckboxCount)"
+                )
+            }
+            if !settingsWindowSmoke.multipleMatchersPreserved {
+                failures.append("GUIで先頭条件を編集した際に後続の対象device条件が失われます。")
+            }
+            if !settingsWindowSmoke.saveFailureKeepsDirtyState {
+                failures.append("設定保存失敗後に未保存状態と再試行可能なApplyが保持されません。")
+            }
+        } else {
+            failures.append("設定ウィンドウの操作smoke結果がありません。")
+        }
+        if !permissionInventoryFailureIsDistinct {
+            failures.append("HID inventory取得失敗がdevice 0件として表示されます。")
+        }
+        if !runtimeIdentityClassificationIsStrict {
+            failures.append("CLIまたは曖昧な起動をLaunchServices GUIとして誤分類できます。")
         }
 
         let statusTitles = statusMenuItems.map(\.title)
@@ -635,6 +720,46 @@ struct StatusAppSmokeSnapshot: Codable {
     }
 }
 
+private enum RuntimeIdentitySmokeCheck {
+    private static let bundlePath = "/Applications/Nape Gesture.app"
+    private static let bundleIdentifier = "dev.char5742.nape-gesture"
+
+    static var isStrict: Bool {
+        let launchServices = RuntimeIdentity.resolveLaunchContext(
+            bundlePath: bundlePath,
+            bundleIdentifier: bundleIdentifier,
+            parentProcessIdentifier: 1,
+            xpcServiceName: "application.\(bundleIdentifier).smoke",
+            environmentBundleIdentifier: bundleIdentifier
+        )
+        let forgedCLI = RuntimeIdentity.resolveLaunchContext(
+            bundlePath: bundlePath,
+            bundleIdentifier: bundleIdentifier,
+            parentProcessIdentifier: 42,
+            xpcServiceName: "application.\(bundleIdentifier).smoke",
+            environmentBundleIdentifier: bundleIdentifier
+        )
+        let ambiguous = RuntimeIdentity.resolveLaunchContext(
+            bundlePath: bundlePath,
+            bundleIdentifier: bundleIdentifier,
+            parentProcessIdentifier: 1,
+            xpcServiceName: nil,
+            environmentBundleIdentifier: nil
+        )
+        let plainExecutable = RuntimeIdentity.resolveLaunchContext(
+            bundlePath: "/tmp/nape-gesture",
+            bundleIdentifier: nil,
+            parentProcessIdentifier: 1,
+            xpcServiceName: "application.\(bundleIdentifier).smoke",
+            environmentBundleIdentifier: bundleIdentifier
+        )
+        return launchServices == .launchServicesApp
+            && forgedCLI == .commandLine
+            && ambiguous == .unknown
+            && plainExecutable == .commandLine
+    }
+}
+
 struct StatusAppSmokeMenuItem: Codable {
     var title: String
     var enabled: Bool
@@ -644,6 +769,70 @@ struct StatusAppSmokeMenuItem: Codable {
         title = item.title
         enabled = item.isEnabled
         isSeparator = item.isSeparatorItem
+    }
+}
+
+private struct PermissionDeviceInventory {
+    var allDevices: [DeviceIdentity]?
+    var pointingDevices: [DeviceIdentity]?
+    var matchedDevices: [DeviceIdentity]
+    var error: String?
+
+    static func load(settings: NapeGestureSettings) -> PermissionDeviceInventory {
+        do {
+            let allDevices = try DeviceInventory.allDevices()
+            let pointingDevices = DeviceInventory.pointingDevices(in: allDevices)
+            let matchedDevices = settings.targetDevices.isEmpty
+                ? allDevices
+                : allDevices.filter { device in
+                    settings.targetDevices.contains { $0.matches(device) }
+                }
+            return PermissionDeviceInventory(
+                allDevices: allDevices,
+                pointingDevices: pointingDevices,
+                matchedDevices: matchedDevices,
+                error: nil
+            )
+        } catch {
+            return failure(error.localizedDescription)
+        }
+    }
+
+    static var smokeFailureIsDistinct: Bool {
+        let failed = failure("smoke")
+        let empty = PermissionDeviceInventory(
+            allDevices: [],
+            pointingDevices: [],
+            matchedDevices: [],
+            error: nil
+        )
+        return failed.allDeviceCountDescription == "取得失敗"
+            && failed.pointingDeviceCountDescription == "取得失敗"
+            && failed.matchedDeviceCountDescription == "取得失敗"
+            && empty.allDeviceCountDescription == "0"
+            && empty.pointingDeviceCountDescription == "0"
+            && empty.matchedDeviceCountDescription == "0"
+    }
+
+    var allDeviceCountDescription: String {
+        allDevices.map { String($0.count) } ?? "取得失敗"
+    }
+
+    var pointingDeviceCountDescription: String {
+        pointingDevices.map { String($0.count) } ?? "取得失敗"
+    }
+
+    var matchedDeviceCountDescription: String {
+        error == nil ? String(matchedDevices.count) : "取得失敗"
+    }
+
+    private static func failure(_ message: String) -> PermissionDeviceInventory {
+        PermissionDeviceInventory(
+            allDevices: nil,
+            pointingDevices: nil,
+            matchedDevices: [],
+            error: message
+        )
     }
 }
 

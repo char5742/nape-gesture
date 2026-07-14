@@ -35,7 +35,7 @@ for required_path in \
   Sources/NapeGestureProductOutput/TrackpadScrollOutputModel.swift \
   Sources/nape-gesture-product-output-tests/main.swift \
   scripts/check-product-model-documentation.rb \
-  scripts/check-finger-count-product-model.rb \
+  scripts/check-fixed-gesture-class-product-model.rb \
   scripts/derive-trackpad-scroll-output-model.rb \
   scripts/finalize-product-output-provenance.rb \
   scripts/test-finalize-product-output-provenance.rb
@@ -214,10 +214,10 @@ run_combined_success \
   ruby scripts/check-product-model-documentation.rb
 
 run_combined_success \
-  "固定finger-count製品モデルガード" \
-  "$provenance_dir/check-finger-count-product-model.log" \
-  "ruby scripts/check-finger-count-product-model.rb" \
-  ruby scripts/check-finger-count-product-model.rb
+  "固定GestureClass製品モデルガード" \
+  "$provenance_dir/check-fixed-gesture-class-product-model.log" \
+  "ruby scripts/check-fixed-gesture-class-product-model.rb" \
+  ruby scripts/check-fixed-gesture-class-product-model.rb
 
 run_combined_success \
   "製品gesture出力境界ガード" \
@@ -824,11 +824,10 @@ cat >> "$summary_file" <<EOF
 ## 未完了の証跡
 
 - Nape Pro 実機の接続、HID 識別、操作ログ
-- 純正トラックパッドの2 / 3 / 4本指について、縦・横・斜め・軸変更・方向反転・速度差・terminalを同一schemaで収録
-- Nape Pro元mouse入力と生成eventのfinger count、X/Y量、符号、sample順、timestamp、phase、terminal対応を比較
+- 純正トラックパッドの3 GestureClassについて、縦・横・斜め・軸変更・方向反転・速度差・terminalをclass別schemaで収録
+- Nape Pro元mouse入力と生成eventのGestureClass、X/Y量、符号、sample順、timestamp、phase、terminal対応を比較
 - TCC のアクセシビリティ / 入力監視許可操作
-- 2 / 3 / 4本指入力を受けたmacOS / applicationの画面結果を、低レベルcontractとは別に実測
-- Issue #146でmagnificationが固定finger-countと単一X/Y量から表現可能かを判定
+- 3 GestureClass入力を受けたmacOS / applicationの画面結果を、低レベルcontractとは別に実測
 - \`run\`、実イベント投稿、target 実測、常駐 CPU、入力遅延
 - Developer ID 署名、公証、stapler、Gatekeeper 評価
 

@@ -1,6 +1,6 @@
 # 性能測定基準
 
-この文書は、固定button入力から3つの上位GestureClassをsystem-wideへ投稿する製品経路の性能と正確性を判定する。製品モデルは[ADR-0049](adr/0049-fixed-button-to-finger-count-trackpad-input.md)を正とする。
+この文書は、固定button入力から3つの上位GestureClassをsystem-wideへ投稿する製品経路の性能と正確性を判定する。製品モデルは[ADR-0049](adr/0049-fixed-button-to-gesture-class-input.md)を正とする。
 
 速度だけを測って合格にしない。source sample 1対1 command化、exact timestamp、capture order、class固有ProductOutput、single terminal、passthrough、fail closedが同じrunで成立することを前提とする。
 

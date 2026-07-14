@@ -3,7 +3,7 @@ import Foundation
 import NapeGestureCore
 
 final class SettingsWindowController: NSWindowController {
-    var onSave: ((NapeGestureSettings) -> Void)?
+    var onSave: ((NapeGestureSettings) throws -> Void)?
     var onCheckPermissions: (() -> Void)?
 
     private enum Pane: String, CaseIterable {
@@ -76,9 +76,11 @@ final class SettingsWindowController: NSWindowController {
     private let runtimeStatusImageView = NSImageView()
     private let runtimeStatusLabel = NSTextField(labelWithString: "")
     private let runtimeErrorLabel = NSTextField(labelWithString: "")
+    private let passthroughLabel = NSTextField(wrappingLabelWithString: "")
     private let applyButton = NSButton(title: "変更を適用", target: nil, action: nil)
     private let advancedDisclosureButton = NSButton(title: "詳細な識別条件", target: nil, action: nil)
     private let advancedConditionsStack = NSStackView()
+    private var fixedMappingLabels: [NSTextField] = []
 
     private let associationWindowField = NSTextField()
     private let maximumDurationField = NSTextField()
@@ -170,6 +172,96 @@ final class SettingsWindowController: NSWindowController {
             accessibilityDescription: appearance.accessibilityDescription
         )
         runtimeStatusImageView.contentTintColor = appearance.color
+    }
+
+    func makeSmokeSnapshot() -> SettingsWindowSmokeSnapshot {
+        let initialPane = selectedPane
+        let initialAssociationWindow = associationWindowField.stringValue
+        let initiallyApplyEnabled = applyButton.isEnabled
+        let initialDisclosureState = advancedDisclosureButton.state
+        let initiallyAdvancedConditionsHidden = advancedConditionsStack.isHidden
+        let initialSettings = settings
+        let initialSavedFormState = savedFormState
+        let initialOnSave = onSave
+
+        let preservedMatcher = DeviceMatcher(
+            vendorID: 9_999,
+            productContains: "保持対象"
+        )
+        let primaryMatcher = settings.targetDevices.first ?? DeviceMatcher(productContains: "Nape Pro")
+        settings.targetDevices = [primaryMatcher, preservedMatcher]
+        let multipleMatchersPreserved = try? makeUpdatedSettings().targetDevices.dropFirst()
+            == [preservedMatcher]
+        settings = initialSettings
+
+        associationWindowField.stringValue = initialAssociationWindow + "0"
+        updateApplyButtonState()
+        let dirtyEditEnablesApply = applyButton.isEnabled
+        onSave = { _ in throw SettingsWindowSmokeError.expectedSaveFailure }
+        var saveFailureKeepsDirtyState = false
+        if let attemptedSettings = try? makeUpdatedSettings() {
+            let failedSaveError = commit(attemptedSettings)
+            saveFailureKeepsDirtyState = failedSaveError != nil
+                && applyButton.isEnabled
+                && settings == initialSettings
+                && savedFormState == initialSavedFormState
+        }
+        onSave = initialOnSave
+        associationWindowField.stringValue = initialAssociationWindow
+        updateApplyButtonState()
+        let revertingEditDisablesApply = !applyButton.isEnabled
+
+        advancedDisclosureButton.state = .on
+        toggleAdvancedConditions()
+        let disclosureExpands = !advancedConditionsStack.isHidden
+        advancedDisclosureButton.state = .off
+        toggleAdvancedConditions()
+        let disclosureCollapses = advancedConditionsStack.isHidden
+
+        showPane(.gestures, persistSelection: false)
+        let gesturePaneSwitchesContent = !gesturesPaneView.isHidden && detailsPaneView.isHidden
+        showPane(.details, persistSelection: false)
+        let detailsPaneSwitchesContent = gesturesPaneView.isHidden && !detailsPaneView.isHidden
+
+        advancedDisclosureButton.state = initialDisclosureState
+        toggleAdvancedConditions()
+        showPane(initialPane, persistSelection: false)
+
+        let gestureDescendants = descendants(of: gesturesPaneView)
+        let gesturePaneHasEditableSettingControl = gestureDescendants.contains { view in
+            if let textField = view as? NSTextField {
+                return textField.isEditable
+            }
+            return view is NSPopUpButton
+                || view is NSSlider
+                || view is NSSegmentedControl
+                || view is NSSwitch
+        }
+        let detailDescendants = descendants(of: detailsPaneView)
+        let detailTextFields: [NSTextField] = detailDescendants.compactMap { $0 as? NSTextField }
+        let detailButtons: [NSButton] = detailDescendants.compactMap { $0 as? NSButton }
+
+        return SettingsWindowSmokeSnapshot(
+            selectedPane: selectedPane.rawValue,
+            selectedToolbarItemIdentifier: window?.toolbar?.selectedItemIdentifier?.rawValue,
+            windowIsResizable: window?.styleMask.contains(.resizable) ?? true,
+            initiallyApplyEnabled: initiallyApplyEnabled,
+            initiallyAdvancedConditionsHidden: initiallyAdvancedConditionsHidden,
+            fixedMappingTexts: fixedMappingLabels.map(\.stringValue),
+            passthroughText: passthroughLabel.stringValue,
+            runtimeStatusText: runtimeStatusLabel.stringValue,
+            runtimeStatusUsesSystemImage: runtimeStatusImageView.image != nil,
+            dirtyEditEnablesApply: dirtyEditEnablesApply,
+            revertingEditDisablesApply: revertingEditDisablesApply,
+            disclosureExpands: disclosureExpands,
+            disclosureCollapses: disclosureCollapses,
+            paneSwitchesContent: gesturePaneSwitchesContent && detailsPaneSwitchesContent,
+            gesturePaneHasEditableSettingControl: gesturePaneHasEditableSettingControl,
+            detailsEditableTextFieldCount: detailTextFields.filter(\.isEditable).count,
+            detailsCheckboxCount: detailButtons.filter { $0 === requireTargetCheck }.count,
+            multipleMatchersPreserved: multipleMatchersPreserved ?? false,
+            saveFailureKeepsDirtyState: saveFailureKeepsDirtyState
+        )
     }
 
     private static func restoredPane() -> Pane {
@@ -342,12 +434,13 @@ final class SettingsWindowController: NSWindowController {
             }
         }
 
-        let passthrough = secondaryLabel(
-            "ボタン3、4、5を押していない間は、通常のマウスとして動作します。",
-            lines: 2
-        )
-        content.addArrangedSubview(passthrough)
-        passthrough.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
+        passthroughLabel.stringValue = "ボタン3、4、5を押していない間は、通常のマウスとして動作します。"
+        passthroughLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        passthroughLabel.textColor = .secondaryLabelColor
+        passthroughLabel.lineBreakMode = .byWordWrapping
+        passthroughLabel.maximumNumberOfLines = 2
+        content.addArrangedSubview(passthroughLabel)
+        passthroughLabel.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
 
         NSLayoutConstraint.activate([
             content.leadingAnchor.constraint(equalTo: gesturesPaneView.leadingAnchor, constant: 28),
@@ -416,6 +509,7 @@ final class SettingsWindowController: NSWindowController {
             "\(descriptor.label)  \(fixedValue)",
             font: .systemFont(ofSize: NSFont.systemFontSize, weight: .medium)
         )
+        fixedMappingLabels.append(mappingTitle)
         let mappingDetail = secondaryLabel(detail, lines: 1)
         let text = NSStackView(views: [mappingTitle, mappingDetail])
         text.orientation = .vertical
@@ -650,35 +744,43 @@ final class SettingsWindowController: NSWindowController {
     }
 
     @objc private func save() {
+        let updated: NapeGestureSettings
+        do {
+            updated = try makeUpdatedSettings()
+        } catch let error as SettingsInputError {
+            showError(error.message)
+            return
+        } catch {
+            showError("設定を検証できません: \(error.localizedDescription)")
+            return
+        }
+
+        if let error = commit(updated) {
+            showError("設定を保存できません: \(error.localizedDescription)")
+        }
+    }
+
+    private func makeUpdatedSettings() throws -> NapeGestureSettings {
         guard
             let associationWindow = Double(associationWindowField.stringValue),
             let maximumDuration = Double(maximumDurationField.stringValue),
             let maximumInactivity = Double(maximumInactivityField.stringValue)
         else {
-            showError("数値項目の形式が不正です。")
-            return
+            throw SettingsInputError(message: "数値項目の形式が不正です。")
         }
 
-        let matcher: DeviceMatcher
-        do {
-            matcher = DeviceMatcher(
-                vendorID: try optionalInt(targetVendorIDField, field: .targetVendorID),
-                productID: try optionalInt(targetProductIDField, field: .targetProductID),
-                manufacturerContains: optionalText(targetManufacturerField),
-                productContains: optionalText(targetProductField),
-                transportContains: optionalText(targetTransportField),
-                primaryUsagePage: try optionalInt(targetUsagePageField, field: .targetUsagePage),
-                primaryUsage: try optionalInt(targetUsageField, field: .targetUsage)
-            )
-        } catch let error as SettingsInputError {
-            showError(error.message)
-            return
-        } catch {
-            showError("対象デバイス条件の形式が不正です。")
-            return
-        }
+        let matcher = DeviceMatcher(
+            vendorID: try optionalInt(targetVendorIDField, field: .targetVendorID),
+            productID: try optionalInt(targetProductIDField, field: .targetProductID),
+            manufacturerContains: optionalText(targetManufacturerField),
+            productContains: optionalText(targetProductField),
+            transportContains: optionalText(targetTransportField),
+            primaryUsagePage: try optionalInt(targetUsagePageField, field: .targetUsagePage),
+            primaryUsage: try optionalInt(targetUsageField, field: .targetUsage)
+        )
+        var targetDevices = matcher.hasAnyCondition ? [matcher] : []
+        targetDevices.append(contentsOf: settings.targetDevices.dropFirst())
 
-        let targetDevices = matcher.hasAnyCondition ? [matcher] : []
         let updated = NapeGestureSettings(
             gesture: GestureConfiguration(
                 cancellation: GestureCancellationConfiguration(
@@ -694,15 +796,24 @@ final class SettingsWindowController: NSWindowController {
         )
 
         let issues = SettingsValidator.issues(for: updated)
-        guard issues.isEmpty else {
-            showError(issues.map { "\($0.path): \($0.message)" }.joined(separator: "\n"))
-            return
+        if !issues.isEmpty {
+            throw SettingsInputError(
+                message: issues.map { "\($0.path): \($0.message)" }.joined(separator: "\n")
+            )
         }
+        return updated
+    }
 
+    private func commit(_ updated: NapeGestureSettings) -> Error? {
+        do {
+            try onSave?(updated)
+        } catch {
+            return error
+        }
         settings = updated
-        onSave?(updated)
         savedFormState = formState
         updateApplyButtonState()
+        return nil
     }
 
     @objc private func checkPermissions() {
@@ -833,6 +944,10 @@ final class SettingsWindowController: NSWindowController {
         return box
     }
 
+    private func descendants(of view: NSView) -> [NSView] {
+        view.subviews.flatMap { [$0] + descendants(of: $0) }
+    }
+
     private func showError(_ message: String) {
         let alert = NSAlert()
         alert.messageText = "設定エラー"
@@ -884,6 +999,32 @@ extension SettingsWindowController: NSTextFieldDelegate {
     }
 }
 
+struct SettingsWindowSmokeSnapshot: Codable {
+    var selectedPane: String
+    var selectedToolbarItemIdentifier: String?
+    var windowIsResizable: Bool
+    var initiallyApplyEnabled: Bool
+    var initiallyAdvancedConditionsHidden: Bool
+    var fixedMappingTexts: [String]
+    var passthroughText: String
+    var runtimeStatusText: String
+    var runtimeStatusUsesSystemImage: Bool
+    var dirtyEditEnablesApply: Bool
+    var revertingEditDisablesApply: Bool
+    var disclosureExpands: Bool
+    var disclosureCollapses: Bool
+    var paneSwitchesContent: Bool
+    var gesturePaneHasEditableSettingControl: Bool
+    var detailsEditableTextFieldCount: Int
+    var detailsCheckboxCount: Int
+    var multipleMatchersPreserved: Bool
+    var saveFailureKeepsDirtyState: Bool
+}
+
 private struct SettingsInputError: Error {
     var message: String
+}
+
+private enum SettingsWindowSmokeError: Error {
+    case expectedSaveFailure
 }

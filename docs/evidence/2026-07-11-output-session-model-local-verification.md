@@ -1,6 +1,6 @@
 # Trackpad output session model local verification
 
-> 非規範証跡: この文書のfamily別session表現と当時のIssue境界は現在の製品モデルではない。再利用できるのはmonotonic clock、capture order、terminalなど検証済みの限定原則だけであり、固定button / finger-count完成判定には[証跡文書の扱い](README.md)を適用する。
+> 非規範証跡: この文書のfamily別session表現と当時のIssue境界は現在の製品モデルではない。再利用できるのはmonotonic clock、capture order、terminalなど検証済みの限定原則だけであり、固定button / GestureClass完成判定には[証跡文書の扱い](README.md)を適用する。
 
 - 日付: 2026-07-11
 - branch: `codex/output-session-model`

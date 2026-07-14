@@ -3,7 +3,7 @@
 このディレクトリは、開発運用で繰り返し参照する意思決定を ADR として保存する場所である。
 会話や PR 本文だけに残る判断は次回以降に再現しにくいため、継続運用に影響する方針はここへ追加する。
 
-Nape Gestureの製品モデルは[ADR-0049](0049-fixed-button-to-finger-count-trackpad-input.md)だけを正本とする。ほかの採択済みADRは、このモデルを変更せず、安全、session、compatibility、証跡などの実装境界を定める。
+Nape Gestureの製品モデルは[ADR-0049](0049-fixed-button-to-gesture-class-input.md)だけを正本とする。ほかの採択済みADRは、このモデルを変更せず、安全、session、compatibility、証跡などの実装境界を定める。
 
 ## 採択済み
 
@@ -30,24 +30,24 @@ Nape Gestureの製品モデルは[ADR-0049](0049-fixed-button-to-finger-count-tr
 | [ADR-0023](0023-repo-local-provenance-guard.md) | repo-local 由来ガード | Issue #1、Issue #15、Issue #16、ライセンス、由来 |
 | [ADR-0024](0024-regular-gui-app-launch.md) | 通常 GUI アプリとして起動する | Issue #11、Issue #15、Issue #16、GUI、`.app` |
 | [ADR-0025](0025-gui-permission-recovery-actions.md) | GUI 権限復旧導線の表示契約 | Issue #74、Issue #11、Issue #13、Issue #16、GUI、TCC |
-| [ADR-0026](0026-runtime-performance-log-evidence.md) | finger-count入力変換のruntime性能を構造化記録する | source button、finger count、入出力量、tap-to-post |
+| [ADR-0026](0026-runtime-performance-log-evidence.md) | 固定GestureClass変換のruntime性能を構造化記録する | source button、GestureClass、入出力量、tap-to-post |
 | [ADR-0028](0028-readme-product-dashboard.md) | README を製品入口兼状態ダッシュボードとして扱う | README、GUI、完成状態、Mermaid、キャプチャ |
 | [ADR-0030](0030-computer-use-gui-operation-evidence.md) | Computer Use で GUI 操作と画面証跡を前進させる | computer-use、GUI、System Settings、画面証跡、need:human |
 | [ADR-0031](0031-reference-target-cursor-focus.md) | Reference Target App の無人証跡では capture view へカーソルを固定する | runtime event、Reference Target App、system-test、target log |
 | [ADR-0032](0032-reference-target-foreground-capture.md) | Reference Target App は foreground capture 経路を証跡化する | runtime event、Reference Target App、foreground capture、postToPid |
-| [ADR-0033](0033-kill-switch-pending-release-suppression.md) | キルスイッチ後もactive source buttonのreleaseを抑制する | Issue #12、kill-switch、finger count、元入力抑制 |
+| [ADR-0033](0033-kill-switch-pending-release-suppression.md) | キルスイッチ後もactive source buttonのreleaseを抑制する | Issue #12、kill-switch、GestureClass、元入力抑制 |
 | [ADR-0034](0034-reject-driverkit-virtual-trackpad.md) | DriverKit virtual trackpadを製品出力に使わない | IOHID、event tap、driver上位event、fail closed |
 | [ADR-0035](0035-discontinue-grok-independent-audit.md) | Grokによる独立監査を廃止する | 独立監査、レビュー責任、サブエージェント |
 | [ADR-0036](0036-emulate-trackpad-driver-output-events.md) | trackpad driver上位入力を安全に再現する | ADR-0049、安全境界、system-wide、compatibility adapter、fail closed |
 | [ADR-0037](0037-separate-product-and-diagnostic-event-output.md) | 製品gesture出力と診断event出力を分離する | module境界、fail closed、monotonic clock、CI guard |
-| [ADR-0038](0038-trackpad-output-session-and-monotonic-clock.md) | finger count付きtrackpad入力sessionとmonotonic clockを共通化する | finger count固定、session、capture order、terminal、起動後時刻 |
+| [ADR-0038](0038-trackpad-output-session-and-monotonic-clock.md) | 固定GestureClass sessionとmonotonic clockを共通化する | GestureClass固定、session、capture order、terminal、起動後時刻 |
 | [ADR-0039](0039-strict-trackpad-event-analysis-and-capture-manifest.md) | trackpad eventログを厳格解析しcapture manifestへ固定する | JSON Lines、manifest、provenance、host再構築 |
 | [ADR-0040](0040-capture-order-and-event-timestamp.md) | capture順とevent timestampを分離する | 純正trackpad実測、captureIndex、manifest開始・終了時刻 |
 | [ADR-0041](0041-physical-capture-readiness-and-fixture-privacy.md) | 物理captureのready同期と公開fixture境界を固定する | 排他的ready lease、安定化waiter、生成marker、fixture privacy、need:human |
 | [ADR-0042](0042-versioned-scroll-momentum-contract-comparison.md) | 25F80 scroll / momentum契約を独立fixtureで比較する | version fixture、lifecycle、terminal、scroll companion、CLI差分report |
-| [ADR-0043](0043-trackpad-scroll-product-output.md) | 25F80のfinger count付きtrackpad入力compatibility contractを構成する | 25F80、単位変換、finger count、identity、provenance、fail closed |
+| [ADR-0043](0043-trackpad-scroll-product-output.md) | 25F80の固定GestureClass ProductOutput contractを構成する | 25F80、class固有単位変換、identity、provenance、fail closed |
 | [ADR-0044](0044-atomic-app-bundle-installation.md) | 検証済みapp bundleを原子的に導入する | bundle-app、renameatx_np、fingerprint、既存bundle保持、strict CLI |
-| [ADR-0049](0049-fixed-button-to-finger-count-trackpad-input.md) | buttonを指本数へ固定しイベント量をtrackpad入力へ置換する | 固定button、finger count、連続mouse event量、通常mouse通過、OS / App解釈、内部event contract |
+| [ADR-0049](0049-fixed-button-to-gesture-class-input.md) | buttonを固定GestureClassへ接続する | 固定button、GestureClass、連続mouse event量、通常mouse通過、OS / App解釈、class固有event contract |
 
 ## 追加時の確認
 

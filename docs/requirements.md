@@ -1,6 +1,6 @@
 # ゴール要件
 
-この文書をNape Gestureの製品要件の正本とする。Issue、ADR、README、GUI、runtime、test、release判定が矛盾する場合は、本書と[ADR-0049](adr/0049-fixed-button-to-finger-count-trackpad-input.md)へ揃える。
+この文書をNape Gestureの製品要件の正本とする。Issue、ADR、README、GUI、runtime、test、release判定が矛盾する場合は、本書と[ADR-0049](adr/0049-fixed-button-to-gesture-class-input.md)へ揃える。
 
 ## 最終ゴール
 

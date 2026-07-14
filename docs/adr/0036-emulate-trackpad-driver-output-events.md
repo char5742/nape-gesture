@@ -6,7 +6,7 @@
 
 ## 背景
 
-[ADR-0049](0049-fixed-button-to-finger-count-trackpad-input.md)は、button 3 / 4 / 5を固定GestureClassへ接続する。classはraw finger countではなく、物理trackpad driver認識後の上位event semanticsである。
+[ADR-0049](0049-fixed-button-to-gesture-class-input.md)は、button 3 / 4 / 5を固定GestureClassへ接続する。classはraw finger countではなく、物理trackpad driver認識後の上位event semanticsである。
 
 物理gestureが異なれば、必要なevent family、field、phase、companion lifecycle、単位変換も異なる。これを一つのgeneric eventへ統一すると、再現すべき物理contractを失う。一方、通常SDKに公開されないevent contractを安全に投稿するには、OS build別compatibility adapter、由来追跡、投稿前検査、fail closedが必要である。
 
@@ -73,7 +73,7 @@
 
 ## 関連
 
-- [ADR-0049: buttonを固定GestureClassへ接続する](0049-fixed-button-to-finger-count-trackpad-input.md)
+- [ADR-0049: buttonを固定GestureClassへ接続する](0049-fixed-button-to-gesture-class-input.md)
 - [ADR-0034: DriverKit virtual trackpadを製品出力に使わない](0034-reject-driverkit-virtual-trackpad.md)
 - [ADR-0037: 製品gesture出力と診断event出力を分離する](0037-separate-product-and-diagnostic-event-output.md)
 - [ADR-0038: 固定GestureClass sessionとmonotonic clockを共通化する](0038-trackpad-output-session-and-monotonic-clock.md)

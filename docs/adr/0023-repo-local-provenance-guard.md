@@ -30,8 +30,8 @@ Nape Gestureのevent contractとパラメータは、Apple公式資料、Apple O
 
 ## 関連
 
-- [25F80のfinger count付きtrackpad入力compatibility contract](0043-trackpad-scroll-product-output.md)
-- [buttonを指本数へ固定しイベント量をtrackpad入力へ置換する](0049-fixed-button-to-finger-count-trackpad-input.md)
+- [25F80の固定GestureClass ProductOutput contract](0043-trackpad-scroll-product-output.md)
+- [buttonを固定GestureClassへ接続する](0049-fixed-button-to-gesture-class-input.md)
 - [完成判定チェックリスト](../completion-checklist.md)
 - [PR レビューとマージ判断](../pr-review-checklist.md)
 - [サードパーティ通知](../../THIRD_PARTY_NOTICES.md)

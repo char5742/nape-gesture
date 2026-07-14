@@ -80,6 +80,21 @@ buttonごとのmode selector、無効化、感度、方向別binding、applicati
 
 `.app`内の実行ファイルをterminalから`doctor`として起動した場合、TCC判定はNape Gesture.appではなく実行元terminalまたは親applicationに帰属します。GUI本体の権限とruntime状態は、LaunchServices経由で起動したアプリ内の「権限とデバイスを確認」を正とします。ad-hoc署名を更新した後、権限一覧がONでも拒否される場合は、旧Nape Gesture登録を一覧から削除し、現在の`/Applications/Nape Gesture.app`を再追加してから再起動します。
 
+## 品質保証
+
+日常利用で壊れやすい境界を、製品経路と同じ型・設定・bundleで継続検証します。
+
+| 境界 | 自動検証 |
+| --- | --- |
+| 入力とsession | 3 classの量、符号、timestamp、capture order、sample順、single terminal、cancel / timeout / sleep / wake後の復帰 |
+| ProductOutput | class固有fieldとphase、system-wide配送、部分作成・部分投稿・terminal retry、session不一致、未知OS / fixture改変時のfail closed |
+| 設定 | 旧設定の原子的migration、冪等性、不正原本の保持、process間排他、lock file改変拒否、保存失敗後の再試行 |
+| GUIとdoctor | 固定mappingの読み取り専用表示、dirty / revert、pane / disclosure、複数device条件保持、起動identityとreadinessの整合 |
+| 配布bundle | Debug / Release build、警告のerror化、署名必須検証、署名後改変・symlink destination拒否、LaunchServices起動 |
+| メモリ安全性 | Core、ProductOutput、DiagnosticOutputをAddressSanitizer / UndefinedBehaviorSanitizer付きでCI実行 |
+
+CIの成功だけを物理gestureの完成証明にはしません。自動検証は回帰と異常系を塞ぎ、Nape Pro、純正trackpad、TCC、Developer ID配布は対応する実機gateで別に判定します。
+
 ## 現在位置
 
 | 領域 | 現在 |
@@ -87,7 +102,7 @@ buttonごとのmode selector、無効化、感度、方向別binding、applicati
 | 固定button mapping | 実装済み。button 3 / 4 / 5は固定GestureClassへ直接接続 |
 | source sample保存 | exact timestamp、capture order、session ID、sample 1対1 command化を実装済み |
 | ProductOutput | `scroll`、`dockSwipe`、`dockSwipePinch`をsystem-wideへ投稿可能。pinchはDockSwipe motion 4 |
-| GUI / migration / doctor | 固定mappingへ更新済み。旧modeを製品surfaceへ公開しない |
+| GUI / migration / doctor | 固定mappingへ更新済み。保存失敗時の再試行、process間排他、曖昧な起動identityとinventory失敗の明示まで検証 |
 | release `.app` | `/Applications/Nape Gesture.app`へインストール済み。現在のad-hoc署名identityでGUI runtime稼働中 |
 | system-test | daemon経由で3本指水平のSpace切替、Mission Control、motion 4の正負両方向をDockが受理済み。App ExposéはmacOS設定でオフ |
 | Nape Pro物理受入 | 3 class合計23 session、5473生成event、作成失敗0件、欠落投稿0件。全sessionがsingle terminalで終了し、通常操作へ復帰 |
@@ -108,14 +123,14 @@ build、test、GUI起動、direct post smokeだけで製品完成とはしませ
 - Nape Proと純正trackpadで低レベルcontract、OS / App結果、体感差を別々に物理受入する。
 - 日常利用する配布`.app`について署名、公証、性能、復旧を確認する。
 
-詳細は[ゴール要件](docs/requirements.md)、[完成判定チェックリスト](docs/completion-checklist.md)、[ADR-0049](docs/adr/0049-fixed-button-to-finger-count-trackpad-input.md)を参照してください。
+詳細は[ゴール要件](docs/requirements.md)、[完成判定チェックリスト](docs/completion-checklist.md)、[ADR-0049](docs/adr/0049-fixed-button-to-gesture-class-input.md)を参照してください。
 
 ## 文書
 
 | 目的 | 文書 |
 | --- | --- |
 | 製品要件 | [docs/requirements.md](docs/requirements.md) |
-| 固定GestureClassの決定 | [ADR-0049](docs/adr/0049-fixed-button-to-finger-count-trackpad-input.md) |
+| 固定GestureClassの決定 | [ADR-0049](docs/adr/0049-fixed-button-to-gesture-class-input.md) |
 | 上位event生成境界 | [ADR-0036](docs/adr/0036-emulate-trackpad-driver-output-events.md) |
 | sessionとclock | [ADR-0038](docs/adr/0038-trackpad-output-session-and-monotonic-clock.md) |
 | 25F80 ProductOutput | [ADR-0043](docs/adr/0043-trackpad-scroll-product-output.md) |

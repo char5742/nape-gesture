@@ -15,7 +15,8 @@ final class NapeGestureDaemon {
     private var safetyState = RuntimeSafetyState()
     private var performanceOperationSequence = 0
     private var terminalError: Error?
-    private var isCursorMotionSuppressed = false
+    private var cursorMotionState = CursorMotionAssociationState()
+    private let setCursorAssociationEnabled: (Bool) -> CGError
 
     init(
         cancellation: GestureCancellationConfiguration,
@@ -23,6 +24,9 @@ final class NapeGestureDaemon {
         hidInputMonitor: HIDInputMonitor? = nil,
         performanceRecorder: RuntimePerformanceRecording? = nil,
         productOutput: any ProductGestureOutput = TrackpadGestureOutputAdapter(),
+        setCursorAssociationEnabled: @escaping (Bool) -> CGError = { enabled in
+            CGAssociateMouseAndMouseCursorPosition(boolean_t(enabled ? 1 : 0))
+        },
         onTerminalFailure: ((Error) -> Void)? = nil
     ) {
         recognizer = FixedGestureInputRecognizer(cancellation: cancellation)
@@ -30,6 +34,7 @@ final class NapeGestureDaemon {
         self.targetGate = targetGate
         self.hidInputMonitor = hidInputMonitor
         self.performanceRecorder = performanceRecorder
+        self.setCursorAssociationEnabled = setCursorAssociationEnabled
         self.onTerminalFailure = onTerminalFailure
     }
 
@@ -53,6 +58,9 @@ final class NapeGestureDaemon {
         terminalError = nil
         try outputExecutor.ensureOutputAvailable()
         try AccessibilityPermission.ensurePrompted()
+        if let error = restoreCursorMotion(force: true) {
+            throw error
+        }
 
         let mask = CGEventUtilities.eventMask(for: CGEventUtilities.observedMouseEventTypes)
         let userInfo = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
@@ -98,7 +106,7 @@ final class NapeGestureDaemon {
             }
             return nil
         }
-        let error = ToolError.trackpadOutputPostingFailed(failure.rawValue)
+        let error = cursorError ?? ToolError.trackpadOutputPostingFailed(failure.rawValue)
         if terminalError == nil {
             terminalError = error
             writeOperationalLog(error.localizedDescription)
@@ -338,30 +346,30 @@ final class NapeGestureDaemon {
     }
 
     private func suppressCursorMotion() -> Error? {
-        guard !isCursorMotionSuppressed else {
-            return nil
+        var result = CGError.success
+        let succeeded = cursorMotionState.suppress { enabled in
+            result = setCursorAssociationEnabled(enabled)
+            return result == .success
         }
-        let result = CGAssociateMouseAndMouseCursorPosition(boolean_t(0))
-        guard result == .success else {
+        guard succeeded else {
             return ToolError.trackpadOutputPostingFailed(
                 "gesture開始時にmouse cursor連動を停止できませんでした。CGError=\(result.rawValue)"
             )
         }
-        isCursorMotionSuppressed = true
         return nil
     }
 
-    private func restoreCursorMotion() -> Error? {
-        guard isCursorMotionSuppressed else {
-            return nil
+    private func restoreCursorMotion(force: Bool = false) -> Error? {
+        var result = CGError.success
+        let succeeded = cursorMotionState.restore(force: force) { enabled in
+            result = setCursorAssociationEnabled(enabled)
+            return result == .success
         }
-        let result = CGAssociateMouseAndMouseCursorPosition(boolean_t(1))
-        guard result == .success else {
+        guard succeeded else {
             return ToolError.trackpadOutputPostingFailed(
                 "gesture終了後にmouse cursor連動を復元できませんでした。CGError=\(result.rawValue)"
             )
         }
-        isCursorMotionSuppressed = false
         return nil
     }
 

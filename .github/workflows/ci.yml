@@ -37,14 +37,12 @@ jobs:
         run: sh scripts/check-diagnostic-event-time.sh
 
       - name: Build debug
-        run: swift build --scratch-path .build
+        run: swift build --scratch-path .build -Xswiftc -warnings-as-errors
 
-      # Issue #148でsourceと同時にfixed finger-count期待値へ更新する。
-      # 現在の成功は製品完成を意味せず、completion collectorは別guardで失敗する。
-      - name: Run current core regression before finger-count migration
+      - name: Run core regression
         run: .build/debug/nape-gesture-core-tests
 
-      - name: Run current output regression before finger-count migration
+      - name: Run product output regression
         run: .build/debug/nape-gesture-product-output-tests
 
       - name: Verify 2-finger internal scroll fixture derivation
@@ -62,8 +60,26 @@ jobs:
       - name: Run diagnostic output and dry-run contract tests
         run: .build/debug/nape-gesture-diagnostic-output-tests
 
+      - name: Repeat stateful regression tests
+        run: |
+          for iteration in 1 2 3; do
+            echo "stability iteration: $iteration"
+            .build/debug/nape-gesture-core-tests > /dev/null
+            .build/debug/nape-gesture-product-output-tests > /dev/null
+          done
+
       - name: Test atomic app bundle installation
         run: sh scripts/test-bundle-app-safety.sh .build/debug/nape-gesture
+
+      - name: Test settings migration and runtime config safety
+        run: |
+          sh -n scripts/test-settings-store-stability.sh
+          sh scripts/test-settings-store-stability.sh .build/debug/nape-gesture
+
+      - name: Test doctor readiness consistency
+        run: |
+          sh -n scripts/test-doctor-readiness.sh
+          sh scripts/test-doctor-readiness.sh .build/debug/nape-gesture
 
       - name: Run trackpad analyzer contract tests
         run: |
@@ -137,7 +153,7 @@ jobs:
           sh -n scripts/check-product-output-boundary.sh
           sh -n scripts/check-diagnostic-event-time.sh
           sh -n scripts/test-bundle-app-safety.sh
-          ruby -c scripts/check-finger-count-product-model.rb
+          ruby -c scripts/check-fixed-gesture-class-product-model.rb
           ruby -c scripts/verify-trackpad-physical-observations.rb
           ruby scripts/verify-trackpad-physical-observations.rb --fixtures-only --json > /dev/null
           ruby -c scripts/derive-trackpad-scroll-output-model.rb
@@ -386,6 +402,9 @@ jobs:
           /usr/libexec/PlistBuddy -c 'Print :LSUIElement' .build/NapeGesture.app/Contents/Info.plist | grep -Fx 'false'
           cmp LICENSE .build/NapeGesture.app/Contents/Resources/LICENSE.txt
           cmp THIRD_PARTY_NOTICES.md .build/NapeGesture.app/Contents/Resources/THIRD_PARTY_NOTICES.md
+          codesign --force --sign - .build/NapeGesture.app
+          codesign --verify --deep --strict .build/NapeGesture.app
+          .build/release/nape-gesture verify-bundle --require-signature .build/NapeGesture.app
 
       - name: Verify GUI smoke
         run: |
@@ -406,4 +425,56 @@ jobs:
           test "$(/usr/bin/plutil -extract settingsToolbarItems.1 raw /tmp/nape-gui-smoke.json)" = "詳細"
           test "$(/usr/bin/plutil -extract settingsWindowContentWidth raw /tmp/nape-gui-smoke.json)" = "680"
           test "$(/usr/bin/plutil -extract settingsWindowContentHeight raw /tmp/nape-gui-smoke.json)" = "560"
+          test "$(/usr/bin/plutil -extract settingsWindowSmoke.windowIsResizable raw /tmp/nape-gui-smoke.json)" = "false"
+          test "$(/usr/bin/plutil -extract settingsWindowSmoke.initiallyApplyEnabled raw /tmp/nape-gui-smoke.json)" = "false"
+          test "$(/usr/bin/plutil -extract settingsWindowSmoke.initiallyAdvancedConditionsHidden raw /tmp/nape-gui-smoke.json)" = "true"
+          test "$(/usr/bin/plutil -extract settingsWindowSmoke.dirtyEditEnablesApply raw /tmp/nape-gui-smoke.json)" = "true"
+          test "$(/usr/bin/plutil -extract settingsWindowSmoke.revertingEditDisablesApply raw /tmp/nape-gui-smoke.json)" = "true"
+          test "$(/usr/bin/plutil -extract settingsWindowSmoke.disclosureExpands raw /tmp/nape-gui-smoke.json)" = "true"
+          test "$(/usr/bin/plutil -extract settingsWindowSmoke.disclosureCollapses raw /tmp/nape-gui-smoke.json)" = "true"
+          test "$(/usr/bin/plutil -extract settingsWindowSmoke.paneSwitchesContent raw /tmp/nape-gui-smoke.json)" = "true"
+          test "$(/usr/bin/plutil -extract settingsWindowSmoke.gesturePaneHasEditableSettingControl raw /tmp/nape-gui-smoke.json)" = "false"
+          test "$(/usr/bin/plutil -extract settingsWindowSmoke.detailsEditableTextFieldCount raw /tmp/nape-gui-smoke.json)" = "10"
+          test "$(/usr/bin/plutil -extract settingsWindowSmoke.detailsCheckboxCount raw /tmp/nape-gui-smoke.json)" = "1"
+          test "$(/usr/bin/plutil -extract settingsWindowSmoke.multipleMatchersPreserved raw /tmp/nape-gui-smoke.json)" = "true"
+          test "$(/usr/bin/plutil -extract settingsWindowSmoke.saveFailureKeepsDirtyState raw /tmp/nape-gui-smoke.json)" = "true"
+          test "$(/usr/bin/plutil -extract permissionInventoryFailureIsDistinct raw /tmp/nape-gui-smoke.json)" = "true"
+          test "$(/usr/bin/plutil -extract runtimeIdentityClassificationIsStrict raw /tmp/nape-gui-smoke.json)" = "true"
           test "$(/usr/bin/plutil -extract runtimeIdentity.isAppBundle raw /tmp/nape-gui-smoke.json)" = "true"
+          test "$(/usr/bin/plutil -extract runtimeIdentity.launchContext raw /tmp/nape-gui-smoke.json)" = "commandLine"
+
+  sanitizers:
+    name: ${{ matrix.sanitizer }} sanitizer
+    runs-on: macos-15
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer:
+          - address
+          - undefined
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Build with sanitizer
+        run: swift build --sanitize "${{ matrix.sanitizer }}" --scratch-path ".build-${{ matrix.sanitizer }}"
+
+      - name: Run Core with sanitizer
+        env:
+          ASAN_OPTIONS: abort_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: ".build-${{ matrix.sanitizer }}/debug/nape-gesture-core-tests"
+
+      - name: Run product output with sanitizer
+        env:
+          ASAN_OPTIONS: abort_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: ".build-${{ matrix.sanitizer }}/debug/nape-gesture-product-output-tests"
+
+      - name: Run diagnostic output with sanitizer
+        env:
+          ASAN_OPTIONS: abort_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: ".build-${{ matrix.sanitizer }}/debug/nape-gesture-diagnostic-output-tests"

@@ -157,7 +157,7 @@ required_snippets = {
     "IOHID motion 4",
     "全ProductOutput familyを無効にし"
   ],
-  "docs/adr/0049-fixed-button-to-finger-count-trackpad-input.md" => [
+  "docs/adr/0049-fixed-button-to-gesture-class-input.md" => [
     "# ADR-0049: buttonを固定GestureClassへ接続する",
     "| 3 | 2本指スクロール / スワイプ相当 | `scroll` |",
     "| 4 | 3本指システムスワイプ相当 | `dockSwipe`、type 30 DockSwipe motion 1 / 2 |",
@@ -203,7 +203,7 @@ model_documents = %w[
   docs/adr/0038-trackpad-output-session-and-monotonic-clock.md
   docs/adr/0040-capture-order-and-event-timestamp.md
   docs/adr/0043-trackpad-scroll-product-output.md
-  docs/adr/0049-fixed-button-to-finger-count-trackpad-input.md
+  docs/adr/0049-fixed-button-to-gesture-class-input.md
   docs/performance-baseline.md
 ].freeze
 
