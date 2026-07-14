@@ -66,7 +66,7 @@ CGEventUtilities
 - eventを対象PIDへ直接投稿せず、AX、keyboard shortcut、application別分岐をfallbackにしない。
 - DriverKit、virtual HID、raw digitizer contactを製品出力に使わない。
 
-通常SDKに公開されないevent contractは最小のcompatibility adapterへ隔離します。25F80では正負方向別の認識済みtemplate fixture `recognized-dockswipe-templates-25F80-v2`、SHA-256 `852c7d0b6e32ced7082ea5c06a65d05971d3868e6a36aaccfd6f422871bc32a6`を検証してtype 30 / IOHID `DockSwipe`を復元します。scroll contract、変換model、DockSwipe templateのID、SHA-256、schema、contract ID、OS version / build、fixture実体のどれかが未知または改変済みなら、3 classすべてを非対応としてevent tapと入力抑制を開始しません。
+通常SDKに公開されないevent contractは最小のcompatibility adapterへ隔離します。macOS 26.5.1 / 25F80で収録した正負方向別template fixture `recognized-dockswipe-templates-25F80-v2`、SHA-256 `852c7d0b6e32ced7082ea5c06a65d05971d3868e6a36aaccfd6f422871bc32a6`を検証してtype 30 / IOHID `DockSwipe`を復元します。収録元OS情報はfixture、変換model、template間のprovenance照合にだけ使い、実行中macOSのversion / buildとは比較しません。ID、SHA-256、schema、contract ID、fixture実体のどれかが未知または改変済みなら、3 classすべてを非対応としてevent tapと入力抑制を開始しません。
 
 ## GUIと設定
 
@@ -119,7 +119,7 @@ build、test、GUI起動、direct post smokeだけで製品完成とはしませ
 - button未押下時、session終了後、異常停止後に通常mouseへ戻る。
 - gesture session中はmouse cursorが移動しない。
 - 製品runtimeからsystem-wide以外の配送や診断fallbackへ到達しない。
-- 未知OS build、fixture不一致、権限不足、対象device不一致では抑制前にfail closedする。
+- fixture不一致、event構築不可、権限不足、対象device不一致では抑制前にfail closedする。
 - Nape Proと純正trackpadで低レベルcontract、OS / App結果、体感差を別々に物理受入する。
 - 日常利用する配布`.app`について署名、公証、性能、復旧を確認する。
 
@@ -133,7 +133,7 @@ build、test、GUI起動、direct post smokeだけで製品完成とはしませ
 | 固定GestureClassの決定 | [ADR-0049](docs/adr/0049-fixed-button-to-gesture-class-input.md) |
 | 上位event生成境界 | [ADR-0036](docs/adr/0036-emulate-trackpad-driver-output-events.md) |
 | sessionとclock | [ADR-0038](docs/adr/0038-trackpad-output-session-and-monotonic-clock.md) |
-| 25F80 ProductOutput | [ADR-0043](docs/adr/0043-trackpad-scroll-product-output.md) |
+| 登録済みfixtureによるProductOutput | [ADR-0043](docs/adr/0043-trackpad-scroll-product-output.md) |
 | 完成判定 | [docs/completion-checklist.md](docs/completion-checklist.md) |
 | 実機検証 | [docs/verification.md](docs/verification.md) |
 | 性能基準 | [docs/performance-baseline.md](docs/performance-baseline.md) |

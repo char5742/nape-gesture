@@ -114,18 +114,6 @@ private func dockSwipeTemplateData() -> Data {
     return data
 }
 
-private func identity25F80() -> ProductGestureOutputSystemIdentity {
-    guard
-        let identity = ProductGestureOutputSystemIdentity(
-            osVersion: "26.5.1",
-            osBuild: "25F80"
-        )
-    else {
-        fatalError("25F80 identityを構成できません")
-    }
-    return identity
-}
-
 private func productTraceContext() -> ProductGestureOutputTraceContext {
     guard
         let context = ProductGestureOutputTraceContext(
@@ -219,7 +207,6 @@ private func makeAdapter(
         contractData: contractData(),
         modelData: modelData(),
         dockSwipeTemplateData: dockSwipeTemplateData(),
-        systemIdentity: identity25F80(),
         traceContext: productTraceContext(),
         baseEventFactory: baseEventFactory,
         postEvent: { event in
@@ -238,7 +225,6 @@ private func makeInjectedAdapter(
         contractData: contractData(),
         modelData: modelData(),
         dockSwipeTemplateData: dockSwipeTemplateData(),
-        systemIdentity: identity25F80(),
         traceContext: traceCollector == nil ? nil : productTraceContext(),
         postEvent: sink.post,
         postedEventObserver: traceCollector.map { collector in
@@ -292,7 +278,7 @@ private func assertPositiveZeroTerminal(_ event: CGEvent, label: String) {
 private func testLifecycleAndFields() {
     let collector = EventCollector()
     let adapter = makeAdapter(collector: collector)
-    expect(adapter.capability.isSupported, "25F80 contractをsupportedとして検証する")
+    expect(adapter.capability.isSupported, "登録済みcontractをhost OS buildに依存せず検証する")
     expect(adapter.supports(.scroll), "scroll familyを対応扱いする")
     expect(
         ProductGestureOutputCapability.runtimeFamilies.allSatisfy(adapter.supports),
@@ -454,7 +440,6 @@ private func testFailClosedPaths() {
     modified.append(0x0A)
     let mismatch = TrackpadGestureOutputAdapter(
         contractData: modified,
-        systemIdentity: identity25F80()
     )
     expect(mismatch.capability.status == .contractMismatch, "fixture byte改変をcontract mismatchにする")
     expect(!mismatch.supports(.scroll), "改変fixtureではscrollを有効化しない")
@@ -464,7 +449,6 @@ private func testFailClosedPaths() {
     let modelMismatch = TrackpadGestureOutputAdapter(
         contractData: contractData(),
         modelData: modifiedModel,
-        systemIdentity: identity25F80()
     )
     expect(
         modelMismatch.capability.status == .contractMismatch,
@@ -479,7 +463,6 @@ private func testFailClosedPaths() {
         contractData: contractData(),
         modelData: modelData(),
         dockSwipeTemplateData: modifiedTemplate,
-        systemIdentity: identity25F80(),
         postEvent: { _ in
             templateMismatchPostAttempts += 1
             return true
@@ -542,7 +525,6 @@ private func testFailClosedPaths() {
     var postedAfterCreationFailure = 0
     let creationFailure = TrackpadGestureOutputAdapter(
         contractData: contractData(),
-        systemIdentity: identity25F80(),
         baseEventFactory: { nil },
         postEvent: { _ in
             postedAfterCreationFailure += 1
@@ -558,7 +540,6 @@ private func testFailClosedPaths() {
     var postAttempts = 0
     let postFailure = TrackpadGestureOutputAdapter(
         contractData: contractData(),
-        systemIdentity: identity25F80(),
         postEvent: { _ in
             postAttempts += 1
             return postAttempts != 2
@@ -693,7 +674,6 @@ private func testChangedValidationAndPostFailureRecovery() {
     var changedPostAttempt = 0
     let postAdapter = TrackpadGestureOutputAdapter(
         contractData: contractData(),
-        systemIdentity: identity25F80(),
         traceContext: productTraceContext(),
         postEvent: { event in
             if failChangedSecondPost {
@@ -1612,7 +1592,6 @@ private func testExternalClosureReentryIsRejected() {
     var didReenterPost = false
     postAdapter = TrackpadGestureOutputAdapter(
         contractData: contractData(),
-        systemIdentity: identity25F80(),
         postEvent: { event in
             if !didReenterPost {
                 didReenterPost = true
@@ -1649,7 +1628,6 @@ private func testExternalClosureReentryIsRejected() {
     var didReenterObserver = false
     observerAdapter = TrackpadGestureOutputAdapter(
         contractData: contractData(),
-        systemIdentity: identity25F80(),
         traceContext: productTraceContext(),
         postEvent: { event in
             observerCollector.events.append(event)
@@ -1692,7 +1670,6 @@ private func testReentrantResetAbortsWithoutLosingPartialSession() {
     var didResetFromPost = false
     postAdapter = TrackpadGestureOutputAdapter(
         contractData: contractData(),
-        systemIdentity: identity25F80(),
         postEvent: { event in
             postCollector.events.append(event)
             if !didResetFromPost {
@@ -1718,7 +1695,6 @@ private func testReentrantResetAbortsWithoutLosingPartialSession() {
     var didResetFromObserver = false
     observerAdapter = TrackpadGestureOutputAdapter(
         contractData: contractData(),
-        systemIdentity: identity25F80(),
         traceContext: productTraceContext(),
         postEvent: { event in
             observerCollector.events.append(event)
@@ -1835,7 +1811,6 @@ private func testTraceContextAndPostIndexFailClosed() {
     var missingContextObserved = false
     let missingContextAdapter = TrackpadGestureOutputAdapter(
         contractData: contractData(),
-        systemIdentity: identity25F80(),
         postEvent: { _ in
             missingContextPostAttempts += 1
             return true
@@ -1859,7 +1834,6 @@ private func testTraceContextAndPostIndexFailClosed() {
     var overflowPostAttempts = 0
     let overflowAdapter = TrackpadGestureOutputAdapter(
         contractData: contractData(),
-        systemIdentity: identity25F80(),
         postEvent: { _ in
             overflowPostAttempts += 1
             return true
@@ -2190,7 +2164,6 @@ private func testFixedGestureClassesReachProductFamiliesWithExactOrderAndTimesta
         let output = PermissiveProductOutput(
             capability: .validated(
                 fixtureData: contractData(),
-                systemIdentity: identity25F80()
             )
         )
         let coordinator = FixedGestureProductSessionCoordinator(output: output)
@@ -2255,7 +2228,6 @@ private func testFixedDockSwipeAccumulatesSessionProgress() {
     let output = PermissiveProductOutput(
         capability: .validated(
             fixtureData: contractData(),
-            systemIdentity: identity25F80()
         )
     )
     let coordinator = FixedGestureProductSessionCoordinator(output: output)
@@ -2391,7 +2363,6 @@ private func testFixedScrollAcceptsMouseDeltaGrid() {
     let adapter = TrackpadGestureOutputAdapter(
         contractData: contractData(),
         modelData: modelData(),
-        systemIdentity: identity25F80(),
         postEvent: { _ in true }
     )
     let coordinator = FixedGestureProductSessionCoordinator(output: adapter)

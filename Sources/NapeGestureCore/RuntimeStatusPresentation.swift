@@ -1,4 +1,45 @@
+import Darwin
 import Foundation
+
+public struct OperatingSystemDiagnosticIdentity: Equatable, Sendable {
+    public let version: String
+    public let build: String
+
+    public static func current() -> OperatingSystemDiagnosticIdentity? {
+        let operatingSystemVersion = ProcessInfo.processInfo.operatingSystemVersion
+        let version =
+            "\(operatingSystemVersion.majorVersion).\(operatingSystemVersion.minorVersion).\(operatingSystemVersion.patchVersion)"
+        guard let build = currentBuild() else {
+            return nil
+        }
+        return OperatingSystemDiagnosticIdentity(version: version, build: build)
+    }
+
+    private static func currentBuild() -> String? {
+        var size = 0
+        guard sysctlbyname("kern.osversion", nil, &size, nil, 0) == 0, size > 1 else {
+            return nil
+        }
+
+        var buffer = [CChar](repeating: 0, count: size)
+        let result = buffer.withUnsafeMutableBytes { bytes in
+            sysctlbyname("kern.osversion", bytes.baseAddress, &size, nil, 0)
+        }
+        guard result == 0 else {
+            return nil
+        }
+
+        return buffer.withUnsafeBufferPointer { pointer in
+            guard let baseAddress = pointer.baseAddress else {
+                return nil
+            }
+            let build = String(cString: baseAddress)
+            return build.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? nil
+                : build
+        }
+    }
+}
 
 public struct RuntimeStatusPresentation: Equatable, Sendable {
     public var stateTitle: String

@@ -53,7 +53,7 @@ artifacts/completion/YYYY-MM-DD/<repo-sha>/<scenario-id>/
 - source commandとgenerated batchの対応
 - terminal種別と理由
 - passthrough、抑制、生成、drop、retry件数
-- fixture schema、ID、SHA-256、contract ID、OS version / build。25F80の正負方向別DockSwipe templateはID `recognized-dockswipe-templates-25F80-v2`、SHA-256 `852c7d0b6e32ced7082ea5c06a65d05971d3868e6a36aaccfd6f422871bc32a6`
+- fixture schema、ID、SHA-256、contract ID、収録元OS version / build。収録元情報は同梱asset間のprovenanceであり、host OSの許可listには使わない。25F80の正負方向別DockSwipe templateはID `recognized-dockswipe-templates-25F80-v2`、SHA-256 `852c7d0b6e32ced7082ea5c06a65d05971d3868e6a36aaccfd6f422871bc32a6`
 - direct post trace、capture、manifest、analyzer reportのidentityとSHA-256
 
 異なるrepo SHA、binary、OS build、scenarioのlogを一つの成功runとして継ぎ合わせない。目視やscreen recordingは補助証跡であり、raw log、manifest、analyzerを代用しない。

@@ -49,8 +49,8 @@
 ## 低レベルcontractと安全性
 
 - 通常SDKで公開されないevent contractは、最小のcompatibility adapterへ隔離する。
-- 未知のmacOS version / build、未登録fixture、schema不一致、contract ID不一致、SHA-256不一致、fixture実体不一致ではfail closedにする。入力抑制を始めてからfallbackへ切り替えない。
-- `supported`は、登録済みfixture ID、SHA-256、schema、contract ID、OS version / build、fixture実体、製品runtimeからの到達性がすべて一致するときだけ使う。
+- 実行中macOSのversion / buildは診断と検証証跡に記録するが、ProductOutputの`supported`判定には使わない。OS更新だけを理由にruntimeを停止しない。
+- `supported`は、登録済みfixture ID、SHA-256、schema、contract ID、fixture実体、収録元OS情報を含む同梱asset間の整合性、製品runtimeからの到達性がすべて一致するときだけ使う。未登録fixtureや不整合ではfail closedにし、入力抑制を始めてからfallbackへ切り替えない。
 - 低レベルeventを構築できること、dry-runが成功すること、画面が動くことだけでは、GestureClass contractの再現や製品完成の証拠にしない。
 - event tap、入力抑制、session終了、kill switch、通常入力復帰は一体で検証し、途中失敗でmouse操作を失わせない。
 

@@ -4,6 +4,7 @@
 
 - 状態: 採択
 - 日付: 2026-07-11
+- 更新日: 2026-07-14
 
 ## 背景
 
@@ -16,13 +17,13 @@
 ## 決定
 
 - 確定済みscroll / momentumだけを`Fixtures/trackpad-contract/25F80/scroll-momentum-contract.json`へ分離する。
-- fixture ID、contract ID、schema、bytesのSHA-256、OS version / buildをCore registryへ固定し、完全一致しないfixtureをfail closedにする。
+- fixture ID、contract ID、schema、bytesのSHA-256、収録元OS version / buildをCore registryへ固定し、完全一致しないfixtureをfail closedにする。このOS情報はcapture fixtureの由来であり、製品runtimeのhost許可listではない。
 - fixtureはreference device、logger repo SHA、logger executable SHA、採用した4 captureのsource log SHA、件数、contract prefix、解析開始capture index、capture wall-clockを保持する。
 - 観測台帳の`partial`状態は維持する。専用fixtureの`confirmed`は2本指scroll / momentum内部contractだけを指し、ほかのGestureClass、OS/App結果、製品完成を意味しない。
 - 専用fixtureと公開観測台帳は、contract ID、OS、device、logger、4 sourceのfile名 / SHA / 件数 / prefix / 解析開始index / wall-clock、観測規則を機械照合する。local原本検証では同じsource SHAとmanifestを再読込し、公開contractまで一続きに結合する。
 - contract解析はPhase 1のstrict JSON Lines解析とmanifest検証が成功した`TrackpadDriverEventDocument`だけを受け取る。Core API内でもfixture登録を再検証し、全documentのraw line bytesをLF付きで再構成してmanifestへ照合した後、strict parserを再実行する。外部から渡されたtyped値やcapture indexをそのまま信用しない。
 - `analyze-trackpad-event-log --contract <path>`を明示した場合だけcontract比較を終了code gateへ加え、report schemaを2にする。未指定のPhase 1呼び出しはschema 1と既存JSON shapeを維持し、`contractPath` / `contractComparison`を出力しない。
-- fixture読込失敗、未登録SHA、strict解析またはmanifest失敗、未知OS build、未確定scenarioは、理由を`contractComparison.issues`へ残して非ゼロ終了する。
+- fixture読込失敗、未登録SHA、strict解析またはmanifest失敗、収録元OS build不一致、未確定scenarioは、理由を`contractComparison.issues`へ残して非ゼロ終了する。この比較はcapture provenance用であり、製品runtimeのhost OS判定には使わない。
 - `synthetic`は純正contract合格証跡にしない。`physicalTrackpad`は登録source identityとの完全一致、`generatedProduct`は同じOS build / scenario上の候補列として比較する。
 - generated provenanceでは同じscroll family内のtype 22を`scroll`、type 29 companion / envelopeを`gesture`として記録し、actual event typeとの一致を検証する。contract比較中のgenerated eventはtype 22 / 29だけ、type 29はraw 110=`0`または`6`だけを許可し、それ以外やclassifier欠落を未確定gesture混入としてfail closedにする。
 

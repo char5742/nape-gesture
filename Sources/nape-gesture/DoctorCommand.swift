@@ -674,13 +674,13 @@ private struct DoctorRuntimeReadiness: Codable {
                             ? "outputContract.missingFamilies" : "outputContract.unsupported"),
                     category: "outputContract",
                     message: isMismatch
-                        ? "trackpad driver出力contractが現在のmacOS buildと一致しません。"
+                        ? "trackpad driver出力contractまたは同梱fixtureの整合性検証に失敗しました。"
                         : (isMissingFamily
                             ? "固定ジェスチャーに必要なproduct output familyが未実装です: \(outputContract.missingRequiredFamilies.joined(separator: ", "))"
-                            : "このmacOS build用のtrackpad driver出力contractが未対応です。"),
+                            : "trackpad driver出力contractをこの環境で構成できません。"),
                     remediation: isMissingFamily
                         ? "未実装familyのadapterとcontractを完成させてください。"
-                        : "純正trackpad fixtureからcontractを導出し、対応OS buildとしてadapterを検証してください。"
+                        : "同梱fixtureのID、SHA-256、schema、contract ID、実体とevent生成可否を確認してください。"
                 )
             )
         }
@@ -696,8 +696,8 @@ private struct DoctorOutputContractStatus: Codable {
     var schemaVersion: Int?
     var fixtureID: String?
     var fixtureSHA256: String?
-    var osVersion: String?
-    var osBuild: String?
+    var sourceOSVersion: String?
+    var sourceOSBuild: String?
     var supportedFamilies: [String]
     var confirmedFamilies: [String]
     var trialFamilies: [String]
@@ -720,8 +720,8 @@ private struct DoctorOutputContractStatus: Codable {
         schemaVersion = capability.contract?.schemaVersion
         fixtureID = capability.contract?.fixtureID
         fixtureSHA256 = capability.contract?.fixtureSHA256
-        osVersion = capability.contract?.osVersion
-        osBuild = capability.contract?.osBuild
+        sourceOSVersion = capability.contract?.sourceOSVersion
+        sourceOSBuild = capability.contract?.sourceOSBuild
         supportedFamilies = capability.supportedFamilies.map(\.rawValue).sorted()
         confirmedFamilies = capability.confirmedFamilies.map(\.rawValue).sorted()
         trialFamilies = capability.trialFamilies.map(\.rawValue).sorted()

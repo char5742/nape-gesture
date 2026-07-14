@@ -1,8 +1,8 @@
-# ADR-0043: 25F80の固定GestureClass ProductOutput contractを構成する
+# ADR-0043: 登録済みfixtureから固定GestureClass ProductOutputを構成する
 
 - 状態: 採択
 - 日付: 2026-07-12
-- 更新日: 2026-07-13
+- 更新日: 2026-07-14
 
 ## 背景
 
@@ -14,11 +14,12 @@ macOS 26.5.1（build 25F80）について、純正trackpad captureからtype 22 
 
 ### contract identityとfail closed
 
-- 25F80 contractはfixture ID、SHA-256、schema、contract ID、OS version / build、fixture実体、単位変換model identityを持つversioned contractとして登録する。正負方向別の認識済みDockSwipe templateはfixture ID `recognized-dockswipe-templates-25F80-v2`、contract ID `recognized-dockswipe-template-v2`、SHA-256 `852c7d0b6e32ced7082ea5c06a65d05971d3868e6a36aaccfd6f422871bc32a6`とする。
+- 25F80で収録したcontractはfixture ID、SHA-256、schema、contract ID、収録元OS version / build、fixture実体、単位変換model identityを持つversioned contractとして登録する。正負方向別の認識済みDockSwipe templateはfixture ID `recognized-dockswipe-templates-25F80-v2`、contract ID `recognized-dockswipe-template-v2`、SHA-256 `852c7d0b6e32ced7082ea5c06a65d05971d3868e6a36aaccfd6f422871bc32a6`とする。
+- 収録元OS version / buildはfixture、model、templateのprovenance照合にだけ使う。ProductOutput capabilityは実行中macOSのversion / buildを受け取らず、host OS buildを許可listとして扱わない。
 - runtimeに必要なfamilyは`scroll`、`dockSwipe`、`dockSwipePinch`の3つとする。
 - `supported`は、scroll contract、変換model、DockSwipe templateの登録identityと実際に読み込んだbytesが完全一致し、3 classの生成とterminalが成立する場合だけ返す。
 - 明示pathがある場合はそのpathだけを検証し、不正pathからbundleまたはrepository fixtureへ黙ってfallbackしない。
-- 未知OS build、未登録fixture、hash / schema / contract不一致、単位変換未確定では全ProductOutput familyを無効にし、event tapと入力抑制を開始せずruntime全体をfail closedする。
+- 未登録fixture、hash / schema / contract不一致、単位変換未確定、event構築不可では全ProductOutput familyを無効にし、event tapと入力抑制を開始せずruntime全体をfail closedする。
 
 ### class別ProductOutput
 
@@ -57,7 +58,7 @@ macOS 26.5.1（build 25F80）について、純正trackpad captureからtype 22 
 - button 3 / 4 / 5から固定classと`scroll` / `dockSwipe` / `dockSwipePinch`へのmappingを機械判定する。
 - source sample 1対1 command化、X/Y、符号、timestamp、capture order、drop、duplicate、reorderを検査する。
 - class別event type、field、phase、unit conversion、batch、single terminalをfixtureと比較する。
-- scroll contract、model、DockSwipe template、OS identityを個別に改変し、runtime全体が抑制前にfail closedすることを確認する。
+- scroll contract、model、DockSwipe templateのidentityとbytesを個別に改変し、runtime全体が抑制前にfail closedすることを確認する。host OS identityを注入しなくてもProductOutputが成立することを別macOS buildのCIで確認する。
 - batch作成失敗、部分投稿、terminal再試行、direct post trace、capture provenance、raw配送先fieldを検査する。
 - 3 familyを同じProductOutputからsystem-wideへ投稿し、type 30のmotion 1 / 2 / 4とIOHID値を検査するsmokeを実行する。
 
@@ -66,7 +67,7 @@ macOS 26.5.1（build 25F80）について、純正trackpad captureからtype 22 
 - PR #143から#147で成立していたProductOutput adapterを製品実装として維持する。
 - runtime readinessは3 familyすべてを要求する。1 familyでもidentityまたは構築条件を満たさなければruntime全体を開始しない。
 - GUIはfamily selectorを持たず、固定GestureClassを読み取り専用表示する。
-- 25F80 contractが不完全な環境では通常mouse入力を保持して停止する。
+- 登録済みcontract assetが不完全、またはeventを構築できない環境では通常mouse入力を保持して停止する。OS build番号が変わったことだけでは停止しない。
 - release buildの`/Applications/Nape Gesture.app`はインストール済みでdoctor runtime readyである。system-testではDockが3本指垂直とmotion 4の正負両方向を受理済みだが、Nape Pro実機button 4 / 5の入力、terminal、通常mouse復帰は別途物理受入する。
 
 ## 関連

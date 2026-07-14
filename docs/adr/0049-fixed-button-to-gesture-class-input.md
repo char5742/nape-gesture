@@ -76,7 +76,7 @@ GUIは固定mappingを読み取り専用で表示する。旧modeと調整値は
 
 ### 6. 抑制前にreadinessを確定する
 
-- 対象device、TCC、OS build、scroll contract、変換model、正負方向別の認識済みDockSwipe template fixtureを検証する。25F80 templateはID `recognized-dockswipe-templates-25F80-v2`、contract ID `recognized-dockswipe-template-v2`、SHA-256 `852c7d0b6e32ced7082ea5c06a65d05971d3868e6a36aaccfd6f422871bc32a6`を登録値とする。
+- 対象device、TCC、scroll contract、変換model、正負方向別の認識済みDockSwipe template fixtureを検証する。25F80で収録したtemplateはID `recognized-dockswipe-templates-25F80-v2`、contract ID `recognized-dockswipe-template-v2`、SHA-256 `852c7d0b6e32ced7082ea5c06a65d05971d3868e6a36aaccfd6f422871bc32a6`を登録値とする。実行中OS buildは診断へ記録するがreadiness条件にしない。
 - 3 classを安全に生成・終了できる場合だけevent tapと元入力抑制を開始する。
 - いずれかのfixture、model、adapterが欠落、未知、改変済み、または不一致なら全ProductOutput familyを無効にし、通常mouse入力を保持してruntime全体をfail closedする。診断出力や別配送へfallbackしない。
 

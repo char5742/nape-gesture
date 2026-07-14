@@ -118,6 +118,7 @@ required_snippets = {
     "1 sampleから1つのsource command",
     "recognized-dockswipe-templates-25F80-v2",
     "852c7d0b6e32ced7082ea5c06a65d05971d3868e6a36aaccfd6f422871bc32a6",
+    "実行中macOSのversion / buildとは比較しません",
     "`/Applications/Nape Gesture.app`へインストール済み",
     "Nape Pro物理受入 | 3 class合計23 session",
     "gesture session中はmouse cursorが移動しない"
@@ -132,6 +133,7 @@ required_snippets = {
     "phase fields 132 / 134 = began 1、changed 2、ended 4、cancelled 8",
     "application magnification event、generic finger count field、3本指classのmotion 1 / 2へ置き換えない",
     "eventはsystem-wideへだけ投稿する",
+    "実行中macOSのversion / buildとは比較しない",
     "runtime全体をfail closedする",
     "mouseとcursorのQuartz連動を停止"
   ],

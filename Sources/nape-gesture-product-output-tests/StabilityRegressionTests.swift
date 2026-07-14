@@ -112,18 +112,6 @@ private enum StabilityFixtures {
     }
 }
 
-private func stabilityIdentity25F80() -> ProductGestureOutputSystemIdentity {
-    guard
-        let identity = ProductGestureOutputSystemIdentity(
-            osVersion: "26.5.1",
-            osBuild: "25F80"
-        )
-    else {
-        fatalError("安定性テスト用25F80 identityを構成できません")
-    }
-    return identity
-}
-
 private func stabilityTraceContext() -> ProductGestureOutputTraceContext {
     guard
         let context = ProductGestureOutputTraceContext(
@@ -201,7 +189,6 @@ private func makeStabilityAdapter(
         contractData: StabilityFixtures.contract,
         modelData: StabilityFixtures.model,
         dockSwipeTemplateData: StabilityFixtures.dockSwipeTemplates,
-        systemIdentity: stabilityIdentity25F80(),
         traceContext: stabilityTraceContext(),
         scrollEventFactory: { wheel1, wheel2 in
             guard
@@ -639,7 +626,6 @@ private func testOrderingSessionAndClassMismatchRecovery(
 
     let capability = ProductGestureOutputCapability.validated(
         fixtureData: StabilityFixtures.contract,
-        systemIdentity: stabilityIdentity25F80()
     )
     let output = StabilityRecordingProductOutput(capability: capability)
     let coordinator = FixedGestureProductSessionCoordinator(output: output)
@@ -1063,7 +1049,7 @@ private func testRecognizedGestureTerminalRecovery(
     }
 }
 
-private func testUnsupportedIdentityFixtureAndHashFailClosed(
+private func testFixtureAndHashFailClosed(
     _ assertions: StabilityAssertions
 ) {
     func assertFailClosed(
@@ -1130,7 +1116,6 @@ private func testUnsupportedIdentityFixtureAndHashFailClosed(
         contractData: nil,
         modelData: StabilityFixtures.model,
         dockSwipeTemplateData: StabilityFixtures.dockSwipeTemplates,
-        systemIdentity: stabilityIdentity25F80(),
         postEvent: missingSink.post
     )
     assertions.expect(
@@ -1144,32 +1129,29 @@ private func testUnsupportedIdentityFixtureAndHashFailClosed(
         expectedFailure: .unsupported
     )
 
-    guard
-        let unknownIdentity = ProductGestureOutputSystemIdentity(
-            osVersion: "26.5.1",
-            osBuild: "25F81"
-        )
-    else {
-        assertions.expect(false, "未知OS identityを構成できません")
-        return
-    }
-    let osSink = StabilityPostSink()
-    let osAdapter = TrackpadGestureOutputAdapter(
+    let portableSink = StabilityPostSink()
+    let portableAdapter = TrackpadGestureOutputAdapter(
         contractData: StabilityFixtures.contract,
         modelData: StabilityFixtures.model,
         dockSwipeTemplateData: StabilityFixtures.dockSwipeTemplates,
-        systemIdentity: unknownIdentity,
-        postEvent: osSink.post
+        postEvent: portableSink.post
     )
     assertions.expect(
-        osAdapter.capability.status == .contractMismatch,
-        "未登録OS buildをcontract mismatchにする"
+        portableAdapter.capability.status == .supported,
+        "fixture収録元と実行中OS buildを分離してproduct outputを有効化する"
     )
-    assertFailClosed(
-        label: "未登録OS build",
-        adapter: osAdapter,
-        sink: osSink,
-        expectedFailure: .contractMismatch
+    let portableResult = portableAdapter.post(
+        stabilityInputEvent(
+            sessionID: 3_503,
+            captureOrder: 0,
+            timestamp: 9_000_030,
+            phase: .began,
+            payload: stabilityScrollPayload(deltaX: 4, deltaY: -3)
+        )
+    )
+    assertions.expect(
+        portableResult.failure == nil && portableResult.generatedEventCount == 3,
+        "host OS buildの照合なしで登録済みscroll contractを投稿する"
     )
 
     var unknownFixtureObject: [String: Any]
@@ -1210,7 +1192,6 @@ private func testUnsupportedIdentityFixtureAndHashFailClosed(
         contractData: unknownFixtureData,
         modelData: StabilityFixtures.model,
         dockSwipeTemplateData: StabilityFixtures.dockSwipeTemplates,
-        systemIdentity: stabilityIdentity25F80(),
         postEvent: fixtureSink.post
     )
     assertions.expect(
@@ -1238,7 +1219,6 @@ private func testUnsupportedIdentityFixtureAndHashFailClosed(
         contractData: hashMismatchData,
         modelData: StabilityFixtures.model,
         dockSwipeTemplateData: StabilityFixtures.dockSwipeTemplates,
-        systemIdentity: stabilityIdentity25F80(),
         postEvent: hashSink.post
     )
     assertions.expect(
@@ -1259,6 +1239,6 @@ func runStabilityRegressionTests() -> [String] {
     testOrderingSessionAndClassMismatchRecovery(assertions)
     testScrollCreationAndPartialPostRecovery(assertions)
     testRecognizedGestureTerminalRecovery(assertions)
-    testUnsupportedIdentityFixtureAndHashFailClosed(assertions)
+    testFixtureAndHashFailClosed(assertions)
     return assertions.failures
 }

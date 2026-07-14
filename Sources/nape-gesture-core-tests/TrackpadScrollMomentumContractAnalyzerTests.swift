@@ -620,7 +620,7 @@ private func testScrollMomentumContractFailsClosedOutsideConfirmedScope() {
         makeContractSequence(),
         osBuild: "25F81"
     )
-    expect(contractHasIssue(otherBuild, .osBuildMismatch), "未知OS buildをfail closedにする")
+    expect(contractHasIssue(otherBuild, .osBuildMismatch), "別収録元OS buildをfixture比較で拒否する")
 
     let synthetic = analyzeContract(makeContractSequence(), evidenceKind: .synthetic)
     expect(contractHasIssue(synthetic, .unsupportedEvidenceKind), "syntheticを純正contract合格証跡にしない")
