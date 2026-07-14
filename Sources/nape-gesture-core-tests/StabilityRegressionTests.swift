@@ -7,55 +7,219 @@ func runStabilityRegressionTests() {
     testCancelAndTimeoutReachOneTerminalThenRestorePassthrough()
     testManualStopWinsAcrossSleepWakeAndManualRestartRecovers()
     testDuplicateOrOutOfOrderWakeDoesNotDestroyRecoveryState()
-    testCursorMotionAssociationRetriesFailedTransitionsAndRestoresStartupBaseline()
+    testCursorAnchorStateOwnsOneFiniteAnchorPerSession()
     testSettingsMigrationPreservesOperationalSettingsAndIsIdempotent()
     testUnknownLegacyModeFailsBeforeCanonicalization()
 }
 
-private func testCursorMotionAssociationRetriesFailedTransitionsAndRestoresStartupBaseline() {
-    var state = CursorMotionAssociationState()
-    var calls: [Bool] = []
+private func testCursorAnchorStateOwnsOneFiniteAnchorPerSession() {
+    let scenarios: [(label: String, button: MouseButton)] = [
+        ("button 3", .button3),
+        ("button 4", .button4),
+        ("button 5", .center),
+    ]
 
-    let failedSuppression = state.suppress { enabled in
-        calls.append(enabled)
-        return false
-    }
-    expect(!failedSuppression && !state.isSuppressed, "cursor連動停止失敗時に抑制済みと誤記録しない")
+    for (index, scenario) in scenarios.enumerated() {
+        var state = CursorAnchorState()
+        let sessionID = TrackpadOutputSessionID(rawValue: UInt64(index + 1))
+        let gestureClass = FixedGestureClass(activationButton: scenario.button)!
+        let position = CursorAnchorPosition(
+            x: Double(index) - 120.25,
+            y: Double(index) + 640.75
+        )
+        func command(
+            captureOrder: UInt64,
+            sourceKind: GestureInputSourceKind,
+            phase: FixedGestureInputPhase
+        ) -> FixedGestureInputCommand {
+            FixedGestureInputCommand(
+                sessionID: sessionID,
+                sourceButton: scenario.button,
+                gestureClass: gestureClass,
+                captureOrder: captureOrder,
+                timestamp: stabilityTimestamp(100 + captureOrder),
+                sourceKind: sourceKind,
+                phase: phase,
+                deltaX: 0,
+                deltaY: 0
+            )
+        }
+        let began = command(captureOrder: 0, sourceKind: .buttonDown, phase: .began)
+        var warpedPositions: [CursorAnchorPosition] = []
+        try? state.prepareAndWarp(for: began, sourcePosition: position) {
+            warpedPositions.append($0)
+        }
+        let anchor = state.activeAnchor
 
-    let suppression = state.suppress { enabled in
-        calls.append(enabled)
-        return true
-    }
-    let repeatedSuppression = state.suppress { enabled in
-        calls.append(enabled)
-        return true
-    }
-    expect(suppression && repeatedSuppression && state.isSuppressed, "cursor連動停止成功後の重複停止を冪等にする")
-    expect(calls == [false, false], "cursor連動停止APIを失敗retry時だけ再実行する")
+        expect(anchor?.sessionID == sessionID, "\(scenario.label)のsession IDをanchorへ保持する")
+        expect(anchor?.sourceButton == scenario.button, "\(scenario.label)のsource buttonをanchorへ保持する")
+        expect(anchor?.position == position, "\(scenario.label)の絶対cursor座標を変更しない")
+        expect(state.isActive, "\(scenario.label)のanchorを1回だけ有効化する")
+        expect(warpedPositions == [position], "\(scenario.label)の開始時に同じanchorへ1回だけwarpする")
 
-    let failedRestore = state.restore { enabled in
-        calls.append(enabled)
-        return false
-    }
-    expect(!failedRestore && state.isSuppressed, "cursor連動復元失敗時に未抑制と誤記録しない")
+        expectThrows("\(scenario.label)の重複beginを拒否する") {
+            _ = try state.prepare(for: began, sourcePosition: position)
+        }
+        expect(state.activeAnchor == anchor, "重複begin失敗後も元のanchorを保持する")
 
-    let restore = state.restore { enabled in
-        calls.append(enabled)
-        return true
-    }
-    let repeatedRestore = state.restore { enabled in
-        calls.append(enabled)
-        return true
-    }
-    expect(restore && repeatedRestore && !state.isSuppressed, "cursor連動復元成功後の重複復元を冪等にする")
-    expect(calls == [false, false, true, true], "cursor連動復元APIを失敗retry時だけ再実行する")
+        let move = command(captureOrder: 1, sourceKind: .move, phase: .changed)
+        try? state.prepareAndWarp(for: move, sourcePosition: nil) {
+            warpedPositions.append($0)
+        }
+        expect(warpedPositions == [position, position], "moveごとに同じanchorへwarpする")
 
-    let startupBaseline = state.restore(force: true) { enabled in
-        calls.append(enabled)
-        return true
+        let wheel = command(captureOrder: 2, sourceKind: .wheel, phase: .changed)
+        try? state.prepareAndWarp(for: wheel, sourcePosition: nil) {
+            warpedPositions.append($0)
+        }
+        expect(warpedPositions == [position, position], "wheel sampleではcursor warpを実行しない")
+
+        let required = try? state.anchor(
+            sessionID: sessionID,
+            sourceButton: scenario.button
+        )
+        expect(required == anchor, "\(scenario.label)の同一sessionだけがanchorを参照できる")
+
+        expectThrows("別sessionからのanchor参照を拒否する") {
+            _ = try state.anchor(
+                sessionID: TrackpadOutputSessionID(rawValue: sessionID.rawValue + 100),
+                sourceButton: scenario.button
+            )
+        }
+        expectThrows("別buttonからのanchor参照を拒否する") {
+            _ = try state.anchor(sessionID: sessionID, sourceButton: .left)
+        }
+
+        let malformedTerminal = command(
+            captureOrder: 3,
+            sourceKind: .move,
+            phase: .ended
+        )
+        expectThrows("不正なterminal sourceでanchorを破棄しない") {
+            try state.complete(malformedTerminal)
+        }
+        expect(state.activeAnchor == anchor, "不正terminal拒否後も同じanchorを保持する")
+
+        let ended = command(captureOrder: 4, sourceKind: .buttonUp, phase: .ended)
+        expect((try? state.prepare(for: ended, sourcePosition: nil)) == .noWarp, "terminal前にwarpしない")
+        expectNoThrow("\(scenario.label)のterminalでanchorを破棄する") {
+            try state.complete(ended)
+        }
+        expect(!state.isActive, "\(scenario.label)のterminal後にanchorを残さない")
+        expectThrows("terminal後のanchor参照を拒否する") {
+            _ = try state.anchor(sessionID: sessionID, sourceButton: scenario.button)
+        }
     }
-    expect(startupBaseline && !state.isSuppressed, "runtime開始時にcursor連動を既知の有効状態へ戻す")
-    expect(calls.last == true && calls.count == 5, "startup baseline復元ではOS APIを必ず実行する")
+
+    var missingPosition = CursorAnchorState()
+    let missingPositionCommand = FixedGestureInputCommand(
+        sessionID: TrackpadOutputSessionID(rawValue: 50),
+        sourceButton: .button3,
+        gestureClass: .twoFingerScrollSwipe,
+        captureOrder: 0,
+        timestamp: stabilityTimestamp(100),
+        sourceKind: .buttonDown,
+        phase: .began,
+        deltaX: 0,
+        deltaY: 0
+    )
+    expectThrows("button downのevent locationがなければ開始しない") {
+        try missingPosition.prepareAndWarp(
+            for: missingPositionCommand,
+            sourcePosition: nil,
+            using: { _ in }
+        )
+    }
+    expect(!missingPosition.isActive, "anchor取得失敗後にsession stateを残さない")
+
+    var failedWarp = CursorAnchorState()
+    expectThrows("開始時warp失敗を呼び出し元へ返す") {
+        try failedWarp.prepareAndWarp(
+            for: missingPositionCommand,
+            sourcePosition: CursorAnchorPosition(x: 20, y: 30),
+            using: { _ in throw CursorAnchorTestError.expectedWarpFailure }
+        )
+    }
+    expect(!failedWarp.isActive, "warp失敗時に開始済みanchor stateを必ず破棄する")
+
+    var failedMoveWarp = CursorAnchorState()
+    try? failedMoveWarp.prepareAndWarp(
+        for: missingPositionCommand,
+        sourcePosition: CursorAnchorPosition(x: 20, y: 30),
+        using: { _ in }
+    )
+    let failedMoveCommand = FixedGestureInputCommand(
+        sessionID: missingPositionCommand.sessionID,
+        sourceButton: missingPositionCommand.sourceButton,
+        gestureClass: missingPositionCommand.gestureClass,
+        captureOrder: 1,
+        timestamp: stabilityTimestamp(101),
+        sourceKind: .move,
+        phase: .changed,
+        deltaX: 8,
+        deltaY: -5
+    )
+    expectThrows("move取得後のwarp失敗を呼び出し元へ返す") {
+        try failedMoveWarp.prepareAndWarp(
+            for: failedMoveCommand,
+            sourcePosition: nil,
+            using: { _ in throw CursorAnchorTestError.expectedWarpFailure }
+        )
+    }
+    expect(!failedMoveWarp.isActive, "move warp失敗時にactive anchorを必ず破棄する")
+
+    var cancelled = CursorAnchorState()
+    try? cancelled.prepareAndWarp(
+        for: missingPositionCommand,
+        sourcePosition: CursorAnchorPosition(x: 20, y: 30),
+        using: { _ in }
+    )
+    let cancelledCommand = FixedGestureInputCommand(
+        sessionID: missingPositionCommand.sessionID,
+        sourceButton: missingPositionCommand.sourceButton,
+        gestureClass: missingPositionCommand.gestureClass,
+        captureOrder: 1,
+        timestamp: stabilityTimestamp(101),
+        sourceKind: .cancellation,
+        phase: .cancelled,
+        deltaX: 0,
+        deltaY: 0
+    )
+    expect((try? cancelled.prepare(for: cancelledCommand, sourcePosition: nil)) == .noWarp, "cancel terminal前にwarpしない")
+    expectNoThrow("cancel / timeout / tap中断のterminalでanchorを破棄する") {
+        try cancelled.complete(cancelledCommand)
+    }
+    expect(!cancelled.isActive, "cancel terminal後にanchorを残さない")
+
+    for invalidPosition in [
+        CursorAnchorPosition(x: .nan, y: 0),
+        CursorAnchorPosition(x: 0, y: .infinity),
+        CursorAnchorPosition(x: -.infinity, y: 0),
+    ] {
+        var state = CursorAnchorState()
+        expectThrows("非有限cursor座標をanchorにしない") {
+            _ = try state.begin(
+                sessionID: TrackpadOutputSessionID(rawValue: 1),
+                sourceButton: .button3,
+                position: invalidPosition
+            )
+        }
+        expect(!state.isActive, "anchor取得失敗後にstateを残さない")
+    }
+
+    var cleared = CursorAnchorState()
+    _ = try? cleared.begin(
+        sessionID: TrackpadOutputSessionID(rawValue: 99),
+        sourceButton: .button4,
+        position: CursorAnchorPosition(x: 100, y: 200)
+    )
+    cleared.clear()
+    cleared.clear()
+    expect(!cleared.isActive, "runtime異常終了向けの無条件clearを冪等にする")
+}
+
+private enum CursorAnchorTestError: Error {
+    case expectedWarpFailure
 }
 
 private func stabilityTimestamp(_ nanoseconds: UInt64) -> MonotonicEventTimestamp {

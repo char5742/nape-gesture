@@ -68,6 +68,8 @@ struct SystemBehaviorTestCommand {
 
               gesture-drag
                   既定のbutton 4押下、左ドラッグ、解放を未マークのマウスイベントとして生成します。
+                  --logical-button 3|4|5 で固定GestureClassを選べます。
+                  --assert-cursor-anchor でbackground runtimeの実cursor座標を検証します。
 
               gesture-wheel
                   既定の activation button 押下中のホイールを未マークのスクロールイベントとして生成します。
@@ -125,7 +127,34 @@ struct SystemBehaviorTestCommand {
         let amount = try doubleValue("--amount", in: options, defaultValue: scenario.defaultAmount)
         let steps = try intValue("--steps", in: options, defaultValue: scenario.defaultSteps)
         let interval = try doubleValue("--interval", in: options, defaultValue: 0.008)
+        let logicalButtonNumber = try intValue(
+            "--logical-button",
+            in: options,
+            defaultValue: 4
+        )
+        guard [3, 4, 5].contains(logicalButtonNumber) else {
+            throw ToolError.invalidValue("--logical-button", String(logicalButtonNumber))
+        }
+        let assertCursorAnchor = options.contains("--assert-cursor-anchor")
+        if assertCursorAnchor && scenario != .gestureDrag {
+            throw ToolError.invalidValue(
+                "--assert-cursor-anchor",
+                "gesture-drag scenarioでだけ指定できます。"
+            )
+        }
+        if assertCursorAnchor && steps < 6 {
+            throw ToolError.invalidValue(
+                "--steps",
+                "cursor anchor検証では正負・斜め・反転を含む6 sample以上が必要です。"
+            )
+        }
         let postToPid = try optionalPIDValue("--post-to-pid", in: options)
+        if assertCursorAnchor && (dryRun || outputLogJSON || postToPid != nil) {
+            throw ToolError.invalidValue(
+                "--assert-cursor-anchor",
+                "実際のsystem-wide投稿でだけ指定でき、--dry-run、--log-json、--post-to-pidとは併用できません。"
+            )
+        }
         if postToPid != nil && !scenario.supportsProcessTargetPosting {
             throw ToolError.invalidValue(
                 "--post-to-pid", "\(scenario.rawValue) は process 直接投稿診断に未対応です。")
@@ -136,7 +165,9 @@ struct SystemBehaviorTestCommand {
             amount: amount,
             steps: steps,
             interval: interval,
-            postToPid: postToPid
+            postToPid: postToPid,
+            logicalButtonNumber: logicalButtonNumber,
+            assertCursorAnchor: assertCursorAnchor
         )
 
         if outputLogJSON {
@@ -290,7 +321,24 @@ struct SystemBehaviorTestCommand {
             )
         case .killSwitch:
             try postUnmarkedInputEvents(unmarkedInputEvents(for: plan, startTime: now), to: nil)
-        case .gestureDrag, .gestureWheel, .gestureWheelThenKillSwitch, .normalAfterRelease:
+        case .gestureDrag:
+            if plan.assertCursorAnchor {
+                let report = try CursorAnchorSystemVerifier(
+                    logicalButtonNumber: plan.logicalButtonNumber,
+                    amount: plan.amount,
+                    steps: plan.steps,
+                    interval: plan.interval
+                ).run()
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                print(String(decoding: try encoder.encode(report), as: UTF8.self))
+            } else {
+                try postUnmarkedInputEvents(
+                    unmarkedInputEvents(for: plan, startTime: now),
+                    to: plan.postToPid
+                )
+            }
+        case .gestureWheel, .gestureWheelThenKillSwitch, .normalAfterRelease:
             try postUnmarkedInputEvents(
                 unmarkedInputEvents(for: plan, startTime: now), to: plan.postToPid)
         }
@@ -1327,8 +1375,17 @@ private struct SystemTestPlan {
     var steps: Int
     var interval: TimeInterval
     var postToPid: pid_t?
+    var logicalButtonNumber: Int
+    var assertCursorAnchor: Bool
     var activationButtonNumber: Int64 {
-        Int64(MouseButton.button4.rawValue)
+        switch logicalButtonNumber {
+        case 3:
+            Int64(MouseButton.button3.rawValue)
+        case 5:
+            Int64(MouseButton.center.rawValue)
+        default:
+            Int64(MouseButton.button4.rawValue)
+        }
     }
 
     var maximumPlannedOffset: TimeInterval {
@@ -1356,7 +1413,9 @@ private struct SystemTestPlan {
         amount: Double,
         steps: Int,
         interval: TimeInterval,
-        postToPid: pid_t?
+        postToPid: pid_t?,
+        logicalButtonNumber: Int,
+        assertCursorAnchor: Bool
     ) throws {
         self.scenario = scenario
 
@@ -1373,6 +1432,8 @@ private struct SystemTestPlan {
         self.steps = steps
         self.interval = interval
         self.postToPid = postToPid
+        self.logicalButtonNumber = logicalButtonNumber
+        self.assertCursorAnchor = assertCursorAnchor
     }
 
     var description: String {
@@ -1384,6 +1445,8 @@ private struct SystemTestPlan {
             "steps=\(steps)",
             "interval=\(interval)",
             "postToPid=\(postToPid.map(String.init) ?? "none")",
+            "logicalButton=\(logicalButtonNumber)",
+            "assertCursorAnchor=\(assertCursorAnchor)",
         ].joined(separator: "\n")
     }
 }
