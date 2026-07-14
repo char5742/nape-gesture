@@ -2224,7 +2224,7 @@ private func testFixedGestureClassesReachProductFamiliesWithExactOrderAndTimesta
     }
 }
 
-private func testFixedDockSwipeAccumulatesSessionProgress() {
+private func testFixedThreeFingerDockSwipeUsesSharedSourceDeltaScale() {
     let output = PermissiveProductOutput(
         capability: .validated(
             fixtureData: contractData(),
@@ -2232,13 +2232,14 @@ private func testFixedDockSwipeAccumulatesSessionProgress() {
     )
     let coordinator = FixedGestureProductSessionCoordinator(output: output)
     let sessionID = TrackpadOutputSessionID(rawValue: 950)
+    let interval = MonotonicEventClock.nanosecondsPerSecond
     let commands = [
         FixedGestureInputCommand(
             sessionID: sessionID,
             sourceButton: .button4,
             gestureClass: .threeFingerSystemSwipe,
             captureOrder: 0,
-            timestamp: MonotonicEventTimestamp(nanosecondsSinceStartup: 1_000),
+            timestamp: MonotonicEventTimestamp(nanosecondsSinceStartup: interval),
             sourceKind: .buttonDown,
             phase: .began,
             deltaX: 0,
@@ -2249,7 +2250,7 @@ private func testFixedDockSwipeAccumulatesSessionProgress() {
             sourceButton: .button4,
             gestureClass: .threeFingerSystemSwipe,
             captureOrder: 1,
-            timestamp: MonotonicEventTimestamp(nanosecondsSinceStartup: 2_000),
+            timestamp: MonotonicEventTimestamp(nanosecondsSinceStartup: interval * 2),
             sourceKind: .move,
             phase: .changed,
             deltaX: 30,
@@ -2260,7 +2261,7 @@ private func testFixedDockSwipeAccumulatesSessionProgress() {
             sourceButton: .button4,
             gestureClass: .threeFingerSystemSwipe,
             captureOrder: 2,
-            timestamp: MonotonicEventTimestamp(nanosecondsSinceStartup: 3_000),
+            timestamp: MonotonicEventTimestamp(nanosecondsSinceStartup: interval * 3),
             sourceKind: .move,
             phase: .changed,
             deltaX: 30,
@@ -2271,30 +2272,43 @@ private func testFixedDockSwipeAccumulatesSessionProgress() {
             sourceButton: .button4,
             gestureClass: .threeFingerSystemSwipe,
             captureOrder: 3,
-            timestamp: MonotonicEventTimestamp(nanosecondsSinceStartup: 4_000),
+            timestamp: MonotonicEventTimestamp(nanosecondsSinceStartup: interval * 4),
             sourceKind: .buttonUp,
             phase: .ended,
             deltaX: 0,
             deltaY: 0
         ),
     ]
-    _ = commands.map(coordinator.post)
+    let posts = commands.map(coordinator.post)
+    expect(posts.allSatisfy { $0.result.failure == nil }, "3本指DockSwipeの共通source delta scale検証入力を完結する")
 
-    let progress = output.postedEvents.compactMap { event -> Double? in
+    let payloads = output.postedEvents.compactMap { event -> (Double, Double)? in
         guard case .input(let frame) = event,
-              case .dockSwipe(_, let progress, _, _, _, _) = frame.payload
+              case .dockSwipe(
+                  let axis,
+                  let progress,
+                  _,
+                  _,
+                  let terminalVelocityX,
+                  let terminalVelocityY
+              ) = frame.payload
         else {
             return nil
         }
-        return progress
+        let terminalVelocity = axis == .horizontal ? terminalVelocityX : terminalVelocityY
+        return (progress, terminalVelocity)
     }
-    expect(progress.count == 3, "移動開始後のDockSwipe lifecycleを3 eventで保持する")
-    expect(abs(progress[0] - 0.1) < 0.000_001, "最初のDockSwipe sampleをbeganへ変換する")
-    expect(abs(progress[1] - 0.2) < 0.000_001, "DockSwipe progressをsession内で累積する")
-    expect(abs(progress[2] - 0.2) < 0.000_001, "DockSwipe terminalでも累積progressを保持する")
+    expect(payloads.count == 3, "3本指DockSwipe lifecycleを3 eventで保持する")
+    guard payloads.count == 3 else {
+        return
+    }
+    expect(abs(payloads[0].0 - 0.05) < 0.000_001, "source delta 30を3本指DockSwipe progress 0.05へ変換する")
+    expect(abs(payloads[1].0 - 0.1) < 0.000_001, "3本指DockSwipe progressを共通source delta scaleで累積する")
+    expect(abs(payloads[2].0 - 0.1) < 0.000_001, "3本指DockSwipe terminalへ累積progressを保持する")
+    expect(abs(payloads[2].1 - 0.05) < 0.000_001, "3本指DockSwipe terminal velocityへ共通source delta scaleを適用する")
 }
 
-private func testFixedPinchUsesHalfScaleForProgressAndTerminalVelocity() {
+private func testFixedFourFingerPinchUsesSharedSourceDeltaScale() {
     let output = PermissiveProductOutput(
         capability: .validated(
             fixtureData: contractData(),
@@ -2331,7 +2345,7 @@ private func testFixedPinchUsesHalfScaleForProgressAndTerminalVelocity() {
         command(order: 2, sourceKind: .move, phase: .changed, deltaY: -30),
         command(order: 3, sourceKind: .buttonUp, phase: .ended),
     ].map(coordinator.post)
-    expect(posts.allSatisfy { $0.result.failure == nil }, "4本指pinchのscale検証入力を完結する")
+    expect(posts.allSatisfy { $0.result.failure == nil }, "4本指pinchの共通source delta scale検証入力を完結する")
 
     let payloads = output.postedEvents.compactMap { event -> (Double, Double)? in
         guard case .input(let frame) = event,
@@ -2345,10 +2359,10 @@ private func testFixedPinchUsesHalfScaleForProgressAndTerminalVelocity() {
     guard payloads.count == 3 else {
         return
     }
-    expect(abs(payloads[0].0 - 0.05) < 0.000_001, "mouse delta 30を4本指pinch progress 0.05へ変換する")
-    expect(abs(payloads[1].0 - 0.1) < 0.000_001, "4本指pinch progressを半分のscaleで累積する")
+    expect(abs(payloads[0].0 - 0.05) < 0.000_001, "source delta 30を4本指pinch progress 0.05へ変換する")
+    expect(abs(payloads[1].0 - 0.1) < 0.000_001, "4本指pinch progressを共通source delta scaleで累積する")
     expect(abs(payloads[2].0 - 0.1) < 0.000_001, "4本指pinch terminalへ累積progressを保持する")
-    expect(abs(payloads[2].1 - 0.05) < 0.000_001, "4本指pinch terminal velocityへ半分のscaleを適用する")
+    expect(abs(payloads[2].1 - 0.05) < 0.000_001, "4本指pinch terminal velocityへ共通source delta scaleを適用する")
 }
 
 private func testFixedGestureCoordinatorClosesPartialScrollBatch() {
@@ -2582,8 +2596,8 @@ testActiveSessionRejectsEveryNewBegan()
 testCancellationTimestampRegressionIsNormalized()
 testCoordinatorClosesPartialBeganAndRetriesPartialCancellation()
 testFixedGestureClassesReachProductFamiliesWithExactOrderAndTimestamp()
-testFixedDockSwipeAccumulatesSessionProgress()
-testFixedPinchUsesHalfScaleForProgressAndTerminalVelocity()
+testFixedThreeFingerDockSwipeUsesSharedSourceDeltaScale()
+testFixedFourFingerPinchUsesSharedSourceDeltaScale()
 testFixedGestureCoordinatorClosesPartialScrollBatch()
 testFixedScrollAcceptsMouseDeltaGrid()
 postFixedGestureSmokeIfRequested()

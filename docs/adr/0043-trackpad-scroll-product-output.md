@@ -26,13 +26,13 @@ macOS 26.5.1（build 25F80）について、純正trackpad captureからtype 22 
 | GestureClass | family | encoding |
 | --- | --- | --- |
 | 2本指scroll / swipe | `scroll` | type 22 scrollとtype 29 envelope / companion。scroll phase field 99とcompanion phase field 132、line / fixed / point / gesture motion単位 |
-| 3本指system swipe | `dockSwipe` | type 30 / classifier 23、phase fields 132 / 134、IOHID motion 1 / 2。progress / XY positionはsource delta / 300、終端XY velocityはsource delta / 経過秒 / 300 |
-| 4本指system pinch | `dockSwipePinch` | type 30 / classifier 23、phase fields 132 / 134、IOHID motion 4。progressはY優先のsigned source delta / 300、終端Z velocityは同じ符号規則のsource velocity / 300 |
+| 3本指system swipe | `dockSwipe` | type 30 / classifier 23、phase fields 132 / 134、IOHID motion 1 / 2。progress / XY positionはsource delta / 600、終端XY velocityはsource velocity / 600 |
+| 4本指system pinch | `dockSwipePinch` | type 30 / classifier 23、phase fields 132 / 134、IOHID motion 4。progressはY優先のsigned source delta / 600、終端Z velocityは同じ符号規則のsource velocity / 600 |
 
 - fixed coordinatorはGestureClassからfamilyを一意に選ぶ。
 - class固有のaxis選択、progress / position / velocity変換は、物理contractを再現するadapter encodingとして扱う。
 - 認識済みtemplateからIOHID `DockSwipe` type 23を復元し、timestamp、sender ID、phase flags、mask = 0、motion、flavor = 3、progress、position、終端velocity childを更新してからCGEventとIOHID値を再検証する。
-- class別係数をユーザー感度またはapplication別調整値として公開しない。
+- 3本指と4本指はevent family、motion、axis、符号規則を分けたまま、mouse source deltaとsource velocityに`/ 600`の固定変換スケールを共有する。この係数をユーザー感度またはapplication別調整値として公開しない。
 - accepted source sampleごとに1 commandを生成し、X/Y、符号、source kind、timestamp、capture order、session IDを保持する。
 - 1 commandから生成するevent数はclassにより異なってよい。scroll input batchは全eventを構築・検証してから投稿する。
 - batch部分投稿後は未投稿offsetと予約済みpost indexを保持し、同じsource eventまたは同じterminalだけを再試行する。

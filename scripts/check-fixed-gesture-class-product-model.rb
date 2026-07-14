@@ -38,7 +38,7 @@ required_snippets = {
     ".dockSwipePinch,",
     "return .dockSwipePinch(",
     "private static func normalizedMotion(_ value: Double) -> Double",
-    "value / 300",
+    "value / 600",
     "private static func pinchMotion(x: Double, y: Double) -> Double"
   ],
   "Sources/NapeGestureCore/TrackpadOutputSession.swift" => [

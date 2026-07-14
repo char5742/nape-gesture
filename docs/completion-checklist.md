@@ -12,7 +12,7 @@
 | button 3 / 4 / 5未押下 | 変換なし | 通常mouse入力をそのまま通す |
 
 - 2 / 3 / 4本指はraw digitizer contact countやgeneric `fingerCount` fieldではなく上位gestureの固定GestureClassである。
-- classごとにevent type、field、phase、companion、単位変換が異なることを必須とする。
+- classごとにevent family、event type、field、phase、companion、motion、axis、符号規則を含むencodingを検査する。3本指と4本指ではencodingの違いを維持し、mouse source deltaとsource velocityに同じ`/ 600`の固定変換スケールを使う。
 - button mappingは固定し、mode selector、割り当て、感度、application別設定を持たない。
 - system-wide投稿だけを使い、AX、対象PID、keyboard shortcut、DriverKit、virtual HID、raw digitizerを使わない。
 - 複合HID deviceは`Generic Desktop / Mouse`インターフェースだけを入力監視で開き、同一物理deviceのkeyboard、consumer control、vendor-definedインターフェースを除外する。
@@ -79,8 +79,8 @@ artifacts/completion/YYYY-MM-DD/<repo-sha>/<scenario-id>/
 | GestureClass | 合格条件 |
 | --- | --- |
 | 2本指scroll / swipe | type 22 scrollと必要なtype 29 envelope / companionが、別々のphase fieldとline / fixed / point / gesture motion単位を登録contractの順序、field、timestamp関係で完結する |
-| 3本指system swipe | type 30 / classifier 23のDockSwipeがphase fields 132 / 134の1 / 2 / 4 / 8、IOHID motion 1 / 2、source delta / 300の累積progressとXY position、source delta / 経過秒 / 300の終端XY velocityで完結する |
-| 4本指system pinch | type 30 / classifier 23のDockSwipeがphase fields 132 / 134の1 / 2 / 4 / 8、IOHID motion 4、Y優先のsigned source delta / 300の累積pinch progress、同じ符号規則のsource velocity / 300の終端Z velocityで完結する。application magnification eventを使わない |
+| 3本指system swipe | type 30 / classifier 23のDockSwipeがphase fields 132 / 134の1 / 2 / 4 / 8、IOHID motion 1 / 2、source delta / 600の累積progressとXY position、source velocity / 600の終端XY velocityで完結する |
+| 4本指system pinch | type 30 / classifier 23のDockSwipeがphase fields 132 / 134の1 / 2 / 4 / 8、IOHID motion 4、Y優先のsigned source delta / 600の累積pinch progress、同じ符号規則のsource velocity / 600の終端Z velocityで完結する。application magnification eventを使わない |
 
 共通して、fixture identity、source-to-command 1対1、capture order、exact timestamp、session ID、single terminal、system-wide配送を検査する。class間でevent count、field、単位変換が同一であることは要求しない。
 
