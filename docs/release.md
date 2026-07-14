@@ -24,7 +24,7 @@ release binaryは次だけを実装する。
 結果別mode、方向別action、application別設定を含めない。
 `scroll`、`DockSwipe`、`NavigationSwipe`、`magnification`は低レベルcontractの観測語彙であり、ユーザーmode、独立製品機能、release capabilityではない。
 OS/Appが入力結果を解釈し、製品runtimeは結果に応じてAX、対象PID、frontmost application、keyboard shortcut、別familyへ切り替えない。
-同じsource event列を3 buttonへ与えた場合、変換前のX/Y量、符号、順序、timestamp、sample間隔を変えない。一方、各GestureClassは異なる上位event contractを使うため、event type、field、phase、companion、単位変換が異なることを必須とする。結果別またはユーザー調整可能な係数は持たない。
+同じsource event列を3 buttonへ与えた場合、変換前のX/Y量、符号、順序、timestamp、sample間隔を変えない。一方、各GestureClassは異なる上位event contractを使うため、event type、field、phase、companion、単位変換が異なることを必須とする。button 4 / 5は25%から200%、既定100%の共通`systemGestureSensitivity`を`(source / 600) * 倍率`として使い、button 3、固定mapping、方向、applicationには適用しない。
 
 ## 必須release gate
 

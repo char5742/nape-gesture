@@ -12,8 +12,8 @@
 | button 3 / 4 / 5未押下 | 変換なし | 通常mouse入力をそのまま通す |
 
 - 2 / 3 / 4本指はraw digitizer contact countやgeneric `fingerCount` fieldではなく上位gestureの固定GestureClassである。
-- classごとにevent family、event type、field、phase、companion、motion、axis、符号規則を含むencodingを検査する。3本指と4本指ではencodingの違いを維持し、mouse source deltaとsource velocityに同じ`/ 600`の固定変換スケールを使う。
-- button mappingは固定し、mode selector、割り当て、感度、application別設定を持たない。
+- classごとにevent family、event type、field、phase、companion、motion、axis、符号規則を含むencodingを検査する。3本指と4本指ではencodingの違いを維持し、100%時の`/ 600`基準へ共通の`systemGestureSensitivity`を適用する。
+- button mappingは固定し、mode selector、割り当て、button別・方向別・application別の感度設定を持たない。GUIで編集できる「システムジェスチャー感度」はbutton 4 / 5だけに共通で、25%から200%、既定100%とし、button 3には適用しない。
 - system-wide投稿だけを使い、AX、対象PID、keyboard shortcut、DriverKit、virtual HID、raw digitizerを使わない。
 - 複合HID deviceは`Generic Desktop / Mouse`インターフェースだけを入力監視で開き、同一物理deviceのkeyboard、consumer control、vendor-definedインターフェースを除外する。
 - accepted source sampleは1 sampleから1 commandへ変換し、欠落、重複、coalescing、並べ替えを行わない。
@@ -63,9 +63,9 @@ artifacts/completion/YYYY-MM-DD/<repo-sha>/<scenario-id>/
 
 | ゲート | 完成条件 | 機械証跡 | 物理証跡 | 現在 |
 | --- | --- | --- | --- | --- |
-| 固定GestureClass | button 3 / 4 / 5が常に2本指scroll / 3本指system swipe / 4本指system pinch classを選び、session途中で変わらない | 全button、追加button、曖昧同時押下、旧設定migration、GUI read-only、doctorのtest | Nape Pro 3 classを23 session収録し、全sessionでbegan / endedが1対1 | `完了` |
+| 固定GestureClass | button 3 / 4 / 5が常に2本指scroll / 3本指system swipe / 4本指system pinch classを選び、session途中で変わらない | 全button、追加button、曖昧同時押下、旧設定migration、共通感度の範囲・既定値・旧感度非移行、GUI read-only、doctorのtest | Nape Pro 3 classを23 session収録し、全sessionでbegan / endedが1対1 | `完了` |
 | source sample保存 | 各accepted move / wheel sampleがexact timestampとcapture orderを保つ1 commandになり、drop、duplicate、coalesce、reorderがない | 正負、斜め、停止、反転、異間隔、長時間、move / wheel混在、queue圧迫のtest | Nape Pro runtime log 3678 command、欠落投稿0件 | `完了` |
-| ProductOutput | 2本指はtype 22 scroll + type 29 companion、3本指はtype 30 DockSwipe motion 1 / 2、4本指はtype 30 DockSwipe motion 4をclass固有contractでsystem-wide投稿する | 3 classのfamily mapping、field、phase、単位、batch、system-wide direct post smoke | Nape Proから5473 eventを生成し、DockがSpace、Mission Control、motion 4を受理。純正trackpadとの最終比較は残る | `統合検証中` |
+| ProductOutput | 2本指はtype 22 scroll + type 29 companion、3本指はtype 30 DockSwipe motion 1 / 2、4本指はtype 30 DockSwipe motion 4をclass固有contractでsystem-wide投稿し、button 4 / 5だけを`(source / 600) * systemGestureSensitivity`で変換する | 3 classのfamily mapping、field、phase、単位、共通感度0.25 / 1.0 / 2.0、button 3非適用、batch、system-wide direct post smoke | Nape Proから5473 eventを生成し、DockがSpace、Mission Control、motion 4を受理。純正trackpadとの最終比較は残る | `統合検証中` |
 | session terminal | 正常終了と全cancel原因がsingle terminalへ収束し、部分投稿後も順序を保って閉じる | release、cancel、kill switch、runtime stop、sleep、disconnect、TCC喪失、作成 / 投稿失敗、partial batch retry | 正常解放と少なくともkill switch、disconnect、sleepまたはTCC喪失 | `統合検証中` |
 | passthrough | 未押下、対象外button、対象外device、session終了後に通常click、move、drag、wheelを変更・抑制・再生成しない | event種別identity、生成0、抑制0、解放境界、failure後復帰 | 23 session後の通常操作復帰を確認。異常終了後の実機復帰は残る | `統合検証中` |
 | cursor固定 | button downの絶対座標をsession anchorとして1回だけ保存し、開始時と各move取得後に同じ座標へwarpする。wheelではwarpせず、全terminalでanchorを破棄する | 3 buttonのanchor所有権、正負・斜めmove、wheel非warp、warp失敗、ended / cancelled / timeout / tap中断 / kill switch / stop / 出力失敗のstate testと実座標runner | Nape Gesture以外をforegroundにした署名済みRelease `.app`で高頻度move中の実座標、ちらつき、session後の通常移動復帰を確認する | `統合検証中` |
@@ -79,8 +79,8 @@ artifacts/completion/YYYY-MM-DD/<repo-sha>/<scenario-id>/
 | GestureClass | 合格条件 |
 | --- | --- |
 | 2本指scroll / swipe | type 22 scrollと必要なtype 29 envelope / companionが、別々のphase fieldとline / fixed / point / gesture motion単位を登録contractの順序、field、timestamp関係で完結する |
-| 3本指system swipe | type 30 / classifier 23のDockSwipeがphase fields 132 / 134の1 / 2 / 4 / 8、IOHID motion 1 / 2、source delta / 600の累積progressとXY position、source velocity / 600の終端XY velocityで完結する |
-| 4本指system pinch | type 30 / classifier 23のDockSwipeがphase fields 132 / 134の1 / 2 / 4 / 8、IOHID motion 4、Y優先のsigned source delta / 600の累積pinch progress、同じ符号規則のsource velocity / 600の終端Z velocityで完結する。application magnification eventを使わない |
+| 3本指system swipe | type 30 / classifier 23のDockSwipeがphase fields 132 / 134の1 / 2 / 4 / 8、IOHID motion 1 / 2、`(source delta / 600) * systemGestureSensitivity`の累積progressとXY position、同じ式によるsource velocityの終端XY velocityで完結する |
+| 4本指system pinch | type 30 / classifier 23のDockSwipeがphase fields 132 / 134の1 / 2 / 4 / 8、IOHID motion 4、Y優先の`(signed source delta / 600) * systemGestureSensitivity`の累積pinch progress、同じ符号規則と倍率によるsource velocityの終端Z velocityで完結する。application magnification eventを使わない |
 
 共通して、fixture identity、source-to-command 1対1、capture order、exact timestamp、session ID、single terminal、system-wide配送を検査する。class間でevent count、field、単位変換が同一であることは要求しない。
 

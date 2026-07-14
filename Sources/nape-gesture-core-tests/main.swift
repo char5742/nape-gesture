@@ -768,6 +768,11 @@ func testGestureConfigurationDecodesOldJSONWithDefaults() {
     expect(configuration?.mode(for: .button3) == .twoFingerSwipe, "旧設定に依存せずbutton 3を2本指へ固定する")
     expect(configuration?.mode(for: .button4) == .systemSwipe, "旧設定に依存せずbutton 4を3本指へ固定する")
     expect(configuration?.mode(for: .button5) == .pinch, "旧設定に依存せずbutton 5をピンチへ固定する")
+    expect(
+        configuration?.systemGestureSensitivity
+            == GestureConfiguration.defaultSystemGestureSensitivity,
+        "旧設定へ共有システムジェスチャー感度の既定値1.0を補う"
+    )
     expect(SettingsValidator.migrationIssues(for: configuration.map {
         NapeGestureSettings(
             gesture: $0,
@@ -779,7 +784,12 @@ func testGestureConfigurationDecodesOldJSONWithDefaults() {
     expect(!reencodedText.contains("directionLockRatio"), "再エンコード時は廃止済み directionLockRatio を除去する")
     expect(!reencodedText.contains("offAxisCancelRatio"), "再エンコード時は廃止済み offAxisCancelRatio を除去する")
     expect(!reencodedText.contains("deadZonePoints"), "再エンコード時は旧dead zoneを除去する")
-    expect(!reencodedText.contains("Sensitivity"), "再エンコード時は旧感度を除去する")
+    expect(!reencodedText.contains("dragSensitivity"), "再エンコード時は旧drag感度を除去する")
+    expect(!reencodedText.contains("wheelSensitivity"), "再エンコード時は旧wheel感度を除去する")
+    expect(
+        reencodedText.contains("systemGestureSensitivity"),
+        "再エンコード時は共有システムジェスチャー感度を保存する"
+    )
     expect(!reencodedText.contains("acceleration"), "再エンコード時は旧加速度を除去する")
     expect(!reencodedText.contains("momentum"), "再エンコード時は旧momentumを除去する")
 }
@@ -819,10 +829,34 @@ func testSettingsMigrationDetectsOnlyDeprecatedGestureKeys() {
           }
         }
         """.utf8)
+    let missingSensitivityJSON = Data(
+        """
+        {
+          "gesture": {
+            "cancellation": {
+              "maximumDuration": 10,
+              "maximumInactivityInterval": 2
+            }
+          }
+        }
+        """.utf8)
+    let nullSensitivityJSON = Data(
+        """
+        {
+          "gesture": {
+            "systemGestureSensitivity": null,
+            "cancellation": {
+              "maximumDuration": 10,
+              "maximumInactivityInterval": 2
+            }
+          }
+        }
+        """.utf8)
     let currentJSON = Data(
         """
         {
           "gesture": {
+            "systemGestureSensitivity": 1.0,
             "cancellation": {
               "maximumDuration": 10,
               "maximumInactivityInterval": 2
@@ -838,6 +872,14 @@ func testSettingsMigrationDetectsOnlyDeprecatedGestureKeys() {
     expect(
         (try? SettingsMigration.requiresCanonicalRewrite(in: currentJSON)) == false,
         "現行gesture設定を不要にmigrationしない"
+    )
+    expect(
+        (try? SettingsMigration.requiresCanonicalRewrite(in: missingSensitivityJSON)) == true,
+        "共有システムジェスチャー感度のない設定をcanonical再保存対象にする"
+    )
+    expect(
+        (try? SettingsMigration.requiresCanonicalRewrite(in: nullSensitivityJSON)) == true,
+        "nullの共有システムジェスチャー感度をcanonical再保存対象にする"
     )
 
     let legacyModeJSON = Data(
@@ -855,6 +897,56 @@ func testSettingsMigrationDetectsOnlyDeprecatedGestureKeys() {
         (try? SettingsMigration.requiresCanonicalRewrite(in: legacyModeJSON)) == true,
         "旧結果名mode値だけの設定もcanonical再保存対象にする"
     )
+}
+
+func testSystemGestureSensitivityDefaultsRoundTripsAndValidatesRange() {
+    expect(
+        GestureConfiguration.default.systemGestureSensitivity == 1.0,
+        "共有システムジェスチャー感度の既定値を1.0にする"
+    )
+    expect(
+        GestureConfiguration.minimumSystemGestureSensitivity == 0.25,
+        "共有システムジェスチャー感度の下限を0.25にする"
+    )
+    expect(
+        GestureConfiguration.maximumSystemGestureSensitivity == 2.0,
+        "共有システムジェスチャー感度の上限を2.0にする"
+    )
+
+    let explicit = GestureConfiguration(systemGestureSensitivity: 1.75)
+    let roundTripped = (try? JSONEncoder().encode(explicit)).flatMap {
+        try? JSONDecoder().decode(GestureConfiguration.self, from: $0)
+    }
+    expect(
+        roundTripped?.systemGestureSensitivity.bitPattern == 1.75.bitPattern,
+        "共有システムジェスチャー感度をcanonical JSONで往復する"
+    )
+
+    for value in [0.25, 1.0, 2.0] {
+        let settings = NapeGestureSettings(
+            gesture: GestureConfiguration(systemGestureSensitivity: value),
+            targetDevices: [DeviceMatcher(productContains: "Nape Pro")]
+        )
+        expect(
+            !SettingsValidator.issues(for: settings).contains {
+                $0.path == "gesture.systemGestureSensitivity"
+            },
+            "共有システムジェスチャー感度の境界内\(value)を受理する"
+        )
+    }
+
+    for value in [0.249_999, 2.000_001, Double.nan, Double.infinity] {
+        let settings = NapeGestureSettings(
+            gesture: GestureConfiguration(systemGestureSensitivity: value),
+            targetDevices: [DeviceMatcher(productContains: "Nape Pro")]
+        )
+        expect(
+            SettingsValidator.issues(for: settings).contains {
+                $0.path == "gesture.systemGestureSensitivity"
+            },
+            "共有システムジェスチャー感度の範囲外または非有限値\(value)を拒否する"
+        )
+    }
 }
 
 func testGestureConfigurationUsesFixedButtonMapping() {
@@ -3225,6 +3317,7 @@ func testSettingsUIFieldCatalogCoversEditableSettings() {
     let paths = descriptors.compactMap(\.settingsPath)
     let requiredPaths: Set<String> = [
         "targetDeviceAssociation.associationWindow",
+        "gesture.systemGestureSensitivity",
         "gesture.cancellation.maximumDuration",
         "gesture.cancellation.maximumInactivityInterval",
         "targetDevices[0].vendorID",
@@ -3240,7 +3333,7 @@ func testSettingsUIFieldCatalogCoversEditableSettings() {
     expect(descriptorFields == SettingsUIField.allCases, "設定UIフィールド catalog は全ケースを順序通り公開する")
     expect(Set(labels).count == labels.count, "設定UIフィールドの表示名は重複しない")
     expect(Set(paths).count == paths.count, "設定UIフィールドの設定パスは重複しない")
-    expect(Set(paths) == requiredPaths, "設定UIは安全設定の編集対象パスだけを網羅する")
+    expect(Set(paths) == requiredPaths, "設定UIは共有感度と安全設定の編集対象パスだけを網羅する")
     let fixedDescriptors = descriptors.filter { $0.valueSource == .fixedProductMapping }
     expect(fixedDescriptors.count == 3, "固定button対応を3件表示する")
     expect(fixedDescriptors.allSatisfy { !$0.isEditable }, "固定button対応を編集不能にする")
@@ -3253,7 +3346,7 @@ func testSettingsUIFieldCatalogCoversEditableSettings() {
         ],
         "固定button対応を読み取り専用の表示値として公開する"
     )
-    let forbiddenTerms = ["mode", "sensitivity", "deadzone", "acceleration", "momentum", "application"]
+    let forbiddenTerms = ["mode", "deadzone", "acceleration", "momentum", "application"]
     expect(
         descriptors.allSatisfy { descriptor in
             forbiddenTerms.allSatisfy { term in
@@ -3261,7 +3354,7 @@ func testSettingsUIFieldCatalogCoversEditableSettings() {
                     && !(descriptor.settingsPath?.localizedCaseInsensitiveContains(term) ?? false)
             }
         },
-        "設定UI catalog にmode、tuning、アプリ別設定を含めない"
+        "設定UI catalog に廃止済みtuning、mode、アプリ別設定を含めない"
     )
     expect(
         descriptors.allSatisfy { !$0.label.contains("アプリ") },
@@ -3294,6 +3387,18 @@ func testSettingsUIFieldCatalogKindsAndSections() {
         .fixedButton4Gesture,
         .fixedButton5Gesture,
     ]
+    let sliderDescriptors = SettingsUIField.descriptors.filter {
+        $0.controlKind == .slider
+    }
+    expect(sliderDescriptors.count == 1, "設定UI schemaのsliderを共有感度用の1件だけにする")
+    expect(
+        sliderDescriptors.first?.field == .systemGestureSensitivity
+            && sliderDescriptors.first?.settingsPath == "gesture.systemGestureSensitivity"
+            && sliderDescriptors.first?.section == .gestureTuning
+            && sliderDescriptors.first?.valueSource == .editableGestureSetting
+            && sliderDescriptors.first?.isEditable == true,
+        "共有システムジェスチャー感度だけを編集可能なgesture tuning sliderとして公開する"
+    )
     for field in numberFields {
         expect(
             descriptorsByField[field]?.controlKind == .numberTextField,
@@ -4324,6 +4429,7 @@ testDeviceIdentityEncodesStableID()
 testGestureConfigurationDecodesOldJSONWithDefaults()
 testGestureConfigurationMigratesResultNamedModes()
 testSettingsMigrationDetectsOnlyDeprecatedGestureKeys()
+testSystemGestureSensitivityDefaultsRoundTripsAndValidatesRange()
 testGestureConfigurationUsesFixedButtonMapping()
 testRecognizerFixesButtonModeForSessionAndWaitsForMatchingRelease()
 testLegacyNoneModesCannotDisableFixedButtons()

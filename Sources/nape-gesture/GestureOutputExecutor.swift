@@ -4,8 +4,14 @@ import NapeGestureProductOutput
 final class GestureOutputExecutor {
     private let coordinator: FixedGestureProductSessionCoordinator
 
-    init(output: any ProductGestureOutput = TrackpadGestureOutputAdapter()) {
-        coordinator = FixedGestureProductSessionCoordinator(output: output)
+    init(
+        output: any ProductGestureOutput = TrackpadGestureOutputAdapter(),
+        systemGestureSensitivity: Double = GestureConfiguration.defaultSystemGestureSensitivity
+    ) {
+        coordinator = FixedGestureProductSessionCoordinator(
+            output: output,
+            systemGestureSensitivity: systemGestureSensitivity
+        )
     }
 
     func ensureOutputAvailable() throws {

@@ -26,13 +26,13 @@ macOS 26.5.1（build 25F80）について、純正trackpad captureからtype 22 
 | GestureClass | family | encoding |
 | --- | --- | --- |
 | 2本指scroll / swipe | `scroll` | type 22 scrollとtype 29 envelope / companion。scroll phase field 99とcompanion phase field 132、line / fixed / point / gesture motion単位 |
-| 3本指system swipe | `dockSwipe` | type 30 / classifier 23、phase fields 132 / 134、IOHID motion 1 / 2。progress / XY positionはsource delta / 600、終端XY velocityはsource velocity / 600 |
-| 4本指system pinch | `dockSwipePinch` | type 30 / classifier 23、phase fields 132 / 134、IOHID motion 4。progressはY優先のsigned source delta / 600、終端Z velocityは同じ符号規則のsource velocity / 600 |
+| 3本指system swipe | `dockSwipe` | type 30 / classifier 23、phase fields 132 / 134、IOHID motion 1 / 2。progress / XY positionは`(source delta / 600) * systemGestureSensitivity`、終端XY velocityは`(source velocity / 600) * systemGestureSensitivity` |
+| 4本指system pinch | `dockSwipePinch` | type 30 / classifier 23、phase fields 132 / 134、IOHID motion 4。progressはY優先の`(signed source delta / 600) * systemGestureSensitivity`、終端Z velocityは同じ符号規則の`(source velocity / 600) * systemGestureSensitivity` |
 
 - fixed coordinatorはGestureClassからfamilyを一意に選ぶ。
 - class固有のaxis選択、progress / position / velocity変換は、物理contractを再現するadapter encodingとして扱う。
 - 認識済みtemplateからIOHID `DockSwipe` type 23を復元し、timestamp、sender ID、phase flags、mask = 0、motion、flavor = 3、progress、position、終端velocity childを更新してからCGEventとIOHID値を再検証する。
-- 3本指と4本指はevent family、motion、axis、符号規則を分けたまま、mouse source deltaとsource velocityに`/ 600`の固定変換スケールを共有する。この係数をユーザー感度またはapplication別調整値として公開しない。
+- 3本指と4本指はevent family、motion、axis、符号規則を分けたまま、100%時の`/ 600`基準と`systemGestureSensitivity`を共有する。倍率は0.25から2.0、既定値1.0で、button別、方向別、application別には分けない。2本指scrollの変換modelは変更しない。
 - accepted source sampleごとに1 commandを生成し、X/Y、符号、source kind、timestamp、capture order、session IDを保持する。
 - 1 commandから生成するevent数はclassにより異なってよい。scroll input batchは全eventを構築・検証してから投稿する。
 - batch部分投稿後は未投稿offsetと予約済みpost indexを保持し、同じsource eventまたは同じterminalだけを再試行する。
@@ -58,6 +58,7 @@ macOS 26.5.1（build 25F80）について、純正trackpad captureからtype 22 
 - button 3 / 4 / 5から固定classと`scroll` / `dockSwipe` / `dockSwipePinch`へのmappingを機械判定する。
 - source sample 1対1 command化、X/Y、符号、timestamp、capture order、drop、duplicate、reorderを検査する。
 - class別event type、field、phase、unit conversion、batch、single terminalをfixtureと比較する。
+- `systemGestureSensitivity`の0.25 / 1.0 / 2.0でbutton 4 / 5のdeltaとvelocityが`(source / 600) * 倍率`になり、button 3の出力が変わらないことを検査する。
 - scroll contract、model、DockSwipe templateのidentityとbytesを個別に改変し、runtime全体が抑制前にfail closedすることを確認する。host OS identityを注入しなくてもProductOutputが成立することを別macOS buildのCIで確認する。
 - batch作成失敗、部分投稿、terminal再試行、direct post trace、capture provenance、raw配送先fieldを検査する。
 - 3 familyを同じProductOutputからsystem-wideへ投稿し、type 30のmotion 1 / 2 / 4とIOHID値を検査するsmokeを実行する。
@@ -66,7 +67,7 @@ macOS 26.5.1（build 25F80）について、純正trackpad captureからtype 22 
 
 - PR #143から#147で成立していたProductOutput adapterを製品実装として維持する。
 - runtime readinessは3 familyすべてを要求する。1 familyでもidentityまたは構築条件を満たさなければruntime全体を開始しない。
-- GUIはfamily selectorを持たず、固定GestureClassを読み取り専用表示する。
+- GUIはfamily selectorを持たず、固定GestureClassを読み取り専用表示し、button 4 / 5共通のシステムジェスチャー感度だけを編集可能にする。
 - 登録済みcontract assetが不完全、またはeventを構築できない環境では通常mouse入力を保持して停止する。OS build番号が変わったことだけでは停止しない。
 - release buildの`/Applications/Nape Gesture.app`はインストール済みでdoctor runtime readyである。system-testではDockが3本指垂直とmotion 4の正負両方向を受理済みだが、Nape Pro実機button 4 / 5の入力、terminal、通常mouse復帰は別途物理受入する。
 

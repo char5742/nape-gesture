@@ -617,6 +617,11 @@ private func testSettingsMigrationPreservesOperationalSettingsAndIsIdempotent() 
         return
     }
     expect(SettingsValidator.migrationIssues(for: decoded).isEmpty, "有効な旧設定をcanonical化前に検証する")
+    expect(
+        decoded.gesture.systemGestureSensitivity.bitPattern
+            == GestureConfiguration.defaultSystemGestureSensitivity.bitPattern,
+        "旧drag / wheel感度から共有システムジェスチャー感度を復元せず1.0へ戻す"
+    )
 
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys]
@@ -652,6 +657,10 @@ private func testSettingsMigrationPreservesOperationalSettingsAndIsIdempotent() 
     expect(canonical.gesture.mode(for: .button3) == .twoFingerSwipe, "旧button 3 modeに依存せず固定対応へ戻す")
     expect(canonical.gesture.mode(for: .button4) == .systemSwipe, "旧button 4 modeに依存せず固定対応へ戻す")
     expect(canonical.gesture.mode(for: .button5) == .pinch, "旧button 5 modeに依存せず固定対応へ戻す")
+    expect(
+        canonical.gesture.systemGestureSensitivity.bitPattern == 1.0.bitPattern,
+        "旧設定を共有システムジェスチャー感度1.0へcanonical migrationする"
+    )
 
     let root = (try? JSONSerialization.jsonObject(with: canonicalData)) as? [String: Any]
     let gesture = root?["gesture"] as? [String: Any]
@@ -666,7 +675,13 @@ private func testSettingsMigrationPreservesOperationalSettingsAndIsIdempotent() 
             ],
         "canonical設定を現行top-level keyだけで保存する"
     )
-    expect(Set(gesture?.keys.map { $0 } ?? []) == ["cancellation"], "canonical gestureから旧modeとtuningを除去する")
+    expect(
+        Set(gesture?.keys.map { $0 } ?? [])
+            == ["systemGestureSensitivity", "cancellation"],
+        "canonical gestureへ共有感度だけを保存し旧modeとtuningを除去する"
+    )
+    expect(gesture?["dragSensitivity"] == nil, "旧drag感度をcanonical設定へ復元しない")
+    expect(gesture?["wheelSensitivity"] == nil, "旧wheel感度をcanonical設定へ復元しない")
     expect(
         Set(cancellation?.keys.map { $0 } ?? [])
             == ["maximumDuration", "maximumInactivityInterval"],

@@ -1,9 +1,15 @@
 import Foundation
 
 public struct GestureConfiguration: Codable, Equatable, Sendable {
+    public static let defaultSystemGestureSensitivity = 1.0
+    public static let minimumSystemGestureSensitivity = 0.25
+    public static let maximumSystemGestureSensitivity = 2.0
+    public static let systemGestureSensitivityStep = 0.05
+
     public var deadZonePoints: Double
     public var dragSensitivity: Double
     public var wheelSensitivity: Double
+    public var systemGestureSensitivity: Double
     public var acceleration: GestureAccelerationConfiguration
     public var cancellation: GestureCancellationConfiguration
     public var momentum: MomentumConfiguration
@@ -13,6 +19,7 @@ public struct GestureConfiguration: Codable, Equatable, Sendable {
         deadZonePoints: Double = 8.0,
         dragSensitivity: Double = 1.0,
         wheelSensitivity: Double = 1.0,
+        systemGestureSensitivity: Double = GestureConfiguration.defaultSystemGestureSensitivity,
         acceleration: GestureAccelerationConfiguration = .default,
         cancellation: GestureCancellationConfiguration = .default,
         momentum: MomentumConfiguration = .default
@@ -20,6 +27,7 @@ public struct GestureConfiguration: Codable, Equatable, Sendable {
         self.deadZonePoints = deadZonePoints
         self.dragSensitivity = dragSensitivity
         self.wheelSensitivity = wheelSensitivity
+        self.systemGestureSensitivity = systemGestureSensitivity
         self.acceleration = acceleration
         self.cancellation = cancellation
         self.momentum = momentum
@@ -35,6 +43,7 @@ public struct GestureConfiguration: Codable, Equatable, Sendable {
         case deadZonePoints
         case dragSensitivity
         case wheelSensitivity
+        case systemGestureSensitivity
         case acceleration
         case cancellation
         case momentum
@@ -57,6 +66,9 @@ public struct GestureConfiguration: Codable, Equatable, Sendable {
             try container.decodeIfPresent(Double.self, forKey: .dragSensitivity) ?? 1.0
         wheelSensitivity =
             try container.decodeIfPresent(Double.self, forKey: .wheelSensitivity) ?? 1.0
+        systemGestureSensitivity =
+            try container.decodeIfPresent(Double.self, forKey: .systemGestureSensitivity)
+            ?? Self.defaultSystemGestureSensitivity
         acceleration =
             try container.decodeIfPresent(
                 GestureAccelerationConfiguration.self, forKey: .acceleration)
@@ -71,6 +83,7 @@ public struct GestureConfiguration: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(systemGestureSensitivity, forKey: .systemGestureSensitivity)
         try container.encode(cancellation, forKey: .cancellation)
     }
 

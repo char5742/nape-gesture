@@ -304,6 +304,7 @@ final class StatusApp: NSObject, NSApplicationDelegate {
             "キルスイッチ: \(KillSwitchShortcut.displayName)",
             "実行状態: \(runtime.isRunning ? "実行中" : "停止中")",
             "設定ファイル: \(configPath)",
+            "システムジェスチャー感度: \(Int((settings.gesture.systemGestureSensitivity * 100).rounded()))%",
             "対象入力の紐づけ秒: \(settings.targetDeviceAssociation.associationWindow)",
             "HIDデバイス数: \(inventory.allDeviceCountDescription)",
             "マウスインターフェース数: \(inventory.mouseInterfaceCountDescription)",
@@ -597,10 +598,10 @@ struct StatusAppSmokeSnapshot: Codable {
             failures.append("設定toolbarがジェスチャー / 詳細の固定paneではありません: \(settingsToolbarItems)")
         }
         if abs((settingsWindowContentWidth ?? 0) - 680) > 1
-            || abs((settingsWindowContentHeight ?? 0) - 560) > 1
+            || abs((settingsWindowContentHeight ?? 0) - 620) > 1
         {
             failures.append(
-                "設定ウィンドウのcontent sizeが680x560ではありません: "
+                "設定ウィンドウのcontent sizeが680x620ではありません: "
                     + "\(settingsWindowContentWidth ?? 0)x\(settingsWindowContentHeight ?? 0)"
             )
         }
@@ -656,8 +657,14 @@ struct StatusAppSmokeSnapshot: Codable {
             if !settingsWindowSmoke.paneSwitchesContent {
                 failures.append("ジェスチャー / 詳細paneの切り替えが内容へ反映されません。")
             }
-            if settingsWindowSmoke.gesturePaneHasEditableSettingControl {
-                failures.append("固定ジェスチャーpaneに変更可能なmodeまたは感度controlがあります。")
+            if settingsWindowSmoke.gestureSensitivitySliderCount != 1
+                || !settingsWindowSmoke.gestureSensitivityPercentText.hasSuffix("%")
+                || !settingsWindowSmoke.gestureSensitivityEditEnablesApply
+            {
+                failures.append("共有システムジェスチャー感度controlが正しく動作しません。")
+            }
+            if settingsWindowSmoke.gesturePaneHasForbiddenModeControl {
+                failures.append("固定ジェスチャーpaneに変更可能なmode controlがあります。")
             }
             if settingsWindowSmoke.detailsEditableTextFieldCount != 10
                 || settingsWindowSmoke.detailsCheckboxCount != 1
