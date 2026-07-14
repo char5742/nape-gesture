@@ -1,37 +1,36 @@
 # リリース手順
 
-この文書は、固定されたbutton-to-GestureClass製品モデルの受入、`.app`作成、署名、公証、配布判定をまとめる。
-package作成や公証が成功しても、source sample保存、固定GestureClass、session terminal、cursor固定、passthrough、実機証跡、fail closedの必須ゲートが未達ならリリースしない。
+この文書は、buttonごとに選択可能なGestureClass製品モデルの受入、`.app`作成、署名、公証、配布判定をまとめる。
+package作成や公証が成功しても、source sample保存、button割り当て、session terminal、cursor固定、passthrough、実機証跡、fail closedの必須ゲートが未達ならリリースしない。
 製品モデルの設計判断は[ADR-0049](adr/0049-fixed-button-to-gesture-class-input.md)を正とする。
 
 ## 現在のリリース状態
 
-現行release候補はbutton 3 / 4 / 5を固定GestureClassへ接続し、Nape Pro実機の3 classを合計23 session受け入れている。ad-hoc署名版はローカル試用可能だが、純正trackpadとの最終比較、異常終了後の復旧、Developer ID署名、公証、stapler、Gatekeeperが未完了のため、公開配布は**リリース不可**である。
+button割り当て機能は同じ署名済みRelease候補で全9対応、全27設定round-trip、重複、class基準感度、GUI保存・再起動後復元まで合格し、ローカル試用可能である。現時点の公開配布判定は**リリース不可**である。固定された既定割り当ての旧binaryではNape Pro実機の3 classを合計23 session受け入れたが、既定button以外からの物理受入、純正trackpadとの最終比較、異常終了後の復旧、Developer ID署名、公証、stapler、Gatekeeperは未完了である。
 
 旧mode test、`supportedFamilies` / `confirmedFamilies` / `trialFamilies`、個別familyの生成成功、旧runtime evidence、画面結果、公証のいずれもこの判定を上書きしない。
 
 ## 製品モデル
 
-release binaryは次だけを実装する。
+release binaryはbutton 3 / 4 / 5のそれぞれに、次の3 GestureClassから1つを割り当てる。同じclassの重複割り当てを許可し、無効または未割り当ては許可しない。
 
-| mouse入力 | 固定GestureClass | ProductOutput |
+| GestureClass | ProductOutput | `systemGestureSensitivity` |
 | --- | --- | --- |
-| button 3押下中の連続event量 | `twoFingerScrollSwipe` | type 22 scroll + type 29 companion |
-| button 4押下中の連続event量 | `threeFingerSystemSwipe` | type 30 DockSwipe motion 1 / 2 |
-| button 5押下中の連続event量 | `pinch`（4本指system pinch相当） | type 30 DockSwipe motion 4 |
-| button 3 / 4 / 5未押下 | 変換なし | 通常mouseをそのまま通す |
+| `twoFingerScrollSwipe` | type 22 scroll + type 29 companion | 適用しない |
+| `threeFingerSystemSwipe` | type 30 DockSwipe motion 1 / 2 | 適用する |
+| `pinch`（4本指system pinch相当） | type 30 DockSwipe motion 4 | 適用する |
 
-結果別mode、方向別action、application別設定を含めない。
+button 3 / 4 / 5未押下時は通常mouseをそのまま通す。方向別action、application別設定、button別感度を含めない。
 `scroll`、`DockSwipe`、`NavigationSwipe`、`magnification`は低レベルcontractの観測語彙であり、ユーザーmode、独立製品機能、release capabilityではない。
 OS/Appが入力結果を解釈し、製品runtimeは結果に応じてAX、対象PID、frontmost application、keyboard shortcut、別familyへ切り替えない。
-同じsource event列を3 buttonへ与えた場合、変換前のX/Y量、符号、順序、timestamp、sample間隔を変えない。一方、各GestureClassは異なる上位event contractを使うため、event type、field、phase、companion、単位変換が異なることを必須とする。button 4 / 5は25%から200%、既定100%の共通`systemGestureSensitivity`を`(source / 600) * 倍率`として使い、button 3、固定mapping、方向、applicationには適用しない。
+同じsource event列を3 buttonへ与えた場合、変換前のX/Y量、符号、順序、timestamp、sample間隔を変えない。一方、各GestureClassは異なる上位event contractを使うため、event type、field、phase、companion、単位変換が異なることを必須とする。25%から200%、既定100%の共通`systemGestureSensitivity`は、物理button番号ではなく選択された3本指 / 4本指classへ`(source / 600) * 倍率`として適用し、2本指class、方向、applicationには適用しない。
 
 ## 必須release gate
 
 | gate | release条件 |
 | --- | --- |
 | source sample保存 | source eventが欠落・重複・並べ替えなく1 commandへ変換され、変換前の量、順序、timestamp、sample間隔を保持する |
-| 固定GestureClass | button 3 / 4 / 5が全frameとterminalで`twoFingerScrollSwipe` / `threeFingerSystemSwipe` / `pinch`へ固定され、進行中の追加buttonでも切り替わらない |
+| button割り当て | 3 buttonそれぞれで3 classを選択・保存・復元でき、重複を許可し、無効値を持たず、session開始後は設定変更や追加buttonでもclassが切り替わらない |
 | session terminal | 正常終了と全異常終了がterminal 1件へ収束し、stuckとterminal後出力が0件 |
 | cursor固定 | button downの絶対座標をsession anchorとして保存し、開始時と各move取得後に同じ座標へwarpする。wheelではwarpせず、全terminalでanchorを破棄し、署名済みRelease `.app`のbackground実座標検証を通す |
 | passthrough | 未押下、解放後、異常終了後の通常mouseが抑制・変更・再生成されない |
@@ -61,7 +60,7 @@ family名はreportの観測列に限る。familyごとの`supported`、`confirme
 OS/App結果は低レベルcontractと別report、別判定にする。
 
 - App名 / version、macOS build、gesture設定を保存する
-- source button、固定GestureClass、event量、方向、速度、session IDを保存する
+- source button、保存済み割り当て、sessionで選択したGestureClass、event量、方向、速度、session IDを保存する
 - 対応する低レベルcontract reportを参照する
 - AppKit target logまたはsystem resultと画面観察を保存する
 - 結果の成否にかかわらずterminalとstuckなしを確認する
@@ -86,7 +85,7 @@ swift build --scratch-path .build
 swift build -c release --scratch-path .build
 ~~~
 
-現行release候補ではCore / ProductOutput / diagnostic test、製品モデル文書guard、product-output boundary、release build、bundle verifierを成功させる。旧3 mode / 3 family routingが製品runtime、GUI、canonical設定へ到達しないことを確認する。
+現行release候補ではCore / ProductOutput / diagnostic test、製品モデル文書guard、product-output boundary、release build、bundle verifierを成功させる。9通りのbutton-class対応、27通りのcanonical round-trip、GUI selector、class基準の感度適用を検査し、旧結果別mode / family routingが製品runtime、GUI、canonical設定へ到達しないことを確認する。
 
 ## release証跡
 
@@ -101,7 +100,7 @@ artifacts/release/YYYY-MM-DD/<repo-sha>/
 - repo SHA、binary SHA-256、macOS version / build
 - debug / release buildと全testの終了コード
 - product / diagnostic boundary guard
-- source sample、固定GestureClass、session、cursor固定、passthrough、fail-closed report
+- source sample、button割り当て、選択GestureClass、session、cursor固定、passthrough、fail-closed report
 - 純正trackpadとNape Proのfixture / manifest / analyzer report
 - 低レベルcontract report
 - OS/App結果report
@@ -147,7 +146,7 @@ standalone binaryのTCC状態を配布`.app`の代用にしない。
 
 この実行主体で次を取得する。
 
-1. button 3 / 4 / 5のsource sample、固定GestureClass、terminal。
+1. 27通りの割り当て組み合わせの保存・復元と、9通りのbutton-class対応についてsource sample、保存済み割り当て、sessionで選択したGestureClass、terminal。
 2. gesture中のcursor固定と、未押下、正常解放後、異常終了後のpassthrough。
 3. kill switch、runtime stop、sleep、device切断、TCC喪失、unsupported contractのfail closed。
 4. 純正trackpadの3 classとのcontract比較。
@@ -181,7 +180,7 @@ xcrun stapler validate .build/NapeGesture.app
 spctl --assess --type execute --verbose=4 .build/NapeGesture.app
 ~~~
 
-公証、stapler、Gatekeeper評価は配布物の信頼性gateであり、低レベルcontract互換性や固定GestureClassの証明ではない。
+公証、stapler、Gatekeeper評価は配布物の信頼性gateであり、低レベルcontract互換性やbutton割り当ての証明ではない。
 
 ## 最終判定
 
@@ -194,6 +193,6 @@ release ownerは次を全て確認する。
 - bundle、identity、同梱文書、Developer ID署名、公証、stapler、Gatekeeperが成功
 - README、completion、verification、performance、release noteの主張が一致
 - 未検証事項、未検証OS version / build、未成立OS/App結果を明記
-- 旧3 mode / 3 familyの完成主張を現在のreleaseへ含めていない
+- 固定button mappingまたは旧結果別mode / familyの完成主張を現在のreleaseへ含めていない
 
 1項目でも満たさない場合は`release blocked`とし、既知の問題として後回しにせず根本原因を修正して全証跡を取り直す。

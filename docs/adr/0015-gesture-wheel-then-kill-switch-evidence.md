@@ -7,7 +7,7 @@
 ## 背景
 
 キルスイッチ単体の dry-run は、`Control + Option + Command + G` が生成できることを示せる。
-しかし、Issue #12の目的は暴走時の停止であり、button 3 / 4 / 5の固定GestureClass sessionが進行中の状態でキルスイッチが投入される経路も、実event前に再現できる必要がある。
+しかし、Issue #12の目的は暴走時の停止であり、button 3 / 4 / 5の割り当てから選択されたGestureClass sessionが進行中の状態でキルスイッチが投入される経路も、実event前に再現できる必要がある。
 
 ## 決定
 

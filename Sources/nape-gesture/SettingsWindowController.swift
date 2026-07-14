@@ -47,6 +47,9 @@ final class SettingsWindowController: NSWindowController {
     }
 
     private struct FormState: Equatable {
+        var button3Gesture: FixedGestureClass
+        var button4Gesture: FixedGestureClass
+        var button5Gesture: FixedGestureClass
         var systemGestureSensitivity: Double
         var associationWindow: String
         var maximumDuration: String
@@ -78,6 +81,12 @@ final class SettingsWindowController: NSWindowController {
     private let runtimeStatusLabel = NSTextField(labelWithString: "")
     private let runtimeErrorLabel = NSTextField(labelWithString: "")
     private let passthroughLabel = NSTextField(wrappingLabelWithString: "")
+    private let button3GesturePopUp = NSPopUpButton()
+    private let button4GesturePopUp = NSPopUpButton()
+    private let button5GesturePopUp = NSPopUpButton()
+    private let button3GestureDetailLabel = NSTextField(wrappingLabelWithString: "")
+    private let button4GestureDetailLabel = NSTextField(wrappingLabelWithString: "")
+    private let button5GestureDetailLabel = NSTextField(wrappingLabelWithString: "")
     private let systemGestureSensitivitySlider = NSSlider(
         value: GestureConfiguration.defaultSystemGestureSensitivity,
         minValue: GestureConfiguration.minimumSystemGestureSensitivity,
@@ -89,7 +98,6 @@ final class SettingsWindowController: NSWindowController {
     private let applyButton = NSButton(title: "変更を適用", target: nil, action: nil)
     private let advancedDisclosureButton = NSButton(title: "詳細な識別条件", target: nil, action: nil)
     private let advancedConditionsStack = NSStackView()
-    private var fixedMappingLabels: [NSTextField] = []
 
     private let associationWindowField = NSTextField()
     private let maximumDurationField = NSTextField()
@@ -106,6 +114,14 @@ final class SettingsWindowController: NSWindowController {
         target: nil,
         action: nil
     )
+
+    private var buttonAssignmentPopUps: [NSPopUpButton] {
+        [button3GesturePopUp, button4GesturePopUp, button5GesturePopUp]
+    }
+
+    private var buttonAssignmentDetailLabels: [NSTextField] {
+        [button3GestureDetailLabel, button4GestureDetailLabel, button5GestureDetailLabel]
+    }
 
     init(
         settings: NapeGestureSettings,
@@ -186,7 +202,9 @@ final class SettingsWindowController: NSWindowController {
     func makeSmokeSnapshot() -> SettingsWindowSmokeSnapshot {
         let initialPane = selectedPane
         let initialAssociationWindow = associationWindowField.stringValue
+        let initialTargetProduct = targetProductField.stringValue
         let initialSystemGestureSensitivity = systemGestureSensitivitySlider.doubleValue
+        let initialButtonAssignmentIndexes = buttonAssignmentPopUps.map(\.indexOfSelectedItem)
         let initiallyApplyEnabled = applyButton.isEnabled
         let initialDisclosureState = advancedDisclosureButton.state
         let initiallyAdvancedConditionsHidden = advancedConditionsStack.isHidden
@@ -200,9 +218,13 @@ final class SettingsWindowController: NSWindowController {
         )
         let primaryMatcher = settings.targetDevices.first ?? DeviceMatcher(productContains: "Nape Pro")
         settings.targetDevices = [primaryMatcher, preservedMatcher]
+        if initialSettings.targetDevices.isEmpty {
+            targetProductField.stringValue = primaryMatcher.productContains ?? ""
+        }
         let multipleMatchersPreserved = try? makeUpdatedSettings().targetDevices.dropFirst()
             == [preservedMatcher]
         settings = initialSettings
+        targetProductField.stringValue = initialTargetProduct
 
         associationWindowField.stringValue = initialAssociationWindow + "0"
         updateApplyButtonState()
@@ -237,6 +259,23 @@ final class SettingsWindowController: NSWindowController {
         updateSystemGestureSensitivityLabel()
         updateApplyButtonState()
 
+        if button3GesturePopUp.numberOfItems > 1 {
+            button3GesturePopUp.selectItem(
+                at: (button3GesturePopUp.indexOfSelectedItem + 1)
+                    % button3GesturePopUp.numberOfItems
+            )
+        }
+        buttonAssignmentChanged()
+        let buttonAssignmentEditEnablesApply = applyButton.isEnabled
+        let buttonAssignmentIncludedInUpdatedSettings =
+            try? makeUpdatedSettings().gesture.buttonAssignments.button3
+                == selectedGestureClass(in: button3GesturePopUp)
+        for (popUp, index) in zip(buttonAssignmentPopUps, initialButtonAssignmentIndexes) {
+            popUp.selectItem(at: index)
+        }
+        buttonAssignmentChanged()
+        let buttonAssignmentRevertDisablesApply = !applyButton.isEnabled
+
         advancedDisclosureButton.state = .on
         toggleAdvancedConditions()
         let disclosureExpands = !advancedConditionsStack.isHidden
@@ -255,14 +294,6 @@ final class SettingsWindowController: NSWindowController {
 
         let gestureDescendants = descendants(of: gesturesPaneView)
         let gestureSensitivitySliders = gestureDescendants.compactMap { $0 as? NSSlider }
-        let gesturePaneHasForbiddenModeControl = gestureDescendants.contains { view in
-            if let textField = view as? NSTextField {
-                return textField.isEditable
-            }
-            return view is NSPopUpButton
-                || view is NSSegmentedControl
-                || view is NSSwitch
-        }
         let detailDescendants = descendants(of: detailsPaneView)
         let detailTextFields: [NSTextField] = detailDescendants.compactMap { $0 as? NSTextField }
         let detailButtons: [NSButton] = detailDescendants.compactMap { $0 as? NSButton }
@@ -273,7 +304,12 @@ final class SettingsWindowController: NSWindowController {
             windowIsResizable: window?.styleMask.contains(.resizable) ?? true,
             initiallyApplyEnabled: initiallyApplyEnabled,
             initiallyAdvancedConditionsHidden: initiallyAdvancedConditionsHidden,
-            fixedMappingTexts: fixedMappingLabels.map(\.stringValue),
+            buttonAssignmentSelections: buttonAssignmentPopUps.compactMap(\.titleOfSelectedItem),
+            buttonAssignmentOptionCounts: buttonAssignmentPopUps.map(\.numberOfItems),
+            buttonAssignmentEditEnablesApply: buttonAssignmentEditEnablesApply,
+            buttonAssignmentRevertDisablesApply: buttonAssignmentRevertDisablesApply,
+            buttonAssignmentIncludedInUpdatedSettings:
+                buttonAssignmentIncludedInUpdatedSettings ?? false,
             passthroughText: passthroughLabel.stringValue,
             runtimeStatusText: runtimeStatusLabel.stringValue,
             runtimeStatusUsesSystemImage: runtimeStatusImageView.image != nil,
@@ -285,7 +321,6 @@ final class SettingsWindowController: NSWindowController {
             gestureSensitivitySliderCount: gestureSensitivitySliders.count,
             gestureSensitivityPercentText: systemGestureSensitivityValueLabel.stringValue,
             gestureSensitivityEditEnablesApply: gestureSensitivityEditEnablesApply,
-            gesturePaneHasForbiddenModeControl: gesturePaneHasForbiddenModeControl,
             detailsEditableTextFieldCount: detailTextFields.filter(\.isEditable).count,
             detailsCheckboxCount: detailButtons.filter { $0 === requireTargetCheck }.count,
             multipleMatchersPreserved: multipleMatchersPreserved ?? false,
@@ -386,6 +421,21 @@ final class SettingsWindowController: NSWindowController {
         requireTargetCheck.action = #selector(editableControlChanged)
         requireTargetCheck.setAccessibilityLabel(SettingsUIField.requireMatchingTargetDevice.descriptor.label)
 
+        let assignmentFields: [SettingsUIField] = [
+            .button3GestureAssignment,
+            .button4GestureAssignment,
+            .button5GestureAssignment,
+        ]
+        for (field, popUp) in zip(assignmentFields, buttonAssignmentPopUps) {
+            popUp.removeAllItems()
+            popUp.addItems(withTitles: FixedGestureClass.allCases.map(\.displayName))
+            popUp.target = self
+            popUp.action = #selector(buttonAssignmentChanged)
+            popUp.setAccessibilityLabel("\(field.descriptor.label)の操作")
+            popUp.setContentHuggingPriority(.required, for: .horizontal)
+            popUp.widthAnchor.constraint(equalToConstant: 220).isActive = true
+        }
+
         systemGestureSensitivitySlider.target = self
         systemGestureSensitivitySlider.action = #selector(systemGestureSensitivityChanged)
         systemGestureSensitivitySlider.isContinuous = true
@@ -438,25 +488,28 @@ final class SettingsWindowController: NSWindowController {
         runtimeSeparator.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
         content.setCustomSpacing(16, after: runtimeSeparator)
 
-        content.addArrangedSubview(sectionTitle("固定ジェスチャー"))
-        let mappings: [(SettingsUIField, String, String, String)] = [
+        content.addArrangedSubview(sectionTitle("ボタン割り当て"))
+        let mappings: [(SettingsUIField, String, String, NSPopUpButton, NSTextField)] = [
             (
-                .fixedButton3Gesture,
+                .button3GestureAssignment,
                 "3.circle.fill",
                 "マウスボタン3",
-                "スクロールやスワイプとしてmacOSが解釈します。"
+                button3GesturePopUp,
+                button3GestureDetailLabel
             ),
             (
-                .fixedButton4Gesture,
+                .button4GestureAssignment,
                 "4.circle.fill",
                 "マウスボタン4",
-                "SpacesやMission ControlとしてmacOSが解釈します。"
+                button4GesturePopUp,
+                button4GestureDetailLabel
             ),
             (
-                .fixedButton5Gesture,
+                .button5GestureAssignment,
                 "5.circle.fill",
                 "マウスボタン5",
-                "システムピンチとしてmacOSが解釈します。"
+                button5GesturePopUp,
+                button5GestureDetailLabel
             )
         ]
 
@@ -465,7 +518,8 @@ final class SettingsWindowController: NSWindowController {
                 field: mapping.0,
                 symbolName: mapping.1,
                 symbolDescription: mapping.2,
-                detail: mapping.3
+                popUp: mapping.3,
+                detailLabel: mapping.4
             )
             content.addArrangedSubview(row)
             row.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
@@ -545,11 +599,10 @@ final class SettingsWindowController: NSWindowController {
         field: SettingsUIField,
         symbolName: String,
         symbolDescription: String,
-        detail: String
+        popUp: NSPopUpButton,
+        detailLabel: NSTextField
     ) -> NSStackView {
         let descriptor = field.descriptor
-        let fixedValue = (descriptor.fixedValue ?? "")
-            .replacingOccurrences(of: " / ", with: "／")
         let imageView = NSImageView()
         imageView.image = NSImage(
             systemSymbolName: symbolName,
@@ -560,25 +613,22 @@ final class SettingsWindowController: NSWindowController {
         imageView.widthAnchor.constraint(equalToConstant: 28).isActive = true
         imageView.heightAnchor.constraint(equalToConstant: 28).isActive = true
 
-        let mappingTitle = label(
-            "\(descriptor.label)  \(fixedValue)",
-            font: .systemFont(ofSize: NSFont.systemFontSize, weight: .medium)
-        )
-        fixedMappingLabels.append(mappingTitle)
-        let mappingDetail = secondaryLabel(detail, lines: 1)
-        let text = NSStackView(views: [mappingTitle, mappingDetail])
+        let mappingTitle = label(descriptor.label, font: .systemFont(ofSize: NSFont.systemFontSize, weight: .medium))
+        detailLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        detailLabel.textColor = .secondaryLabelColor
+        detailLabel.maximumNumberOfLines = 1
+        detailLabel.lineBreakMode = .byTruncatingTail
+        let text = NSStackView(views: [mappingTitle, detailLabel])
         text.orientation = .vertical
         text.alignment = .leading
         text.spacing = 2
+        text.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        let row = NSStackView(views: [imageView, text])
+        let row = NSStackView(views: [imageView, text, NSView(), popUp])
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = 12
         row.edgeInsets = NSEdgeInsets(top: 6, left: 0, bottom: 6, right: 0)
-        row.setAccessibilityElement(true)
-        row.setAccessibilityRole(.group)
-        row.setAccessibilityLabel("\(descriptor.label)、\(fixedValue)、\(detail)、読み取り専用")
         return row
     }
 
@@ -792,6 +842,10 @@ final class SettingsWindowController: NSWindowController {
     }
 
     private func populate(_ settings: NapeGestureSettings) {
+        select(settings.gesture.buttonAssignments.button3, in: button3GesturePopUp)
+        select(settings.gesture.buttonAssignments.button4, in: button4GesturePopUp)
+        select(settings.gesture.buttonAssignments.button5, in: button5GesturePopUp)
+        updateButtonAssignmentDetails()
         systemGestureSensitivitySlider.doubleValue = settings.gesture.systemGestureSensitivity
         updateSystemGestureSensitivityLabel()
         associationWindowField.stringValue = String(settings.targetDeviceAssociation.associationWindow)
@@ -812,6 +866,9 @@ final class SettingsWindowController: NSWindowController {
 
     private var formState: FormState {
         FormState(
+            button3Gesture: selectedGestureClass(in: button3GesturePopUp),
+            button4Gesture: selectedGestureClass(in: button4GesturePopUp),
+            button5Gesture: selectedGestureClass(in: button5GesturePopUp),
             systemGestureSensitivity: systemGestureSensitivitySlider.doubleValue,
             associationWindow: associationWindowField.stringValue,
             maximumDuration: maximumDurationField.stringValue,
@@ -867,6 +924,11 @@ final class SettingsWindowController: NSWindowController {
 
         let updated = NapeGestureSettings(
             gesture: GestureConfiguration(
+                buttonAssignments: GestureButtonAssignments(
+                    button3: selectedGestureClass(in: button3GesturePopUp),
+                    button4: selectedGestureClass(in: button4GesturePopUp),
+                    button5: selectedGestureClass(in: button5GesturePopUp)
+                ),
                 systemGestureSensitivity: systemGestureSensitivitySlider.doubleValue,
                 cancellation: GestureCancellationConfiguration(
                     maximumDuration: maximumDuration,
@@ -909,6 +971,11 @@ final class SettingsWindowController: NSWindowController {
         updateApplyButtonState()
     }
 
+    @objc private func buttonAssignmentChanged() {
+        updateButtonAssignmentDetails()
+        updateApplyButtonState()
+    }
+
     @objc private func systemGestureSensitivityChanged() {
         let step = GestureConfiguration.systemGestureSensitivityStep
         systemGestureSensitivitySlider.doubleValue =
@@ -924,6 +991,40 @@ final class SettingsWindowController: NSWindowController {
         systemGestureSensitivityValueLabel.setAccessibilityLabel("現在の感度")
         systemGestureSensitivityValueLabel.setAccessibilityValue(text)
         systemGestureSensitivitySlider.setAccessibilityValue(text)
+    }
+
+    private func select(_ gestureClass: FixedGestureClass, in popUp: NSPopUpButton) {
+        guard let index = FixedGestureClass.allCases.firstIndex(of: gestureClass) else {
+            return
+        }
+        popUp.selectItem(at: index)
+    }
+
+    private func selectedGestureClass(in popUp: NSPopUpButton) -> FixedGestureClass {
+        let index = popUp.indexOfSelectedItem
+        guard FixedGestureClass.allCases.indices.contains(index) else {
+            return .twoFingerScrollSwipe
+        }
+        return FixedGestureClass.allCases[index]
+    }
+
+    private func updateButtonAssignmentDetails() {
+        for (popUp, detailLabel) in zip(buttonAssignmentPopUps, buttonAssignmentDetailLabels) {
+            let gestureClass = selectedGestureClass(in: popUp)
+            detailLabel.stringValue = detailText(for: gestureClass)
+            popUp.setAccessibilityValue(gestureClass.displayName)
+        }
+    }
+
+    private func detailText(for gestureClass: FixedGestureClass) -> String {
+        switch gestureClass {
+        case .twoFingerScrollSwipe:
+            "スクロールやページ移動としてmacOSが解釈します。"
+        case .threeFingerSystemSwipe:
+            "SpacesやMission ControlとしてmacOSが解釈します。"
+        case .pinch:
+            "システムピンチとしてmacOSが解釈します。"
+        }
     }
 
     @objc private func toggleAdvancedConditions() {
@@ -1107,7 +1208,11 @@ struct SettingsWindowSmokeSnapshot: Codable {
     var windowIsResizable: Bool
     var initiallyApplyEnabled: Bool
     var initiallyAdvancedConditionsHidden: Bool
-    var fixedMappingTexts: [String]
+    var buttonAssignmentSelections: [String]
+    var buttonAssignmentOptionCounts: [Int]
+    var buttonAssignmentEditEnablesApply: Bool
+    var buttonAssignmentRevertDisablesApply: Bool
+    var buttonAssignmentIncludedInUpdatedSettings: Bool
     var passthroughText: String
     var runtimeStatusText: String
     var runtimeStatusUsesSystemImage: Bool
@@ -1119,7 +1224,6 @@ struct SettingsWindowSmokeSnapshot: Codable {
     var gestureSensitivitySliderCount: Int
     var gestureSensitivityPercentText: String
     var gestureSensitivityEditEnablesApply: Bool
-    var gesturePaneHasForbiddenModeControl: Bool
     var detailsEditableTextFieldCount: Int
     var detailsCheckboxCount: Int
     var multipleMatchersPreserved: Bool

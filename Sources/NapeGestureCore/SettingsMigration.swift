@@ -11,7 +11,6 @@ public enum SettingsMigration {
         "button3Mode",
         "button4Mode",
         "button5Mode",
-        "buttonAssignments",
         "deadZonePoints",
         "directionBindings",
         "directionLockRatio",
@@ -51,6 +50,15 @@ public enum SettingsMigration {
         }
         if gesture["systemGestureSensitivity"] == nil
             || gesture["systemGestureSensitivity"] is NSNull
+        {
+            return true
+        }
+        guard let assignments = gesture["buttonAssignments"] as? [String: Any] else {
+            return true
+        }
+        let assignmentKeys: Set<String> = ["button3", "button4", "button5"]
+        if Set(assignments.keys) != assignmentKeys
+            || assignmentKeys.contains(where: { assignments[$0] is NSNull })
         {
             return true
         }

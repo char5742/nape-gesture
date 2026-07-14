@@ -32,18 +32,19 @@
 - 新規公開前の baseline として `NapeGesture` / `NapeGestureCore` / `nape-gesture` へ統一済み
 - 公開後は CLI 名や module 名の変更を破壊的変更として扱う
 
-## P0: 旧mode・tuning設定から固定GestureClassモデルへの移行
+## P0: 旧mode・固定mappingからbutton割り当てモデルへの移行
 
 設計正本は[ADR-0049](adr/0049-fixed-button-to-gesture-class-input.md)とする。Issue #148は移行時の追跡履歴であり、現在の仕様や実装状態の正本には使わない。
 
 移行後の製品モデル:
 
-- mouse button 3押下中は固定`twoFingerScrollSwipe` classとして、type 22 scrollと必要なtype 29 companionへ変換する
-- mouse button 4押下中は固定`threeFingerSystemSwipe` classとして、type 30 `DockSwipe` motion 1 / 2へ変換する
-- mouse button 5押下中は固定`pinch` class（4本指system pinch相当）として、type 30 `DockSwipe` motion 4へ変換する
+- mouse button 3 / 4 / 5のそれぞれに`twoFingerScrollSwipe`、`threeFingerSystemSwipe`、`pinch`から1つを割り当てる
+- 同じGestureClassを複数buttonへ割り当てられる
+- 各buttonには常に1 classを割り当て、無効または未割り当てにはしない
 - button 3 / 4 / 5未押下時は通常mouse入力を変更せず通す
+- GestureClassから`scroll` / `dockSwipe` / `dockSwipePinch`へのProductOutput contractは変更しない
 
-「2 / 3 / 4本指」はraw contact数やgeneric `fingerCount` transportではなく、固定GestureClassのユーザー向け説明である。各class固有のevent type、field、phase、companion、単位変換を使う。この対応は設定項目ではなく、結果別mode、方向別action、application別の有効・無効、感度、割り当てへ移行してはならない。例外として`gesture.systemGestureSensitivity`だけをbutton 4 / 5共通のcanonical倍率として持ち、button 3と固定mappingには適用しない。
+「2 / 3 / 4本指」はraw contact数やgeneric `fingerCount` transportではなく、GestureClassのユーザー向け説明である。各class固有のevent type、field、phase、companion、単位変換を使う。結果別mode、方向別action、application別の有効・無効、感度、割り当てへ戻してはならない。`gesture.systemGestureSensitivity`は3本指 / 4本指class共通のcanonical倍率として持ち、物理button番号ではなく選択されたclassへ適用する。
 
 旧設定として扱う項目:
 
@@ -53,22 +54,37 @@
 - 方向別actionまたはapplication別bindingの旧key
 - `gesture.deadZonePoints`、`gesture.dragSensitivity`、`gesture.wheelSensitivity`、`gesture.acceleration`、`gesture.momentum`
 
+canonical形式:
+
+```json
+{
+  "gesture": {
+    "buttonAssignments": {
+      "button3": "twoFingerScrollSwipe",
+      "button4": "threeFingerSystemSwipe",
+      "button5": "pinch"
+    },
+    "systemGestureSensitivity": 1.0
+  }
+}
+```
+
 移行条件:
 
-- 旧mode値を製品runtimeの分岐に使わず、button番号から固定GestureClassを一意に決める
-- `none`を含む旧mode値で固定mappingを無効化または変更しない
-- 旧mode / action / binding / tuning keyは読込時に検出し、対象device条件や安全停止条件など他の有効な設定を保持したままcanonical configから除去する
+- `gesture.buttonAssignments`がない固定モデルの設定には、button 3 = `twoFingerScrollSwipe`、button 4 = `threeFingerSystemSwipe`、button 5 = `pinch`を既定値として補う
+- 現行`buttonAssignments`は3 keyすべてを持ち、各値は3 GestureClassのいずれかとする。同じ値の重複を正規化または拒否しない
+- `none`、null、欠落key、未知classを現行割り当てとして受け入れない
+- 旧mode値を現行割り当てへ推測変換せず、旧mode / action / binding / tuning keyは他の有効な設定を保持したままcanonical configから除去する
 - class固有の単位変換contractはfixtureとOS buildから選び、旧`dragSensitivity`、`wheelSensitivity`、加速度、dead zone、momentum係数を新しい`systemGestureSensitivity`へ移行または再保存しない
 - canonicalな`gesture.systemGestureSensitivity`がない旧設定には1.0を補う。既に0.25から2.0のcanonical値がある場合だけその値を保持する
-- 旧key除去とcanonical config保存は原子的に行い、再起動を繰り返しても同じ結果になる
-- migration失敗時は元設定fileを保持し、固定mappingが確定しない状態でruntimeを開始しない
-- 未知または壊れた旧値を結果別modeへ推測変換せず、安全停止と復旧可能なエラーを使う
+- 旧key除去、割り当て補完、canonical config保存は原子的に行い、再起動を繰り返しても同じ結果になる
+- migration失敗時は元設定fileを保持し、3 buttonの割り当てが確定しない状態でruntimeを開始しない
 - 設定UI、canonical JSON schema、runtime log、現行migration test fixtureに旧modeを現行設定として再出力しない
 - historical fixtureや証跡へ旧modeを残す場合は旧モデルの記録であることを明記し、現行期待値へ使わない
 
-`scroll`と`DockSwipe`はclass固有ProductOutputの内部contractとして、`NavigationSwipe`と`magnification`は履歴上の観測語彙として互換ログやfixtureに残せる。ただし、いずれもユーザーmode、変更可能なbutton割り当て、独立製品機能、OS/App結果を表す名前には使わない。
+`scroll`と`DockSwipe`はclass固有ProductOutputの内部contractとして、`NavigationSwipe`と`magnification`は履歴上の観測語彙として互換ログやfixtureに残せる。ただし、いずれもGUIの割り当て候補、ユーザーmode、独立製品機能、OS/App結果を表す名前には使わない。
 
-2026-07-12のbaseline `55eb991` は旧mode keyと選択UIを保持していた移行前履歴であり、現在の実装状態を示さない。現行判定では、canonical設定から旧modeと旧tuningを原子的に除去し、新しい共通感度だけを保持または1.0で補完する。GUIの固定mappingを読取専用にし、runtimeとmigration testが3つの固定GestureClassおよびbutton 4 / 5共通感度へ一致していることを確認する。
+2026-07-12のbaseline `55eb991` は旧mode keyと選択UIを保持していた移行前履歴であり、現在の実装状態を示さない。固定mappingへ移行した後の設定も、割り当てfieldを持たない移行元として扱う。現行判定では、canonical設定から旧modeと旧tuningを原子的に除去し、3 buttonの割り当てと共通感度だけを保存する。runtimeとmigration testでは重複割り当て、既定値補完、再起動後復元、選択class基準の感度適用を確認する。
 
 ## P1: 設定パス
 
@@ -103,7 +119,7 @@
 - 新規出力は `generatedByNapeGesture` を使う
 - 旧ログ互換のため、decode 時は `generatedByMacGesture` も読む
 - encode 時は旧キーを出さない
-- 現行ログはsource button、固定GestureClass、class固有ProductOutput、OS/App結果を別項目として検証可能にする
+- 現行ログはsource button、保存済み割り当て、sessionで選択したGestureClass、class固有ProductOutput、OS/App結果を別項目として検証可能にする
 
 ## P2: 配布文書
 
@@ -126,6 +142,6 @@
 注意点:
 
 - UI 名変更は権限導線と同じ検証で確認する
-- buttonごとのmode / family選択、方向別action、application別設定を表示しない
-- 固定button→GestureClass対応を説明用の読取専用表示とし、変更可能なcontrolにしない
+- buttonごとに3 GestureClassだけを選べるselectorを表示し、重複選択を許可する
+- 無効・未割り当て、family名、方向別action、application別設定を選択肢として表示しない
 - 「システムジェスチャー感度」だけを25%から200%、既定100%の共通sliderとして表示し、button別または方向別に分けない

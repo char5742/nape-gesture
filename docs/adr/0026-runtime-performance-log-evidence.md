@@ -8,7 +8,7 @@
 
 pure logic benchmarkだけでは、event tap callbackからsource command生成、class固有ProductOutput、system-wide投稿完了までの遅延、drop、queue増加を評価できない。
 
-button 3 / 4 / 5は同じgeneric finger-count eventを生成しない。2本指scroll / swipe、3本指system swipe、4本指system pinchではevent type、batch件数、field、phase、単位変換が異なるため、性能recordは固定GestureClassとgenerated batchを明示する必要がある。
+button 3 / 4 / 5は同じgeneric finger-count eventを生成しない。2本指scroll / swipe、3本指system swipe、4本指system pinchではevent type、batch件数、field、phase、単位変換が異なるため、性能recordはsessionで選択したGestureClassとgenerated batchを明示する必要がある。
 
 ## 決定
 
@@ -42,5 +42,5 @@ button 3 / 4 / 5は同じgeneric finger-count eventを生成しない。2本指s
 
 - [ADR-0022: 純粋ロジックbenchmarkのbatch percentile](0022-benchmark-batch-percentile-metrics.md)
 - [ADR-0038: 固定GestureClass sessionとmonotonic clock](0038-trackpad-output-session-and-monotonic-clock.md)
-- [ADR-0049: buttonを固定GestureClassへ接続する](0049-fixed-button-to-gesture-class-input.md)
+- [ADR-0049: buttonごとにGestureClassを割り当てる](0049-fixed-button-to-gesture-class-input.md)
 - [性能測定基準](../performance-baseline.md)

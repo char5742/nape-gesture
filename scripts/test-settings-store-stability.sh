@@ -21,6 +21,8 @@ trap 'rm -rf -- "$temporary_root"' EXIT HUP INT TERM
 canonical="$temporary_root/canonical.json"
 legacy="$temporary_root/legacy.json"
 custom_sensitivity="$temporary_root/custom-sensitivity.json"
+missing_assignments="$temporary_root/missing-assignments.json"
+unknown_assignment="$temporary_root/unknown-assignment.json"
 invalid_legacy="$temporary_root/invalid-legacy.json"
 invalid_sensitivity="$temporary_root/invalid-sensitivity.json"
 malformed="$temporary_root/malformed.json"
@@ -31,7 +33,12 @@ symlink_locked="$temporary_root/symlink-locked/config.json"
 
 "$binary" init-config --out "$canonical" >/dev/null
 jq -e '
-  .gesture.systemGestureSensitivity == 1
+  .gesture.buttonAssignments == {
+    "button3": "twoFingerScrollSwipe",
+    "button4": "threeFingerSystemSwipe",
+    "button5": "pinch"
+  }
+  and .gesture.systemGestureSensitivity == 1
   and .gesture.cancellation.maximumDuration == 10
   and .gesture.cancellation.maximumInactivityInterval == 2
 ' "$canonical" >/dev/null
@@ -40,13 +47,42 @@ cp "$canonical" "$custom_sensitivity"
 ruby -rjson -e '
   path = ARGV.fetch(0)
   document = JSON.parse(File.read(path))
-  document.fetch("gesture")["systemGestureSensitivity"] = 1.75
+  gesture = document.fetch("gesture")
+  gesture["buttonAssignments"] = {
+    "button3" => "pinch",
+    "button4" => "twoFingerScrollSwipe",
+    "button5" => "threeFingerSystemSwipe"
+  }
+  gesture["systemGestureSensitivity"] = 1.75
   File.write(path, JSON.pretty_generate(document) + "\n")
 ' "$custom_sensitivity"
 custom_sensitivity_hash=$(shasum -a 256 "$custom_sensitivity" | awk '{print $1}')
 "$binary" doctor --config "$custom_sensitivity" --benchmark-events 1 --json > "$temporary_root/custom-sensitivity-doctor.json"
 test "$custom_sensitivity_hash" = "$(shasum -a 256 "$custom_sensitivity" | awk '{print $1}')"
-jq -e '.gesture.systemGestureSensitivity == 1.75' "$custom_sensitivity" >/dev/null
+jq -e '
+  .gesture.buttonAssignments == {
+    "button3": "pinch",
+    "button4": "twoFingerScrollSwipe",
+    "button5": "threeFingerSystemSwipe"
+  }
+  and .gesture.systemGestureSensitivity == 1.75
+' "$custom_sensitivity" >/dev/null
+
+cp "$canonical" "$missing_assignments"
+ruby -rjson -e '
+  path = ARGV.fetch(0)
+  document = JSON.parse(File.read(path))
+  document.fetch("gesture").delete("buttonAssignments")
+  File.write(path, JSON.pretty_generate(document) + "\n")
+' "$missing_assignments"
+"$binary" doctor --config "$missing_assignments" --benchmark-events 1 --json > "$temporary_root/missing-assignments-doctor.json"
+jq -e '
+  .gesture.buttonAssignments == {
+    "button3": "twoFingerScrollSwipe",
+    "button4": "threeFingerSystemSwipe",
+    "button5": "pinch"
+  }
+' "$missing_assignments" >/dev/null
 
 cp "$canonical" "$legacy"
 ruby -rjson -e '
@@ -69,6 +105,11 @@ ruby -rjson -e '
 "$binary" doctor --config "$legacy" --benchmark-events 1 --json > "$temporary_root/legacy-doctor.json"
 jq -e '
   .gesture == {
+    "buttonAssignments": {
+      "button3": "twoFingerScrollSwipe",
+      "button4": "threeFingerSystemSwipe",
+      "button5": "pinch"
+    },
     "systemGestureSensitivity": 1,
     "cancellation": {
       "maximumDuration": 10,
@@ -120,6 +161,21 @@ fi
 test "$malformed_hash" = "$(shasum -a 256 "$malformed" | awk '{print $1}')"
 test -s "$temporary_root/malformed-doctor.err"
 
+cp "$canonical" "$unknown_assignment"
+ruby -rjson -e '
+  path = ARGV.fetch(0)
+  document = JSON.parse(File.read(path))
+  document.fetch("gesture").fetch("buttonAssignments")["button3"] = "unknownGestureClass"
+  File.write(path, JSON.pretty_generate(document) + "\n")
+' "$unknown_assignment"
+unknown_assignment_hash=$(shasum -a 256 "$unknown_assignment" | awk '{print $1}')
+if "$binary" doctor --config "$unknown_assignment" --benchmark-events 1 --json > "$temporary_root/unknown-assignment-doctor.json" 2> "$temporary_root/unknown-assignment-doctor.err"; then
+  printf '%s\n' "未知のbutton割り当てを受理しました。" >&2
+  exit 1
+fi
+test "$unknown_assignment_hash" = "$(shasum -a 256 "$unknown_assignment" | awk '{print $1}')"
+test -s "$temporary_root/unknown-assignment-doctor.err"
+
 cp "$canonical" "$concurrent"
 ruby -rjson -e '
   path = ARGV.fetch(0)
@@ -137,6 +193,11 @@ for pid in $pids; do
 done
 jq -e '
   .gesture == {
+    "buttonAssignments": {
+      "button3": "twoFingerScrollSwipe",
+      "button4": "threeFingerSystemSwipe",
+      "button5": "pinch"
+    },
     "systemGestureSensitivity": 1,
     "cancellation": {
       "maximumDuration": 10,
@@ -194,7 +255,12 @@ test -s "$temporary_root/symlink-lock.err"
 "$binary" doctor --config "$created" --benchmark-events 1 --json > "$temporary_root/created-doctor.json"
 test -f "$created"
 jq -e '
-  .gesture.systemGestureSensitivity == 1
+  .gesture.buttonAssignments == {
+    "button3": "twoFingerScrollSwipe",
+    "button4": "threeFingerSystemSwipe",
+    "button5": "pinch"
+  }
+  and .gesture.systemGestureSensitivity == 1
   and .gesture.cancellation.maximumDuration == 10
   and .gesture.cancellation.maximumInactivityInterval == 2
   and .targetDevices == [{"productContains":"Nape Pro"}]

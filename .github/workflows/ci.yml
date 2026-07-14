@@ -74,6 +74,7 @@ jobs:
       - name: Test settings migration and runtime config safety
         run: |
           sh -n scripts/test-settings-store-stability.sh
+          sh -n scripts/test-settings-gui-smoke.sh
           sh scripts/test-settings-store-stability.sh .build/debug/nape-gesture
 
       - name: Test doctor readiness consistency
@@ -412,6 +413,7 @@ jobs:
             echo "::warning::GUI smoke skipped because this runner has no active macOS Aqua session"
             exit 0
           fi
+          sh scripts/test-settings-gui-smoke.sh .build/NapeGesture.app/Contents/MacOS/nape-gesture
           gui_config="${RUNNER_TEMP:-/tmp}/nape-gui-smoke.config.json"
           .build/NapeGesture.app/Contents/MacOS/nape-gesture gui-smoke --config "$gui_config" --json --assert > /tmp/nape-gui-smoke.json
           test "$(/usr/bin/plutil -extract activationPolicy raw /tmp/nape-gui-smoke.json)" = "regular"
@@ -436,7 +438,12 @@ jobs:
           test "$(/usr/bin/plutil -extract settingsWindowSmoke.gestureSensitivitySliderCount raw /tmp/nape-gui-smoke.json)" = "1"
           test "$(/usr/bin/plutil -extract settingsWindowSmoke.gestureSensitivityPercentText raw /tmp/nape-gui-smoke.json)" = "100%"
           test "$(/usr/bin/plutil -extract settingsWindowSmoke.gestureSensitivityEditEnablesApply raw /tmp/nape-gui-smoke.json)" = "true"
-          test "$(/usr/bin/plutil -extract settingsWindowSmoke.gesturePaneHasForbiddenModeControl raw /tmp/nape-gui-smoke.json)" = "false"
+          test "$(/usr/bin/plutil -extract settingsWindowSmoke.buttonAssignmentOptionCounts.0 raw /tmp/nape-gui-smoke.json)" = "3"
+          test "$(/usr/bin/plutil -extract settingsWindowSmoke.buttonAssignmentOptionCounts.1 raw /tmp/nape-gui-smoke.json)" = "3"
+          test "$(/usr/bin/plutil -extract settingsWindowSmoke.buttonAssignmentOptionCounts.2 raw /tmp/nape-gui-smoke.json)" = "3"
+          test "$(/usr/bin/plutil -extract settingsWindowSmoke.buttonAssignmentEditEnablesApply raw /tmp/nape-gui-smoke.json)" = "true"
+          test "$(/usr/bin/plutil -extract settingsWindowSmoke.buttonAssignmentRevertDisablesApply raw /tmp/nape-gui-smoke.json)" = "true"
+          test "$(/usr/bin/plutil -extract settingsWindowSmoke.buttonAssignmentIncludedInUpdatedSettings raw /tmp/nape-gui-smoke.json)" = "true"
           test "$(/usr/bin/plutil -extract settingsWindowSmoke.detailsEditableTextFieldCount raw /tmp/nape-gui-smoke.json)" = "10"
           test "$(/usr/bin/plutil -extract settingsWindowSmoke.detailsCheckboxCount raw /tmp/nape-gui-smoke.json)" = "1"
           test "$(/usr/bin/plutil -extract settingsWindowSmoke.multipleMatchersPreserved raw /tmp/nape-gui-smoke.json)" = "true"

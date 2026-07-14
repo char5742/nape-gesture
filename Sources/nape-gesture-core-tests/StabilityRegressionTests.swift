@@ -10,6 +10,7 @@ func runStabilityRegressionTests() {
     testCursorAnchorStateOwnsOneFiniteAnchorPerSession()
     testSettingsMigrationPreservesOperationalSettingsAndIsIdempotent()
     testUnknownLegacyModeFailsBeforeCanonicalization()
+    testUnknownButtonAssignmentFailsWithoutChangingSource()
 }
 
 private func testCursorAnchorStateOwnsOneFiniteAnchorPerSession() {
@@ -22,7 +23,7 @@ private func testCursorAnchorStateOwnsOneFiniteAnchorPerSession() {
     for (index, scenario) in scenarios.enumerated() {
         var state = CursorAnchorState()
         let sessionID = TrackpadOutputSessionID(rawValue: UInt64(index + 1))
-        let gestureClass = FixedGestureClass(activationButton: scenario.button)!
+        let gestureClass = GestureButtonAssignments.default.assignment(for: scenario.button)!
         let position = CursorAnchorPosition(
             x: Double(index) - 120.25,
             y: Double(index) + 640.75
@@ -622,6 +623,10 @@ private func testSettingsMigrationPreservesOperationalSettingsAndIsIdempotent() 
             == GestureConfiguration.defaultSystemGestureSensitivity.bitPattern,
         "旧drag / wheel感度から共有システムジェスチャー感度を復元せず1.0へ戻す"
     )
+    expect(
+        decoded.gesture.buttonAssignments == .default,
+        "button割り当てのない旧設定へ2本指 / 3本指 / 4本指の既定値を補う"
+    )
 
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys]
@@ -654,9 +659,10 @@ private func testSettingsMigrationPreservesOperationalSettingsAndIsIdempotent() 
                 == 0.75.bitPattern,
         "canonical化で安全なcancel設定を保持する"
     )
-    expect(canonical.gesture.mode(for: .button3) == .twoFingerSwipe, "旧button 3 modeに依存せず固定対応へ戻す")
-    expect(canonical.gesture.mode(for: .button4) == .systemSwipe, "旧button 4 modeに依存せず固定対応へ戻す")
-    expect(canonical.gesture.mode(for: .button5) == .pinch, "旧button 5 modeに依存せず固定対応へ戻す")
+    expect(canonical.gesture.buttonAssignments == .default, "旧button modeに依存せず既定割り当てへ移行する")
+    expect(canonical.gesture.mode(for: .button3) == .twoFingerSwipe, "button 3の既定割り当てを保持する")
+    expect(canonical.gesture.mode(for: .button4) == .systemSwipe, "button 4の既定割り当てを保持する")
+    expect(canonical.gesture.mode(for: .center) == .pinch, "論理button 5の既定割り当てを保持する")
     expect(
         canonical.gesture.systemGestureSensitivity.bitPattern == 1.0.bitPattern,
         "旧設定を共有システムジェスチャー感度1.0へcanonical migrationする"
@@ -677,8 +683,17 @@ private func testSettingsMigrationPreservesOperationalSettingsAndIsIdempotent() 
     )
     expect(
         Set(gesture?.keys.map { $0 } ?? [])
-            == ["systemGestureSensitivity", "cancellation"],
-        "canonical gestureへ共有感度だけを保存し旧modeとtuningを除去する"
+            == ["buttonAssignments", "systemGestureSensitivity", "cancellation"],
+        "canonical gestureへbutton割り当てと共有感度を保存し旧modeとtuningを除去する"
+    )
+    expect(
+        gesture?["buttonAssignments"] as? [String: String]
+            == [
+                "button3": "twoFingerScrollSwipe",
+                "button4": "threeFingerSystemSwipe",
+                "button5": "pinch",
+            ],
+        "canonical migrationで3つの既定button割り当てを明示保存する"
     )
     expect(gesture?["dragSensitivity"] == nil, "旧drag感度をcanonical設定へ復元しない")
     expect(gesture?["wheelSensitivity"] == nil, "旧wheel感度をcanonical設定へ復元しない")
@@ -722,4 +737,41 @@ private func testUnknownLegacyModeFailsBeforeCanonicalization() {
     )
     expect(decodingFailed, "未知の旧modeを既知のGestureClassへ推測変換せず失敗する")
     expect(sourceData == originalData, "decode失敗時に設定原本を変更しない")
+}
+
+private func testUnknownButtonAssignmentFailsWithoutChangingSource() {
+    let sourceData = Data(
+        """
+        {
+          "gesture": {
+            "buttonAssignments": {
+              "button3": "unknownGestureClass",
+              "button4": "threeFingerSystemSwipe",
+              "button5": "pinch"
+            },
+            "systemGestureSensitivity": 1,
+            "cancellation": {
+              "maximumDuration": 10,
+              "maximumInactivityInterval": 2
+            }
+          },
+          "targetDevices": [ { "productContains": "Nape Pro" } ],
+          "requireMatchingTargetDevice": true
+        }
+        """.utf8
+    )
+    let originalData = sourceData
+    var decodingFailed = false
+    do {
+        _ = try JSONDecoder().decode(NapeGestureSettings.self, from: sourceData)
+    } catch {
+        decodingFailed = true
+    }
+
+    expect(
+        (try? SettingsMigration.requiresCanonicalRewrite(in: sourceData)) == false,
+        "形だけcanonicalな未知classをmigrationで既定値へ置換しない"
+    )
+    expect(decodingFailed, "未知のbutton割り当てを既知のGestureClassへ推測変換せず失敗する")
+    expect(sourceData == originalData, "未知のbutton割り当てのdecode失敗時に設定原本を変更しない")
 }

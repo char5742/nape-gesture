@@ -9,6 +9,7 @@ public struct GestureConfiguration: Codable, Equatable, Sendable {
     public var deadZonePoints: Double
     public var dragSensitivity: Double
     public var wheelSensitivity: Double
+    public var buttonAssignments: GestureButtonAssignments
     public var systemGestureSensitivity: Double
     public var acceleration: GestureAccelerationConfiguration
     public var cancellation: GestureCancellationConfiguration
@@ -19,6 +20,7 @@ public struct GestureConfiguration: Codable, Equatable, Sendable {
         deadZonePoints: Double = 8.0,
         dragSensitivity: Double = 1.0,
         wheelSensitivity: Double = 1.0,
+        buttonAssignments: GestureButtonAssignments = .default,
         systemGestureSensitivity: Double = GestureConfiguration.defaultSystemGestureSensitivity,
         acceleration: GestureAccelerationConfiguration = .default,
         cancellation: GestureCancellationConfiguration = .default,
@@ -27,6 +29,7 @@ public struct GestureConfiguration: Codable, Equatable, Sendable {
         self.deadZonePoints = deadZonePoints
         self.dragSensitivity = dragSensitivity
         self.wheelSensitivity = wheelSensitivity
+        self.buttonAssignments = buttonAssignments
         self.systemGestureSensitivity = systemGestureSensitivity
         self.acceleration = acceleration
         self.cancellation = cancellation
@@ -43,6 +46,7 @@ public struct GestureConfiguration: Codable, Equatable, Sendable {
         case deadZonePoints
         case dragSensitivity
         case wheelSensitivity
+        case buttonAssignments
         case systemGestureSensitivity
         case acceleration
         case cancellation
@@ -66,6 +70,9 @@ public struct GestureConfiguration: Codable, Equatable, Sendable {
             try container.decodeIfPresent(Double.self, forKey: .dragSensitivity) ?? 1.0
         wheelSensitivity =
             try container.decodeIfPresent(Double.self, forKey: .wheelSensitivity) ?? 1.0
+        buttonAssignments =
+            try container.decodeIfPresent(GestureButtonAssignments.self, forKey: .buttonAssignments)
+            ?? .default
         systemGestureSensitivity =
             try container.decodeIfPresent(Double.self, forKey: .systemGestureSensitivity)
             ?? Self.defaultSystemGestureSensitivity
@@ -83,21 +90,17 @@ public struct GestureConfiguration: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(buttonAssignments, forKey: .buttonAssignments)
         try container.encode(systemGestureSensitivity, forKey: .systemGestureSensitivity)
         try container.encode(cancellation, forKey: .cancellation)
     }
 
     public func mode(for button: MouseButton) -> TrackpadGestureMode {
-        switch button {
-        case .button3: .twoFingerSwipe
-        case .button4: .systemSwipe
-        case .button5: .pinch
-        case .left, .right, .center: .none
-        }
+        buttonAssignments.assignment(for: button)?.legacyMode ?? .none
     }
 
     public var enabledButtons: Set<MouseButton> {
-        [.button3, .button4, .button5]
+        GestureButtonAssignments.supportedSourceButtons
     }
 }
 

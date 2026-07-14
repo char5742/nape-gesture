@@ -5,37 +5,66 @@ public enum FixedGestureClass: String, Codable, CaseIterable, Equatable, Hashabl
     case threeFingerSystemSwipe
     case pinch
 
-    public init?(activationButton: MouseButton) {
-        switch activationButton {
+    public var displayName: String {
+        switch self {
+        case .twoFingerScrollSwipe: "2本指スクロール／スワイプ"
+        case .threeFingerSystemSwipe: "3本指システムスワイプ"
+        case .pinch: "4本指システムピンチ"
+        }
+    }
+
+    public var legacyMode: TrackpadGestureMode {
+        switch self {
+        case .twoFingerScrollSwipe: .twoFingerSwipe
+        case .threeFingerSystemSwipe: .systemSwipe
+        case .pinch: .pinch
+        }
+    }
+}
+
+public struct GestureButtonAssignments: Codable, Equatable, Sendable {
+    public var button3: FixedGestureClass
+    public var button4: FixedGestureClass
+    public var button5: FixedGestureClass
+
+    public init(
+        button3: FixedGestureClass = .twoFingerScrollSwipe,
+        button4: FixedGestureClass = .threeFingerSystemSwipe,
+        button5: FixedGestureClass = .pinch
+    ) {
+        self.button3 = button3
+        self.button4 = button4
+        self.button5 = button5
+    }
+
+    public static let `default` = GestureButtonAssignments()
+
+    public static let supportedSourceButtons: Set<MouseButton> = [
+        .button3,
+        .button4,
+        .center,
+    ]
+
+    public func assignment(for sourceButton: MouseButton) -> FixedGestureClass? {
+        switch sourceButton {
         case .button3:
-            self = .twoFingerScrollSwipe
+            button3
         case .button4:
-            self = .threeFingerSystemSwipe
+            button4
         case .center:
-            self = .pinch
+            button5
         case .left, .right, .button5:
-            return nil
+            nil
         }
     }
 
-    public var activationButton: MouseButton {
-        switch self {
-        case .twoFingerScrollSwipe: .button3
-        case .threeFingerSystemSwipe: .button4
-        case .pinch: .center
+    public func assignment(forLogicalButtonNumber buttonNumber: Int) -> FixedGestureClass? {
+        switch buttonNumber {
+        case 3: button3
+        case 4: button4
+        case 5: button5
+        default: nil
         }
-    }
-
-    public var logicalButtonNumber: Int {
-        switch self {
-        case .twoFingerScrollSwipe: 3
-        case .threeFingerSystemSwipe: 4
-        case .pinch: 5
-        }
-    }
-
-    public static var activationButtons: Set<MouseButton> {
-        Set(allCases.map(\.activationButton))
     }
 }
 
@@ -146,13 +175,16 @@ public struct FixedGestureInputRecognizer: Sendable {
     public private(set) var pendingReleaseButton: MouseButton?
 
     private let cancellation: GestureCancellationConfiguration
+    private let assignments: GestureButtonAssignments
     private let sessionSequence: TrackpadOutputSessionSequence
 
     public init(
         cancellation: GestureCancellationConfiguration = .default,
+        assignments: GestureButtonAssignments = .default,
         sessionSequence: TrackpadOutputSessionSequence = TrackpadOutputSessionSequence()
     ) {
         self.cancellation = cancellation
+        self.assignments = assignments
         self.sessionSequence = sessionSequence
     }
 
@@ -196,7 +228,7 @@ public struct FixedGestureInputRecognizer: Sendable {
         timestamp: MonotonicEventTimestamp
     ) -> FixedGestureInputDecision {
         guard activeSession == nil, pendingReleaseButton == nil,
-              let gestureClass = FixedGestureClass(activationButton: button)
+              let gestureClass = assignments.assignment(for: button)
         else {
             return FixedGestureInputDecision(shouldSuppressOriginal: false)
         }

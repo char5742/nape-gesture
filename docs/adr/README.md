@@ -47,7 +47,7 @@ Nape Gestureの製品モデルは[ADR-0049](0049-fixed-button-to-gesture-class-i
 | [ADR-0042](0042-versioned-scroll-momentum-contract-comparison.md) | 25F80 scroll / momentum契約を独立fixtureで比較する | version fixture、lifecycle、terminal、scroll companion、CLI差分report |
 | [ADR-0043](0043-trackpad-scroll-product-output.md) | 登録済みfixtureから固定GestureClass ProductOutputを構成する | class固有単位変換、asset provenance、host build非依存、fail closed |
 | [ADR-0044](0044-atomic-app-bundle-installation.md) | 検証済みapp bundleを原子的に導入する | bundle-app、renameatx_np、fingerprint、既存bundle保持、strict CLI |
-| [ADR-0049](0049-fixed-button-to-gesture-class-input.md) | buttonを固定GestureClassへ接続する | 固定button、GestureClass、連続mouse event量、通常mouse通過、OS / App解釈、class固有event contract |
+| [ADR-0049](0049-fixed-button-to-gesture-class-input.md) | buttonごとにGestureClassを割り当てる | button割り当て、GestureClass、連続mouse event量、通常mouse通過、OS / App解釈、class固有event contract |
 
 ## 追加時の確認
 

@@ -5,6 +5,7 @@ import NapeGestureProductOutput
 
 final class NapeGestureDaemon {
     private var recognizer: FixedGestureInputRecognizer
+    private let buttonAssignments: GestureButtonAssignments
     private let outputExecutor: GestureOutputExecutor
     private let targetGate: SharedTargetDeviceGate?
     private let hidInputMonitor: HIDInputMonitor?
@@ -20,6 +21,7 @@ final class NapeGestureDaemon {
 
     init(
         cancellation: GestureCancellationConfiguration,
+        buttonAssignments: GestureButtonAssignments = .default,
         systemGestureSensitivity: Double = GestureConfiguration.defaultSystemGestureSensitivity,
         targetGate: SharedTargetDeviceGate? = nil,
         hidInputMonitor: HIDInputMonitor? = nil,
@@ -30,7 +32,11 @@ final class NapeGestureDaemon {
         },
         onTerminalFailure: ((Error) -> Void)? = nil
     ) {
-        recognizer = FixedGestureInputRecognizer(cancellation: cancellation)
+        recognizer = FixedGestureInputRecognizer(
+            cancellation: cancellation,
+            assignments: buttonAssignments
+        )
+        self.buttonAssignments = buttonAssignments
         outputExecutor = GestureOutputExecutor(
             output: productOutput,
             systemGestureSensitivity: systemGestureSensitivity
@@ -50,7 +56,11 @@ final class NapeGestureDaemon {
     func run() throws {
         try start()
         writeOperationalLog("nape-gesture を開始しました。停止するには Ctrl-C を押してください。")
-        writeOperationalLog("固定操作: button 3 = 2本指スクロール / スワイプ、button 4 = 3本指システムスワイプ、button 5 = 4本指システムピンチ")
+        writeOperationalLog(
+            "ボタン割り当て: button 3 = \(buttonAssignments.button3.displayName)、"
+                + "button 4 = \(buttonAssignments.button4.displayName)、"
+                + "button 5 = \(buttonAssignments.button5.displayName)"
+        )
         writeOperationalLog("キルスイッチ: \(KillSwitchShortcut.displayName)")
         CFRunLoopRun()
         if let terminalError {

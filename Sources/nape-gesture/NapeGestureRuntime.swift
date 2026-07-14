@@ -34,6 +34,7 @@ final class NapeGestureRuntime {
             pendingMonitor = newMonitor
             let newDaemon = NapeGestureDaemon(
                 cancellation: settings.gesture.cancellation,
+                buttonAssignments: settings.gesture.buttonAssignments,
                 systemGestureSensitivity: settings.gesture.systemGestureSensitivity,
                 targetGate: newGate,
                 hidInputMonitor: newMonitor,

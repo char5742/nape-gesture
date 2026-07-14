@@ -35,6 +35,7 @@ final class CommandLineTool {
                 settings: settings, gate: gate, matchedDevices: matchedDevices)
             let daemon = NapeGestureDaemon(
                 cancellation: settings.gesture.cancellation,
+                buttonAssignments: settings.gesture.buttonAssignments,
                 systemGestureSensitivity: settings.gesture.systemGestureSensitivity,
                 targetGate: gate,
                 hidInputMonitor: monitor,
@@ -105,8 +106,8 @@ final class CommandLineTool {
                   runtime を開始せずに active macOS GUI session 上で通常 GUI activation policy、設定ウィンドウ、status item symbol、通常アプリメニュー、status menu を AppKit 内で作成して検査します。--assert で期待 UI と一致しない場合に失敗します。--config 未指定時は一時 config を使います。
 
               nape-gesture run [--performance-log <path>]
-                  button 3 / 4 / 5の押下中入力を、固定された2本指スクロール / スワイプ、3本指システムスワイプ、4本指システムピンチへ変換します。対象button未押下時は通常mouse入力をそのまま通します。
-                  --config <path> では3本指 / 4本指の共有感度、対象デバイス、安全用キャンセル条件を読み込みます。--performance-log で runtime 性能 JSON Lines を保存します。
+                  button 3 / 4 / 5の押下中入力を、設定された2本指スクロール / スワイプ、3本指システムスワイプ、4本指システムピンチへ変換します。対象button未押下時は通常mouse入力をそのまま通します。
+                  --config <path> ではbutton 3 / 4 / 5のGestureClass割り当て、3本指 / 4本指の共有感度、対象デバイス、安全用キャンセル条件を読み込みます。--performance-log で runtime 性能 JSON Lines を保存します。
 
               nape-gesture log [--duration <秒>] [--out <path>] [--exclude-generated|--only-generated]
                   グローバル入力イベントを JSON Lines で記録します。メタ情報は標準エラー、イベント本体は標準出力または --out に出します。

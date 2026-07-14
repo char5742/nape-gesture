@@ -1,6 +1,6 @@
 # 性能測定基準
 
-この文書は、固定button入力から3つの上位GestureClassをsystem-wideへ投稿する製品経路の性能と正確性を判定する。製品モデルは[ADR-0049](adr/0049-fixed-button-to-gesture-class-input.md)を正とする。
+この文書は、buttonごとの保存済み割り当てから3つの上位GestureClassをsystem-wideへ投稿する製品経路の性能と正確性を判定する。製品モデルは[ADR-0049](adr/0049-fixed-button-to-gesture-class-input.md)を正とする。
 
 速度だけを測って合格にしない。source sample 1対1 command化、exact timestamp、capture order、class固有ProductOutput、single terminal、passthrough、fail closedが同じrunで成立することを前提とする。
 
@@ -122,7 +122,7 @@ top -l 30 -s 1 -pid "$pid" -stats pid,cpu,time,command
 pure logicとdirect ProductOutput smokeだけでは次を完了扱いにしない。
 
 - Nape Pro source eventがtarget-device gateとevent tapへ届くまで
-- button 3 / 4 / 5から固定GestureClass commandが生成されるまで
+- button 3 / 4 / 5から選択GestureClass commandが生成されるまで
 - 2本指のscroll + companion、3本指のDockSwipe motion 1 / 2、4本指のDockSwipe motion 4というclass固有event batchのsystem-wide実投稿
 - 正常解放と異常終了のsingle terminal
 - 未押下とterminal後passthrough

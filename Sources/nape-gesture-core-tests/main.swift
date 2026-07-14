@@ -765,9 +765,10 @@ func testGestureConfigurationDecodesOldJSONWithDefaults() {
     let reencoded = configuration.flatMap { try? JSONEncoder().encode($0) }
     let reencodedText = reencoded.map { String(decoding: $0, as: UTF8.self) } ?? ""
 
-    expect(configuration?.mode(for: .button3) == .twoFingerSwipe, "旧設定に依存せずbutton 3を2本指へ固定する")
-    expect(configuration?.mode(for: .button4) == .systemSwipe, "旧設定に依存せずbutton 4を3本指へ固定する")
-    expect(configuration?.mode(for: .button5) == .pinch, "旧設定に依存せずbutton 5をピンチへ固定する")
+    expect(configuration?.buttonAssignments == .default, "旧設定へ既定のbutton割り当てを補う")
+    expect(configuration?.mode(for: .button3) == .twoFingerSwipe, "旧設定のbutton 3へ既定の2本指classを補う")
+    expect(configuration?.mode(for: .button4) == .systemSwipe, "旧設定のbutton 4へ既定の3本指classを補う")
+    expect(configuration?.mode(for: .center) == .pinch, "旧設定の論理button 5へ既定の4本指classを補う")
     expect(
         configuration?.systemGestureSensitivity
             == GestureConfiguration.defaultSystemGestureSensitivity,
@@ -790,6 +791,7 @@ func testGestureConfigurationDecodesOldJSONWithDefaults() {
         reencodedText.contains("systemGestureSensitivity"),
         "再エンコード時は共有システムジェスチャー感度を保存する"
     )
+    expect(reencodedText.contains("buttonAssignments"), "再エンコード時は既定のbutton割り当てを保存する")
     expect(!reencodedText.contains("acceleration"), "再エンコード時は旧加速度を除去する")
     expect(!reencodedText.contains("momentum"), "再エンコード時は旧momentumを除去する")
 }
@@ -807,9 +809,10 @@ func testGestureConfigurationMigratesResultNamedModes() {
     let encoded = configuration.flatMap { try? JSONEncoder().encode($0) }
     let encodedText = encoded.map { String(decoding: $0, as: UTF8.self) } ?? ""
 
-    expect(configuration?.mode(for: .button3) == .twoFingerSwipe, "旧mode値に依存せずbutton 3を固定する")
-    expect(configuration?.mode(for: .button4) == .systemSwipe, "旧mode値に依存せずbutton 4を固定する")
-    expect(configuration?.mode(for: .button5) == .pinch, "旧mode値に依存せずbutton 5を固定する")
+    expect(configuration?.buttonAssignments == .default, "旧mode値を既定のbutton割り当てへ移行する")
+    expect(configuration?.mode(for: .button3) == .twoFingerSwipe, "旧mode値に依存せずbutton 3を既定値へ戻す")
+    expect(configuration?.mode(for: .button4) == .systemSwipe, "旧mode値に依存せずbutton 4を既定値へ戻す")
+    expect(configuration?.mode(for: .center) == .pinch, "旧mode値に依存せず論理button 5を既定値へ戻す")
     expect(!encodedText.contains("button3Mode"), "保存時はbutton 3 modeを除去する")
     expect(!encodedText.contains("button4Mode"), "保存時はbutton 4 modeを除去する")
     expect(!encodedText.contains("button5Mode"), "保存時はbutton 5 modeを除去する")
@@ -833,6 +836,11 @@ func testSettingsMigrationDetectsOnlyDeprecatedGestureKeys() {
         """
         {
           "gesture": {
+            "buttonAssignments": {
+              "button3": "twoFingerScrollSwipe",
+              "button4": "threeFingerSystemSwipe",
+              "button5": "pinch"
+            },
             "cancellation": {
               "maximumDuration": 10,
               "maximumInactivityInterval": 2
@@ -844,6 +852,11 @@ func testSettingsMigrationDetectsOnlyDeprecatedGestureKeys() {
         """
         {
           "gesture": {
+            "buttonAssignments": {
+              "button3": "twoFingerScrollSwipe",
+              "button4": "threeFingerSystemSwipe",
+              "button5": "pinch"
+            },
             "systemGestureSensitivity": null,
             "cancellation": {
               "maximumDuration": 10,
@@ -853,6 +866,23 @@ func testSettingsMigrationDetectsOnlyDeprecatedGestureKeys() {
         }
         """.utf8)
     let currentJSON = Data(
+        """
+        {
+          "gesture": {
+            "buttonAssignments": {
+              "button3": "twoFingerScrollSwipe",
+              "button4": "threeFingerSystemSwipe",
+              "button5": "pinch"
+            },
+            "systemGestureSensitivity": 1.0,
+            "cancellation": {
+              "maximumDuration": 10,
+              "maximumInactivityInterval": 2
+            }
+          }
+        }
+        """.utf8)
+    let missingAssignmentsJSON = Data(
         """
         {
           "gesture": {
@@ -872,6 +902,10 @@ func testSettingsMigrationDetectsOnlyDeprecatedGestureKeys() {
     expect(
         (try? SettingsMigration.requiresCanonicalRewrite(in: currentJSON)) == false,
         "現行gesture設定を不要にmigrationしない"
+    )
+    expect(
+        (try? SettingsMigration.requiresCanonicalRewrite(in: missingAssignmentsJSON)) == true,
+        "button割り当てのない設定をcanonical再保存対象にする"
     )
     expect(
         (try? SettingsMigration.requiresCanonicalRewrite(in: missingSensitivityJSON)) == true,
@@ -949,14 +983,123 @@ func testSystemGestureSensitivityDefaultsRoundTripsAndValidatesRange() {
     }
 }
 
-func testGestureConfigurationUsesFixedButtonMapping() {
-    let configuration = GestureConfiguration.default
+func testGestureButtonAssignmentsDefaultCustomAndDuplicateMappings() {
+    let defaults = GestureButtonAssignments.default
 
-    expect(configuration.mode(for: .button3) == .twoFingerSwipe, "button 3は2本指スクロール / スワイプ固定")
-    expect(configuration.mode(for: .button4) == .systemSwipe, "button 4は3本指システムスワイプ固定")
-    expect(configuration.mode(for: .button5) == .pinch, "button 5はピンチ固定")
-    expect(configuration.mode(for: .left) == .none, "通常ボタンにはtrackpad gesture modeを割り当てない")
-    expect(configuration.enabledButtons == [.button3, .button4, .button5], "固定buttonを無効化できない")
+    expect(defaults.button3 == .twoFingerScrollSwipe, "button 3の既定値を2本指classにする")
+    expect(defaults.button4 == .threeFingerSystemSwipe, "button 4の既定値を3本指classにする")
+    expect(defaults.button5 == .pinch, "button 5の既定値を4本指classにする")
+    expect(defaults.assignment(for: .button3) == .twoFingerScrollSwipe, "button 3の既定割り当てを取得する")
+    expect(defaults.assignment(for: .button4) == .threeFingerSystemSwipe, "button 4の既定割り当てを取得する")
+    expect(defaults.assignment(for: .center) == .pinch, "centerを論理button 5として取得する")
+    expect(defaults.assignment(for: .button5) == nil, "実配送値ではないCG buttonNumber 5を割り当て対象にしない")
+    expect(defaults.assignment(forLogicalButtonNumber: 5) == .pinch, "論理button番号5の割り当てを取得する")
+    expect(defaults.assignment(forLogicalButtonNumber: 6) == nil, "未対応の論理button番号を拒否する")
+
+    let changed = GestureButtonAssignments(
+        button3: .pinch,
+        button4: .twoFingerScrollSwipe,
+        button5: .threeFingerSystemSwipe
+    )
+    expect(changed.assignment(for: .button3) == .pinch, "button 3を4本指classへ変更できる")
+    expect(changed.assignment(for: .button4) == .twoFingerScrollSwipe, "button 4を2本指classへ変更できる")
+    expect(changed.assignment(for: .center) == .threeFingerSystemSwipe, "button 5を3本指classへ変更できる")
+
+    let duplicates = GestureButtonAssignments(
+        button3: .pinch,
+        button4: .pinch,
+        button5: .pinch
+    )
+    expect(
+        [.button3, .button4, .center].allSatisfy {
+            duplicates.assignment(for: $0) == .pinch
+        },
+        "複数buttonへ同じGestureClassを重複割り当てできる"
+    )
+
+    let settings = NapeGestureSettings(
+        gesture: GestureConfiguration(buttonAssignments: changed),
+        targetDevices: [DeviceMatcher(productContains: "Nape Pro")]
+    )
+    let encoded = try? JSONEncoder().encode(settings)
+    let roundTripped = encoded.flatMap {
+        try? JSONDecoder().decode(NapeGestureSettings.self, from: $0)
+    }
+    let root = encoded.flatMap {
+        (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any]
+    }
+    let gesture = root?["gesture"] as? [String: Any]
+    let assignmentObject = gesture?["buttonAssignments"] as? [String: String]
+
+    expect(roundTripped?.gesture.buttonAssignments == changed, "変更した全button割り当てをJSON往復で保持する")
+    expect(
+        assignmentObject == [
+            "button3": "pinch",
+            "button4": "twoFingerScrollSwipe",
+            "button5": "threeFingerSystemSwipe",
+        ],
+        "canonical JSONをgesture.buttonAssignments.button3/4/5で保存する"
+    )
+    expect(
+        encoded.flatMap { try? SettingsMigration.requiresCanonicalRewrite(in: $0) } == false,
+        "有効な変更済みbutton割り当てをmigrationで上書きしない"
+    )
+    expect(
+        GestureConfiguration(buttonAssignments: changed).enabledButtons
+            == [.button3, .button4, .center],
+        "classの選択内容にかかわらず3つの実入力buttonを有効にする"
+    )
+
+    var combinationCount = 0
+    for button3 in FixedGestureClass.allCases {
+        for button4 in FixedGestureClass.allCases {
+            for button5 in FixedGestureClass.allCases {
+                let assignments = GestureButtonAssignments(
+                    button3: button3,
+                    button4: button4,
+                    button5: button5
+                )
+                let encoded = try? JSONEncoder().encode(assignments)
+                let decoded = encoded.flatMap {
+                    try? JSONDecoder().decode(GestureButtonAssignments.self, from: $0)
+                }
+                expect(decoded == assignments, "27通りのbutton割り当てを欠落なくJSON往復する")
+                expect(assignments.assignment(for: .button3) == button3, "全組み合わせでbutton 3を保持する")
+                expect(assignments.assignment(for: .button4) == button4, "全組み合わせでbutton 4を保持する")
+                expect(assignments.assignment(for: .center) == button5, "全組み合わせでbutton 5を保持する")
+                combinationCount += 1
+            }
+        }
+    }
+    expect(combinationCount == 27, "3 classのbutton 3 / 4 / 5全27組み合わせを検査する")
+
+    let sourceButtons: [MouseButton] = [.button3, .button4, .center]
+    var recognizerMappingCount = 0
+    for sourceButton in sourceButtons {
+        for gestureClass in FixedGestureClass.allCases {
+            var assignments = GestureButtonAssignments.default
+            switch sourceButton {
+            case .button3:
+                assignments.button3 = gestureClass
+            case .button4:
+                assignments.button4 = gestureClass
+            case .center:
+                assignments.button5 = gestureClass
+            case .left, .right, .button5:
+                expect(false, "割り当て対象外buttonをrecognizer組み合わせへ含めない")
+            }
+            var recognizer = FixedGestureInputRecognizer(assignments: assignments)
+            let began = recognizer.handle(
+                .buttonDown(button: sourceButton, timestamp: exactTimestamp(1))
+            )
+            expect(
+                began.commands.first?.gestureClass == gestureClass,
+                "全9通りのbutton-class対応をrecognizer開始commandへ反映する"
+            )
+            recognizerMappingCount += 1
+        }
+    }
+    expect(recognizerMappingCount == 9, "3 buttonと3 classの全9対応をrecognizerで検査する")
 }
 
 func testRecognizerFixesButtonModeForSessionAndWaitsForMatchingRelease() {
@@ -965,11 +1108,11 @@ func testRecognizerFixesButtonModeForSessionAndWaitsForMatchingRelease() {
     )
     var recognizer = GestureRecognizer(configuration: configuration)
 
-    _ = recognizer.handle(.buttonDown(button: .button5, time: 1))
+    _ = recognizer.handle(.buttonDown(button: .center, time: 1))
     let began = recognizer.handle(.move(deltaX: 2, deltaY: 0, time: 1.01))
     let unrelatedRelease = recognizer.handle(.buttonUp(button: .button4, time: 1.02))
     let changed = recognizer.handle(.move(deltaX: 1, deltaY: 0, time: 1.03))
-    let ended = recognizer.handle(.buttonUp(button: .button5, time: 1.04))
+    let ended = recognizer.handle(.buttonUp(button: .center, time: 1.04))
 
     expect(began.commands.first?.mode == .pinch, "押下ボタンのmodeを開始コマンドへ固定する")
     expect(!unrelatedRelease.shouldSuppressOriginal, "別ボタンの解放は通過させる")
@@ -978,7 +1121,7 @@ func testRecognizerFixesButtonModeForSessionAndWaitsForMatchingRelease() {
     expect(recognizer.isIdle, "対応ボタンの解放でのみセッションを終了する")
 }
 
-func testLegacyNoneModesCannotDisableFixedButtons() {
+func testLegacyNoneModesCannotDisableGestureButtons() {
     let json = Data(
         """
         {
@@ -992,9 +1135,10 @@ func testLegacyNoneModesCannotDisableFixedButtons() {
     let encoded = configuration.flatMap { try? JSONEncoder().encode($0) }
     let encodedText = encoded.map { String(decoding: $0, as: UTF8.self) } ?? ""
 
-    expect(configuration?.mode(for: .button3) == .twoFingerSwipe, "旧noneでもbutton 3を無効化しない")
-    expect(configuration?.mode(for: .button4) == .systemSwipe, "旧noneでもbutton 4を無効化しない")
-    expect(configuration?.mode(for: .button5) == .pinch, "旧noneでもbutton 5を無効化しない")
+    expect(configuration?.buttonAssignments == .default, "旧noneを既定のbutton割り当てへ移行する")
+    expect(configuration?.mode(for: .button3) == .twoFingerSwipe, "旧noneでもbutton 3へ既定classを割り当てる")
+    expect(configuration?.mode(for: .button4) == .systemSwipe, "旧noneでもbutton 4へ既定classを割り当てる")
+    expect(configuration?.mode(for: .center) == .pinch, "旧noneでも論理button 5へ既定classを割り当てる")
     expect(!encodedText.contains("none"), "旧none modeをcanonical設定へ再保存しない")
 }
 
@@ -3316,6 +3460,9 @@ func testSettingsUIFieldCatalogCoversEditableSettings() {
     let labels = descriptors.map(\.label)
     let paths = descriptors.compactMap(\.settingsPath)
     let requiredPaths: Set<String> = [
+        "gesture.buttonAssignments.button3",
+        "gesture.buttonAssignments.button4",
+        "gesture.buttonAssignments.button5",
         "targetDeviceAssociation.associationWindow",
         "gesture.systemGestureSensitivity",
         "gesture.cancellation.maximumDuration",
@@ -3333,18 +3480,33 @@ func testSettingsUIFieldCatalogCoversEditableSettings() {
     expect(descriptorFields == SettingsUIField.allCases, "設定UIフィールド catalog は全ケースを順序通り公開する")
     expect(Set(labels).count == labels.count, "設定UIフィールドの表示名は重複しない")
     expect(Set(paths).count == paths.count, "設定UIフィールドの設定パスは重複しない")
-    expect(Set(paths) == requiredPaths, "設定UIは共有感度と安全設定の編集対象パスだけを網羅する")
-    let fixedDescriptors = descriptors.filter { $0.valueSource == .fixedProductMapping }
-    expect(fixedDescriptors.count == 3, "固定button対応を3件表示する")
-    expect(fixedDescriptors.allSatisfy { !$0.isEditable }, "固定button対応を編集不能にする")
-    expect(fixedDescriptors.allSatisfy { $0.settingsPath == nil }, "固定button対応を設定値として保存しない")
+    expect(Set(paths) == requiredPaths, "設定UIはbutton割り当て、共有感度、安全設定の編集対象パスを網羅する")
+    let assignmentDescriptors = descriptors.filter { $0.section == .buttonAssignments }
+    expect(assignmentDescriptors.count == 3, "button割り当てpopupを3件公開する")
+    expect(assignmentDescriptors.allSatisfy(\.isEditable), "3つのbutton割り当てをすべて編集可能にする")
     expect(
-        fixedDescriptors.map(\.fixedValue) == [
-            "2本指スクロール / スワイプ",
-            "3本指システムスワイプ",
-            "4本指システムピンチ",
+        assignmentDescriptors.allSatisfy {
+            $0.controlKind == .popUpButton
+                && $0.valueSource == .editableGestureSetting
+                && $0.fixedValue == nil
+        },
+        "button割り当てを読み取り専用値ではなく設定保存対象のpopupにする"
+    )
+    expect(
+        assignmentDescriptors.map(\.settingsPath) == [
+            "gesture.buttonAssignments.button3",
+            "gesture.buttonAssignments.button4",
+            "gesture.buttonAssignments.button5",
         ],
-        "固定button対応を読み取り専用の表示値として公開する"
+        "3つのpopupをcanonical button割り当てパスへ接続する"
+    )
+    expect(
+        FixedGestureClass.allCases == [
+            .twoFingerScrollSwipe,
+            .threeFingerSystemSwipe,
+            .pinch,
+        ],
+        "各button popupの選択肢を3つのGestureClassだけに限定する"
     )
     let forbiddenTerms = ["mode", "deadzone", "acceleration", "momentum", "application"]
     expect(
@@ -3382,10 +3544,10 @@ func testSettingsUIFieldCatalogKindsAndSections() {
     let checkboxFields: Set<SettingsUIField> = [
         .requireMatchingTargetDevice,
     ]
-    let readOnlyFields: Set<SettingsUIField> = [
-        .fixedButton3Gesture,
-        .fixedButton4Gesture,
-        .fixedButton5Gesture,
+    let assignmentFields: Set<SettingsUIField> = [
+        .button3GestureAssignment,
+        .button4GestureAssignment,
+        .button5GestureAssignment,
     ]
     let sliderDescriptors = SettingsUIField.descriptors.filter {
         $0.controlKind == .slider
@@ -3411,10 +3573,17 @@ func testSettingsUIFieldCatalogKindsAndSections() {
         expect(
             descriptorsByField[field]?.controlKind == .checkbox, "\(field.rawValue) はチェックボックスとして扱う")
     }
-    for field in readOnlyFields {
-        expect(descriptorsByField[field]?.controlKind == .readOnlyText, "\(field.rawValue) は読み取り専用表示にする")
+    for field in assignmentFields {
+        expect(descriptorsByField[field]?.controlKind == .popUpButton, "\(field.rawValue) はpopup選択にする")
         expect(
-            descriptorsByField[field]?.section == .fixedMapping, "\(field.rawValue) は固定対応sectionに置く")
+            descriptorsByField[field]?.section == .buttonAssignments,
+            "\(field.rawValue) はbutton割り当てsectionに置く"
+        )
+        expect(
+            descriptorsByField[field]?.valueSource == .editableGestureSetting
+                && descriptorsByField[field]?.isEditable == true,
+            "\(field.rawValue) は変更可能なgesture設定として扱う"
+        )
     }
     expect(
         descriptorsByField[.cancellationMaximumDuration]?.section == .cancellation,
@@ -4133,14 +4302,20 @@ func exactTimestamp(_ nanoseconds: UInt64) -> MonotonicEventTimestamp {
     MonotonicEventTimestamp(nanosecondsSinceStartup: nanoseconds)
 }
 
-func testFixedButtonToGestureClassMapping() {
-    expect(FixedGestureClass(activationButton: .button3) == .twoFingerScrollSwipe, "button 3を2本指scroll classへ固定する")
-    expect(FixedGestureClass(activationButton: .button4) == .threeFingerSystemSwipe, "button 4を3本指system swipe classへ固定する")
-    expect(FixedGestureClass(activationButton: .center) == .pinch, "button 5の実配送値をpinch classへ固定する")
-    expect(FixedGestureClass(activationButton: .left) == nil, "左buttonをtrackpad入力へ変換しない")
-    expect(FixedGestureClass(activationButton: .right) == nil, "右buttonをtrackpad入力へ変換しない")
-    expect(FixedGestureClass(activationButton: .button5) == nil, "対象外のCG buttonNumber 5を変換しない")
-    expect(FixedGestureClass.pinch.logicalButtonNumber == 5, "pinch classのユーザー向けbutton番号を5として保持する")
+func testGestureButtonAssignmentsMapPhysicalAndLogicalButtons() {
+    let assignments = GestureButtonAssignments(
+        button3: .threeFingerSystemSwipe,
+        button4: .pinch,
+        button5: .twoFingerScrollSwipe
+    )
+
+    expect(assignments.assignment(for: .button3) == .threeFingerSystemSwipe, "button 3の変更済みclassを取得する")
+    expect(assignments.assignment(for: .button4) == .pinch, "button 4の変更済みclassを取得する")
+    expect(assignments.assignment(for: .center) == .twoFingerScrollSwipe, "centerを論理button 5の変更済みclassへ対応させる")
+    expect(assignments.assignment(for: .left) == nil, "左buttonをtrackpad入力へ変換しない")
+    expect(assignments.assignment(for: .right) == nil, "右buttonをtrackpad入力へ変換しない")
+    expect(assignments.assignment(for: .button5) == nil, "対象外のCG buttonNumber 5を変換しない")
+    expect(assignments.assignment(forLogicalButtonNumber: 5) == .twoFingerScrollSwipe, "論理button 5の変更済みclassを取得する")
 }
 
 func testFixedGestureRecognizerPreservesEverySourceSample() {
@@ -4228,34 +4403,41 @@ func testFixedGestureRecognizerDiffersOnlyByFixedIdentity() {
 }
 
 func testFixedGestureRecognizerDoesNotSwitchOnAdditionalButton() {
+    let assignments = GestureButtonAssignments(
+        button3: .pinch,
+        button4: .twoFingerScrollSwipe,
+        button5: .threeFingerSystemSwipe
+    )
     var recognizer = FixedGestureInputRecognizer(
         cancellation: GestureCancellationConfiguration(
             maximumDuration: 0,
             maximumInactivityInterval: 0
-        )
+        ),
+        assignments: assignments
     )
     let began = recognizer.handle(
         .buttonDown(button: .button3, timestamp: exactTimestamp(10))
     )
     let additionalDown = recognizer.handle(
-        .buttonDown(button: .button5, timestamp: exactTimestamp(11))
+        .buttonDown(button: .button4, timestamp: exactTimestamp(11))
     )
     let move = recognizer.handle(
         .move(deltaX: 9, deltaY: -4, timestamp: exactTimestamp(12))
     )
     let additionalUp = recognizer.handle(
-        .buttonUp(button: .button5, timestamp: exactTimestamp(13))
+        .buttonUp(button: .button4, timestamp: exactTimestamp(13))
     )
     let ended = recognizer.handle(
         .buttonUp(button: .button3, timestamp: exactTimestamp(14))
     )
 
-    expect(began.commands.first?.gestureClass == .twoFingerScrollSwipe, "開始buttonでgesture classを確定する")
+    expect(began.commands.first?.gestureClass == .pinch, "button down時に変更済み割り当てからclassを確定する")
     expect(!additionalDown.shouldSuppressOriginal, "session中の追加button downを別sessionへ変換しない")
     expect(additionalDown.commands.isEmpty, "追加buttonでcommandを生成しない")
-    expect(move.commands.first?.gestureClass == .twoFingerScrollSwipe, "追加button後も元gesture classを維持する")
+    expect(move.commands.first?.gestureClass == .pinch, "追加button後も開始時の選択classを維持する")
     expect(move.commands.first?.captureOrder == 1, "追加buttonをcapture orderへ混入させない")
     expect(!additionalUp.shouldSuppressOriginal, "追加button upを通常入力として通過させる")
+    expect(ended.commands.first?.gestureClass == .pinch, "終了commandまで開始時の選択classを維持する")
     expect(ended.commands.first?.captureOrder == 2, "元button releaseで同じsessionを終了する")
 }
 
@@ -4391,7 +4573,7 @@ func testFixedGestureSessionMachineEnforcesIdentityOrderAndSingleTerminal() {
     }
 }
 
-testFixedButtonToGestureClassMapping()
+testGestureButtonAssignmentsMapPhysicalAndLogicalButtons()
 testFixedGestureRecognizerPreservesEverySourceSample()
 testFixedGestureRecognizerDiffersOnlyByFixedIdentity()
 testFixedGestureRecognizerDoesNotSwitchOnAdditionalButton()
@@ -4430,9 +4612,9 @@ testGestureConfigurationDecodesOldJSONWithDefaults()
 testGestureConfigurationMigratesResultNamedModes()
 testSettingsMigrationDetectsOnlyDeprecatedGestureKeys()
 testSystemGestureSensitivityDefaultsRoundTripsAndValidatesRange()
-testGestureConfigurationUsesFixedButtonMapping()
+testGestureButtonAssignmentsDefaultCustomAndDuplicateMappings()
 testRecognizerFixesButtonModeForSessionAndWaitsForMatchingRelease()
-testLegacyNoneModesCannotDisableFixedButtons()
+testLegacyNoneModesCannotDisableGestureButtons()
 testNapeGestureSettingsDecodesOldJSONWithDefaultAssociationWindow()
 testSettingsValidatorAcceptsTemplateSettings()
 testSettingsValidatorSeparatesCanonicalAndLegacyGestureValues()
