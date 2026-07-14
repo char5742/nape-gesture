@@ -1,6 +1,6 @@
 # 完成判定チェックリスト
 
-この文書は、Nape Gestureの製品完成を実測証跡で判定する正本である。build、test、GUI起動、`.app`生成、個別event投稿のどれか一つだけでは完成としない。製品モデルは[ADR-0049](adr/0049-fixed-button-to-finger-count-trackpad-input.md)を正とする。
+この文書は、Nape Gestureの製品完成を実測証跡で判定する正本である。build、test、GUI起動、`.app`生成、個別event投稿のどれか一つだけでは完成としない。製品モデルは[ADR-0049](adr/0049-fixed-button-to-gesture-class-input.md)を正とする。
 
 ## 固定製品モデル
 
@@ -103,7 +103,7 @@ artifacts/completion/YYYY-MM-DD/<repo-sha>/<scenario-id>/
 
 ```sh
 ruby scripts/check-product-model-documentation.rb
-ruby scripts/check-finger-count-product-model.rb
+ruby scripts/check-fixed-gesture-class-product-model.rb
 swift build --scratch-path .build
 .build/debug/nape-gesture-core-tests
 .build/debug/nape-gesture-product-output-tests
@@ -112,7 +112,7 @@ sh scripts/check-product-output-boundary.sh
 .build/debug/nape-gesture doctor --probe-hid --json --assert-runtime-ready
 ```
 
-guard file名に`finger-count`が残るのは履歴上のpath互換のためであり、guard内容は固定GestureClassモデルを検査する。
+guardは固定GestureClassモデルを検査し、廃止済みgeneric finger-count-onlyモデルを正本へ戻さない。
 
 ## 最後の物理作業
 

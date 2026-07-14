@@ -1,6 +1,6 @@
 # Scroll / momentum contract Phase 2 ローカル検証
 
-> 非規範証跡: この文書が確認したのは2本指scroll / momentum内部contractの一部であり、scrollという製品mode、button assignment、2 / 3 / 4本指変換、製品完成を示さない。現在の採用条件は[証跡文書の扱い](README.md)を正とする。
+> 非規範証跡: この文書が確認したのは`twoFingerScrollSwipe` classのscroll / momentum内部contractの一部だけであり、ユーザーmode、button assignment、他のGestureClass、製品完成を示さない。現在の採用条件は[証跡文書の扱い](README.md)を正とする。
 
 ## 対象
 

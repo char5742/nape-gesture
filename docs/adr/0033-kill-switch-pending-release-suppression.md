@@ -2,6 +2,7 @@
 
 - 状態: 採択
 - 日付: 2026-07-09
+- 更新日: 2026-07-14
 
 ## 背景
 
@@ -12,8 +13,8 @@
 
 ## 決定
 
-- キルスイッチ発火時にrecognizerがidleでなければ、active sessionのsource buttonとfinger countをpending releaseとして記録する。設定値からbuttonを推測しない。
-- 停止後でも、そのsource buttonの最初の`buttonUp`だけを抑制し、buttonとfinger countが一致したときにpendingを消す。
+- キルスイッチ発火時にrecognizerがidleでなければ、active sessionのsource buttonをpending releaseとして記録する。設定値やraw contact数からbuttonを推測しない。
+- 停止後でも、そのsource buttonの最初の`buttonUp`だけを抑制し、buttonが一致したときにpendingを消す。
 - pending release 以外の通常入力は停止後も通す。
 - この挙動は `RuntimeSafetyState` の純粋状態としてテストし、daemon はその判断に従う。
 - `system-test run --scenario kill-switch` は、他の未マーク入力シナリオと同じ `UnmarkedInputEvent` 経路を使い、`keyDown` / `keyUp` の間隔を `interval` で明示する。ゼロ間隔の合成ショートカット投稿は daemon 停止証跡として採用しない。

@@ -1,319 +1,224 @@
 # 検証手順と既知の失敗条件
 
-この文書は、button 3 / 4 / 5押下中の連続mouse event量を2 / 3 / 4本指trackpad入力へ変換する製品モデルの検証手順を定義する。
-完成状態の正本は[完成判定チェックリスト](completion-checklist.md)とし、この文書は証跡の取得・比較・失敗判定を具体化する。
-製品モデルの設計判断は[ADR-0049](adr/0049-fixed-button-to-finger-count-trackpad-input.md)を正とする。
-
-## 現在の確認状態
-
-改訂基準commit`55eb991`の実装は、buttonごとの3つのユーザーmodeと、`scroll` / `DockSwipe` / `magnification`へのroutingを保持している。2 / 3 / 4 finger count固定、全source event量の保存、button押下単位のterminal、未押下passthroughを一続きに検証する製品証跡はない。
-
-したがって現状は**未達**である。既存の次の成果は基盤として再利用できるが、完成証跡ではない。
-
-- trackpad event logger、strict analyzer、manifest、provenance
-- 25F80で取得した一部の純正trackpad観測とscroll / momentum fixture
-- product / diagnostic outputのmodule境界
-- runtime identity、TCC、device診断
-- 旧mode / familyを対象にしたsession test、runtime test、performance log
-
-`supportedFamilies`、`confirmedFamilies`、`trialFamilies`の値や、旧3経路のtest成功を現在の製品完成判定に使わない。
+この文書は、button 3 / 4 / 5を固定された上位`GestureClass`へ接続する製品runtimeの検証手順を定義する。完成状態の正本は[完成判定チェックリスト](completion-checklist.md)、製品モデルの正本は[ADR-0049](adr/0049-fixed-button-to-gesture-class-input.md)とする。
 
 ## 検証対象
 
-製品入力契約は次に固定する。
+| mouse入力 | 固定GestureClass | 期待ProductOutput |
+| --- | --- | --- |
+| button 3押下中 | 2本指scroll / swipe相当 | type 22 scrollと必要なtype 29 companion lifecycle |
+| button 4押下中 | 3本指system swipe相当 | type 30 `DockSwipe`、motion 1 / 2 |
+| button 5押下中 | 4本指system pinch相当 | type 30 `DockSwipe`、motion 4 |
+| button 3 / 4 / 5未押下 | 変換なし | 通常mouse入力をそのまま通す |
 
-| activation input | expected finger count |
-| --- | --- |
-| button 3 | 2 |
-| button 4 | 3 |
-| button 5 | 4 |
+「2 / 3 / 4本指」はraw contact数やgeneric `fingerCount` transportではない。物理trackpad driverがgestureを認識した後に生成する上位gestureの意味classである。したがって、classごとにevent type、field、phase、companion、event件数、単位変換が異なることを正常かつ必須とする。
 
-button 3 / 4 / 5のいずれも押されていない時は、通常mouse eventを変更せず通す。
-buttonからmode、方向別action、OS/App結果、application別設定を選ばない。
-`scroll`、`DockSwipe`、`NavigationSwipe`、`magnification`はcapture解析時の低レベル分類だけに使い、ユーザー入力契約や製品routing keyにしない。
+buttonから選ぶclassは固定であり、mode selector、方向別binding、感度、application別設定を持たない。内部でclass固有adapterを選ぶことは、ユーザー向けroutingではなく上位event contractのencodingである。
 
-## 証跡runの同一性
+## 現在の確認状態
 
-各scenarioは専用directoryへ保存し、次を同じrun UUIDで結合する。
+製品runtimeは次の経路で接続済みである。
 
-- source mouse event log
-- HID log
-- generated trackpad event log
-- direct post trace
-- Reference Target App log
-- contract analyzer report
-- OS/App結果メモ
-- manifest
+```text
+CGEventUtilities
+  -> FixedGestureInputRecognizer
+  -> FixedGestureSessionMachine
+  -> FixedGestureProductSessionCoordinator
+  -> ProductGestureOutput
+  -> system-wide event stream
+```
 
-manifestには最低限、repo SHA、binary SHA-256、macOS version / build、実行主体、TCC状態、device identity、scenario ID、button、期待finger count、開始・終了時刻、各logのSHA-256、event件数、terminal理由、fixture ID / SHA-256を保存する。
-異なるrunのlogを補完し合わない。開始前から存在するsidecar、ready file、manifestを再利用しない。
+Nape Proの主要経路は、3 class合計23 session、5473 generated event、作成失敗0件、欠落投稿0件、全sessionのsingle terminal、終了後の通常mouse復帰まで受入済みである。Space切替、Mission Control、DockSwipe motion 4のsystem control遷移も確認済みである。
 
-## 機械検証
+次は別の未完了gateとして扱う。
 
-### 製品surface
+- 現行release候補と純正trackpad fixtureの最終比較
+- kill switch、device切断、sleep、TCC喪失後の物理passthrough復旧
+- macOS設定で無効なApp Exposeの画面結果
+- Developer ID署名、公証、stapler、Gatekeeperによる公開配布
 
-次を静的guardとtestで確認する。
+## 自動検証
 
-- `ruby scripts/check-product-model-documentation.rb`が成功する
-- `ruby scripts/check-finger-count-product-model.rb`が成功する。基準commitでは廃止対象を検出して失敗することが正しい現在状態である
-- button 3 / 4 / 5と2 / 3 / 4 finger countの対応が1か所で固定されている
-- 設定schema、GUI、CLI help、doctor、performance schemaに結果別modeや方向別actionがない
-- application別の有効・無効、感度、割り当てがない
-- product targetがAX、対象PID、frontmost application、keyboard shortcut配送を参照しない
-- diagnostic targetの旧出力をproduct targetからimportしない
-- low-level family名をbutton routingや完成度のkeyに使わない
-- 同一source fixtureでは、button 3 / 4 / 5が同じ正規化入力の量、順序、時間間隔を使い、結果別またはfinger count別の変換係数を使わない
-- 旧設定は結果別modeへ移行せず、固定button-to-finger-count modelへ安全に廃止または正規化する
+同じworktreeからDebug、Release、bundleを生成し、次を実行する。
 
-旧語をmigration入力、履歴fixture、明示的な診断toolで読む場合は、製品出力へ到達しないtestと履歴用途の注記を必須にする。
+```sh
+ruby scripts/check-product-model-documentation.rb
+ruby scripts/check-fixed-gesture-class-product-model.rb
+sh scripts/check-provenance.sh
+sh scripts/test-check-provenance.sh
+sh scripts/check-product-output-boundary.sh
+sh scripts/check-diagnostic-event-time.sh
 
-### event量保存
+swift build --scratch-path .build -Xswiftc -warnings-as-errors
+.build/debug/nape-gesture-core-tests
+.build/debug/nape-gesture-product-output-tests
+.build/debug/nape-gesture-diagnostic-output-tests
+sh scripts/test-settings-store-stability.sh .build/debug/nape-gesture
+sh scripts/test-doctor-readiness.sh .build/debug/nape-gesture
+sh scripts/test-bundle-app-safety.sh .build/debug/nape-gesture
+.build/debug/nape-gesture gui-smoke --json --assert
 
-source event列`S`について、少なくとも`sourceKind`、`unit`、`phase`、`captureOrder`、`timestamp`、`deltaX`、`deltaY`、`sourceEventCount`を変換前に記録する。
+swift build -c release --scratch-path .build -Xswiftc -warnings-as-errors
+.build/release/nape-gesture-core-tests
+.build/release/nape-gesture-product-output-tests
+.build/release/nape-gesture-diagnostic-output-tests
+```
 
-検証は次の2段階に分ける。
+CIでは同じ回帰testを反復し、Address SanitizerとUndefined Behavior Sanitizerを別jobで実行する。ローカルOSのsanitizer runtime自体が最小プログラムで起動不能な場合は成功へ読み替えず、対応runnerのCI結果を必要gateとして残す。
 
-1. 変換器へ渡した入力量がsource logと一致することをbit単位で確認する。
-2. 生成trackpad量が、対応OS buildの純正fixtureから導出した単一versioned単位変換contractの許容差内であることを確認する。finger count固有の低レベルencoding差は同じcontract内で明示する。
+## source sample保存
+
+accepted move / wheel sampleごとに1つのsource commandを生成し、次を保持する。
+
+- source kind
+- X / Y量と符号
+- exact monotonic timestamp
+- capture order
+- session ID
+- source button
+- 固定GestureClass
 
 合格条件:
 
-- 受理したsource eventが欠落・重複せず、同じ順序でちょうど1回だけ寄与する
-- 複数source sampleをcoalesceせず、各sampleを個別に対応付けられる
-- X / Y、正負、斜め、停止、方向反転を保持する
-- terminal用zero frameや補助eventをsource event量へ加算しない
-- queue drop、整数飽和、非有限値、現在boot外timestamp、source / contractにないtimestamp変換を成功扱いにしない
-- 単位変換以外の感度、加速度、dead zone、threshold、clampでsource event量を変えていない
-- event familyごとに別の意味へevent量を読み替えない
+- source sampleを欠落、重複、coalesce、並べ替えしない
+- 正負X、正負Y、斜め、停止、方向反転、move / wheel混在を保持する
+- sample間隔を現在時刻で再生成しない
+- terminal用zero frameやcompanion eventをsource量として数えない
+- 1 source commandから複数の低レベルeventを生成する場合も、batch内順序と同じsource timestampを保持する
 
-最終delta合計だけの一致では不十分である。途中で正負が相殺される列でも、各source eventの寄与と順序を検証する。
+最終delta合計だけの一致では不十分である。途中で符号が相殺される系列でも、各sampleとgenerated batchを対応付ける。
 
-### finger count
+## class固有ProductOutput
 
-各sessionについて次を確認する。
+### 2本指scroll / swipe class
 
-- button 3は全frameで2本指
-- button 4は全frameで3本指
-- button 5は全frameで4本指
-- finger countはbutton down時に確定し、terminalまで変化しない
-- 方向、速度、App、OS/App結果、低レベルfamilyによって変化しない
-- 進行中sessionへ別activation buttonが追加されてもfinger count、family、session IDを切り替えない
-- session開始時に複数activation buttonが曖昧に競合する場合やunknown buttonではfinger countを推測しない
-- output contractがfinger countを表現・検証できない場合はunsupportedとしてfail closedにする
+- type 22 scrollと必要なtype 29 companionを1 batchとして生成する
+- scroll phaseとcompanion phaseをそれぞれのfieldへ設定する
+- X / Yの符号、point / fixed / line / gesture motion単位を登録contractへ照合する
+- horizontal scrollのページ移動はapplicationの標準解釈に任せる
 
-event typeやclassifierだけからfinger countを推測した結果は合格にしない。純正captureでfinger countと低レベルfieldの対応を固定し、generated captureで同じ表現を検証する。
+### 3本指system swipe class
 
-### session terminal
+- type 30 / classifier 23の認識済み`DockSwipe`を使う
+- horizontal / verticalをmotion 1 / 2、phase 1 / 2 / 4 / 8へencodingする
+- progress、XY motion、終端XY velocityを登録済みfixtureと変換modelへ照合する
 
-button downから対応するbutton upまでを1つのinput sessionとする。source eventを1件も受理しなかった場合を含め、開始したsessionは必ず次のいずれか1つでterminalになる。
+### 4本指system pinch class
 
-- 正常終了
-- cancel
-- kill switch
-- runtime stop
-- sleep
+- type 30 / classifier 23の認識済み`DockSwipe` motion 4を使う
+- progress、motion、終端Z velocity、phase 1 / 2 / 4 / 8を登録済みfixtureへ照合する
+- application magnification eventへ置き換えない
+
+全classでsystem-wide投稿だけを使う。AX scrollbar、対象PID配送、frontmost application分岐、keyboard shortcut、DriverKit、virtual HID、raw digitizerをfallbackにしない。
+
+## sessionと復旧
+
+button downからreleaseまたはcancelまでsource buttonとGestureClassを固定する。進行中に別buttonが追加されてもclassやsession IDを切り替えない。
+
+次の各経路を検証する。
+
+- 正常release
+- recognizer cancelとtimeout
+- kill switchとmanual stop
+- sleep / wakeと重複wake
 - device切断
 - TCC喪失
-- output作成または投稿失敗
+- event作成失敗
+- 部分投稿と投稿失敗
 - contract不一致
 
 合格条件:
 
-- session IDが一意で、順序が0から欠落なく増える
-- source timestamp、sample間隔、登録contractのcompanion timestamp関係を保持し、capture orderで順序を判定する
-- finger countがterminalまで固定される
-- terminalが重複しない
+- terminalはsessionごとに一度だけ生成する
 - terminal後に同じsessionのeventを投稿しない
-- active sessionを残したまま次のbutton sessionを開始しない
-- contractが要求するcontinuationがある場合も同じsessionへ結合し、最終的にterminalへ収束する
-- 部分投稿時は実投稿順とtrace順を一致させ、再送またはcancelで予約済みeventを解消する
-- terminal生成自体に失敗した場合は成功扱いにせず、出力停止と物理解放待ちを構造化して報告する
+- 部分投稿では未投稿offsetと順序を保持して同じsessionを閉じる
+- terminal失敗を成功扱いにせず、新規sessionを開始しない
+- sleepを伴わないwake通知と重複wakeでrunning状態や保留retryを破壊しない
+- manual stop後に自動再開しない
 
-### passthrough
+## passthroughとcursor
 
-button 3 / 4 / 5未押下時に、対象deviceと対象外deviceの両方で次を確認する。
+button 3 / 4 / 5未押下時は、move、click、double-click、drag、wheel、button 1 / 2、対象外buttonを変更せず通す。対象deviceと対象外deviceを分けて検証する。
 
-- mouse move
-- click / double-click
-- drag
-- wheel
-- button 1 / 2および対象外button
+active gesture session中だけmouseとcursorのQuartz連動を停止し、元moveをgesture量として使ってもcursorを移動させない。button解放、cancel、tap中断、runtime停止、出力失敗では連動を復元する。cursor warpは使わない。
 
-合格条件は、元event objectまたは同値field列がそのまま下流へ届き、生成event 0件、抑制0件、変更0件になることである。
-activation session中に消費するsource eventと、未押下時に通すeventを同じ「漏れなし」countへまとめない。
+異常終了時はactivation buttonの物理解放前に途中のdown / upを通常clickとして漏らさず、解放後に通常passthroughへ戻す。
 
-次の境界も別scenarioで検証する。
+## 設定とGUI
 
-- app起動直後
-- 各buttonの正常解放直後
-- kill switch直後
-- output failure直後
-- sleep復帰直後
-- device再接続直後
-- TCC復旧直後
+設定検証は次を含む。
 
-active sessionが異常終了した時は、activation buttonの物理解放前に途中のdown/upを通常clickとして漏らさず、解放を確認した後に通常passthroughへ戻る。
+- 旧mode、感度、dead zone、application設定をcanonical形式から除去する
+- 不正な旧設定は原本bytesを保持し、runtimeを開始しない
+- canonical設定の再読込では不要な再書込をしない
+- 複数processのmigration / saveを設定file単位で排他する
+- lock fileのsymlink差し替えを拒否する
+- GUIで先頭device条件を編集しても後続条件を失わない
+- 保存失敗時は未保存状態とApplyの再試行可能状態を保持する
+- 不正な数値入力を保存せず、保存済み設定を維持する
 
-### fail closed
+GUI smokeでは固定mapping、通常mouse通過説明、runtime状態、toolbar、詳細条件の開閉、pane切替、control数、非resizable window、Applyのdirty stateをAppKit上で検証する。実際のLaunchServices起動ではAX treeと画面を確認し、一時設定だけを編集・保存してdisk反映を検証する。
 
-次の条件では、event tapによる新規抑制と製品event生成を開始しない。
+## doctorとruntime identity
+
+doctorは未知option、重複option、値欠落、不正benchmark件数を拒否する。readinessは設定、Accessibility、HID inventory、対象device、Input Monitoring probe、3つの必須ProductOutput familyを同じreportで判定する。
+
+`.app`内実行ファイルをterminalから起動した場合は`commandLine`、LaunchServicesから起動した場合は`launchServicesApp`として扱う。LaunchServices判定には次を全て要求する。
+
+- `.app` bundleである
+- parent PIDが1である
+- `XPC_SERVICE_NAME`がbundle IDと一致する
+- `__CFBundleIdentifier`がbundle IDと一致する
+
+環境変数だけを偽装したCLIはGUIアプリとして扱わない。条件が曖昧な場合はTCC帰属先を推測せず`unknown`としてreadinessを失敗させる。
+
+## fail closed
+
+次ではevent tapと新規入力抑制を開始しない。
 
 - 未対応macOS version / build
-- symbolまたはprivate contract不在
 - fixture ID、SHA-256、schema、contract ID、OS build、実体bytesの不一致
-- 明示したcontract pathが空、読取不能、空file、不正bytes
-- finger countを検証できないcontract
-- 対象device不一致または複数候補で一意に決まらない
-- Input MonitoringまたはAccessibility不足
-- timestamp、session、event量の不整合
-- source / generated / trace / manifestのprovenance不一致
+- scroll contract、変換model、DockSwipe templateの欠落または改変
+- 対象device不一致
+- AccessibilityまたはInput Monitoring不足
+- timestamp、capture order、session、event batchの不整合
+- event作成または投稿失敗を安全に閉じられない状態
 
-active session中に失敗した場合は、利用可能なcontractで明示cancel terminalを投稿して停止する。cancelを安全に生成できない場合は追加のtrackpad eventを投稿せず、activation inputの物理解放まで誤clickを抑え、解放後にpassthroughへ戻す。
-
-次をfallbackにしない。
-
-- AX scrollbar
-- 対象PIDへの明示投稿
-- frontmost application別分岐
-- keyboard shortcut
-- 別の低レベルevent family
-- 旧単純scroll
+diagnostic output、別event family、AX、PID、shortcutへfallbackしない。
 
 ## 実機検証
 
-### 純正trackpad fixture
+### 純正trackpad
 
-対応対象の各macOS buildで、純正trackpadから次のscenarioを収録する。
+対応macOS buildごとに、2本指scroll / swipe、3本指system swipe、4本指system pinchの正負方向、開始、changed、正常terminal、cancelを収録する。raw event、serialized event、manifest、fixture SHA-256、OS buildを同じrunへ結び付ける。
 
-| scenario | 必須系列 |
-| --- | --- |
-| 2本指 | 正負X、正負Y、斜め、停止、方向反転、正常terminal、cancel |
-| 3本指 | 正負X、正負Y、斜め、停止、方向反転、正常terminal、cancel |
-| 4本指 | 正負X、正負Y、斜め、停止、方向反転、正常terminal、cancel |
+### Nape Pro
 
-各captureには操作marker、finger count、scenario ID、ready tokenを付ける。loggerがreadyになる前の操作、deadline後の操作、0 event、dropあり、manifest不成立のcaptureは採用しない。
-公開fixtureには不要なdevice identifier、keycode、pointer座標、未採用prefixを残さず、公開したbytesと登録SHA-256を一致させる。
+同じrelease候補で次を確認する。
 
-### Nape Pro変換
+- button 3 / 4 / 5がそれぞれ固定classだけを開始する
+- source sampleとgenerated batchの量、符号、順序、timestampが対応する
+- 全sessionがsingle terminalへ収束する
+- gesture中にcursorが動かず、解放後に通常追従へ戻る
+- 未押下のmove、click、drag、wheelが通常mouseとして動作する
+- Space、Mission Control、App Expose、system pinchなどのOS結果を低レベルcontractと別に記録する
 
-同じOS buildとbinaryで次を収録する。
+画面結果だけで低レベルcontract合格にしない。低レベルcontractが合格してもOS設定や前面Appにより結果が成立しない場合は、両者を別判定として記録する。
 
-| scenario | 入力 | 期待値 |
-| --- | --- | --- |
-| button 3 | 押下中に純正2本指fixtureと対応する連続量を入力 | 全frame 2本指、量保存、terminal |
-| button 4 | 押下中に純正3本指fixtureと対応する連続量を入力 | 全frame 3本指、量保存、terminal |
-| button 5 | 押下中に純正4本指fixtureと対応する連続量を入力 | 全frame 4本指、量保存、terminal |
-| 未押下 | move、click、drag、wheel | passthrough、生成0件 |
+## 即時不合格
 
-source mouse log、HID log、generated trackpad log、post traceを同時収録し、同じrun UUIDで結ぶ。画面結果が期待どおりでも、source-to-output量、finger count、terminal、provenanceのいずれかが不一致なら不合格とする。
-
-### 異常終了
-
-少なくとも次を実利用する`.app`で取得する。
-
-- kill switch
-- runtime stop
-- sleep / wake
-- Nape Pro切断 / 再接続
-- TCC喪失 / 復旧
-- unsupported contract
-
-各scenarioでterminal 1件、terminal後の生成0件、物理解放後のpassthrough、stuck session 0件を確認する。
-
-## 低レベルcontractとOS/App結果
-
-### 低レベルcontract
-
-低レベル判定はfinger countごとに行い、次を比較する。
-
-- event type、subtype、raw field、serialized data
-- finger count表現
-- phase、terminal、補助event
-- event量とmodel入力
-- timestamp、順序、session ID
-- system-wide post trace
-- fixture / binary provenance
-
-`scroll`、`DockSwipe`、`NavigationSwipe`、`magnification`は解析reportの観測ラベルとして使用できる。これらの件数や成功率を、buttonごとのmode、製品capability、完成率として報告しない。
-
-### OS/App結果
-
-OS/App結果は別scenario、別reportで保存する。
-
-- 前面App名とversion
-- macOS version / build
-- OS gesture設定
-- button、finger count、入力event量、方向、速度
-- 参照した低レベルcontract report
-- AppKit target logまたはsystem result
-- 画面観察
-- session terminalとstuck有無
-
-縦横scroll、application navigation、Space切替、Mission Control、App Exposé、Zoomなどを記録できるが、これはOS/Appの解釈結果である。
-結果が異なるAppへ対応するためにapplication別設定、方向別action、AX/PID/shortcut fallbackを追加しない。
-
-判定例:
-
-| 低レベルcontract | OS/App結果 | 記録 |
-| --- | --- | --- |
-| 合格 | 成立 | 両方を独立して合格 |
-| 合格 | 不成立 | contract合格、当該OS/App結果は不成立 |
-| 不合格 | 成立 | contract不合格。画面結果は参考のみ |
-| 不合格 | 不成立 | 両方不合格 |
-
-## 性能検証
-
-性能はfinger countごとに集計し、低レベルfamilyや旧modeで分割しない。
-
-- source event受理から変換入力記録まで
-- 変換入力記録から最初のtrackpad event投稿まで
-- source event受理から同frame系列の投稿完了まで
-- button downからterminal投稿完了まで
-- passthrough eventの追加遅延
-- logger queue depth、drop count
-- idle、連続入力、terminal後のCPU
-
-詳細な閾値と失敗条件は[性能測定基準](performance-baseline.md)を正とする。AppKit受信と画面反映時間は低レベル投稿時間と分離する。
-
-## 権限とruntime identity
-
-完成証跡は日常利用する`.app`と同じ実行主体で取得する。
-
-~~~sh
-.build/NapeGesture.app/Contents/MacOS/nape-gesture doctor --probe-hid --json --assert-runtime-ready
-~~~
-
-終了コード0だけでなく、実行ファイル、bundle path、bundle ID、TCC対象、対象device、OS build、contract fixture、fail-closed状態が証跡manifestと一致することを確認する。
-standalone binaryのTCC状態を配布`.app`の証跡として代用しない。
-
-## 既知の失敗条件
-
-次は即時不合格とする。
-
-- 旧mode / family testだけが成功している
-- source event量を最終deltaだけで比較している
-- buttonとfinger countの対応が設定や方向で変わる
-- sessionがterminalなしで残る、またはterminal後に出力が続く
-- 未押下passthroughをactivation sessionの「漏れなし」証跡で代用する
-- dry-run、合成input、画面結果だけで実機合格にする
-- family単体の生成成功を製品完成とする
-- OS/App結果のためにAX、PID、shortcut、application別分岐へfallbackする
-- unsupported条件でevent tapや抑制を先に開始する
-- fixture ID文字列だけを見て、bytesとSHA-256を検証しない
+- buildまたは個別test成功だけで製品完成とする
+- generic `fingerCount` eventやraw contact数を生成すると解釈する
+- 3 classへ同じevent family、field、単位変換を強制する
+- source sampleを最終deltaだけで比較する
+- terminalなし、重複terminal、terminal後出力、stuck sessionがある
+- 保存失敗後にGUIを保存済み表示へ変える
+- HID inventory取得失敗を0台と表示する
+- TCCの起動主体を環境変数だけで決める
+- unsupported条件で抑制を先に開始する
 - 異なるrun、binary、OS buildの証跡を混ぜる
-- logger drop、0 event、ready期限切れ、manifest不一致を警告だけで通す
-- 公証成功をevent contract互換性の証明にする
+- ad-hoc署名を公開配布署名として扱う
 
 ## 完成判定
 
-次を全て満たした場合だけ完成とする。
-
-- event量保存が2 / 3 / 4本指で機械検証・実機検証とも合格
-- button 3 / 4 / 5からfinger countが固定され、全frameで一致
-- 全正常・異常経路がsession terminalへ収束
-- 未押下、解放後、異常終了後のpassthroughが合格
-- 純正trackpadとNape Proの登録済み実機証跡が同一OS buildでそろう
-- unsupported条件が誤出力なしでfail closedになる
-- 低レベルcontractとOS/App結果を別reportで判定
-- build、test、性能、bundle、署名、公証の必要ゲートが合格
-- READMEとリリース文書が実測済み範囲を超えて完成を主張していない
+[完成判定チェックリスト](completion-checklist.md)の全gateが、同じrelease候補、repo SHA、binary SHA-256、OS buildへ結び付いた場合だけ完成とする。自動検証は物理device受入を代替せず、画面証跡はruntime log、doctor、fixture、manifestを代替しない。

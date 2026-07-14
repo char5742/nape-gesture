@@ -88,6 +88,10 @@ public struct RuntimeRecoveryState: Equatable, Sendable {
 
     @discardableResult
     public mutating func handleDidWake(at time: TimeInterval, retryDelay: TimeInterval) -> RuntimeRecoveryDecision {
+        guard isSuspendedForSleep else {
+            return RuntimeRecoveryDecision(shouldStartRuntime: false, shouldStopRuntime: false)
+        }
+
         guard autoRetryEnabled else {
             mode = .stopped(reason: .manualStop, stoppedAt: time)
             pendingRetry = nil

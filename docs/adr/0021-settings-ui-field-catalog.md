@@ -6,13 +6,13 @@
 
 ## 背景
 
-設定UIは、製品仕様として固定された値、ユーザーが編集できる安全設定、runtimeから読み取る診断状態を同じ画面で扱う。画面実装だけを正本にすると、buttonとfinger countの固定対応が誤って編集可能になったり、結果別modeやapplication別設定が再導入されたりしてもCIで検出できない。
+設定UIは、製品仕様として固定された値、ユーザーが編集できる安全設定、runtimeから読み取る診断状態を同じ画面で扱う。画面実装だけを正本にすると、buttonとGestureClassの固定対応が誤って編集可能になったり、結果別modeやapplication別設定が再導入されたりしてもCIで検出できない。
 
 固定の製品仕様は次のとおりである。
 
-- button 3 = 2本指trackpad入力
-- button 4 = 3本指trackpad入力
-- button 5 = 4本指trackpad入力
+- button 3 = 2本指scroll / swipe相当
+- button 4 = 3本指system swipe相当
+- button 5 = 4本指system pinch相当
 - 上記button未押下時は通常mouse入力
 
 ## 決定
@@ -20,7 +20,7 @@
 - `NapeGestureCore`に、設定UIへ表示する項目を列挙する機械可読catalogを置く。
 - catalogは項目ごとに、安定ID、表示名、section、control kind、値の由来、編集可否、設定pathまたは診断keyを持つ。
 - 値の由来を最低限、次の3種類に分ける。
-  - `fixedProductMapping`: button 3 / 4 / 5とfinger countの固定対応。読み取り専用。
+  - `fixedProductMapping`: button 3 / 4 / 5とGestureClassの固定対応。読み取り専用。
   - `editableSafetySetting`: 対象device条件、association、証跡出力、安全停止など、入力の意味を変えない運用項目。
   - `runtimeStatus`: 権限、実行主体、対象device、OS build、contract、fail-closed理由など。読み取り専用。
 - 固定button対応を保存設定の選択値にしない。既定値ではなく製品定数として扱う。
@@ -45,7 +45,7 @@ catalog testはUI構造の機械証跡であり、実際の表示、保存、mig
 
 ## 関連
 
-- [ADR-0049: buttonを指本数へ固定しイベント量をtrackpad入力へ置換する](0049-fixed-button-to-finger-count-trackpad-input.md)
+- [ADR-0049: buttonを固定GestureClassへ接続する](0049-fixed-button-to-gesture-class-input.md)
 - [ゴール要件](../requirements.md)
 - [完成判定チェックリスト](../completion-checklist.md)
 - [PRレビューチェックリスト](../pr-review-checklist.md)

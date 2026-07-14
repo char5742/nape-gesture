@@ -12,6 +12,15 @@ enum DeviceInventory {
         try hidDevices(filter: .pointing)
     }
 
+    static func pointingDevices(in devices: [DeviceIdentity]) -> [DeviceIdentity] {
+        devices.filter {
+            DeviceFilter.pointing.includes(
+                usagePage: $0.primaryUsagePage,
+                usage: $0.primaryUsage
+            )
+        }
+    }
+
     static func matchedDevices(settings: NapeGestureSettings) throws -> [DeviceIdentity] {
         let devices = try allDevices()
         guard !settings.targetDevices.isEmpty else {

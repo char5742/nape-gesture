@@ -200,7 +200,7 @@ require_text \
 require_text \
   "Sources/NapeGestureCore/TrackpadOutputSession.swift" \
   "public struct TrackpadOutputSessionMachine" \
-  "2 / 3 / 4本指入力のsession lifecycleを共通modelへ集約する"
+  "固定GestureClass入力のsession lifecycleを共通modelへ集約する"
 
 require_text \
   "Sources/NapeGestureCore/MonotonicEventClock.swift" \

@@ -4359,6 +4359,7 @@ testRuntimePerformanceAnalyzerRejectsMissingAndSlowPosts()
 testRuntimePerformanceAnalyzerAllowsDeferredRecognizedGestureStart()
 testRuntimePerformanceAnalyzerRejectsMissingPostAfterGestureStarted()
 testRuntimePerformanceAnalyzerDoesNotTreatMomentumAsTapToPost()
+runStabilityRegressionTests()
 
 if failures == 0 {
     print("すべてのコアテストに成功しました。")

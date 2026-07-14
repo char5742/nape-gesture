@@ -1,6 +1,6 @@
 # Trackpad event logger local smoke
 
-> 非規範証跡: この文書が確認したのはlogger、schema、queue drain、fail-closed境界であり、固定button / finger-count入力変換または製品完成を示さない。現在の採用条件は[証跡文書の扱い](README.md)を正とする。
+> 非規範証跡: この文書が確認したのはlogger、schema、queue drain、fail-closed境界であり、固定button / GestureClass変換、class固有ProductOutput、または製品完成を示さない。現在の採用条件は[証跡文書の扱い](README.md)を正とする。
 
 - 日付: 2026-07-11
 - branch: `codex/trackpad-driver-events`

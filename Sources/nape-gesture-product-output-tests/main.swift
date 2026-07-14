@@ -2558,6 +2558,7 @@ testFixedDockSwipeAccumulatesSessionProgress()
 testFixedGestureCoordinatorClosesPartialScrollBatch()
 testFixedScrollAcceptsMouseDeltaGrid()
 postFixedGestureSmokeIfRequested()
+failures.append(contentsOf: runStabilityRegressionTests())
 
 if failures.isEmpty {
     print("product output tests passed")

@@ -2,11 +2,12 @@
 
 - 状態: 採択
 - 日付: 2026-07-09
+- 更新日: 2026-07-14
 
 ## 背景
 
 完成判定では、button 3 / 4 / 5未押下時と各buttonの解放後に、通常のclick、move、drag、wheelが変更、抑制、再生成されないことを証明する必要がある。
-前面applicationでの実event投稿や物理操作が最後に残る場合でも、そこへ進む前に、`system-test normal-after-release`が2 / 3 / 4本指session終了後の通常入力通過を検証できるevent列を生成しているか機械判定する。
+前面applicationでの実event投稿や物理操作が最後に残る場合でも、そこへ進む前に、`system-test normal-after-release`が各固定GestureClassのsession終了後に通常入力通過を検証できるevent列を生成しているか機械判定する。
 
 単に未マーク入力があるだけでは不十分である。
 `kill-switch` も未マークキーイベントを生成するため、未マークキーだけを通常入力通過の前段証跡として扱うと、キルスイッチ証跡を通常入力通過証跡に誤用できてしまう。
@@ -21,7 +22,7 @@
 
 ## 影響
 
-- 実event投稿やTCC許可前でも、各finger-count session後のdry-runが少なくとも通常入力系eventを含むことを粗く確認できる。完成判定ではADR-0016の種類別assertionを使う。
+- 実event投稿やTCC許可前でも、各GestureClass session後のdry-runが少なくとも通常入力系eventを含むことを粗く確認できる。完成判定ではADR-0016の種類別assertionを使う。
 - `kill-switch` の未マークキーイベントを、通常入力通過の証跡として誤って採用しにくくなる。
 - 最終的な通常クリック、ドラッグ、ホイールの証跡は、Reference Target App と `analyze-target-log --assert-has-unmarked-click --assert-has-unmarked-drag --assert-has-unmarked-wheel`、および必要な場合の実デバイス操作で埋める。
 

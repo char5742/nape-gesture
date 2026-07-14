@@ -1,6 +1,6 @@
 # ADR-0042: 25F80 scroll / momentum契約を独立fixtureで比較する
 
-> 本ADRはscroll / momentum fixture identityとstrict比較規則を、2本指入力の内部contractとして定義する。scrollは独立した製品modeまたは完成経路ではない。button 3 / 4 / 5の固定変換を判定するには、[ADR-0049](0049-fixed-button-to-finger-count-trackpad-input.md)に従いfinger countと変換前後のX/Y量を含む2 / 3 / 4本指fixtureを別途必要とする。
+> 本ADRはscroll / momentum fixture identityとstrict比較規則を、2本指scroll / swipe classの内部contractとして定義する。scrollはユーザーが選ぶ製品modeではない。button 3 / 4 / 5の固定変換を判定するには、[ADR-0049](0049-fixed-button-to-gesture-class-input.md)に従い3つのclass固有event contractと変換前後の量を別途比較する。
 
 - 状態: 採択
 - 日付: 2026-07-11
@@ -8,7 +8,7 @@
 ## 背景
 
 `physical-observations.json`は、純正trackpadの8 captureと未取得境界をまとめた観測台帳である。
-2 / 3 / 4本指の追加captureにより今後も更新されるため、この台帳全体のSHA-256を確定済みscroll / momentum内部契約として使うと、無関係な観測追加でもcontract identityが変わる。
+3つの物理GestureClassの追加captureにより今後も更新されるため、この台帳全体のSHA-256を確定済みscroll / momentum内部契約として使うと、無関係な観測追加でもcontract identityが変わる。
 
 また、`TrackpadDriverEventLog`のtyped decoderはlegacy schemaへ既定値を補い、raw fieldを数値順へ正規化する。
 意味解析をtyped modelだけへ直接適用すると、欠落や並べ替えを補完後の値で見落とす可能性がある。
@@ -18,7 +18,7 @@
 - 確定済みscroll / momentumだけを`Fixtures/trackpad-contract/25F80/scroll-momentum-contract.json`へ分離する。
 - fixture ID、contract ID、schema、bytesのSHA-256、OS version / buildをCore registryへ固定し、完全一致しないfixtureをfail closedにする。
 - fixtureはreference device、logger repo SHA、logger executable SHA、採用した4 captureのsource log SHA、件数、contract prefix、解析開始capture index、capture wall-clockを保持する。
-- 観測台帳の`partial`状態は維持する。専用fixtureの`confirmed`は2本指scroll / momentum内部contractだけを指し、2 / 3 / 4本指変換、OS/App結果、製品完成を意味しない。
+- 観測台帳の`partial`状態は維持する。専用fixtureの`confirmed`は2本指scroll / momentum内部contractだけを指し、ほかのGestureClass、OS/App結果、製品完成を意味しない。
 - 専用fixtureと公開観測台帳は、contract ID、OS、device、logger、4 sourceのfile名 / SHA / 件数 / prefix / 解析開始index / wall-clock、観測規則を機械照合する。local原本検証では同じsource SHAとmanifestを再読込し、公開contractまで一続きに結合する。
 - contract解析はPhase 1のstrict JSON Lines解析とmanifest検証が成功した`TrackpadDriverEventDocument`だけを受け取る。Core API内でもfixture登録を再検証し、全documentのraw line bytesをLF付きで再構成してmanifestへ照合した後、strict parserを再実行する。外部から渡されたtyped値やcapture indexをそのまま信用しない。
 - `analyze-trackpad-event-log --contract <path>`を明示した場合だけcontract比較を終了code gateへ加え、report schemaを2にする。未指定のPhase 1呼び出しはschema 1と既存JSON shapeを維持し、`contractPath` / `contractComparison`を出力しない。
@@ -46,9 +46,9 @@
 
 ## 影響
 
-- 2 / 3 / 4本指の追加観測と、確定済み2本指scroll内部contractのidentityを独立して更新できる。
+- 3つの物理GestureClassの追加観測と、確定済み2本指scroll内部contractのidentityを独立して更新できる。
 - 生成候補のmissing terminal、missing companion、未確定type 29、envelope、phase、field alias、OS build差分を同じCLI reportと終了codeで判定できる。
-- analyzer合格だけでは製品runtimeをsupportedにしない。button 3 / 4 / 5の固定対応、finger count、共通単位変換、session、suppressionをIssue #148の別gateで検証する。
+- analyzer合格だけでは製品runtimeをsupportedにしない。button 3 / 4 / 5の固定GestureClass対応、class固有単位変換、session、suppressionを製品runtimeの別gateで検証する。
 - horizontal source先頭のcapture開始前から続くpartial系列は、登録sourceの`analysisStartCaptureIndex`より前として物理原本比較から除外する。generated candidateの途中開始は許可しない。
 
 ## 関連
@@ -58,4 +58,4 @@
 - [ADR-0040: capture順とevent timestampを分離する](0040-capture-order-and-event-timestamp.md)
 - [ADR-0041: 物理captureのready同期と公開fixture境界を固定する](0041-physical-capture-readiness-and-fixture-privacy.md)
 - [物理capture証跡](../evidence/2026-07-11-physical-trackpad-contract-capture.md)
-- [ADR-0049: buttonを指本数へ固定しイベント量をtrackpad入力へ置換する](0049-fixed-button-to-finger-count-trackpad-input.md)
+- [ADR-0049: buttonを固定GestureClassへ接続する](0049-fixed-button-to-gesture-class-input.md)
