@@ -1,22 +1,21 @@
 import Foundation
 
 public enum SettingsUISection: String, Codable, Equatable, Sendable, CaseIterable {
-    case fixedMapping
+    case buttonAssignments
     case gestureTuning
     case cancellation
     case targetDevice
 }
 
 public enum SettingsUIControlKind: String, Codable, Equatable, Sendable {
-    case readOnlyText
     case slider
     case numberTextField
     case textField
     case checkbox
+    case popUpButton
 }
 
 public enum SettingsUIValueSource: String, Codable, Equatable, Sendable {
-    case fixedProductMapping
     case editableGestureSetting
     case editableSafetySetting
 }
@@ -53,9 +52,9 @@ public struct SettingsUIFieldDescriptor: Codable, Equatable, Sendable {
 }
 
 public enum SettingsUIField: String, Codable, Equatable, Sendable, CaseIterable {
-    case fixedButton3Gesture
-    case fixedButton4Gesture
-    case fixedButton5Gesture
+    case button3GestureAssignment
+    case button4GestureAssignment
+    case button5GestureAssignment
     case systemGestureSensitivity
     case targetDeviceAssociationWindow
     case cancellationMaximumDuration
@@ -75,12 +74,12 @@ public enum SettingsUIField: String, Codable, Equatable, Sendable, CaseIterable 
 
     public var descriptor: SettingsUIFieldDescriptor {
         switch self {
-        case .fixedButton3Gesture:
-            return fixed("ボタン3", "2本指スクロール / スワイプ")
-        case .fixedButton4Gesture:
-            return fixed("ボタン4", "3本指システムスワイプ")
-        case .fixedButton5Gesture:
-            return fixed("ボタン5", "4本指システムピンチ")
+        case .button3GestureAssignment:
+            return assignment("ボタン3", "gesture.buttonAssignments.button3")
+        case .button4GestureAssignment:
+            return assignment("ボタン4", "gesture.buttonAssignments.button4")
+        case .button5GestureAssignment:
+            return assignment("ボタン5", "gesture.buttonAssignments.button5")
         case .systemGestureSensitivity:
             return SettingsUIFieldDescriptor(
                 field: self,
@@ -116,18 +115,18 @@ public enum SettingsUIField: String, Codable, Equatable, Sendable, CaseIterable 
         }
     }
 
-    private func fixed(
+    private func assignment(
         _ label: String,
-        _ value: String
+        _ settingsPath: String
     ) -> SettingsUIFieldDescriptor {
         SettingsUIFieldDescriptor(
             field: self,
             label: label,
-            section: .fixedMapping,
-            controlKind: .readOnlyText,
-            valueSource: .fixedProductMapping,
-            isEditable: false,
-            fixedValue: value
+            section: .buttonAssignments,
+            controlKind: .popUpButton,
+            valueSource: .editableGestureSetting,
+            isEditable: true,
+            settingsPath: settingsPath
         )
     }
 

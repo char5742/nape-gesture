@@ -6,7 +6,7 @@
 
 ## 背景
 
-[ADR-0049](0049-fixed-button-to-gesture-class-input.md)は、button 3 / 4 / 5を固定GestureClassへ接続する。classはraw finger countではなく、物理trackpad driver認識後の上位event semanticsである。
+[ADR-0049](0049-fixed-button-to-gesture-class-input.md)は、button 3 / 4 / 5へ3つのGestureClassから1つを割り当てる。classはraw finger countではなく、物理trackpad driver認識後の上位event semanticsである。
 
 物理gestureが異なれば、必要なevent family、field、phase、companion lifecycle、単位変換も異なる。これを一つのgeneric eventへ統一すると、再現すべき物理contractを失う。一方、通常SDKに公開されないevent contractを安全に投稿するには、versioned compatibility adapter、由来追跡、投稿前検査、fail closedが必要である。
 
@@ -33,7 +33,7 @@
 - sampleをdrop、duplicate、coalesce、sortしない。方向反転や軸変更で別classまたは別sessionへ切り替えない。
 - 1 commandから生成する低レベルevent数はadapter contractに従う。scroll companion batchなどの複数eventは正常である。
 - class固有の単位変換と係数はApple公式資料、Apple OSS、自前の純正trackpad / Nape Pro fixtureから再導出し、identityをversion管理する。
-- button 4 / 5のdeltaとvelocityには、100%時の`/ 600`を基準に共通の`systemGestureSensitivity`を`(source / 600) * 倍率`として適用する。倍率は0.25から2.0、既定値1.0とし、button 3のscroll contractには適用しない。
+- 3本指system swipeと4本指system pinch classのdeltaとvelocityには、100%時の`/ 600`を基準に共通の`systemGestureSensitivity`を`(source / 600) * 倍率`として適用する。倍率は0.25から2.0、既定値1.0とし、2本指scroll classには適用しない。
 - 共通感度は保存済みsource値を変更せずProductOutput変換時にだけ適用する。dead zone、ユーザー加速度、button別・方向別・application別の係数で有効sampleを破棄または意味変更しない。
 
 ### 投稿境界
@@ -58,7 +58,7 @@
 
 ## 検証
 
-- button 3 / 4 / 5が固定classと`scroll` / `dockSwipe` / `dockSwipePinch`へ一意に接続される。
+- button 3 / 4 / 5のcanonical割り当てがsession開始時に1つのclassを選び、そのclassから`scroll` / `dockSwipe` / `dockSwipePinch`へ一意に接続される。
 - source sample件数、X/Y、符号、capture order、timestamp、session IDがcommand境界までlosslessに保持される。
 - class別のevent type、field、phase、batch、単位変換、terminalを登録fixtureと比較する。
 - partial batch、作成失敗、投稿失敗、terminal retryで順序を失わずsingle terminalへ収束する。
@@ -67,14 +67,14 @@
 
 ## 影響
 
-- GUIと設定は固定class名を読み取り専用で表示し、event family selectorを公開しない。button 4 / 5共通のシステムジェスチャー感度だけを編集可能にする。
+- GUIと設定はbuttonごとのGestureClass selectorを公開するが、event family selectorは公開しない。システムジェスチャー感度は物理buttonではなく選択された3本指 / 4本指classへ共通適用する。
 - doctorは製品runtimeに必要な`scroll`、`dockSwipe`、`dockSwipePinch`の3 familyを共通readiness contractで検査する。
-- 既存ProductOutput adapter、fixture、state machineは、固定class coordinatorから到達する製品実装として再利用する。
+- 既存ProductOutput adapter、fixture、state machineは、選択class coordinatorから到達する製品実装として再利用する。
 - compatibility contractを安全に構成できない環境では、通常mouse入力を壊さず停止する。
 
 ## 関連
 
-- [ADR-0049: buttonを固定GestureClassへ接続する](0049-fixed-button-to-gesture-class-input.md)
+- [ADR-0049: buttonごとにGestureClassを割り当てる](0049-fixed-button-to-gesture-class-input.md)
 - [ADR-0034: DriverKit virtual trackpadを製品出力に使わない](0034-reject-driverkit-virtual-trackpad.md)
 - [ADR-0037: 製品gesture出力と診断event出力を分離する](0037-separate-product-and-diagnostic-event-output.md)
 - [ADR-0038: 固定GestureClass sessionとmonotonic clockを共通化する](0038-trackpad-output-session-and-monotonic-clock.md)

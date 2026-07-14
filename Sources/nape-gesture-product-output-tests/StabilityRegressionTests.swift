@@ -678,7 +678,7 @@ private func testOrderingSessionAndClassMismatchRecovery(
         "fixed coordinatorのactive session ID差し替えを拒否する"
     )
 
-    let wrongFixedButton = FixedGestureInputCommand(
+    let wrongSourceButton = FixedGestureInputCommand(
         sessionID: fixedSessionID,
         sourceButton: .button3,
         gestureClass: .threeFingerSystemSwipe,
@@ -690,7 +690,7 @@ private func testOrderingSessionAndClassMismatchRecovery(
         deltaY: 0
     )
     assertions.expect(
-        coordinator.post(wrongFixedButton).result.failure == .invalidSession,
+        coordinator.post(wrongSourceButton).result.failure == .invalidSession,
         "fixed coordinatorのsource button差し替えを拒否する"
     )
     assertions.expect(output.events.isEmpty, "fixed mismatch拒否時にProductOutputへ投稿しない")

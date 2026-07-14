@@ -3,21 +3,21 @@
 この文書は`char5742/nape-gesture`に作成した初期Issueと、その後の分割履歴を保存する非規範の台帳である。現在のIssue状態、依存関係、close判定はGitHub上のIssueと証跡コメントを正とし、製品要件は[ゴール要件](requirements.md)と[ADR-0049](adr/0049-fixed-button-to-gesture-class-input.md)を正とする。
 メインスレッドはIssue整理、PRレビュー、マージ判断を担当し、競合しない実装範囲だけをサブエージェントに分割する。
 
-## 固定製品モデルと現状
+## button割り当て製品モデルと現状
 
-製品の入力モデルは次の固定対応だけを持つ。
+製品の入力モデルは次の3 GestureClassだけを持つ。
 
-| Nape Pro入力 | 固定GestureClassとProductOutput |
+| GestureClass | ProductOutput |
 | --- | --- |
-| mouse button 3押下中の連続mouse event量 | `twoFingerScrollSwipe`: type 22 scroll + 必要なtype 29 companion |
-| mouse button 4押下中の連続mouse event量 | `threeFingerSystemSwipe`: type 30 `DockSwipe` motion 1 / 2 |
-| mouse button 5押下中の連続mouse event量 | `pinch`（4本指system pinch相当）: type 30 `DockSwipe` motion 4 |
+| `twoFingerScrollSwipe` | type 22 scroll + 必要なtype 29 companion |
+| `threeFingerSystemSwipe` | type 30 `DockSwipe` motion 1 / 2 |
+| `pinch`（4本指system pinch相当） | type 30 `DockSwipe` motion 4 |
 | button 3 / 4 / 5未押下 | 通常mouse入力を変更せず通過 |
 
-このbutton対応はユーザー設定ではない。結果別mode、方向別action、application別の有効・無効、感度、割り当て、AX、対象PID配送、keyboard shortcutによる代替経路を製品surfaceまたは製品runtimeへ追加しない。現在の正本では、button 4 / 5共通の`systemGestureSensitivity`だけを25%から200%、既定100%で設定でき、button 3と固定mappingには適用しない。
+button 3 / 4 / 5は各classから1つを選択でき、既定値は順に2 / 3 / 4本指classとする。重複を許可し、無効・未割り当ては設けない。結果別mode、方向別action、application別の有効・無効、感度、割り当て、AX、対象PID配送、keyboard shortcutによる代替経路を製品surfaceまたは製品runtimeへ追加しない。`systemGestureSensitivity`は25%から200%、既定100%で、物理buttonではなく選択された3本指 / 4本指classへ適用する。
 「2 / 3 / 4本指」はraw contact数やgeneric `fingerCount` transportではない。各GestureClassが異なるevent type、field、phase、companion、単位変換を使い、最終結果はmacOSまたは前面applicationが解釈する。`NavigationSwipe`と`magnification`を独立class、独立button、製品fallbackとして追加しない。
 
-2026-07-12のbaseline `55eb991` は、buttonごとの旧mode選択を残していた移行前履歴であり、現在の実装状態を示さない。build成功、`.app`生成、`doctor`、個別event投稿、旧mode単位のtestだけでは製品完成とせず、固定button→GestureClass→class固有ProductOutputのend-to-end経路で判定する。
+2026-07-12のbaseline `55eb991` は、結果別の旧mode選択を残していた移行前履歴であり、現在の実装状態を示さない。build成功、`.app`生成、`doctor`、個別event投稿、旧mode単位のtestだけでは製品完成とせず、button割り当て→GestureClass→class固有ProductOutputのend-to-end経路で判定する。
 
 以下の旧Issue名、旧action名、旧mode / family分割、open / close記述は作成時点の履歴としてだけ参照できる。現在の再投入、PR要件、close判定へ流用しない。
 
@@ -137,17 +137,17 @@ logger起動、ready確認、保存、解析はエージェントが先に完了
 Labels: `area:runtime`, `area:hid`, `type:feature`, `priority:p0`
 
 目的:
-対象デバイスの直近入力だけを固定button→GestureClass変換へ渡し、他のマウスやトラックパッド入力を巻き込まない。
+対象デバイスの直近入力だけをbutton割り当て→GestureClass変換へ渡し、他のマウスやトラックパッド入力を巻き込まない。
 
 完了条件:
 
 - 対象 HID 入力の直近時刻とイベントタップ入力の association window が設定可能
-- button 3 / 4 / 5を区別し、押下中はそれぞれ固定GestureClass sessionとして継続処理される
+- button 3 / 4 / 5を区別し、押下時のcanonical割り当てをsession中保持する
 - 同一押下中の連続mouse event量が同一GestureClassとsession IDへ順序を保って入る
 - button解放で対応sessionを終端し、未押下時は遅延なく通常mouse入力へ戻る
 - 対象外デバイスのクリック、ドラッグ、ホイールを改変しないテストがある
 - Nape Pro 実機ログで association window の初期値が妥当化されている
-- 結果別mode、方向別action、application別設定でGestureClassを変更できない
+- canonical button割り当て以外の結果別mode、方向別action、application別設定でGestureClassを変更できない
 
 依存関係:
 Issue 4。
@@ -213,7 +213,7 @@ Labels: `area:core`, `area:verification`, `type:research`, `priority:p1`
 - X/Y量、符号、sample順、timestamp間隔、単位を対応付けられる
 - OS buildごとにclass固有のevent type、field、phase、companion、単位変換、許容誤差、fixture ID、SHA-256を固定している
 - button 3 / 4 / 5へ同一source fixtureを与え、変換前の量、符号、順序、timestampを保持しながらclass固有encodingの差を検証する
-- button 4 / 5共通の`systemGestureSensitivity`以外に、button別・方向別・application別の感度、加速度、dead zone、threshold、clamp、結果別係数を持たない
+- 3本指 / 4本指class共通の`systemGestureSensitivity`以外に、button別・方向別・application別の感度、加速度、dead zone、threshold、clamp、結果別係数を持たない
 - 複数source sampleをcoalesceせず、各sampleと生成eventの対応を回帰testで固定している
 
 依存関係:
@@ -287,7 +287,7 @@ Labels: `area:core`, `area:runtime`, `area:ui`, `area:docs`, `type:bug`, `priori
 - buttonごとの結果別mode selectorを設定schemaとGUIから削除している
 - 旧mode、旧感度、加速度、dead zone、momentum tuningをcanonical configから原子的に除去し、旧感度を新しい共通感度へ移行せず、値がなければ1.0を補い、対象deviceと安全停止条件を保持している
 - runtime commandがGestureClassと連続mouse event量のX/Y、符号、反転、順序、timestampを保持し、複数source sampleをcoalesceしていない
-- 3つのclass固有versioned contractを使い、button 4 / 5共通の`systemGestureSensitivity`以外にユーザー調整またはapplication別の係数を持たない
+- 3つのclass固有versioned contractを使い、3本指 / 4本指class共通の`systemGestureSensitivity`以外にユーザー調整またはapplication別の係数を持たない
 - 旧mode→family routing、優勢軸固定、直交成分破棄を削除し、class固有のprogress / velocity / phase変換だけを登録contractへ照合している
 - 3 GestureClassの低レベルcontractを純正trackpad計測から導出している
 - release、cancel、kill switch、sleep、runtime stop、投稿失敗で各sessionを一度だけterminalへ収束させている
@@ -308,13 +308,13 @@ Labels: `area:runtime`, `area:hid`, `area:verification`, `type:feature`, `priori
 button 3 / 4 / 5押下中の連続mouse event量を、それぞれ`twoFingerScrollSwipe`、`threeFingerSystemSwipe`、`pinch`のclass固有ProductOutputへ変換し、未押下時は通常mouse入力を変更せず通す。Nape GestureはOS/App結果を選ばずsystem-wideへ投稿する。
 
 完了条件:
-- button 3 / 4 / 5と3つの固定GestureClassが設定、UI、migration、runtime、出力、test、文書で一致する
+- button 3 / 4 / 5のcanonical割り当てと3つのGestureClassが設定、UI、migration、runtime、出力、test、文書で一致する
 - button 3 / 4 / 5未押下時の通常mouse入力が変更されない
 - 結果別mode、方向別action、application別設定、AX、対象PID配送、shortcut fallbackが製品経路にない
 - `scroll`、`DockSwipe`、`NavigationSwipe`、`magnification`の観測または投稿だけを製品経路の完成と数えていない
 - 入力取得、class固有contract、共通session、runtime統合、OS/App結果、物理受入、releaseの境界ごとに証跡がある
 - Issue 117単体の集約記述、旧modeテスト、family capability、`.app`生成で子Issueの証跡を代替していない
-- 固定button→GestureClass→class固有ProductOutputのend-to-end経路と各受入境界が現行binaryで成立している
+- button割り当て→GestureClass→class固有ProductOutputのend-to-end経路と各受入境界が現行binaryで成立している
 
 履歴上のSub-issues（状態と依存関係はGitHubを正とする）:
 
@@ -357,7 +357,7 @@ Labels: `area:runtime`, `area:ui`, `type:feature`, `priority:p0`
 - `.app` 起動時に設定ウィンドウが前面に出る
 - Dock から再度開いたとき、表示中ウィンドウがなければ設定ウィンドウが再表示される
 - メニューバーのsystem symbolによる常駐 UI が維持される
-- 設定UIにbuttonごとのmode選択、方向別action、application別設定がなく、固定button→GestureClass対応を変更できない
+- 設定UIでは3 buttonごとのGestureClassだけを選択でき、結果別mode、方向別action、application別設定を持たない
 - 常駐 UI の権限確認に同じ情報が出る
 - アクセシビリティ未許可、入力監視未許可の復旧導線が別々に出る
 - 権限変更後の再起動または自動再試行が文書化されている

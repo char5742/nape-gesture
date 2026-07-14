@@ -8,7 +8,7 @@
 
 macOS 26.5.1（build 25F80）について、純正trackpad captureからtype 22 scroll + type 29 companionと、認識済みtype 30 / IOHID `DockSwipe`の上位event contractを再導出し、既存ProductOutput adapterとして実装している。4本指system pinchもapplication magnificationではなく、`DockSwipe` motion 4として構成する。
 
-固定buttonモデルは、これらを一つのfinger-count eventへ統合しない。buttonからGestureClassを一意に決め、class固有adapterへ接続する。既存adapter、fixture、batch投稿、terminal retry、provenanceを維持し、ユーザー変更可能なmodeとapplication別routingだけを製品経路から除く。
+button割り当てモデルは、これらを一つのfinger-count eventへ統合しない。保存済み割り当てからGestureClassを一意に決め、class固有adapterへ接続する。既存adapter、fixture、batch投稿、terminal retry、provenanceを維持し、結果別modeとapplication別routingを製品経路から除く。
 
 ## 決定
 
@@ -55,10 +55,10 @@ macOS 26.5.1（build 25F80）について、純正trackpad captureからtype 22 
 
 ## 検証
 
-- button 3 / 4 / 5から固定classと`scroll` / `dockSwipe` / `dockSwipePinch`へのmappingを機械判定する。
+- button 3 / 4 / 5のcanonical割り当てから選択classと`scroll` / `dockSwipe` / `dockSwipePinch`へのmappingを機械判定する。
 - source sample 1対1 command化、X/Y、符号、timestamp、capture order、drop、duplicate、reorderを検査する。
 - class別event type、field、phase、unit conversion、batch、single terminalをfixtureと比較する。
-- `systemGestureSensitivity`の0.25 / 1.0 / 2.0でbutton 4 / 5のdeltaとvelocityが`(source / 600) * 倍率`になり、button 3の出力が変わらないことを検査する。
+- `systemGestureSensitivity`の0.25 / 1.0 / 2.0で、物理buttonに関係なく3本指 / 4本指classのdeltaとvelocityが`(source / 600) * 倍率`になり、2本指classの出力が変わらないことを検査する。
 - scroll contract、model、DockSwipe templateのidentityとbytesを個別に改変し、runtime全体が抑制前にfail closedすることを確認する。host OS identityを注入しなくてもProductOutputが成立することを別macOS buildのCIで確認する。
 - batch作成失敗、部分投稿、terminal再試行、direct post trace、capture provenance、raw配送先fieldを検査する。
 - 3 familyを同じProductOutputからsystem-wideへ投稿し、type 30のmotion 1 / 2 / 4とIOHID値を検査するsmokeを実行する。
@@ -67,13 +67,13 @@ macOS 26.5.1（build 25F80）について、純正trackpad captureからtype 22 
 
 - PR #143から#147で成立していたProductOutput adapterを製品実装として維持する。
 - runtime readinessは3 familyすべてを要求する。1 familyでもidentityまたは構築条件を満たさなければruntime全体を開始しない。
-- GUIはfamily selectorを持たず、固定GestureClassを読み取り専用表示し、button 4 / 5共通のシステムジェスチャー感度だけを編集可能にする。
+- GUIはfamily selectorを持たず、buttonごとのGestureClass selectorを表示する。システムジェスチャー感度は選択された3本指 / 4本指classへ共通適用する。
 - 登録済みcontract assetが不完全、またはeventを構築できない環境では通常mouse入力を保持して停止する。OS build番号が変わったことだけでは停止しない。
-- release buildの`/Applications/Nape Gesture.app`はインストール済みでdoctor runtime readyである。system-testではDockが3本指垂直とmotion 4の正負両方向を受理済みだが、Nape Pro実機button 4 / 5の入力、terminal、通常mouse復帰は別途物理受入する。
+- release buildの`/Applications/Nape Gesture.app`はインストール済みである。system-testではDockが3本指垂直とmotion 4の正負両方向を受理済みだが、既定button以外へ割り当てたNape Pro入力、terminal、通常mouse復帰は別途物理受入する。
 
 ## 関連
 
-- [ADR-0049: buttonを固定GestureClassへ接続する](0049-fixed-button-to-gesture-class-input.md)
+- [ADR-0049: buttonごとにGestureClassを割り当てる](0049-fixed-button-to-gesture-class-input.md)
 - [ADR-0036: trackpad driver上位eventを安全に再現する](0036-emulate-trackpad-driver-output-events.md)
 - [ADR-0038: 固定GestureClass sessionとmonotonic clockを共通化する](0038-trackpad-output-session-and-monotonic-clock.md)
 - [ADR-0039: trackpad eventログを厳格解析しcapture manifestへ固定する](0039-strict-trackpad-event-analysis-and-capture-manifest.md)

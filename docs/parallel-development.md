@@ -15,25 +15,25 @@ Issue orchestration と証跡付き close は [ADR-0005](adr/0005-issue-orchestr
 同じ checkout を複数エージェントで共有すると、branch 切り替えや未コミット差分の取り合いが起きるため、並列化時は所有ファイルだけでなく worktree も分離する。
 メインスレッドは直接実装を抱え込みすぎず、Issue 作成、PR レビュー、CI と証跡確認、マージ判断を主担当にする。
 
-### 固定製品モデル
+### button割り当て製品モデル
 
-Issue分割と完成判定は、次の固定対応を変えない。
+Issue分割と完成判定は、次のGestureClassとProductOutput対応を変えない。
 
-| Nape Pro入力 | 製品が生成するtrackpad入力 |
+| 選択可能なGestureClass | 製品が生成するtrackpad入力 |
 | --- | --- |
-| mouse button 3押下中の連続mouse event量 | `twoFingerScrollSwipe`: type 22 scroll + 必要なtype 29 companion |
-| mouse button 4押下中の連続mouse event量 | `threeFingerSystemSwipe`: type 30 `DockSwipe` motion 1 / 2 |
-| mouse button 5押下中の連続mouse event量 | `pinch`（4本指system pinch相当）: type 30 `DockSwipe` motion 4 |
+| `twoFingerScrollSwipe` | type 22 scroll + 必要なtype 29 companion |
+| `threeFingerSystemSwipe` | type 30 `DockSwipe` motion 1 / 2 |
+| `pinch`（4本指system pinch相当） | type 30 `DockSwipe` motion 4 |
 | button 3 / 4 / 5未押下 | 通常mouse入力を変更せず通過 |
 
-2 / 3 / 4本指はraw contact数やgeneric `fingerCount` transportではなく、固定GestureClassの説明である。class固有adapterが異なるevent type、field、phase、companion、単位変換を生成することを前提に分担する。結果別mode、方向別action、application別設定をworkstreamにせず、OS/App結果はmacOSまたは前面applicationの解釈としてclass固有contractと別に検証する。唯一のgesture調整値はbutton 4 / 5共通の`systemGestureSensitivity`とし、button 3または固定mappingを変更しない。
+button 3 / 4 / 5は各classから1つを選択でき、既定値は順に2 / 3 / 4本指classとする。重複割り当てを許可し、無効・未割り当ては設けない。2 / 3 / 4本指はraw contact数やgeneric `fingerCount` transportではなく、固定GestureClassの説明である。class固有adapterが異なるevent type、field、phase、companion、単位変換を生成することを前提に分担する。結果別mode、方向別action、application別設定をworkstreamにせず、OS/App結果はmacOSまたは前面applicationの解釈としてclass固有contractと別に検証する。唯一のgesture調整値は`systemGestureSensitivity`とし、選択された3本指 / 4本指classへ共通適用する。
 
-2026-07-12のbaseline `55eb991` はbuttonごとの旧mode選択を残していた移行前履歴であり、現在の実装状態を示さない。旧mode test、個別familyの投稿、`doctor`、`.app`試用だけを完成根拠にせず、固定button→GestureClass→class固有ProductOutputのend-to-end到達性を確認する。
+2026-07-12のbaseline `55eb991` は結果別の旧mode選択を残していた移行前履歴であり、現在の実装状態を示さない。旧mode test、個別familyの投稿、`doctor`、`.app`試用だけを完成根拠にせず、button割り当て→GestureClass→class固有ProductOutputのend-to-end到達性を確認する。
 
 ## メインスレッドの責務
 
 - ゴール要件を維持し、MVP に縮小しない
-- button 3→`twoFingerScrollSwipe`、button 4→`threeFingerSystemSwipe`、button 5→`pinch`、未押下pass-throughをIssue間の不変条件にする
+- 3つの選択可能classと各ProductOutput、3 buttonへの必須割り当て、未押下pass-throughをIssue間の不変条件にする
 - GitHub Issue の粒度、依存関係、優先度を管理する
 - PR の差分をレビューし、仕様逸脱、入力安全性、テスト不足を指摘する
 - CI、ローカル検証、実機検証の証跡を確認する
@@ -114,7 +114,7 @@ Computer Use の使い分けは [ADR-0030](adr/0030-computer-use-gui-operation-e
 レビュー観点:
 
 - 通常入力通過を壊していないか
-- button 3 / 4 / 5をそれぞれ3つの固定GestureClassへ接続し、設定で変更できないか
+- button 3 / 4 / 5のcanonical割り当てをsession開始時に確定し、session中に変更しないか
 - button押下中の連続mouse event量を同じGestureClassとsession IDで処理しているか
 - 未押下時は通常mouse入力を変更せず通しているか
 - 終了後に必ず idle へ戻るか
@@ -195,8 +195,8 @@ Computer Use の使い分けは [ADR-0030](adr/0030-computer-use-gui-operation-e
 レビュー観点:
 
 - アプリ別設定を増やしていないか
-- buttonごとのmode / family選択、方向別action、button別・方向別・application別の感度、割り当てを増やしていないか
-- 固定button→GestureClass対応を読取専用で表示しているか
+- GestureClass以外の結果別mode / family選択、方向別action、button別・方向別・application別の感度や割り当てを増やしていないか
+- 3 buttonのGestureClass selectorが保存・復元され、重複を許可し、無効値を持たないか
 - 設定保存前に不正値を止めるか
 - `.app` が Dock に表示される通常 GUI アプリとして起動するか
 - 起動時と Dock 再オープン時に設定ウィンドウを表示できるか

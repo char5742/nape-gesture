@@ -146,6 +146,7 @@ struct DoctorCommand {
             killSwitchShortcut: KillSwitchShortcut.displayName,
             accessibilityTrusted: accessibilityTrusted,
             requireMatchingTargetDevice: settings.requireMatchingTargetDevice,
+            buttonAssignments: settings.gesture.buttonAssignments,
             systemGestureSensitivity: settings.gesture.systemGestureSensitivity,
             targetDeviceAssociationWindow: settings.targetDeviceAssociation.associationWindow,
             configuredTargetMatchers: settings.targetDevices.count,
@@ -327,6 +328,9 @@ struct DoctorCommand {
             "キルスイッチ: \(report.killSwitchShortcut)",
             "アクセシビリティ: \(report.accessibilityTrusted ? "許可済み" : "未許可")",
             "対象デバイス一致必須: \(report.requireMatchingTargetDevice ? "はい" : "いいえ")",
+            "ボタン3: \(report.buttonAssignments.button3.displayName)",
+            "ボタン4: \(report.buttonAssignments.button4.displayName)",
+            "ボタン5: \(report.buttonAssignments.button5.displayName)",
             "システムジェスチャー感度: \(Int((report.systemGestureSensitivity * 100).rounded()))%",
             "対象入力の紐づけ秒: \(report.targetDeviceAssociationWindow)",
             "対象デバイス条件数: \(report.configuredTargetMatchers)",
@@ -544,6 +548,7 @@ private struct DoctorReport: Codable {
     var killSwitchShortcut: String
     var accessibilityTrusted: Bool
     var requireMatchingTargetDevice: Bool
+    var buttonAssignments: GestureButtonAssignments
     var systemGestureSensitivity: Double
     var targetDeviceAssociationWindow: TimeInterval
     var configuredTargetMatchers: Int

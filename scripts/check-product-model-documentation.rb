@@ -110,25 +110,28 @@ end
 
 required_snippets = {
   "README.md" => [
-    "> **現在の製品状態: 試用可能・Nape Pro主要経路受入済み**",
-    "| button 3を押しながらmouseを操作 | 2本指スクロール / スワイプ相当 |",
-    "| button 4を押しながらmouseを操作 | 3本指システムスワイプ相当 | type 30 `DockSwipe`、motion 1 / 2 |",
-    "| button 5を押しながらmouseを操作 | 4本指system pinch相当 | type 30 `DockSwipe`、motion 4 |",
+    "> **現在の製品状態: button割り当て対応の署名済みRelease候補を試用可能**",
+    "| button 3 | 2本指スクロール / スワイプ、3本指システムスワイプ、4本指システムピンチ | 2本指スクロール / スワイプ |",
+    "| button 4 | 2本指スクロール / スワイプ、3本指システムスワイプ、4本指システムピンチ | 3本指システムスワイプ |",
+    "| button 5 | 2本指スクロール / スワイプ、3本指システムスワイプ、4本指システムピンチ | 4本指システムピンチ |",
+    "同じGestureClassを複数buttonへ割り当てられます",
+    "無効または未割り当てにはできません",
     "raw digitizer contact数でもgeneric `fingerCount` fieldでもありません",
     "1 sampleから1つのsource command",
     "recognized-dockswipe-templates-25F80-v2",
     "852c7d0b6e32ced7082ea5c06a65d05971d3868e6a36aaccfd6f422871bc32a6",
     "実行中macOSのversion / buildとは比較しません",
-    "`/Applications/Nape Gesture.app`へインストール済み",
-    "Nape Pro物理受入 | 3 class合計23 session",
+    "固定された既定割り当てで3 class合計23 sessionを受入済み",
     "gesture session中はmouse cursorが移動しない",
-    "GUIで25%から200%まで設定でき、既定値は100%",
-    "`(source / 600) * システムジェスチャー感度倍率`"
+    "`(source / 600) * システムジェスチャー感度倍率`",
+    "感度を適用するかは物理button番号ではなく、session開始時に選択されたGestureClassで決まります"
   ],
   "docs/requirements.md" => [
-    "| button 3押下中 | 2本指スクロール / スワイプ相当 |",
-    "| button 4押下中 | 3本指システムスワイプ相当 | type 30 `DockSwipe`、motion 1 / 2 |",
-    "| button 5押下中 | 4本指system pinch相当 | type 30 `DockSwipe`、motion 4 |",
+    "| button 3 | 2本指スクロール / スワイプ、3本指システムスワイプ、4本指システムピンチ | 2本指スクロール / スワイプ |",
+    "| button 4 | 2本指スクロール / スワイプ、3本指システムスワイプ、4本指システムピンチ | 3本指システムスワイプ |",
+    "| button 5 | 2本指スクロール / スワイプ、3本指システムスワイプ、4本指システムピンチ | 4本指システムピンチ |",
+    "同じGestureClassを複数buttonへ割り当ててよい",
+    "無効または未割り当てを表す値は持たない",
     "raw digitizer contact count、generic `fingerCount` field",
     "各source sampleからちょうど1つの内部command",
     "class間で同じevent type、field、単位変換を強制しない",
@@ -140,20 +143,20 @@ required_snippets = {
     "同じevent tap callback内でanchorへwarp",
     "canonical設定pathは`gesture.systemGestureSensitivity`",
     "範囲は0.25から2.0（25%から200%）、既定値は1.0（100%）",
-    "button 3の2本指scrollには適用しない"
+    "物理button番号に関係なく3本指system swipeと4本指system pinchを選択したsessionへ適用し",
+    "canonical割り当ては`gesture.buttonAssignments.button3` / `button4` / `button5`へ保存する"
   ],
   "docs/completion-checklist.md" => [
-    "| 固定GestureClass |",
+    "| button割り当て | 3 buttonそれぞれで3 classを選択・保存・復元でき、重複を許可し、無効値を持たず",
     "| ProductOutput | 2本指はtype 22 scroll + type 29 companion、3本指はtype 30 DockSwipe motion 1 / 2、4本指はtype 30 DockSwipe motion 4",
     "class間でevent count、field、単位変換が同一であることは要求しない",
-    "Nape Pro実機では3 class合計23 session",
+    "固定された既定割り当ての旧binaryでは、Nape Pro実機の3 class合計23 session",
     "DockはSpace切替、Mission Control、motion 4のsystem control遷移を受理",
     "| cursor固定 | button downの絶対座標をsession anchorとして1回だけ保存し",
-    "App Exposéがオフ",
-    "GUIで編集できる「システムジェスチャー感度」はbutton 4 / 5だけに共通"
+    "App ExposéはOS設定がオフ",
+    "物理button番号ではなく選択された3本指・4本指classへ適用"
   ],
   "docs/adr/0036-emulate-trackpad-driver-output-events.md" => [
-    "| 5 | 4本指system pinch | type 30 `DockSwipe`、IOHID motion 4 |",
     "recognized-dockswipe-templates-25F80-v2",
     "IOHID `DockSwipe` type 23を復元",
     "motion = 1 / 2 / 4",
@@ -168,17 +171,20 @@ required_snippets = {
     "2本指scrollの変換modelは変更しない"
   ],
   "docs/adr/0049-fixed-button-to-gesture-class-input.md" => [
-    "# ADR-0049: buttonを固定GestureClassへ接続する",
-    "| 3 | 2本指スクロール / スワイプ相当 | `scroll` |",
-    "| 4 | 3本指システムスワイプ相当 | `dockSwipe`、type 30 DockSwipe motion 1 / 2 |",
-    "| 5 | 4本指system pinch相当 | `dockSwipePinch`、type 30 DockSwipe motion 4 |",
+    "# ADR-0049: buttonごとにGestureClassを割り当てる",
+    "| 2本指スクロール / スワイプ相当 | `scroll` |",
+    "| 3本指システムスワイプ相当 | `dockSwipe`、type 30 DockSwipe motion 1 / 2 |",
+    "| 4本指システムピンチ相当 | `dockSwipePinch`、type 30 DockSwipe motion 4 |",
+    "同じGestureClassを複数buttonへ割り当ててよい",
+    "無効または未割り当てを表す値は設けない",
     "raw digitizer contact countでもgeneric `fingerCount` fieldでもない",
     "accepted move / wheel sampleごとに1つの`FixedGestureInputCommand`",
     "同じsource系列でもgenerated event type、event count、field、phase、unit conversionはclassごとに異なり得る",
     "製品入力tapは、Nape ProのIOHID入力とCGEventの関連付け順序を維持できる`.cgSessionEventTap`",
     "同じanchorへの`CGWarpMouseCursorPosition`が成功してからProductOutputを開始",
+    "canonical設定は`gesture.buttonAssignments.button3` / `button4` / `button5`にGestureClassを保存する",
     "canonical設定`gesture.systemGestureSensitivity`は0.25から2.0、既定値1.0",
-    "旧調整値は新しい共通感度へ移行せず"
+    "感度は物理button番号ではなくsessionに保存したGestureClassで判定し"
   ]
 }.freeze
 
@@ -196,6 +202,14 @@ required_snippets.each do |relative, snippets|
 end
 
 stale_positive_statements = [
+  "buttonとgesture classの対応は製品仕様として固定です",
+  "button mappingは固定し、mode selector、割り当て、button別・方向別・application別の感度設定を持たない",
+  "buttonから選ぶclassは固定であり",
+  "GUIにはbutton 3、4、5の固定GestureClassを読み取り専用で表示する",
+  "GUIは固定mappingを読み取り専用で表示し",
+  "button 3 / 4 / 5がそれぞれ固定classだけを開始する",
+  "button 3 / 4 / 5が固定GestureClass以外へ変更できない",
+  "button 4 / 5だけへ共通適用され",
   "button 3 / 4 / 5の違いで変えてよい意味情報は`fingerCount`だけとする",
   "button間で変えてよい意味情報はfinger countだけとする",
   "生成列はfinger count以外について同じ変換原則に従わなければならない",
@@ -213,6 +227,10 @@ model_documents = %w[
   README.md
   docs/requirements.md
   docs/completion-checklist.md
+  docs/naming-migration.md
+  docs/release.md
+  docs/repository-setup.md
+  docs/verification.md
   docs/adr/0034-reject-driverkit-virtual-trackpad.md
   docs/adr/0036-emulate-trackpad-driver-output-events.md
   docs/adr/0038-trackpad-output-session-and-monotonic-clock.md

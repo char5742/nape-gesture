@@ -1,6 +1,6 @@
 # ADR-0042: 25F80 scroll / momentum契約を独立fixtureで比較する
 
-> 本ADRはscroll / momentum fixture identityとstrict比較規則を、2本指scroll / swipe classの内部contractとして定義する。scrollはユーザーが選ぶ製品modeではない。button 3 / 4 / 5の固定変換を判定するには、[ADR-0049](0049-fixed-button-to-gesture-class-input.md)に従い3つのclass固有event contractと変換前後の量を別途比較する。
+> 本ADRはscroll / momentum fixture identityとstrict比較規則を、2本指scroll / swipe classの内部contractとして定義する。scrollは結果別の製品modeではない。button 3 / 4 / 5の割り当て変換を判定するには、[ADR-0049](0049-fixed-button-to-gesture-class-input.md)に従い3つのclass固有event contractと変換前後の量を別途比較する。
 
 - 状態: 採択
 - 日付: 2026-07-11
@@ -49,7 +49,7 @@
 
 - 3つの物理GestureClassの追加観測と、確定済み2本指scroll内部contractのidentityを独立して更新できる。
 - 生成候補のmissing terminal、missing companion、未確定type 29、envelope、phase、field alias、OS build差分を同じCLI reportと終了codeで判定できる。
-- analyzer合格だけでは製品runtimeをsupportedにしない。button 3 / 4 / 5の固定GestureClass対応、class固有単位変換、session、suppressionを製品runtimeの別gateで検証する。
+- analyzer合格だけでは製品runtimeをsupportedにしない。button 3 / 4 / 5のcanonical割り当て、class固有単位変換、session、suppressionを製品runtimeの別gateで検証する。
 - horizontal source先頭のcapture開始前から続くpartial系列は、登録sourceの`analysisStartCaptureIndex`より前として物理原本比較から除外する。generated candidateの途中開始は許可しない。
 
 ## 関連
@@ -59,4 +59,4 @@
 - [ADR-0040: capture順とevent timestampを分離する](0040-capture-order-and-event-timestamp.md)
 - [ADR-0041: 物理captureのready同期と公開fixture境界を固定する](0041-physical-capture-readiness-and-fixture-privacy.md)
 - [物理capture証跡](../evidence/2026-07-11-physical-trackpad-contract-capture.md)
-- [ADR-0049: buttonを固定GestureClassへ接続する](0049-fixed-button-to-gesture-class-input.md)
+- [ADR-0049: buttonごとにGestureClassを割り当てる](0049-fixed-button-to-gesture-class-input.md)

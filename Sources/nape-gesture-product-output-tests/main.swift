@@ -2365,7 +2365,7 @@ private func testFixedFourFingerPinchUsesSharedSourceDeltaScale() {
     expect(abs(payloads[2].1 - 0.05) < 0.000_001, "4本指pinch terminal velocityへ共通source delta scaleを適用する")
 }
 
-private func testSystemGestureSensitivityScalesSystemGesturesWithoutChangingScroll() {
+private func testSystemGestureSensitivityFollowsAssignedClassNotPhysicalButton() {
     func payloads(
         gestureClass: FixedGestureClass,
         sourceButton: MouseButton,
@@ -2382,53 +2382,62 @@ private func testSystemGestureSensitivityScalesSystemGesturesWithoutChangingScro
             systemGestureSensitivity: sensitivity
         )
         let interval = MonotonicEventClock.nanosecondsPerSecond
-        let id = TrackpadOutputSessionID(rawValue: sessionID)
-        let commands = [
-            FixedGestureInputCommand(
-                sessionID: id,
-                sourceButton: sourceButton,
-                gestureClass: gestureClass,
-                captureOrder: 0,
-                timestamp: MonotonicEventTimestamp(nanosecondsSinceStartup: interval),
-                sourceKind: .buttonDown,
-                phase: .began,
-                deltaX: 0,
-                deltaY: 0
+        var assignments = GestureButtonAssignments.default
+        switch sourceButton {
+        case .button3:
+            assignments.button3 = gestureClass
+        case .button4:
+            assignments.button4 = gestureClass
+        case .center:
+            assignments.button5 = gestureClass
+        case .left, .right, .button5:
+            expect(false, "感度テストへ未対応のsource buttonを渡さない")
+            return []
+        }
+        var recognizer = FixedGestureInputRecognizer(
+            cancellation: GestureCancellationConfiguration(
+                maximumDuration: 0,
+                maximumInactivityInterval: 0
             ),
-            FixedGestureInputCommand(
-                sessionID: id,
-                sourceButton: sourceButton,
-                gestureClass: gestureClass,
-                captureOrder: 1,
-                timestamp: MonotonicEventTimestamp(nanosecondsSinceStartup: interval * 2),
-                sourceKind: .move,
-                phase: .changed,
-                deltaX: deltaX,
-                deltaY: deltaY
+            assignments: assignments,
+            sessionSequence: TrackpadOutputSessionSequence(startingAt: sessionID)
+        )
+        let decisions = [
+            recognizer.handle(
+                .buttonDown(
+                    button: sourceButton,
+                    timestamp: MonotonicEventTimestamp(nanosecondsSinceStartup: interval)
+                )
             ),
-            FixedGestureInputCommand(
-                sessionID: id,
-                sourceButton: sourceButton,
-                gestureClass: gestureClass,
-                captureOrder: 2,
-                timestamp: MonotonicEventTimestamp(nanosecondsSinceStartup: interval * 3),
-                sourceKind: .move,
-                phase: .changed,
-                deltaX: deltaX,
-                deltaY: deltaY
+            recognizer.handle(
+                .move(
+                    deltaX: deltaX,
+                    deltaY: deltaY,
+                    timestamp: MonotonicEventTimestamp(nanosecondsSinceStartup: interval * 2)
+                )
             ),
-            FixedGestureInputCommand(
-                sessionID: id,
-                sourceButton: sourceButton,
-                gestureClass: gestureClass,
-                captureOrder: 3,
-                timestamp: MonotonicEventTimestamp(nanosecondsSinceStartup: interval * 4),
-                sourceKind: .buttonUp,
-                phase: .ended,
-                deltaX: 0,
-                deltaY: 0
+            recognizer.handle(
+                .move(
+                    deltaX: deltaX,
+                    deltaY: deltaY,
+                    timestamp: MonotonicEventTimestamp(nanosecondsSinceStartup: interval * 3)
+                )
+            ),
+            recognizer.handle(
+                .buttonUp(
+                    button: sourceButton,
+                    timestamp: MonotonicEventTimestamp(nanosecondsSinceStartup: interval * 4)
+                )
             ),
         ]
+        let commands = decisions.flatMap(\.commands)
+        expect(commands.count == 4, "変更済み割り当ての入力列を4 commandへ変換する")
+        expect(
+            commands.allSatisfy {
+                $0.sourceButton == sourceButton && $0.gestureClass == gestureClass
+            },
+            "物理buttonではなく選択classをsession全体へ保持する"
+        )
         let posts = commands.map(coordinator.post)
         expect(
             posts.allSatisfy { $0.result.failure == nil },
@@ -2516,32 +2525,32 @@ private func testSystemGestureSensitivityScalesSystemGesturesWithoutChangingScro
         assertDockSwipe(
             payloads(
                 gestureClass: .threeFingerSystemSwipe,
-                sourceButton: .button4,
+                sourceButton: .button3,
                 sensitivity: sensitivity,
                 sessionID: UInt64(1_100 + index),
                 deltaX: 30,
                 deltaY: 0
             ),
             sensitivity: sensitivity,
-            label: "3本指・感度\(sensitivity)"
+            label: "button 3へ割り当てた3本指・感度\(sensitivity)"
         )
         assertPinch(
             payloads(
                 gestureClass: .pinch,
-                sourceButton: .center,
+                sourceButton: .button4,
                 sensitivity: sensitivity,
                 sessionID: UInt64(1_200 + index),
                 deltaX: 0,
                 deltaY: -30
             ),
             sensitivity: sensitivity,
-            label: "4本指・感度\(sensitivity)"
+            label: "button 4へ割り当てた4本指・感度\(sensitivity)"
         )
     }
 
     let minimumScroll = payloads(
         gestureClass: .twoFingerScrollSwipe,
-        sourceButton: .button3,
+        sourceButton: .center,
         sensitivity: 0.25,
         sessionID: 1_300,
         deltaX: 30,
@@ -2549,7 +2558,7 @@ private func testSystemGestureSensitivityScalesSystemGesturesWithoutChangingScro
     )
     let maximumScroll = payloads(
         gestureClass: .twoFingerScrollSwipe,
-        sourceButton: .button3,
+        sourceButton: .center,
         sensitivity: 2.0,
         sessionID: 1_301,
         deltaX: 30,
@@ -2557,7 +2566,7 @@ private func testSystemGestureSensitivityScalesSystemGesturesWithoutChangingScro
     )
     expect(
         minimumScroll == maximumScroll,
-        "共有システムジェスチャー感度を変えても2本指scrollのdeltaとvelocityを変更しない"
+        "論理button 5へ割り当てた2本指classには共有システムジェスチャー感度を適用しない"
     )
 }
 
@@ -2794,7 +2803,7 @@ testCoordinatorClosesPartialBeganAndRetriesPartialCancellation()
 testFixedGestureClassesReachProductFamiliesWithExactOrderAndTimestamp()
 testFixedThreeFingerDockSwipeUsesSharedSourceDeltaScale()
 testFixedFourFingerPinchUsesSharedSourceDeltaScale()
-testSystemGestureSensitivityScalesSystemGesturesWithoutChangingScroll()
+testSystemGestureSensitivityFollowsAssignedClassNotPhysicalButton()
 testFixedGestureCoordinatorClosesPartialScrollBatch()
 testFixedScrollAcceptsMouseDeltaGrid()
 postFixedGestureSmokeIfRequested()

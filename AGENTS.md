@@ -40,10 +40,10 @@
 
 ## 実装と移行
 
-- buttonごとの選択式mode、結果別action、方向別binding、application別設定が現行実装に残っている間は、製品モデル未達と扱う。
-- 固定GestureClassモデルへの変更は、入力認識、session、出力、設定schema、設定UI、migration、状態表示、diagnostics、docs、testsを一貫して更新する。名称だけの変更や、廃止対象modeを別classへ読み替える互換処理では完了にしない。
-- 廃止対象の設定項目を削除する際は、結果別modeを新しい意味へ暗黙変換しない。固定対応を唯一のcanonical stateとして保存し、再起動後も廃止項目を復活させない。
-- 現行のADR、要件、README、検証文書、Issue、テスト名は固定button→GestureClassモデルだけを説明する。誤った設計の説明や参照が一つでも残る状態を文書移行完了にしない。
+- buttonごとの結果別mode、結果別action、方向別binding、application別設定が現行実装に残っている間は、製品モデル未達と扱う。button 3 / 4 / 5へ3つの固定GestureClassから1つを割り当てる設定は、この禁止対象に含めない。
+- button割り当てモデルへの変更は、入力認識、session、出力、設定schema、設定UI、migration、状態表示、diagnostics、docs、testsを一貫して更新する。名称だけの変更や、廃止対象modeを別classへ読み替える互換処理では完了にしない。
+- 廃止対象の設定項目を削除する際は、結果別modeを新しい意味へ暗黙変換しない。`gesture.buttonAssignments.button3` / `button4` / `button5`をcanonical stateとして保存し、再起動後も廃止項目を復活させない。
+- 現行のADR、要件、README、検証文書、Issue、テスト名はbutton割り当て→GestureClass→class固有ProductOutputモデルだけを説明する。誤った設計の説明や参照が一つでも残る状態を文書移行完了にしない。
 - ユーザーが見る挙動、GUI、権限導線、検証手順、完成状態、配布手順を変える場合はREADMEを更新する。更新不要ならPR本文で理由を明記する。
 
 ## 低レベルcontractと安全性

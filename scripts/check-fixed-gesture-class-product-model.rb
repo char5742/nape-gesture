@@ -13,11 +13,18 @@ required_snippets = {
     "case twoFingerScrollSwipe",
     "case threeFingerSystemSwipe",
     "case pinch",
-    "case .button3:\n            self = .twoFingerScrollSwipe",
-    "case .button4:\n            self = .threeFingerSystemSwipe",
-    "case .center:\n            self = .pinch",
-    "case .pinch: .center",
-    "case .pinch: 5",
+    "public struct GestureButtonAssignments",
+    "public var button3: FixedGestureClass",
+    "public var button4: FixedGestureClass",
+    "public var button5: FixedGestureClass",
+    "button3: FixedGestureClass = .twoFingerScrollSwipe",
+    "button4: FixedGestureClass = .threeFingerSystemSwipe",
+    "button5: FixedGestureClass = .pinch",
+    "case .button3:\n            button3",
+    "case .button4:\n            button4",
+    "case .center:\n            button5",
+    "private let assignments: GestureButtonAssignments",
+    "let gestureClass = assignments.assignment(for: button)",
     "public struct FixedGestureInputCommand",
     "captureOrder: UInt64",
     "timestamp: MonotonicEventTimestamp"
@@ -103,34 +110,65 @@ required_snippets = {
   ],
   "Sources/nape-gesture/NapeGestureDaemon.swift" => [
     "private var recognizer: FixedGestureInputRecognizer",
-    "recognizer = FixedGestureInputRecognizer(cancellation: cancellation)",
+    "buttonAssignments: GestureButtonAssignments = .default",
+    "assignments: buttonAssignments",
     "commands: [FixedGestureInputCommand]",
     "try outputExecutor.ensureOutputAvailable()",
     "systemGestureSensitivity: systemGestureSensitivity"
   ],
   "Sources/nape-gesture/NapeGestureRuntime.swift" => [
+    "buttonAssignments: settings.gesture.buttonAssignments",
     "systemGestureSensitivity: settings.gesture.systemGestureSensitivity"
   ],
+  "Sources/NapeGestureCore/GestureConfiguration.swift" => [
+    "public var buttonAssignments: GestureButtonAssignments",
+    "buttonAssignments: GestureButtonAssignments = .default",
+    "try container.encode(buttonAssignments, forKey: .buttonAssignments)"
+  ],
   "Sources/NapeGestureCore/SettingsUISchema.swift" => [
-    "case fixedButton3Gesture",
-    "case fixedButton4Gesture",
-    "case fixedButton5Gesture",
-    "2本指スクロール / スワイプ",
-    "3本指システムスワイプ",
-    "4本指システムピンチ",
-    "case systemGestureSensitivity",
-    "case slider",
-    "isEditable: false"
+    "case buttonAssignments",
+    "case popUpButton",
+    "case button3GestureAssignment",
+    "case button4GestureAssignment",
+    "case button5GestureAssignment",
+    "gesture.buttonAssignments.button3",
+    "gesture.buttonAssignments.button4",
+    "gesture.buttonAssignments.button5",
+    "controlKind: .popUpButton",
+    "valueSource: .editableGestureSetting",
+    "isEditable: true"
+  ],
+  "Sources/nape-gesture/SettingsWindowController.swift" => [
+    "private let button3GesturePopUp = NSPopUpButton()",
+    "private let button4GesturePopUp = NSPopUpButton()",
+    "private let button5GesturePopUp = NSPopUpButton()",
+    "FixedGestureClass.allCases.map(\\.displayName)",
+    "button3: selectedGestureClass(in: button3GesturePopUp)",
+    "button4: selectedGestureClass(in: button4GesturePopUp)",
+    "button5: selectedGestureClass(in: button5GesturePopUp)",
+    "buttonAssignmentEditEnablesApply",
+    "buttonAssignmentRevertDisablesApply"
   ],
   "Sources/NapeGestureCore/SettingsMigration.swift" => [
-    "button3Mode",
-    "button4Mode",
-    "button5Mode",
-    "deadZonePoints",
-    "dragSensitivity",
-    "wheelSensitivity",
+    "gesture[\"buttonAssignments\"] as? [String: Any]",
+    "let assignmentKeys: Set<String> = [\"button3\", \"button4\", \"button5\"]",
+    "Set(assignments.keys) != assignmentKeys",
+    "assignments[$0] is NSNull",
     "gesture[\"systemGestureSensitivity\"] == nil",
-    "gesture[\"systemGestureSensitivity\"] is NSNull"
+    "gesture[\"systemGestureSensitivity\"] is NSNull",
+    "\"button3Mode\"",
+    "\"button4Mode\"",
+    "\"button5Mode\""
+  ],
+  "Sources/nape-gesture-core-tests/main.swift" => [
+    "func testGestureButtonAssignmentsDefaultCustomAndDuplicateMappings()",
+    "複数buttonへ同じGestureClassを重複割り当てできる",
+    "変更した全button割り当てをJSON往復で保持する",
+    "canonical JSONをgesture.buttonAssignments.button3/4/5で保存する",
+    "有効な変更済みbutton割り当てをmigrationで上書きしない"
+  ],
+  "Sources/nape-gesture-product-output-tests/main.swift" => [
+    "private func testSystemGestureSensitivityFollowsAssignedClassNotPhysicalButton()"
   ],
   "Sources/nape-gesture/DoctorCommand.swift" => [
     ".scroll,",
@@ -142,7 +180,7 @@ required_snippets = {
 required_snippets.each do |relative, snippets|
   path = root.join(relative)
   unless path.file?
-    errors << "固定GestureClass guardの対象fileがありません: #{relative}"
+    errors << "button割り当てGestureClass guardの対象fileがありません: #{relative}"
     next
   end
 
@@ -341,6 +379,11 @@ forbidden_terms = {
     "button3Mode",
     "button4Mode",
     "button5Mode",
+    "case fixedMapping",
+    "case fixedButton3Gesture",
+    "case fixedButton4Gesture",
+    "case fixedButton5Gesture",
+    "fixedProductMapping",
     "deadZonePoints",
     "dragSensitivity",
     "wheelSensitivity"
@@ -349,6 +392,9 @@ forbidden_terms = {
     "button3Mode",
     "button4Mode",
     "button5Mode",
+    "fixedMappingLabels",
+    "fixedMappingTexts:",
+    "gesturePaneHasForbiddenModeControl",
     "deadZonePoints",
     "dragSensitivity",
     "wheelSensitivity"
@@ -358,7 +404,7 @@ forbidden_terms = {
 forbidden_terms.each do |relative, terms|
   path = root.join(relative)
   unless path.file?
-    errors << "固定GestureClass guardの対象fileがありません: #{relative}"
+    errors << "button割り当てGestureClass guardの対象fileがありません: #{relative}"
     next
   end
 
@@ -384,6 +430,11 @@ if configuration_path.file?
     )
       errors << "Sources/NapeGestureCore/GestureConfiguration.swift: canonical設定にsystemGestureSensitivityがありません"
     end
+    unless encode_body.include?(
+      "try container.encode(buttonAssignments, forKey: .buttonAssignments)"
+    )
+      errors << "Sources/NapeGestureCore/GestureConfiguration.swift: canonical設定にbuttonAssignmentsがありません"
+    end
 
     %w[
       button3Mode
@@ -400,13 +451,13 @@ if configuration_path.file?
     end
   end
 else
-  errors << "固定GestureClass guardの対象fileがありません: Sources/NapeGestureCore/GestureConfiguration.swift"
+  errors << "button割り当てGestureClass guardの対象fileがありません: Sources/NapeGestureCore/GestureConfiguration.swift"
 end
 
 unless errors.empty?
-  warn "固定GestureClass製品モデルguardに失敗しました:"
+  warn "button割り当てGestureClass製品モデルguardに失敗しました:"
   errors.each { |error| warn "- #{error}" }
   exit 1
 end
 
-puts "固定GestureClass製品モデルguardに成功しました。"
+puts "button割り当てGestureClass製品モデルguardに成功しました。"

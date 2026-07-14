@@ -304,6 +304,9 @@ final class StatusApp: NSObject, NSApplicationDelegate {
             "キルスイッチ: \(KillSwitchShortcut.displayName)",
             "実行状態: \(runtime.isRunning ? "実行中" : "停止中")",
             "設定ファイル: \(configPath)",
+            "ボタン3: \(settings.gesture.buttonAssignments.button3.displayName)",
+            "ボタン4: \(settings.gesture.buttonAssignments.button4.displayName)",
+            "ボタン5: \(settings.gesture.buttonAssignments.button5.displayName)",
             "システムジェスチャー感度: \(Int((settings.gesture.systemGestureSensitivity * 100).rounded()))%",
             "対象入力の紐づけ秒: \(settings.targetDeviceAssociation.associationWindow)",
             "HIDデバイス数: \(inventory.allDeviceCountDescription)",
@@ -624,16 +627,24 @@ struct StatusAppSmokeSnapshot: Codable {
             if !settingsWindowSmoke.initiallyAdvancedConditionsHidden {
                 failures.append("詳細な識別条件が初期状態で展開されています。")
             }
-            let expectedMappings = [
-                "ボタン3  2本指スクロール／スワイプ",
-                "ボタン4  3本指システムスワイプ",
-                "ボタン5  4本指システムピンチ",
-            ]
-            if settingsWindowSmoke.fixedMappingTexts != expectedMappings {
-                failures.append(
-                    "固定button mappingの表示が製品契約と一致しません: "
-                        + "\(settingsWindowSmoke.fixedMappingTexts)"
+            let availableAssignments = Set(FixedGestureClass.allCases.map(\.displayName))
+            if settingsWindowSmoke.buttonAssignmentSelections.count != 3
+                || !settingsWindowSmoke.buttonAssignmentSelections.allSatisfy(
+                    availableAssignments.contains
                 )
+                || settingsWindowSmoke.buttonAssignmentOptionCounts != [3, 3, 3]
+            {
+                failures.append(
+                    "button割り当てcontrolが製品契約と一致しません: "
+                        + "selected=\(settingsWindowSmoke.buttonAssignmentSelections) "
+                        + "options=\(settingsWindowSmoke.buttonAssignmentOptionCounts)"
+                )
+            }
+            if !settingsWindowSmoke.buttonAssignmentEditEnablesApply
+                || !settingsWindowSmoke.buttonAssignmentRevertDisablesApply
+                || !settingsWindowSmoke.buttonAssignmentIncludedInUpdatedSettings
+            {
+                failures.append("button割り当て変更、保存値、または復元時の状態が不正です。")
             }
             let expectedPassthrough = "ボタン3、4、5を押していない間は、通常のマウスとして動作します。"
             if settingsWindowSmoke.passthroughText != expectedPassthrough {
@@ -662,9 +673,6 @@ struct StatusAppSmokeSnapshot: Codable {
                 || !settingsWindowSmoke.gestureSensitivityEditEnablesApply
             {
                 failures.append("共有システムジェスチャー感度controlが正しく動作しません。")
-            }
-            if settingsWindowSmoke.gesturePaneHasForbiddenModeControl {
-                failures.append("固定ジェスチャーpaneに変更可能なmode controlがあります。")
             }
             if settingsWindowSmoke.detailsEditableTextFieldCount != 10
                 || settingsWindowSmoke.detailsCheckboxCount != 1

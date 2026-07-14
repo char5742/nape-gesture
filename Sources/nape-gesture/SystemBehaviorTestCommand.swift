@@ -68,7 +68,7 @@ struct SystemBehaviorTestCommand {
 
               gesture-drag
                   既定のbutton 4押下、左ドラッグ、解放を未マークのマウスイベントとして生成します。
-                  --logical-button 3|4|5 で固定GestureClassを選べます。
+                  --logical-button 3|4|5 で生成元として記録するmouse buttonを選べます。
                   --assert-cursor-anchor でbackground runtimeの実cursor座標を検証します。
 
               gesture-wheel
@@ -358,11 +358,14 @@ struct SystemBehaviorTestCommand {
                 .sorted()
                 .joined(separator: ", ")
             throw ToolError.trackpadOutputContractUnavailable(
-                "固定gesture classに必要なevent familyが未対応です: \(names)"
+                "gesture classに必要なevent familyが未対応です: \(names)"
             )
         }
 
         let sessionID = TrackpadOutputSessionID(rawValue: 1)
+        guard let sourceButton = MouseButton(buttonNumber: plan.activationButtonNumber) else {
+            throw ToolError.invalidValue("--logical-button", String(plan.logicalButtonNumber))
+        }
         var captureOrder: UInt64 = 0
         func command(
             sourceKind: GestureInputSourceKind,
@@ -373,7 +376,7 @@ struct SystemBehaviorTestCommand {
             defer { captureOrder += 1 }
             return FixedGestureInputCommand(
                 sessionID: sessionID,
-                sourceButton: gestureClass.activationButton,
+                sourceButton: sourceButton,
                 gestureClass: gestureClass,
                 captureOrder: captureOrder,
                 timestamp: MonotonicEventClock.now,
