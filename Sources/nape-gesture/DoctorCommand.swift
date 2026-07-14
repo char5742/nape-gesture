@@ -149,7 +149,7 @@ struct DoctorCommand {
             targetDeviceAssociationWindow: settings.targetDeviceAssociation.associationWindow,
             configuredTargetMatchers: settings.targetDevices.count,
             allHIDDeviceCount: inventory.allDeviceCount,
-            pointingDeviceCount: inventory.pointingDeviceCount,
+            mouseInterfaceCount: inventory.mouseInterfaceCount,
             matchedTargetDeviceCount: inventory.matchedDevices.count,
             matchedTargetDevices: inventory.matchedDevices,
             targetDeviceDiagnostics: inventory.targetDeviceDiagnostics,
@@ -169,13 +169,11 @@ struct DoctorCommand {
     {
         do {
             let allDevices = try DeviceInventory.allDevices()
-            let pointingDevices = DeviceInventory.pointingDevices(in: allDevices)
+            let mouseInterfaces = DeviceInventory.mouseInterfaces(in: allDevices)
             let matchedDevices =
                 settings.targetDevices.isEmpty
                 ? []
-                : allDevices.filter { device in
-                    settings.targetDevices.contains { $0.matches(device) }
-                }
+                : DeviceInventory.matchedDevices(in: allDevices, settings: settings)
 
             if settings.requireMatchingTargetDevice && settings.targetDevices.isEmpty {
                 findings.append("対象デバイス一致が必須ですが、対象デバイス条件が空です。")
@@ -188,12 +186,12 @@ struct DoctorCommand {
 
             return DoctorInventory(
                 allDeviceCount: allDevices.count,
-                pointingDeviceCount: pointingDevices.count,
+                mouseInterfaceCount: mouseInterfaces.count,
                 matchedDevices: matchedDevices,
                 targetDeviceDiagnostics: DoctorTargetDeviceDiagnostics(
                     settings: settings,
                     allDevices: allDevices,
-                    pointingDevices: pointingDevices,
+                    mouseInterfaces: mouseInterfaces,
                     matchedDevices: matchedDevices,
                     inventoryError: nil
                 ),
@@ -204,12 +202,12 @@ struct DoctorCommand {
             findings.append("HID デバイス一覧の取得に失敗しました: \(message)")
             return DoctorInventory(
                 allDeviceCount: nil,
-                pointingDeviceCount: nil,
+                mouseInterfaceCount: nil,
                 matchedDevices: [],
                 targetDeviceDiagnostics: DoctorTargetDeviceDiagnostics(
                     settings: settings,
                     allDevices: nil,
-                    pointingDevices: nil,
+                    mouseInterfaces: nil,
                     matchedDevices: [],
                     inventoryError: message
                 ),
@@ -331,7 +329,7 @@ struct DoctorCommand {
             "対象入力の紐づけ秒: \(report.targetDeviceAssociationWindow)",
             "対象デバイス条件数: \(report.configuredTargetMatchers)",
             "HIDデバイス数: \(formatOptional(report.allHIDDeviceCount))",
-            "ポインティングデバイス数: \(formatOptional(report.pointingDeviceCount))",
+            "マウスインターフェース数: \(formatOptional(report.mouseInterfaceCount))",
             "一致対象デバイス数: \(report.matchedTargetDeviceCount)",
             "trackpad output contract: \(report.outputContract.status)",
             "固定必須family: \(report.outputContract.requiredFamilies.joined(separator: ", "))",
@@ -353,7 +351,7 @@ struct DoctorCommand {
                 let mismatchFields = candidate.bestEvaluation.mismatches.map(\.field).joined(
                     separator: ",")
                 lines.append(
-                    "- \(candidate.device.displayName) stableId=\(candidate.device.stableID) matcher=\(candidate.bestMatcherIndex) score=\(score) pointing=\(candidate.isPointingDevice ? "yes" : "no") mismatches=\(mismatchFields.isEmpty ? "-" : mismatchFields)"
+                    "- \(candidate.device.displayName) stableId=\(candidate.device.stableID) matcher=\(candidate.bestMatcherIndex) score=\(score) mouseInterface=\(candidate.isMouseInterface ? "yes" : "no") mismatches=\(mismatchFields.isEmpty ? "-" : mismatchFields)"
                 )
             }
         }
@@ -397,7 +395,7 @@ struct DoctorCommand {
 
 private struct DoctorInventory {
     var allDeviceCount: Int?
-    var pointingDeviceCount: Int?
+    var mouseInterfaceCount: Int?
     var matchedDevices: [DeviceIdentity]
     var targetDeviceDiagnostics: DoctorTargetDeviceDiagnostics
     var error: String?
@@ -416,7 +414,7 @@ private struct DoctorTargetDeviceDiagnostics: Codable {
     init(
         settings: NapeGestureSettings,
         allDevices: [DeviceIdentity]?,
-        pointingDevices: [DeviceIdentity]?,
+        mouseInterfaces: [DeviceIdentity]?,
         matchedDevices: [DeviceIdentity],
         inventoryError: String?
     ) {
@@ -446,23 +444,23 @@ private struct DoctorTargetDeviceDiagnostics: Codable {
             status = "noCurrentMatch"
         }
 
-        let pointingDeviceKeys = Set((pointingDevices ?? []).map(Self.deviceDiagnosticKey))
+        let mouseInterfaceKeys = Set((mouseInterfaces ?? []).map(Self.deviceDiagnosticKey))
         let allCandidates = Self.uniqueDevices(allDevices ?? []).compactMap {
             device -> DoctorTargetDeviceCandidate? in
             guard let best = Self.bestEvaluation(for: device, matchers: settings.targetDevices)
             else {
                 return nil
             }
-            let isPointingDevice = pointingDeviceKeys.contains(Self.deviceDiagnosticKey(device))
+            let isMouseInterface = mouseInterfaceKeys.contains(Self.deviceDiagnosticKey(device))
             guard
                 best.evaluation.isMatch || best.evaluation.matchedConditionCount > 0
-                    || isPointingDevice
+                    || isMouseInterface
             else {
                 return nil
             }
             return DoctorTargetDeviceCandidate(
                 device: device,
-                isPointingDevice: isPointingDevice,
+                isMouseInterface: isMouseInterface,
                 bestMatcherIndex: best.index,
                 bestEvaluation: best.evaluation
             )
@@ -505,8 +503,8 @@ private struct DoctorTargetDeviceDiagnostics: Codable {
             return lhs.bestEvaluation.matchedConditionCount
                 > rhs.bestEvaluation.matchedConditionCount
         }
-        if lhs.isPointingDevice != rhs.isPointingDevice {
-            return lhs.isPointingDevice && !rhs.isPointingDevice
+        if lhs.isMouseInterface != rhs.isMouseInterface {
+            return lhs.isMouseInterface && !rhs.isMouseInterface
         }
         if lhs.bestEvaluation.conditionCount != rhs.bestEvaluation.conditionCount {
             return lhs.bestEvaluation.conditionCount > rhs.bestEvaluation.conditionCount
@@ -533,7 +531,7 @@ private struct DoctorTargetDeviceDiagnostics: Codable {
 
 private struct DoctorTargetDeviceCandidate: Codable {
     var device: DeviceIdentity
-    var isPointingDevice: Bool
+    var isMouseInterface: Bool
     var bestMatcherIndex: Int
     var bestEvaluation: DeviceMatcherEvaluation
 }
@@ -547,7 +545,7 @@ private struct DoctorReport: Codable {
     var targetDeviceAssociationWindow: TimeInterval
     var configuredTargetMatchers: Int
     var allHIDDeviceCount: Int?
-    var pointingDeviceCount: Int?
+    var mouseInterfaceCount: Int?
     var matchedTargetDeviceCount: Int
     var matchedTargetDevices: [DeviceIdentity]
     var targetDeviceDiagnostics: DoctorTargetDeviceDiagnostics

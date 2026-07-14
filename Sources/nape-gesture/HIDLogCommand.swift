@@ -23,7 +23,10 @@ final class HIDLogCommand {
         } else if includeAll {
             IOHIDManagerSetDeviceMatching(manager, nil)
         } else {
-            IOHIDManagerSetDeviceMatchingMultiple(manager, HIDDeviceMatch.pointingMatches() as CFArray)
+            IOHIDManagerSetDeviceMatchingMultiple(
+                manager,
+                HIDDeviceMatch.mouseInterfaceMatches() as CFArray
+            )
         }
 
         IOHIDManagerRegisterInputValueCallback(

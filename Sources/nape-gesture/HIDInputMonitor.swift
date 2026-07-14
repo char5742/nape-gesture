@@ -22,7 +22,10 @@ final class HIDInputMonitor {
         let matcherMatches = HIDDeviceMatch.exactMatches(for: settings.targetDevices)
         let exactMatches = deviceMatches.isEmpty ? matcherMatches : deviceMatches
         if exactMatches.isEmpty {
-            IOHIDManagerSetDeviceMatchingMultiple(manager, HIDDeviceMatch.pointingMatches() as CFArray)
+            IOHIDManagerSetDeviceMatchingMultiple(
+                manager,
+                HIDDeviceMatch.mouseInterfaceMatches() as CFArray
+            )
         } else {
             IOHIDManagerSetDeviceMatchingMultiple(manager, exactMatches as CFArray)
         }
@@ -54,7 +57,7 @@ final class HIDInputMonitor {
         let device = IOHIDElementGetDevice(element)
         let identity = DeviceIdentity(hidDevice: device)
 
-        guard isTargetDevice(identity) else {
+        guard identity.isMouseInterface, isTargetDevice(identity) else {
             return
         }
 
@@ -101,7 +104,7 @@ final class HIDInputMonitor {
         guard !settings.targetDevices.isEmpty else {
             return true
         }
-        return settings.targetDevices.contains { $0.matches(device) }
+        return settings.targetDevices.contains { $0.matchesMouseInterface(device) }
     }
 }
 

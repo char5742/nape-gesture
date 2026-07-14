@@ -594,6 +594,65 @@ func testDeviceMatcherMatchesUsageWhenConfigured() {
     expect(!nonMatcher.matches(device), "usage 条件が違うデバイスには一致しない")
 }
 
+func testMouseHIDInterfaceExcludesCompositeSiblingInterfaces() {
+    let mouse = DeviceIdentity(
+        manufacturer: "Example",
+        product: "Composite Input",
+        vendorID: 123,
+        productID: 456,
+        transport: "USB",
+        primaryUsagePage: 1,
+        primaryUsage: 2
+    )
+    let keyboard = DeviceIdentity(
+        manufacturer: "Example",
+        product: "Composite Input",
+        vendorID: 123,
+        productID: 456,
+        transport: "USB",
+        primaryUsagePage: 1,
+        primaryUsage: 6
+    )
+    let pointer = DeviceIdentity(
+        manufacturer: "Example",
+        product: "Composite Input",
+        vendorID: 123,
+        productID: 456,
+        transport: "USB",
+        primaryUsagePage: 1,
+        primaryUsage: 1
+    )
+    let vendorDefined = DeviceIdentity(
+        manufacturer: "Example",
+        product: "Composite Input",
+        vendorID: 123,
+        productID: 456,
+        transport: "USB",
+        primaryUsagePage: 0xFF00,
+        primaryUsage: 1
+    )
+    let matcher = DeviceMatcher(productContains: "composite")
+
+    let matched = MouseHIDInterface.matching(
+        in: [mouse, pointer, keyboard, vendorDefined],
+        matchers: [matcher]
+    )
+    let unconfigured = MouseHIDInterface.matching(
+        in: [mouse, pointer, keyboard, vendorDefined],
+        matchers: []
+    )
+
+    expect(mouse.isMouseInterface, "Generic Desktop / Mouseをマウスインターフェースとして扱う")
+    expect(!pointer.isMouseInterface, "Generic Desktop / Pointerをマウスインターフェースに含めない")
+    expect(!keyboard.isMouseInterface, "同じ物理機器のkeyboardインターフェースを除外する")
+    expect(!vendorDefined.isMouseInterface, "同じ物理機器のvendor-definedインターフェースを除外する")
+    expect(matcher.matches(keyboard), "製品名だけの条件では複合HIDの兄弟インターフェースも一致する")
+    expect(matcher.matchesMouseInterface(mouse), "対象条件に一致するマウスインターフェースを受理する")
+    expect(!matcher.matchesMouseInterface(keyboard), "対象条件が同じでもkeyboardインターフェースを受理しない")
+    expect(matched == [mouse], "複合HID機器からマウスインターフェースだけを選択する")
+    expect(unconfigured == [mouse], "対象条件が空でもマウスインターフェースだけを選択する")
+}
+
 func testDeviceMatcherEvaluationReportsMatchedAndMismatchedConditions() {
     let device = DeviceIdentity(
         manufacturer: "Example",
@@ -4257,6 +4316,7 @@ testMomentumDoesNotStartBelowMinimumVelocity()
 testMomentumDecaysAndEventuallyEnds()
 testDeviceMatcherMatchesConfiguredDevice()
 testDeviceMatcherMatchesUsageWhenConfigured()
+testMouseHIDInterfaceExcludesCompositeSiblingInterfaces()
 testDeviceMatcherEvaluationReportsMatchedAndMismatchedConditions()
 testDeviceMatcherConditionPresenceIgnoresEmptyText()
 testDeviceMatcherWithoutConditionsDoesNotMatchEverything()
