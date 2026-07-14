@@ -90,7 +90,17 @@ private func testCursorAnchorStateOwnsOneFiniteAnchorPerSession() {
             _ = try state.anchor(sessionID: sessionID, sourceButton: .left)
         }
 
-        let ended = command(captureOrder: 3, sourceKind: .buttonUp, phase: .ended)
+        let malformedTerminal = command(
+            captureOrder: 3,
+            sourceKind: .move,
+            phase: .ended
+        )
+        expectThrows("不正なterminal sourceでanchorを破棄しない") {
+            try state.complete(malformedTerminal)
+        }
+        expect(state.activeAnchor == anchor, "不正terminal拒否後も同じanchorを保持する")
+
+        let ended = command(captureOrder: 4, sourceKind: .buttonUp, phase: .ended)
         expect((try? state.prepare(for: ended, sourcePosition: nil)) == .noWarp, "terminal前にwarpしない")
         expectNoThrow("\(scenario.label)のterminalでanchorを破棄する") {
             try state.complete(ended)

@@ -73,8 +73,8 @@ public enum CursorAnchorPreparation: Equatable, Sendable {
 public struct CursorAnchorState: Equatable, Sendable {
     public private(set) var activeAnchor: CursorAnchorSession?
 
-    public init(activeAnchor: CursorAnchorSession? = nil) {
-        self.activeAnchor = activeAnchor
+    public init() {
+        activeAnchor = nil
     }
 
     public var isActive: Bool {
@@ -135,13 +135,20 @@ public struct CursorAnchorState: Equatable, Sendable {
     }
 
     public mutating func complete(_ command: FixedGestureInputCommand) throws {
-        guard command.phase == .ended || command.phase == .cancelled else {
+        switch (command.phase, command.sourceKind) {
+        case (.ended, .buttonUp), (.cancelled, .cancellation):
+            try end(
+                sessionID: command.sessionID,
+                sourceButton: command.sourceButton
+            )
+        case (.began, .buttonDown), (.changed, .move), (.changed, .wheel):
             return
+        default:
+            throw CursorAnchorStateError.invalidCommand(
+                phase: command.phase,
+                sourceKind: command.sourceKind
+            )
         }
-        try end(
-            sessionID: command.sessionID,
-            sourceButton: command.sourceButton
-        )
     }
 
     @discardableResult
