@@ -71,8 +71,10 @@ GUIは固定mappingを読み取り専用で表示する。旧modeと調整値は
 - partial batch後は未投稿offsetを保持し、同じterminalを再試行する。
 - terminal後は通常mouse状態へ戻る。
 - 製品入力tapは、Nape ProのIOHID入力とCGEventの関連付け順序を維持できる`.cgSessionEventTap`のhead insertを使う。
-- active session中だけQuartzのmouse-cursor associationを停止し、button解放、cancel、tap中断、runtime停止、出力失敗では必ず再連動する。cursor座標warpは使わない。
-- macOS SDKの`CGRemoteOperation.h`が定義する`CGAssociateMouseAndMouseCursorPosition`契約に従い、連動停止中は絶対cursor座標を一定に保ちながらX/Y deltaをgesture入力へ残す。
+- 対象button downのevent locationをsession固有の絶対cursor anchorとして1回だけ保存し、同じanchorへの`CGWarpMouseCursorPosition`が成功してからProductOutputを開始する。
+- moveのX/Y delta、timestamp、capture orderをsource commandへ保存した直後、同じevent tap callback内でanchorへwarpし、その成功後にGestureClass出力を投稿して元moveを抑制する。wheelではwarpしない。
+- button解放、cancel、timeout、tap中断、kill switch、runtime停止、出力失敗ではanchor stateを必ず破棄する。anchor取得またはwarpに失敗した場合はactive ProductOutput sessionをcancelへ収束させ、別方式へfallbackせずruntimeをfail closedにする。
+- cursor固定のためにapplicationをforegroundへ移動せず、focusを奪わない。逆delta、AX、対象PID、keyboard shortcut、DriverKitを使わない。
 
 ### 6. 抑制前にreadinessを確定する
 
@@ -87,6 +89,7 @@ GUIは固定mappingを読み取り専用で表示する。旧modeと調整値は
 - 3 classのevent type、field、phase、batch、単位変換とIOHID motion 1 / 2 / 4をregistered fixtureへ照合する。
 - GUIがmappingをread-only表示し、canonical設定に旧modeや感度が残らないことを検査する。
 - system-wide posting、禁止経路非到達、unknown build / fixture mismatchのfail closedを検査する。
+- Nape Gesture以外をforegroundにした署名済みRelease `.app`で、button 3 / 4 / 5の実cursor座標、高頻度move時の逸脱継続時間、wheel非移動、全terminal後の通常mouse復帰を検査する。
 - Nape Proと純正trackpadでsource、generated event、OS / App結果、terminal、passthroughを物理受入する。
 
 release buildの`/Applications/Nape Gesture.app`はインストール済みで、現在の署名identityに対するTCC付与後のGUI runtimeが稼働している。Nape Pro実機では3 class合計23 session、generated event 5473件、作成失敗0件、欠落投稿0件、全sessionのsingle terminalを確認し、DockはSpace切替、Mission Control、motion 4のsystem control遷移を受理した。純正trackpadとの最終比較、異常終了後の復旧、App Exposéの設定依存結果、公開配布署名が完了するまで製品完成とはしない。

@@ -167,8 +167,8 @@ final class CommandLineTool {
               nape-gesture system-test list
                   System Behavior Test のシナリオ一覧を表示します。
 
-              nape-gesture system-test run --scenario <name> [--target finder|safari] [--direction left|right|up|down] [--product-trace-out <path> --product-run-token <UUID> --product-repo-head-sha <SHA>] [--dry-run] [--log-json] [--out <path>] [--post-to-pid <pid>]
-                  Spaces / Mission Control / Safari / Finder 向けの実挙動検証イベント、または未マーク元入力を生成します。horizontal-scroll / vertical-scroll は製品adapterでsystem-wide投稿し、captureと共通のrun UUID、repo SHA、実行binary SHAを持つ直接投稿traceを保存できます。--dry-run --log-json で計画したイベントを JSON Lines で出力します。--post-to-pid は Reference Target App の受信経路を切り分ける診断専用です。
+              nape-gesture system-test run --scenario <name> [--target finder|safari] [--direction left|right|up|down] [--logical-button 3|4|5] [--assert-cursor-anchor] [--product-trace-out <path> --product-run-token <UUID> --product-repo-head-sha <SHA>] [--dry-run] [--log-json] [--out <path>] [--post-to-pid <pid>]
+                  Spaces / Mission Control / Safari / Finder 向けの実挙動検証イベント、または未マーク元入力を生成します。gesture-dragの--assert-cursor-anchorは、Nape Gesture以外をforegroundにした状態で実cursor座標、wheel非移動、session後の通常移動復帰を検証します。horizontal-scroll / vertical-scroll は製品adapterでsystem-wide投稿し、captureと共通のrun UUID、repo SHA、実行binary SHAを持つ直接投稿traceを保存できます。--dry-run --log-json で計画したイベントを JSON Lines で出力します。--post-to-pid は Reference Target App の受信経路を切り分ける診断専用です。
 
               nape-gesture benchmark [--events <数>] [--json] [--assert-baseline]
                   認識器とスクロール計画の純粋ロジック処理時間、CPU コスト、batch p95/p99 を測定します。--assert-baseline で性能基準を満たさない場合に失敗します。

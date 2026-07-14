@@ -135,7 +135,7 @@ required_snippets = {
     "eventはsystem-wideへだけ投稿する",
     "実行中macOSのversion / buildとは比較しない",
     "runtime全体をfail closedする",
-    "mouseとcursorのQuartz連動を停止"
+    "同じevent tap callback内でanchorへwarp"
   ],
   "docs/completion-checklist.md" => [
     "| 固定GestureClass |",
@@ -143,7 +143,7 @@ required_snippets = {
     "class間でevent count、field、単位変換が同一であることは要求しない",
     "Nape Pro実機では3 class合計23 session",
     "DockはSpace切替、Mission Control、motion 4のsystem control遷移を受理",
-    "| cursor固定 | gesture session中はmouseとcursorのQuartz連動を停止し",
+    "| cursor固定 | button downの絶対座標をsession anchorとして1回だけ保存し",
     "App Exposéがオフ"
   ],
   "docs/adr/0036-emulate-trackpad-driver-output-events.md" => [
@@ -167,7 +167,8 @@ required_snippets = {
     "raw digitizer contact countでもgeneric `fingerCount` fieldでもない",
     "accepted move / wheel sampleごとに1つの`FixedGestureInputCommand`",
     "同じsource系列でもgenerated event type、event count、field、phase、unit conversionはclassごとに異なり得る",
-    "製品入力tapは、Nape ProのIOHID入力とCGEventの関連付け順序を維持できる`.cgSessionEventTap`"
+    "製品入力tapは、Nape ProのIOHID入力とCGEventの関連付け順序を維持できる`.cgSessionEventTap`",
+    "同じanchorへの`CGWarpMouseCursorPosition`が成功してからProductOutputを開始"
   ]
 }.freeze
 
@@ -193,7 +194,9 @@ stale_positive_statements = [
   "4本指はmagnificationをclass固有contractでsystem-wide投稿する",
   "4本指classはmagnificationのprogress、scale delta、velocity、phaseへ変換する",
   "`scroll`、`DockSwipe`、`magnification`をsystem-wideへ投稿可能",
-  "`scroll` / `DockSwipe` / `magnification`へ一意に接続される"
+  "`scroll` / `DockSwipe` / `magnification`へ一意に接続される",
+  "mouseとcursorのQuartz連動を停止",
+  "cursor warpは使わない"
 ].freeze
 
 model_documents = %w[

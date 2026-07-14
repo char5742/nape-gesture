@@ -18,13 +18,13 @@
 - 複合HID deviceは`Generic Desktop / Mouse`インターフェースだけを入力監視で開き、同一物理deviceのkeyboard、consumer control、vendor-definedインターフェースを除外する。
 - accepted source sampleは1 sampleから1 commandへ変換し、欠落、重複、coalescing、並べ替えを行わない。
 - 1 commandから生成する低レベルevent数はclass contractに従う。scroll companion batchをsample重複とは数えない。
-- gesture session中はmouseとcursorのQuartz連動を停止し、button解放、cancel、tap中断、runtime停止、出力失敗では通常のcursor追従へ戻す。
+- 対象button downで絶対cursor anchorを1回だけ保存し、開始時と各move取得後に同じanchorへwarpする。wheelではwarpせず、全terminalとruntime異常終了でanchorを破棄する。
 
 ## 現在位置
 
-release buildの`/Applications/Nape Gesture.app`はインストール済みで、現在の署名identityへTCCを付与したGUI runtimeが稼働している。固定button認識から`scroll` / `dockSwipe` / `dockSwipePinch`をsystem-wideへ投稿する経路があり、Nape Pro実機では3 class合計23 session、generated event 5473件、作成失敗0件、欠落投稿0件、全sessionのsingle terminalを確認した。DockはSpace切替、Mission Control、motion 4のsystem control遷移を受理し、session後も通常操作へ復帰している。現在のmacOS設定ではApp Exposéがオフのため、その画面結果は未確認である。
+固定button認識から`scroll` / `dockSwipe` / `dockSwipePinch`をsystem-wideへ投稿する経路があり、Nape Pro実機では3 class合計23 session、generated event 5473件、作成失敗0件、欠落投稿0件、全sessionのsingle terminalを確認した。DockはSpace切替、Mission Control、motion 4のsystem control遷移を受理し、session後も通常操作へ復帰している。cursor固定はforeground依存のassociation方式を撤回し、session anchorと`CGWarpMouseCursorPosition`へ置換中である。現在インストール中の`.app`は署名更新後のTCC状態を再確認する必要があり、別applicationをforegroundにしたRelease実座標検証が終わるまでcursor固定を完了扱いにしない。現在のmacOS設定ではApp Exposéがオフのため、その画面結果は未確認である。
 
-完成を妨げている最優先課題は、現行binaryと純正trackpad fixtureの最終比較、異常終了後passthroughの実機復旧、Developer ID署名と公証を同一release候補で完結することである。App ExposéはOS設定がオフのため、設定依存の画面結果として未確認である。
+完成を妨げている最優先課題は、anchor方式を組み込んだ署名済みRelease `.app`でbackground時の実cursor座標と全terminal後の通常mouse復帰を確定することである。その後、現行binaryと純正trackpad fixtureの最終比較、異常終了後passthroughの実機復旧、Developer ID署名と公証を同一release候補で完結する。App ExposéはOS設定がオフのため、設定依存の画面結果として未確認である。
 
 ## 状態
 
@@ -68,7 +68,7 @@ artifacts/completion/YYYY-MM-DD/<repo-sha>/<scenario-id>/
 | ProductOutput | 2本指はtype 22 scroll + type 29 companion、3本指はtype 30 DockSwipe motion 1 / 2、4本指はtype 30 DockSwipe motion 4をclass固有contractでsystem-wide投稿する | 3 classのfamily mapping、field、phase、単位、batch、system-wide direct post smoke | Nape Proから5473 eventを生成し、DockがSpace、Mission Control、motion 4を受理。純正trackpadとの最終比較は残る | `統合検証中` |
 | session terminal | 正常終了と全cancel原因がsingle terminalへ収束し、部分投稿後も順序を保って閉じる | release、cancel、kill switch、runtime stop、sleep、disconnect、TCC喪失、作成 / 投稿失敗、partial batch retry | 正常解放と少なくともkill switch、disconnect、sleepまたはTCC喪失 | `統合検証中` |
 | passthrough | 未押下、対象外button、対象外device、session終了後に通常click、move、drag、wheelを変更・抑制・再生成しない | event種別identity、生成0、抑制0、解放境界、failure後復帰 | 23 session後の通常操作復帰を確認。異常終了後の実機復帰は残る | `統合検証中` |
-| cursor固定 | gesture session中はmouseとcursorのQuartz連動を停止し、全terminalで通常追従へ戻す | began / ended / cancelled / stop / tap中断 / 出力失敗の連動状態遷移 | ユーザー受入により、Nape Pro操作中のcursor固定と解放後の通常追従を正常動作として確定 | `完了` |
+| cursor固定 | button downの絶対座標をsession anchorとして1回だけ保存し、開始時と各move取得後に同じ座標へwarpする。wheelではwarpせず、全terminalでanchorを破棄する | 3 buttonのanchor所有権、正負・斜めmove、wheel非warp、warp失敗、ended / cancelled / timeout / tap中断 / kill switch / stop / 出力失敗のstate testと実座標runner | Nape Gesture以外をforegroundにした署名済みRelease `.app`で高頻度move中の実座標、ちらつき、session後の通常移動復帰を確認する | `統合検証中` |
 | fail closed | unsupported build、scroll contract / model / DockSwipe templateのfixture / hash / schema不一致、device不一致、TCC不足、session不整合、event失敗でruntime全体の新規抑制を開始せず、別経路へfallbackしない | failure injection、readiness、明示path不正、partial post、terminal retry、product boundary guard | 現行`.app`の正常経路は誤出力0。異常条件の実機復旧は残る | `統合検証中` |
 | 配布 | 日常利用するbinaryの署名、公証、stapler、Gatekeeper、performance、recoveryが合格する | release build、bundle identity、doctor identity、性能report | 配布物の初回起動、TCC導線、再起動、sleep、device抜き差し | `未達` |
 
