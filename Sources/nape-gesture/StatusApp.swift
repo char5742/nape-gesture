@@ -270,7 +270,7 @@ final class StatusApp: NSObject, NSApplicationDelegate {
         let inputMonitoring = inventory.error == nil
             ? probeInputMonitoring(matchedDevices: inventory.matchedDevices)
             : .notProbed("HIDデバイス一覧の取得に失敗したため、入力監視を確認できません。")
-        let systemIdentity = ProductGestureOutputSystemIdentity.current()
+        let diagnosticIdentity = OperatingSystemDiagnosticIdentity.current()
         let outputCapability = TrackpadGestureOutputAdapter().capability
         let requiredFamilies: Set<TrackpadOutputEventFamily> = [
             .scroll,
@@ -293,8 +293,8 @@ final class StatusApp: NSObject, NSApplicationDelegate {
             "権限対象: \(recoveryPresentation.permissionTargetDescription)",
             "実行ファイル: \(identity.executablePath)",
             "バンドルID: \(identity.bundleIdentifier ?? "なし")",
-            "macOS: \(systemIdentity?.osVersion ?? "取得失敗")",
-            "OS build: \(systemIdentity?.osBuild ?? "取得失敗")",
+            "macOS: \(diagnosticIdentity?.version ?? "取得失敗")",
+            "OS build: \(diagnosticIdentity?.build ?? "取得失敗")",
             "出力contract: \(outputCapability.status.rawValue)",
             "出力contract ID: \(outputCapability.contract?.contractID ?? "なし")",
             "出力fixture: \(outputCapability.contract?.fixtureID ?? "なし")",

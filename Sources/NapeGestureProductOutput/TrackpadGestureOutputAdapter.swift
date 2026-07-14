@@ -481,7 +481,6 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
         contractData: Data?,
         modelData: Data? = TrackpadGestureOutputResources.loadModelData(),
         dockSwipeTemplateData: Data? = TrackpadGestureOutputResources.loadDockSwipeTemplateData(),
-        systemIdentity: ProductGestureOutputSystemIdentity? = .current(),
         traceContext: ProductGestureOutputTraceContext? = nil,
         scrollEventFactory: @escaping ProductScrollEventFactory = { wheel1, wheel2 in
             CGEvent(
@@ -518,8 +517,7 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
         }
 
         let validatedCapability = ProductGestureOutputCapability.validated(
-            fixtureData: contractData,
-            systemIdentity: systemIdentity
+            fixtureData: contractData
         )
         guard validatedCapability.isSupported,
             let verifiedContract = validatedCapability.contract,
@@ -549,11 +547,11 @@ public final class TrackpadGestureOutputAdapter: ProductGestureOutput {
                 capability = .unsupported(reason: "DockSwipe template resourceが見つかりません。")
             } else if !TrackpadScrollCGEventBuilder.supportsRawFieldLayout {
                 capability = .unsupported(
-                    reason: "この環境では25F80 raw CGEvent field layoutを安全に構成できません。")
+                    reason: "この環境では登録済みraw CGEvent field layoutを安全に構成できません。")
             } else {
                 capability = .contractMismatch(
                     contract: validatedCapability.contract,
-                    reason: "trackpad scroll output modelまたはDockSwipe templateのidentity、SHA、OS contractが登録値と一致しません。"
+                    reason: "trackpad scroll output modelまたはDockSwipe templateのidentity、SHA、収録元情報が登録値と一致しません。"
                 )
             }
             model = nil

@@ -1,4 +1,3 @@
-import Darwin
 import Foundation
 import NapeGestureCore
 
@@ -7,23 +6,23 @@ public struct VerifiedProductGestureOutputContract: Equatable, Sendable {
     public let schemaVersion: Int
     public let fixtureID: String
     public let fixtureSHA256: String
-    public let osVersion: String
-    public let osBuild: String
+    public let sourceOSVersion: String
+    public let sourceOSBuild: String
 
     init?(
         contractID: String,
         schemaVersion: Int,
         fixtureID: String,
         fixtureSHA256: String,
-        osVersion: String,
-        osBuild: String
+        sourceOSVersion: String,
+        sourceOSBuild: String
     ) {
         guard schemaVersion > 0,
             Self.isNotBlank(contractID),
             Self.isNotBlank(fixtureID),
             Self.isSHA256(fixtureSHA256),
-            Self.isNotBlank(osVersion),
-            Self.isNotBlank(osBuild)
+            Self.isNotBlank(sourceOSVersion),
+            Self.isNotBlank(sourceOSBuild)
         else {
             return nil
         }
@@ -32,8 +31,8 @@ public struct VerifiedProductGestureOutputContract: Equatable, Sendable {
         self.schemaVersion = schemaVersion
         self.fixtureID = fixtureID
         self.fixtureSHA256 = fixtureSHA256.lowercased()
-        self.osVersion = osVersion
-        self.osBuild = osBuild
+        self.sourceOSVersion = sourceOSVersion
+        self.sourceOSBuild = sourceOSBuild
     }
 
     private static func isNotBlank(_ value: String) -> Bool {
@@ -45,59 +44,6 @@ public struct VerifiedProductGestureOutputContract: Equatable, Sendable {
             && value.unicodeScalars.allSatisfy { scalar in
                 CharacterSet(charactersIn: "0123456789abcdefABCDEF").contains(scalar)
             }
-    }
-}
-
-public struct ProductGestureOutputSystemIdentity: Equatable, Sendable {
-    public let osVersion: String
-    public let osBuild: String
-
-    public static func current() -> ProductGestureOutputSystemIdentity? {
-        let version = ProcessInfo.processInfo.operatingSystemVersion
-        let osVersion = "\(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
-        guard let osBuild = currentOperatingSystemBuild() else {
-            return nil
-        }
-
-        return ProductGestureOutputSystemIdentity(
-            osVersion: osVersion,
-            osBuild: osBuild
-        )
-    }
-
-    public init?(osVersion: String, osBuild: String) {
-        guard !osVersion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-            !osBuild.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        else {
-            return nil
-        }
-        self.osVersion = osVersion
-        self.osBuild = osBuild
-    }
-
-    private static func currentOperatingSystemBuild() -> String? {
-        var size = 0
-        guard sysctlbyname("kern.osversion", nil, &size, nil, 0) == 0, size > 1 else {
-            return nil
-        }
-
-        var buffer = [CChar](repeating: 0, count: size)
-        let result = buffer.withUnsafeMutableBytes { bytes in
-            sysctlbyname("kern.osversion", bytes.baseAddress, &size, nil, 0)
-        }
-        guard result == 0 else {
-            return nil
-        }
-
-        return buffer.withUnsafeBufferPointer { pointer in
-            guard let baseAddress = pointer.baseAddress else {
-                return nil
-            }
-            let osBuild = String(cString: baseAddress)
-            return osBuild.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                ? nil
-                : osBuild
-        }
     }
 }
 
@@ -166,8 +112,7 @@ public struct ProductGestureOutputCapability: Equatable, Sendable {
     }
 
     public static func validated(
-        fixtureData: Data,
-        systemIdentity: ProductGestureOutputSystemIdentity? = .current()
+        fixtureData: Data
     ) -> ProductGestureOutputCapability {
         let report = TrackpadScrollMomentumContractDocumentReader.read(data: fixtureData)
         guard report.passed, let document = report.document else {
@@ -187,30 +132,13 @@ public struct ProductGestureOutputCapability: Equatable, Sendable {
                 schemaVersion: fixture.schemaVersion,
                 fixtureID: fixture.fixtureID,
                 fixtureSHA256: document.fixtureSHA256,
-                osVersion: fixture.osVersion,
-                osBuild: fixture.osBuild
+                sourceOSVersion: fixture.osVersion,
+                sourceOSBuild: fixture.osBuild
             )
         else {
             return contractMismatch(
                 contract: nil,
                 reason: "検証済みfixtureからproduct output contract identityを構成できません。"
-            )
-        }
-
-        guard let systemIdentity else {
-            return contractMismatch(
-                contract: contract,
-                reason: "現在のmacOS buildをkern.osversionから取得できないため、contractを検証できません。"
-            )
-        }
-
-        guard contract.osVersion == systemIdentity.osVersion,
-            contract.osBuild == systemIdentity.osBuild
-        else {
-            return contractMismatch(
-                contract: contract,
-                reason: "contractの対象OS (version \(contract.osVersion), build \(contract.osBuild)) "
-                    + "と現在のOS (version \(systemIdentity.osVersion), build \(systemIdentity.osBuild)) が一致しません。"
             )
         }
 

@@ -173,23 +173,15 @@ enum BundleVerifier {
             return
         }
         let report = TrackpadScrollMomentumContractDocumentReader.read(data: contractData)
-        guard report.passed, let document = report.document else {
+        guard report.passed, report.document != nil else {
             failures.append(
                 "scroll / momentum contract resourceが登録済みfixtureと一致しません: "
                     + report.issues.map(\.message).joined(separator: " ")
             )
             return
         }
-        guard let identity = ProductGestureOutputSystemIdentity(
-            osVersion: document.fixture.osVersion,
-            osBuild: document.fixture.osBuild
-        ) else {
-            failures.append("scroll / momentum contractのOS identityが不正です。")
-            return
-        }
         let capability = ProductGestureOutputCapability.validated(
-            fixtureData: contractData,
-            systemIdentity: identity
+            fixtureData: contractData
         )
         guard capability.isSupported, let verifiedContract = capability.contract else {
             failures.append("scroll / momentum contract resourceをproduct capabilityとして検証できません。")

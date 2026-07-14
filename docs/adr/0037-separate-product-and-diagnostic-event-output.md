@@ -2,6 +2,7 @@
 
 - 状態: 採択
 - 日付: 2026-07-11
+- 更新日: 2026-07-14
 
 ## 背景
 
@@ -15,8 +16,8 @@
 - `ProductGestureOutput`の配送先はsystem-wide固定とし、PID、frontmost application、AX element、keyboard shortcutを引数またはfallbackとして持たない。
 - 単純pixel scroll、forced horizontal scroll、旧gesture shortcutは診断output targetだけに置く。`postToPid`はSystem Behavior TestのReference Target sink診断だけに限定し、いずれもCLIと証跡に`legacy diagnostic`を明示する。
 - kill switchのkeyboard event監視とSystem Behavior Test内の未マーク入力注入は安全性診断であり、gesture代替ではないため明示allowlistで残す。
-- daemonはevent tap開始前にOS build、contract fixture、adapter capabilityを検査する。`unsupported`または`contractMismatch`では入力抑制を開始せずfail closedにする。
-- `supported`はproduct output target内のregistryへ登録したfixture ID、SHA-256、schema、contract ID、OS version / buildとfixture実体が完全一致する場合だけ生成できる。registryは純正fixture取得前は空に保つ。
+- daemonはevent tap開始前にcontract fixture、adapter capability、event構築可否を検査する。`unsupported`または`contractMismatch`では入力抑制を開始せずfail closedにする。
+- `supported`はproduct output target内のregistryへ登録したfixture ID、SHA-256、schema、contract ID、fixture実体、収録元OS情報を含むasset provenanceが完全一致する場合だけ生成できる。実行中OS buildは診断にだけ使い、capability判定には渡さない。registryは純正fixture取得前は空に保つ。
 - active sequence中の作成・投稿失敗ではterminal / cancelを試み、元入力抑制を解除してruntimeを安全停止する。別方式へのfallbackは行わない。
 - output sessionは単一のmonotonic clock、sequence ID、event order、terminal stateを持つ。Unix wall clockをdelta計算へ混ぜない。
 - CIはproduct sourceから`keyboardEventSource`、`postToPid`、`AXUIElement`、`forcedHorizontal`への依存を禁止し、診断moduleとkill switchだけをallowlistにする。

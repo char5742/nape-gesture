@@ -2,13 +2,13 @@
 
 - 状態: 採択
 - 日付: 2026-07-12
-- 更新日: 2026-07-13
+- 更新日: 2026-07-14
 
 ## 背景
 
 [ADR-0049](0049-fixed-button-to-gesture-class-input.md)は、button 3 / 4 / 5を固定GestureClassへ接続する。classはraw finger countではなく、物理trackpad driver認識後の上位event semanticsである。
 
-物理gestureが異なれば、必要なevent family、field、phase、companion lifecycle、単位変換も異なる。これを一つのgeneric eventへ統一すると、再現すべき物理contractを失う。一方、通常SDKに公開されないevent contractを安全に投稿するには、OS build別compatibility adapter、由来追跡、投稿前検査、fail closedが必要である。
+物理gestureが異なれば、必要なevent family、field、phase、companion lifecycle、単位変換も異なる。これを一つのgeneric eventへ統一すると、再現すべき物理contractを失う。一方、通常SDKに公開されないevent contractを安全に投稿するには、versioned compatibility adapter、由来追跡、投稿前検査、fail closedが必要である。
 
 ## 決定
 
@@ -44,8 +44,8 @@
 - event contract、field、定数、状態遷移、係数はApple公式資料、Apple OSS、自前fixtureまで追跡可能にし、第三者成果物由来の値を取り込まない。
 - 25F80の正負方向別認識済みtype 30 template fixtureはID `recognized-dockswipe-templates-25F80-v2`、contract ID `recognized-dockswipe-template-v2`、SHA-256 `852c7d0b6e32ced7082ea5c06a65d05971d3868e6a36aaccfd6f422871bc32a6`を登録値とする。各templateはevent type 30、field 55 = 30、classifier field 110 = 23、phase fields 132 / 134 = 1 / 2 / 4を満たさなければならない。
 - 検証済みtemplateからIOHID `DockSwipe` type 23を復元し、timestamp、sender ID、phase flags、mask = 0、motion = 1 / 2 / 4、flavor = 3、progress、position、終端velocity childを更新する。phaseはbegan 1、changed 2、ended 4、cancelled 8とする。
-- scroll contract、変換model、DockSwipe templateのfixture ID、SHA-256、schema、contract ID、OS version / build、fixture実体がすべて一致した場合だけ`supported`とする。
-- 未知OS build、未登録fixture、hash不一致、contract不一致、adapter不備、権限不足では全ProductOutput familyを無効にし、event tapと入力抑制を開始せずruntime全体をfail closedする。
+- scroll contract、変換model、DockSwipe templateのfixture ID、SHA-256、schema、contract ID、fixture実体、収録元OS情報を含むasset provenanceがすべて一致した場合だけ`supported`とする。収録元OS情報を実行中macOS buildの許可判定には使わない。
+- 未登録fixture、hash不一致、contract不一致、adapter不備、event構築不可、権限不足では全ProductOutput familyを無効にし、event tapと入力抑制を開始せずruntime全体をfail closedする。
 - 生成marker、投稿前raw配送先field検査、direct post trace、capture provenanceによりfeedback loopと禁止経路混入を拒否する。
 
 ### sessionと結果
@@ -77,5 +77,5 @@
 - [ADR-0034: DriverKit virtual trackpadを製品出力に使わない](0034-reject-driverkit-virtual-trackpad.md)
 - [ADR-0037: 製品gesture出力と診断event出力を分離する](0037-separate-product-and-diagnostic-event-output.md)
 - [ADR-0038: 固定GestureClass sessionとmonotonic clockを共通化する](0038-trackpad-output-session-and-monotonic-clock.md)
-- [ADR-0043: 25F80の固定GestureClass ProductOutput contract](0043-trackpad-scroll-product-output.md)
+- [ADR-0043: 登録済みfixtureから固定GestureClass ProductOutputを構成する](0043-trackpad-scroll-product-output.md)
 - [ゴール要件](../requirements.md)

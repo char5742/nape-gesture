@@ -2394,7 +2394,10 @@ func testProductGestureOutputRequiresRegisteredFixtureAndInfersFailures() {
         ProductGestureOutputCapability.registeredFixtureCount == 1,
         "25F80 fixture registrationをCoreの単一registryから参照する"
     )
-    expect(ProductGestureOutputSystemIdentity.current() != nil, "現在のmacOS version/buildを取得できる")
+    expect(
+        OperatingSystemDiagnosticIdentity.current() != nil,
+        "診断表示用の現在macOS version/buildを取得できる"
+    )
 
     let creationFailure = ProductGestureOutputResult(
         generatedEventCount: 1,

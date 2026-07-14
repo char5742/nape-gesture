@@ -100,8 +100,8 @@ private struct RecognizedDockSwipeTemplates {
             document.schemaVersion == 2,
             document.fixtureID == "recognized-dockswipe-templates-25F80-v2",
             document.contractID == "recognized-dockswipe-template-v2",
-            document.osVersion == contract.osVersion,
-            document.osBuild == contract.osBuild,
+            document.osVersion == contract.sourceOSVersion,
+            document.osBuild == contract.sourceOSBuild,
             Self.isCanonicalSHA256(document.sourceLogSHA256.horizontal),
             Self.isCanonicalSHA256(document.sourceLogSHA256.vertical),
             let horizontalPositive = Self.phaseData(
