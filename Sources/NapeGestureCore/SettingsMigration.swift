@@ -41,12 +41,17 @@ public enum SettingsMigration {
         }
 
         guard let gestureValue = root["gesture"] else {
-            return false
+            return true
         }
         guard let gesture = gestureValue as? [String: Any] else {
             return false
         }
         if !deprecatedGestureKeys.isDisjoint(with: gesture.keys) {
+            return true
+        }
+        if gesture["systemGestureSensitivity"] == nil
+            || gesture["systemGestureSensitivity"] is NSNull
+        {
             return true
         }
         guard let cancellation = gesture["cancellation"] as? [String: Any] else {

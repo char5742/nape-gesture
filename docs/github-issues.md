@@ -14,7 +14,7 @@
 | mouse button 5押下中の連続mouse event量 | `pinch`（4本指system pinch相当）: type 30 `DockSwipe` motion 4 |
 | button 3 / 4 / 5未押下 | 通常mouse入力を変更せず通過 |
 
-この対応はユーザー設定ではない。結果別mode、方向別action、application別の有効・無効、感度、割り当て、AX、対象PID配送、keyboard shortcutによる代替経路を製品surfaceまたは製品runtimeへ追加しない。
+このbutton対応はユーザー設定ではない。結果別mode、方向別action、application別の有効・無効、感度、割り当て、AX、対象PID配送、keyboard shortcutによる代替経路を製品surfaceまたは製品runtimeへ追加しない。現在の正本では、button 4 / 5共通の`systemGestureSensitivity`だけを25%から200%、既定100%で設定でき、button 3と固定mappingには適用しない。
 「2 / 3 / 4本指」はraw contact数やgeneric `fingerCount` transportではない。各GestureClassが異なるevent type、field、phase、companion、単位変換を使い、最終結果はmacOSまたは前面applicationが解釈する。`NavigationSwipe`と`magnification`を独立class、独立button、製品fallbackとして追加しない。
 
 2026-07-12のbaseline `55eb991` は、buttonごとの旧mode選択を残していた移行前履歴であり、現在の実装状態を示さない。build成功、`.app`生成、`doctor`、個別event投稿、旧mode単位のtestだけでは製品完成とせず、固定button→GestureClass→class固有ProductOutputのend-to-end経路で判定する。
@@ -213,7 +213,7 @@ Labels: `area:core`, `area:verification`, `type:research`, `priority:p1`
 - X/Y量、符号、sample順、timestamp間隔、単位を対応付けられる
 - OS buildごとにclass固有のevent type、field、phase、companion、単位変換、許容誤差、fixture ID、SHA-256を固定している
 - button 3 / 4 / 5へ同一source fixtureを与え、変換前の量、符号、順序、timestampを保持しながらclass固有encodingの差を検証する
-- 感度、加速度、dead zone、threshold、clamp、結果別係数を持たない
+- button 4 / 5共通の`systemGestureSensitivity`以外に、button別・方向別・application別の感度、加速度、dead zone、threshold、clamp、結果別係数を持たない
 - 複数source sampleをcoalesceせず、各sampleと生成eventの対応を回帰testで固定している
 
 依存関係:
@@ -285,9 +285,9 @@ Labels: `area:core`, `area:runtime`, `area:ui`, `area:docs`, `type:bug`, `priori
 完了条件:
 
 - buttonごとの結果別mode selectorを設定schemaとGUIから削除している
-- 旧mode、感度、加速度、dead zone、momentum tuningをcanonical configから原子的に除去し、対象deviceと安全停止条件を保持している
+- 旧mode、旧感度、加速度、dead zone、momentum tuningをcanonical configから原子的に除去し、旧感度を新しい共通感度へ移行せず、値がなければ1.0を補い、対象deviceと安全停止条件を保持している
 - runtime commandがGestureClassと連続mouse event量のX/Y、符号、反転、順序、timestampを保持し、複数source sampleをcoalesceしていない
-- 3つのclass固有versioned contractを使い、ユーザー調整またはapplication別の係数を持たない
+- 3つのclass固有versioned contractを使い、button 4 / 5共通の`systemGestureSensitivity`以外にユーザー調整またはapplication別の係数を持たない
 - 旧mode→family routing、優勢軸固定、直交成分破棄を削除し、class固有のprogress / velocity / phase変換だけを登録contractへ照合している
 - 3 GestureClassの低レベルcontractを純正trackpad計測から導出している
 - release、cancel、kill switch、sleep、runtime stop、投稿失敗で各sessionを一度だけterminalへ収束させている

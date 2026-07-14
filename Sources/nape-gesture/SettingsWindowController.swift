@@ -47,6 +47,7 @@ final class SettingsWindowController: NSWindowController {
     }
 
     private struct FormState: Equatable {
+        var systemGestureSensitivity: Double
         var associationWindow: String
         var maximumDuration: String
         var maximumInactivity: String
@@ -77,6 +78,14 @@ final class SettingsWindowController: NSWindowController {
     private let runtimeStatusLabel = NSTextField(labelWithString: "")
     private let runtimeErrorLabel = NSTextField(labelWithString: "")
     private let passthroughLabel = NSTextField(wrappingLabelWithString: "")
+    private let systemGestureSensitivitySlider = NSSlider(
+        value: GestureConfiguration.defaultSystemGestureSensitivity,
+        minValue: GestureConfiguration.minimumSystemGestureSensitivity,
+        maxValue: GestureConfiguration.maximumSystemGestureSensitivity,
+        target: nil,
+        action: nil
+    )
+    private let systemGestureSensitivityValueLabel = NSTextField(labelWithString: "")
     private let applyButton = NSButton(title: "変更を適用", target: nil, action: nil)
     private let advancedDisclosureButton = NSButton(title: "詳細な識別条件", target: nil, action: nil)
     private let advancedConditionsStack = NSStackView()
@@ -111,7 +120,7 @@ final class SettingsWindowController: NSWindowController {
         self.selectedPane = Self.restoredPane()
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 680, height: 560),
+            contentRect: NSRect(x: 0, y: 0, width: 680, height: 620),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -123,7 +132,7 @@ final class SettingsWindowController: NSWindowController {
 
         configureToolbar(for: window)
         buildContent()
-        let contentSize = NSSize(width: 680, height: 560)
+        let contentSize = NSSize(width: 680, height: 620)
         window.contentMinSize = contentSize
         window.contentMaxSize = contentSize
         window.setContentSize(contentSize)
@@ -177,6 +186,7 @@ final class SettingsWindowController: NSWindowController {
     func makeSmokeSnapshot() -> SettingsWindowSmokeSnapshot {
         let initialPane = selectedPane
         let initialAssociationWindow = associationWindowField.stringValue
+        let initialSystemGestureSensitivity = systemGestureSensitivitySlider.doubleValue
         let initiallyApplyEnabled = applyButton.isEnabled
         let initialDisclosureState = advancedDisclosureButton.state
         let initiallyAdvancedConditionsHidden = advancedConditionsStack.isHidden
@@ -211,6 +221,22 @@ final class SettingsWindowController: NSWindowController {
         updateApplyButtonState()
         let revertingEditDisablesApply = !applyButton.isEnabled
 
+        let sensitivityStep = GestureConfiguration.systemGestureSensitivityStep
+        if initialSystemGestureSensitivity
+            <= GestureConfiguration.maximumSystemGestureSensitivity - sensitivityStep
+        {
+            systemGestureSensitivitySlider.doubleValue =
+                initialSystemGestureSensitivity + sensitivityStep
+        } else {
+            systemGestureSensitivitySlider.doubleValue =
+                initialSystemGestureSensitivity - sensitivityStep
+        }
+        systemGestureSensitivityChanged()
+        let gestureSensitivityEditEnablesApply = applyButton.isEnabled
+        systemGestureSensitivitySlider.doubleValue = initialSystemGestureSensitivity
+        updateSystemGestureSensitivityLabel()
+        updateApplyButtonState()
+
         advancedDisclosureButton.state = .on
         toggleAdvancedConditions()
         let disclosureExpands = !advancedConditionsStack.isHidden
@@ -228,12 +254,12 @@ final class SettingsWindowController: NSWindowController {
         showPane(initialPane, persistSelection: false)
 
         let gestureDescendants = descendants(of: gesturesPaneView)
-        let gesturePaneHasEditableSettingControl = gestureDescendants.contains { view in
+        let gestureSensitivitySliders = gestureDescendants.compactMap { $0 as? NSSlider }
+        let gesturePaneHasForbiddenModeControl = gestureDescendants.contains { view in
             if let textField = view as? NSTextField {
                 return textField.isEditable
             }
             return view is NSPopUpButton
-                || view is NSSlider
                 || view is NSSegmentedControl
                 || view is NSSwitch
         }
@@ -256,7 +282,10 @@ final class SettingsWindowController: NSWindowController {
             disclosureExpands: disclosureExpands,
             disclosureCollapses: disclosureCollapses,
             paneSwitchesContent: gesturePaneSwitchesContent && detailsPaneSwitchesContent,
-            gesturePaneHasEditableSettingControl: gesturePaneHasEditableSettingControl,
+            gestureSensitivitySliderCount: gestureSensitivitySliders.count,
+            gestureSensitivityPercentText: systemGestureSensitivityValueLabel.stringValue,
+            gestureSensitivityEditEnablesApply: gestureSensitivityEditEnablesApply,
+            gesturePaneHasForbiddenModeControl: gesturePaneHasForbiddenModeControl,
             detailsEditableTextFieldCount: detailTextFields.filter(\.isEditable).count,
             detailsCheckboxCount: detailButtons.filter { $0 === requireTargetCheck }.count,
             multipleMatchersPreserved: multipleMatchersPreserved ?? false,
@@ -357,6 +386,21 @@ final class SettingsWindowController: NSWindowController {
         requireTargetCheck.action = #selector(editableControlChanged)
         requireTargetCheck.setAccessibilityLabel(SettingsUIField.requireMatchingTargetDevice.descriptor.label)
 
+        systemGestureSensitivitySlider.target = self
+        systemGestureSensitivitySlider.action = #selector(systemGestureSensitivityChanged)
+        systemGestureSensitivitySlider.isContinuous = true
+        systemGestureSensitivitySlider.setAccessibilityLabel(
+            SettingsUIField.systemGestureSensitivity.descriptor.label
+        )
+
+        systemGestureSensitivityValueLabel.alignment = .right
+        systemGestureSensitivityValueLabel.font = .monospacedDigitSystemFont(
+            ofSize: NSFont.systemFontSize,
+            weight: .medium
+        )
+        systemGestureSensitivityValueLabel.setContentHuggingPriority(.required, for: .horizontal)
+        systemGestureSensitivityValueLabel.widthAnchor.constraint(equalToConstant: 48).isActive = true
+
         applyButton.target = self
         applyButton.action = #selector(save)
         applyButton.keyEquivalent = "\r"
@@ -433,6 +477,17 @@ final class SettingsWindowController: NSWindowController {
                 content.setCustomSpacing(12, after: row)
             }
         }
+
+        let sensitivitySeparator = separator()
+        content.addArrangedSubview(sensitivitySeparator)
+        sensitivitySeparator.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
+        content.setCustomSpacing(16, after: sensitivitySeparator)
+
+        content.addArrangedSubview(sectionTitle("感度"))
+        let sensitivityRow = makeSystemGestureSensitivityRow()
+        content.addArrangedSubview(sensitivityRow)
+        sensitivityRow.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
+        content.setCustomSpacing(12, after: sensitivityRow)
 
         passthroughLabel.stringValue = "ボタン3、4、5を押していない間は、通常のマウスとして動作します。"
         passthroughLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
@@ -524,6 +579,32 @@ final class SettingsWindowController: NSWindowController {
         row.setAccessibilityElement(true)
         row.setAccessibilityRole(.group)
         row.setAccessibilityLabel("\(descriptor.label)、\(fixedValue)、\(detail)、読み取り専用")
+        return row
+    }
+
+    private func makeSystemGestureSensitivityRow() -> NSStackView {
+        let title = label(
+            SettingsUIField.systemGestureSensitivity.descriptor.label,
+            font: .systemFont(ofSize: NSFont.systemFontSize, weight: .medium)
+        )
+        let detail = secondaryLabel("3本指スワイプと4本指ピンチに共通", lines: 1)
+        let text = NSStackView(views: [title, detail])
+        text.orientation = .vertical
+        text.alignment = .leading
+        text.spacing = 2
+        text.widthAnchor.constraint(equalToConstant: 230).isActive = true
+
+        let row = NSStackView(
+            views: [text, systemGestureSensitivitySlider, systemGestureSensitivityValueLabel]
+        )
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 12
+        row.edgeInsets = NSEdgeInsets(top: 4, left: 0, bottom: 4, right: 0)
+        systemGestureSensitivitySlider.setContentCompressionResistancePriority(
+            .defaultLow,
+            for: .horizontal
+        )
         return row
     }
 
@@ -711,6 +792,8 @@ final class SettingsWindowController: NSWindowController {
     }
 
     private func populate(_ settings: NapeGestureSettings) {
+        systemGestureSensitivitySlider.doubleValue = settings.gesture.systemGestureSensitivity
+        updateSystemGestureSensitivityLabel()
         associationWindowField.stringValue = String(settings.targetDeviceAssociation.associationWindow)
         maximumDurationField.stringValue = String(settings.gesture.cancellation.maximumDuration)
         maximumInactivityField.stringValue = String(settings.gesture.cancellation.maximumInactivityInterval)
@@ -729,6 +812,7 @@ final class SettingsWindowController: NSWindowController {
 
     private var formState: FormState {
         FormState(
+            systemGestureSensitivity: systemGestureSensitivitySlider.doubleValue,
             associationWindow: associationWindowField.stringValue,
             maximumDuration: maximumDurationField.stringValue,
             maximumInactivity: maximumInactivityField.stringValue,
@@ -783,6 +867,7 @@ final class SettingsWindowController: NSWindowController {
 
         let updated = NapeGestureSettings(
             gesture: GestureConfiguration(
+                systemGestureSensitivity: systemGestureSensitivitySlider.doubleValue,
                 cancellation: GestureCancellationConfiguration(
                     maximumDuration: maximumDuration,
                     maximumInactivityInterval: maximumInactivity
@@ -822,6 +907,23 @@ final class SettingsWindowController: NSWindowController {
 
     @objc private func editableControlChanged() {
         updateApplyButtonState()
+    }
+
+    @objc private func systemGestureSensitivityChanged() {
+        let step = GestureConfiguration.systemGestureSensitivityStep
+        systemGestureSensitivitySlider.doubleValue =
+            (systemGestureSensitivitySlider.doubleValue / step).rounded() * step
+        updateSystemGestureSensitivityLabel()
+        updateApplyButtonState()
+    }
+
+    private func updateSystemGestureSensitivityLabel() {
+        let percent = Int((systemGestureSensitivitySlider.doubleValue * 100).rounded())
+        let text = "\(percent)%"
+        systemGestureSensitivityValueLabel.stringValue = text
+        systemGestureSensitivityValueLabel.setAccessibilityLabel("現在の感度")
+        systemGestureSensitivityValueLabel.setAccessibilityValue(text)
+        systemGestureSensitivitySlider.setAccessibilityValue(text)
     }
 
     @objc private func toggleAdvancedConditions() {
@@ -1014,7 +1116,10 @@ struct SettingsWindowSmokeSnapshot: Codable {
     var disclosureExpands: Bool
     var disclosureCollapses: Bool
     var paneSwitchesContent: Bool
-    var gesturePaneHasEditableSettingControl: Bool
+    var gestureSensitivitySliderCount: Int
+    var gestureSensitivityPercentText: String
+    var gestureSensitivityEditEnablesApply: Bool
+    var gesturePaneHasForbiddenModeControl: Bool
     var detailsEditableTextFieldCount: Int
     var detailsCheckboxCount: Int
     var multipleMatchersPreserved: Bool

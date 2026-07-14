@@ -121,7 +121,9 @@ required_snippets = {
     "実行中macOSのversion / buildとは比較しません",
     "`/Applications/Nape Gesture.app`へインストール済み",
     "Nape Pro物理受入 | 3 class合計23 session",
-    "gesture session中はmouse cursorが移動しない"
+    "gesture session中はmouse cursorが移動しない",
+    "GUIで25%から200%まで設定でき、既定値は100%",
+    "`(source / 600) * システムジェスチャー感度倍率`"
   ],
   "docs/requirements.md" => [
     "| button 3押下中 | 2本指スクロール / スワイプ相当 |",
@@ -135,7 +137,10 @@ required_snippets = {
     "eventはsystem-wideへだけ投稿する",
     "実行中macOSのversion / buildとは比較しない",
     "runtime全体をfail closedする",
-    "同じevent tap callback内でanchorへwarp"
+    "同じevent tap callback内でanchorへwarp",
+    "canonical設定pathは`gesture.systemGestureSensitivity`",
+    "範囲は0.25から2.0（25%から200%）、既定値は1.0（100%）",
+    "button 3の2本指scrollには適用しない"
   ],
   "docs/completion-checklist.md" => [
     "| 固定GestureClass |",
@@ -144,7 +149,8 @@ required_snippets = {
     "Nape Pro実機では3 class合計23 session",
     "DockはSpace切替、Mission Control、motion 4のsystem control遷移を受理",
     "| cursor固定 | button downの絶対座標をsession anchorとして1回だけ保存し",
-    "App Exposéがオフ"
+    "App Exposéがオフ",
+    "GUIで編集できる「システムジェスチャー感度」はbutton 4 / 5だけに共通"
   ],
   "docs/adr/0036-emulate-trackpad-driver-output-events.md" => [
     "| 5 | 4本指system pinch | type 30 `DockSwipe`、IOHID motion 4 |",
@@ -157,7 +163,9 @@ required_snippets = {
     "| 4本指system pinch | `dockSwipePinch` | type 30 / classifier 23",
     "phase fields 132 / 134",
     "IOHID motion 4",
-    "全ProductOutput familyを無効にし"
+    "全ProductOutput familyを無効にし",
+    "`(source delta / 600) * systemGestureSensitivity`",
+    "2本指scrollの変換modelは変更しない"
   ],
   "docs/adr/0049-fixed-button-to-gesture-class-input.md" => [
     "# ADR-0049: buttonを固定GestureClassへ接続する",
@@ -168,7 +176,9 @@ required_snippets = {
     "accepted move / wheel sampleごとに1つの`FixedGestureInputCommand`",
     "同じsource系列でもgenerated event type、event count、field、phase、unit conversionはclassごとに異なり得る",
     "製品入力tapは、Nape ProのIOHID入力とCGEventの関連付け順序を維持できる`.cgSessionEventTap`",
-    "同じanchorへの`CGWarpMouseCursorPosition`が成功してからProductOutputを開始"
+    "同じanchorへの`CGWarpMouseCursorPosition`が成功してからProductOutputを開始",
+    "canonical設定`gesture.systemGestureSensitivity`は0.25から2.0、既定値1.0",
+    "旧調整値は新しい共通感度へ移行せず"
   ]
 }.freeze
 
@@ -220,7 +230,7 @@ model_documents.each do |relative|
 
   content.each_line.with_index(1) do |line, line_number|
     next unless line.include?("magnification")
-    next if line.match?(/ではありません|ではない|ではなく|使わない|変換しない|置き換えない/)
+    next if line.match?(/ではありません|ではない|ではなく|使いません|使わない|変換しません|変換しない|置き換えません|置き換えない/)
 
     errors << "#{relative}:#{line_number}: magnificationを現行製品adapterまたは完成条件として残しています"
   end

@@ -20,7 +20,9 @@ trap 'rm -rf -- "$temporary_root"' EXIT HUP INT TERM
 
 canonical="$temporary_root/canonical.json"
 legacy="$temporary_root/legacy.json"
+custom_sensitivity="$temporary_root/custom-sensitivity.json"
 invalid_legacy="$temporary_root/invalid-legacy.json"
+invalid_sensitivity="$temporary_root/invalid-sensitivity.json"
 malformed="$temporary_root/malformed.json"
 concurrent="$temporary_root/concurrent.json"
 created="$temporary_root/new/nested/config.json"
@@ -28,17 +30,36 @@ locked="$temporary_root/locked/config.json"
 symlink_locked="$temporary_root/symlink-locked/config.json"
 
 "$binary" init-config --out "$canonical" >/dev/null
+jq -e '
+  .gesture.systemGestureSensitivity == 1
+  and .gesture.cancellation.maximumDuration == 10
+  and .gesture.cancellation.maximumInactivityInterval == 2
+' "$canonical" >/dev/null
+
+cp "$canonical" "$custom_sensitivity"
+ruby -rjson -e '
+  path = ARGV.fetch(0)
+  document = JSON.parse(File.read(path))
+  document.fetch("gesture")["systemGestureSensitivity"] = 1.75
+  File.write(path, JSON.pretty_generate(document) + "\n")
+' "$custom_sensitivity"
+custom_sensitivity_hash=$(shasum -a 256 "$custom_sensitivity" | awk '{print $1}')
+"$binary" doctor --config "$custom_sensitivity" --benchmark-events 1 --json > "$temporary_root/custom-sensitivity-doctor.json"
+test "$custom_sensitivity_hash" = "$(shasum -a 256 "$custom_sensitivity" | awk '{print $1}')"
+jq -e '.gesture.systemGestureSensitivity == 1.75' "$custom_sensitivity" >/dev/null
+
 cp "$canonical" "$legacy"
 ruby -rjson -e '
   path = ARGV.fetch(0)
   document = JSON.parse(File.read(path))
   gesture = document.fetch("gesture")
+  gesture.delete("systemGestureSensitivity")
   gesture["button3Mode"] = "scrollAndNavigate"
   gesture["button4Mode"] = "spacesAndMissionControl"
   gesture["button5Mode"] = "zoom"
   gesture["deadZonePoints"] = 8
-  gesture["dragSensitivity"] = 1
-  gesture["wheelSensitivity"] = 1
+  gesture["dragSensitivity"] = 1.75
+  gesture["wheelSensitivity"] = 0.5
   gesture["directionLockRatio"] = 1.4
   gesture["cancellation"]["offAxisCancelRatio"] = 1.2
   document["applicationSettings"] = {"com.example.Legacy" => {"enabled" => false}}
@@ -48,6 +69,7 @@ ruby -rjson -e '
 "$binary" doctor --config "$legacy" --benchmark-events 1 --json > "$temporary_root/legacy-doctor.json"
 jq -e '
   .gesture == {
+    "systemGestureSensitivity": 1,
     "cancellation": {
       "maximumDuration": 10,
       "maximumInactivityInterval": 2
@@ -63,7 +85,7 @@ jq -e '
     "targetDevices"
   ]
 ' "$legacy" >/dev/null
-if grep -Eq 'button[345]Mode|deadZonePoints|Sensitivity|directionLockRatio|offAxisCancelRatio|applicationSettings' "$legacy"; then
+if grep -Eq 'button[345]Mode|deadZonePoints|dragSensitivity|wheelSensitivity|directionLockRatio|offAxisCancelRatio|applicationSettings' "$legacy"; then
   printf '%s\n' "canonical移行後も廃止済み設定が残っています。" >&2
   exit 1
 fi
@@ -115,6 +137,7 @@ for pid in $pids; do
 done
 jq -e '
   .gesture == {
+    "systemGestureSensitivity": 1,
     "cancellation": {
       "maximumDuration": 10,
       "maximumInactivityInterval": 2
@@ -171,11 +194,33 @@ test -s "$temporary_root/symlink-lock.err"
 "$binary" doctor --config "$created" --benchmark-events 1 --json > "$temporary_root/created-doctor.json"
 test -f "$created"
 jq -e '
-  .gesture.cancellation.maximumDuration == 10
+  .gesture.systemGestureSensitivity == 1
+  and .gesture.cancellation.maximumDuration == 10
   and .gesture.cancellation.maximumInactivityInterval == 2
   and .targetDevices == [{"productContains":"Nape Pro"}]
   and .requireMatchingTargetDevice == true
 ' "$created" >/dev/null
+
+cp "$canonical" "$invalid_sensitivity"
+ruby -rjson -e '
+  path = ARGV.fetch(0)
+  document = JSON.parse(File.read(path))
+  document.fetch("gesture")["systemGestureSensitivity"] = 0.249
+  File.write(path, JSON.pretty_generate(document) + "\n")
+' "$invalid_sensitivity"
+invalid_sensitivity_hash=$(shasum -a 256 "$invalid_sensitivity" | awk '{print $1}')
+"$binary" doctor --config "$invalid_sensitivity" --benchmark-events 1 --json > "$temporary_root/invalid-sensitivity-doctor.json"
+test "$invalid_sensitivity_hash" = "$(shasum -a 256 "$invalid_sensitivity" | awk '{print $1}')"
+jq -e '
+  .runtimeReadiness.ready == false
+  and any(.runtimeReadiness.failures[]; .code == "settings.invalid")
+  and any(.settingsValidationIssues[]; .path == "gesture.systemGestureSensitivity")
+' "$temporary_root/invalid-sensitivity-doctor.json" >/dev/null
+if "$binary" check-config --config "$invalid_sensitivity" > "$temporary_root/invalid-sensitivity-check.out" 2> "$temporary_root/invalid-sensitivity-check.err"; then
+  printf '%s\n' "範囲外の共有システムジェスチャー感度を受理しました。" >&2
+  exit 1
+fi
+grep -Eq 'gesture\.systemGestureSensitivity' "$temporary_root/invalid-sensitivity-check.err"
 
 cp "$canonical" "$temporary_root/invalid-canonical.json"
 ruby -rjson -e '

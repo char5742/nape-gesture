@@ -43,7 +43,7 @@
 - mouse button 5押下中は固定`pinch` class（4本指system pinch相当）として、type 30 `DockSwipe` motion 4へ変換する
 - button 3 / 4 / 5未押下時は通常mouse入力を変更せず通す
 
-「2 / 3 / 4本指」はraw contact数やgeneric `fingerCount` transportではなく、固定GestureClassのユーザー向け説明である。各class固有のevent type、field、phase、companion、単位変換を使う。この対応は設定項目ではなく、結果別mode、方向別action、application別の有効・無効、感度、割り当てへ移行してはならない。
+「2 / 3 / 4本指」はraw contact数やgeneric `fingerCount` transportではなく、固定GestureClassのユーザー向け説明である。各class固有のevent type、field、phase、companion、単位変換を使う。この対応は設定項目ではなく、結果別mode、方向別action、application別の有効・無効、感度、割り当てへ移行してはならない。例外として`gesture.systemGestureSensitivity`だけをbutton 4 / 5共通のcanonical倍率として持ち、button 3と固定mappingには適用しない。
 
 旧設定として扱う項目:
 
@@ -58,7 +58,8 @@
 - 旧mode値を製品runtimeの分岐に使わず、button番号から固定GestureClassを一意に決める
 - `none`を含む旧mode値で固定mappingを無効化または変更しない
 - 旧mode / action / binding / tuning keyは読込時に検出し、対象device条件や安全停止条件など他の有効な設定を保持したままcanonical configから除去する
-- class固有の単位変換contractはfixtureとOS buildから選び、旧感度、加速度、dead zone、momentum係数を移行または再保存しない
+- class固有の単位変換contractはfixtureとOS buildから選び、旧`dragSensitivity`、`wheelSensitivity`、加速度、dead zone、momentum係数を新しい`systemGestureSensitivity`へ移行または再保存しない
+- canonicalな`gesture.systemGestureSensitivity`がない旧設定には1.0を補う。既に0.25から2.0のcanonical値がある場合だけその値を保持する
 - 旧key除去とcanonical config保存は原子的に行い、再起動を繰り返しても同じ結果になる
 - migration失敗時は元設定fileを保持し、固定mappingが確定しない状態でruntimeを開始しない
 - 未知または壊れた旧値を結果別modeへ推測変換せず、安全停止と復旧可能なエラーを使う
@@ -67,7 +68,7 @@
 
 `scroll`と`DockSwipe`はclass固有ProductOutputの内部contractとして、`NavigationSwipe`と`magnification`は履歴上の観測語彙として互換ログやfixtureに残せる。ただし、いずれもユーザーmode、変更可能なbutton割り当て、独立製品機能、OS/App結果を表す名前には使わない。
 
-2026-07-12のbaseline `55eb991` は旧mode keyと選択UIを保持していた移行前履歴であり、現在の実装状態を示さない。現行判定では、canonical設定から旧modeとtuningを原子的に除去し、GUIの固定mappingを読取専用にし、runtimeとmigration testが3つの固定GestureClassへ一致していることを確認する。
+2026-07-12のbaseline `55eb991` は旧mode keyと選択UIを保持していた移行前履歴であり、現在の実装状態を示さない。現行判定では、canonical設定から旧modeと旧tuningを原子的に除去し、新しい共通感度だけを保持または1.0で補完する。GUIの固定mappingを読取専用にし、runtimeとmigration testが3つの固定GestureClassおよびbutton 4 / 5共通感度へ一致していることを確認する。
 
 ## P1: 設定パス
 
@@ -127,3 +128,4 @@
 - UI 名変更は権限導線と同じ検証で確認する
 - buttonごとのmode / family選択、方向別action、application別設定を表示しない
 - 固定button→GestureClass対応を説明用の読取専用表示とし、変更可能なcontrolにしない
+- 「システムジェスチャー感度」だけを25%から200%、既定100%の共通sliderとして表示し、button別または方向別に分けない

@@ -2365,6 +2365,202 @@ private func testFixedFourFingerPinchUsesSharedSourceDeltaScale() {
     expect(abs(payloads[2].1 - 0.05) < 0.000_001, "4本指pinch terminal velocityへ共通source delta scaleを適用する")
 }
 
+private func testSystemGestureSensitivityScalesSystemGesturesWithoutChangingScroll() {
+    func payloads(
+        gestureClass: FixedGestureClass,
+        sourceButton: MouseButton,
+        sensitivity: Double,
+        sessionID: UInt64,
+        deltaX: Double,
+        deltaY: Double
+    ) -> [TrackpadOutputPayload] {
+        let output = PermissiveProductOutput(
+            capability: .validated(fixtureData: contractData())
+        )
+        let coordinator = FixedGestureProductSessionCoordinator(
+            output: output,
+            systemGestureSensitivity: sensitivity
+        )
+        let interval = MonotonicEventClock.nanosecondsPerSecond
+        let id = TrackpadOutputSessionID(rawValue: sessionID)
+        let commands = [
+            FixedGestureInputCommand(
+                sessionID: id,
+                sourceButton: sourceButton,
+                gestureClass: gestureClass,
+                captureOrder: 0,
+                timestamp: MonotonicEventTimestamp(nanosecondsSinceStartup: interval),
+                sourceKind: .buttonDown,
+                phase: .began,
+                deltaX: 0,
+                deltaY: 0
+            ),
+            FixedGestureInputCommand(
+                sessionID: id,
+                sourceButton: sourceButton,
+                gestureClass: gestureClass,
+                captureOrder: 1,
+                timestamp: MonotonicEventTimestamp(nanosecondsSinceStartup: interval * 2),
+                sourceKind: .move,
+                phase: .changed,
+                deltaX: deltaX,
+                deltaY: deltaY
+            ),
+            FixedGestureInputCommand(
+                sessionID: id,
+                sourceButton: sourceButton,
+                gestureClass: gestureClass,
+                captureOrder: 2,
+                timestamp: MonotonicEventTimestamp(nanosecondsSinceStartup: interval * 3),
+                sourceKind: .move,
+                phase: .changed,
+                deltaX: deltaX,
+                deltaY: deltaY
+            ),
+            FixedGestureInputCommand(
+                sessionID: id,
+                sourceButton: sourceButton,
+                gestureClass: gestureClass,
+                captureOrder: 3,
+                timestamp: MonotonicEventTimestamp(nanosecondsSinceStartup: interval * 4),
+                sourceKind: .buttonUp,
+                phase: .ended,
+                deltaX: 0,
+                deltaY: 0
+            ),
+        ]
+        let posts = commands.map(coordinator.post)
+        expect(
+            posts.allSatisfy { $0.result.failure == nil },
+            "感度\(sensitivity)の\(gestureClass.rawValue)入力列を完結する"
+        )
+        return output.postedEvents.compactMap { event in
+            guard case .input(let frame) = event else {
+                return nil
+            }
+            return frame.payload
+        }
+    }
+
+    func assertDockSwipe(
+        _ payloads: [TrackpadOutputPayload],
+        sensitivity: Double,
+        label: String
+    ) {
+        let values = payloads.compactMap { payload -> (
+            progress: Double,
+            motionX: Double,
+            motionY: Double,
+            terminalVelocity: Double
+        )? in
+            guard case let .dockSwipe(
+                axis,
+                progress,
+                motionX,
+                motionY,
+                terminalVelocityX,
+                terminalVelocityY
+            ) = payload else {
+                return nil
+            }
+            let terminalVelocity = axis == .horizontal
+                ? terminalVelocityX : terminalVelocityY
+            return (progress, motionX, motionY, terminalVelocity)
+        }
+        expect(values.count == 3, "\(label)のDockSwipe lifecycleを3 eventで保持する")
+        guard values.count == 3 else {
+            return
+        }
+        let unit = 0.05 * sensitivity
+        expect(abs(values[0].0 - unit) < 0.000_001, "\(label)のbegan progressへ感度を1回だけ掛ける")
+        expect(abs(values[1].0 - unit * 2) < 0.000_001, "\(label)の累積progressへ感度を一貫して掛ける")
+        expect(abs(values[2].0 - unit * 2) < 0.000_001, "\(label)のterminal progressへ感度を保持する")
+        expect(
+            values.allSatisfy { abs($0.1 - unit) < 0.000_001 && abs($0.2) < 0.000_001 },
+            "\(label)のmotionへ感度を一貫して掛ける"
+        )
+        expect(abs(values[0].3) < 0.000_001 && abs(values[1].3) < 0.000_001, "\(label)の非terminal velocityを0に保つ")
+        expect(abs(values[2].3 - unit) < 0.000_001, "\(label)のterminal velocityへ感度を1回だけ掛ける")
+    }
+
+    func assertPinch(
+        _ payloads: [TrackpadOutputPayload],
+        sensitivity: Double,
+        label: String
+    ) {
+        let values = payloads.compactMap { payload -> (
+            progress: Double,
+            motion: Double,
+            terminalVelocity: Double
+        )? in
+            guard case let .dockSwipePinch(progress, motion, terminalVelocity) = payload else {
+                return nil
+            }
+            return (progress, motion, terminalVelocity)
+        }
+        expect(values.count == 3, "\(label)のpinch lifecycleを3 eventで保持する")
+        guard values.count == 3 else {
+            return
+        }
+        let unit = 0.05 * sensitivity
+        expect(abs(values[0].0 - unit) < 0.000_001, "\(label)のbegan progressへ感度を1回だけ掛ける")
+        expect(abs(values[1].0 - unit * 2) < 0.000_001, "\(label)の累積progressへ感度を一貫して掛ける")
+        expect(abs(values[2].0 - unit * 2) < 0.000_001, "\(label)のterminal progressへ感度を保持する")
+        expect(abs(values[0].1 - unit) < 0.000_001 && abs(values[1].1 - unit) < 0.000_001, "\(label)のmotionへ感度を一貫して掛ける")
+        expect(abs(values[2].1) < 0.000_001, "\(label)のterminal motionを0に保つ")
+        expect(abs(values[0].2) < 0.000_001 && abs(values[1].2) < 0.000_001, "\(label)の非terminal velocityを0に保つ")
+        expect(abs(values[2].2 - unit) < 0.000_001, "\(label)のterminal velocityへ感度を1回だけ掛ける")
+    }
+
+    for (index, sensitivity) in [0.25, 2.0].enumerated() {
+        assertDockSwipe(
+            payloads(
+                gestureClass: .threeFingerSystemSwipe,
+                sourceButton: .button4,
+                sensitivity: sensitivity,
+                sessionID: UInt64(1_100 + index),
+                deltaX: 30,
+                deltaY: 0
+            ),
+            sensitivity: sensitivity,
+            label: "3本指・感度\(sensitivity)"
+        )
+        assertPinch(
+            payloads(
+                gestureClass: .pinch,
+                sourceButton: .center,
+                sensitivity: sensitivity,
+                sessionID: UInt64(1_200 + index),
+                deltaX: 0,
+                deltaY: -30
+            ),
+            sensitivity: sensitivity,
+            label: "4本指・感度\(sensitivity)"
+        )
+    }
+
+    let minimumScroll = payloads(
+        gestureClass: .twoFingerScrollSwipe,
+        sourceButton: .button3,
+        sensitivity: 0.25,
+        sessionID: 1_300,
+        deltaX: 30,
+        deltaY: -18
+    )
+    let maximumScroll = payloads(
+        gestureClass: .twoFingerScrollSwipe,
+        sourceButton: .button3,
+        sensitivity: 2.0,
+        sessionID: 1_301,
+        deltaX: 30,
+        deltaY: -18
+    )
+    expect(
+        minimumScroll == maximumScroll,
+        "共有システムジェスチャー感度を変えても2本指scrollのdeltaとvelocityを変更しない"
+    )
+}
+
 private func testFixedGestureCoordinatorClosesPartialScrollBatch() {
     func command(
         order: UInt64,
@@ -2598,6 +2794,7 @@ testCoordinatorClosesPartialBeganAndRetriesPartialCancellation()
 testFixedGestureClassesReachProductFamiliesWithExactOrderAndTimestamp()
 testFixedThreeFingerDockSwipeUsesSharedSourceDeltaScale()
 testFixedFourFingerPinchUsesSharedSourceDeltaScale()
+testSystemGestureSensitivityScalesSystemGesturesWithoutChangingScroll()
 testFixedGestureCoordinatorClosesPartialScrollBatch()
 testFixedScrollAcceptsMouseDeltaGrid()
 postFixedGestureSmokeIfRequested()

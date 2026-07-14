@@ -35,6 +35,15 @@ public enum SettingsValidator {
         _ gesture: GestureConfiguration,
         issues: inout [SettingsValidationIssue]
     ) {
+        requireFinite(
+            gesture.systemGestureSensitivity,
+            path: "gesture.systemGestureSensitivity",
+            message: "0.25以上2.0以下の有限値にしてください。",
+            issues: &issues
+        ) {
+            $0 >= GestureConfiguration.minimumSystemGestureSensitivity
+                && $0 <= GestureConfiguration.maximumSystemGestureSensitivity
+        }
         let cancellation = gesture.cancellation
         requireFinite(cancellation.maximumDuration, path: "gesture.cancellation.maximumDuration", message: "0以上の有限値にしてください。0で無効化できます。", issues: &issues) { $0 >= 0 }
         requireFinite(cancellation.maximumInactivityInterval, path: "gesture.cancellation.maximumInactivityInterval", message: "0以上の有限値にしてください。0で無効化できます。", issues: &issues) { $0 >= 0 }

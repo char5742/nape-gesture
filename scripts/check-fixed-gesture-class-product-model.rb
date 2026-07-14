@@ -37,8 +37,9 @@ required_snippets = {
     ".dockSwipe,",
     ".dockSwipePinch,",
     "return .dockSwipePinch(",
-    "private static func normalizedMotion(_ value: Double) -> Double",
-    "value / 600",
+    "private let systemGestureSensitivity: Double",
+    "private func normalizedMotion(_ value: Double) -> Double",
+    "(value / 600) * systemGestureSensitivity",
     "private static func pinchMotion(x: Double, y: Double) -> Double"
   ],
   "Sources/NapeGestureCore/TrackpadOutputSession.swift" => [
@@ -97,13 +98,18 @@ required_snippets = {
   "Sources/nape-gesture/GestureOutputExecutor.swift" => [
     "private let coordinator: FixedGestureProductSessionCoordinator",
     "func post(command: FixedGestureInputCommand)",
-    "coordinator.unsupportedRequiredFamilies"
+    "coordinator.unsupportedRequiredFamilies",
+    "systemGestureSensitivity: systemGestureSensitivity"
   ],
   "Sources/nape-gesture/NapeGestureDaemon.swift" => [
     "private var recognizer: FixedGestureInputRecognizer",
     "recognizer = FixedGestureInputRecognizer(cancellation: cancellation)",
     "commands: [FixedGestureInputCommand]",
-    "try outputExecutor.ensureOutputAvailable()"
+    "try outputExecutor.ensureOutputAvailable()",
+    "systemGestureSensitivity: systemGestureSensitivity"
+  ],
+  "Sources/nape-gesture/NapeGestureRuntime.swift" => [
+    "systemGestureSensitivity: settings.gesture.systemGestureSensitivity"
   ],
   "Sources/NapeGestureCore/SettingsUISchema.swift" => [
     "case fixedButton3Gesture",
@@ -112,6 +118,8 @@ required_snippets = {
     "2本指スクロール / スワイプ",
     "3本指システムスワイプ",
     "4本指システムピンチ",
+    "case systemGestureSensitivity",
+    "case slider",
     "isEditable: false"
   ],
   "Sources/NapeGestureCore/SettingsMigration.swift" => [
@@ -120,7 +128,9 @@ required_snippets = {
     "button5Mode",
     "deadZonePoints",
     "dragSensitivity",
-    "wheelSensitivity"
+    "wheelSensitivity",
+    "gesture[\"systemGestureSensitivity\"] == nil",
+    "gesture[\"systemGestureSensitivity\"] is NSNull"
   ],
   "Sources/nape-gesture/DoctorCommand.swift" => [
     ".scroll,",
@@ -368,6 +378,11 @@ if configuration_path.file?
   else
     unless encode_body.include?("try container.encode(cancellation, forKey: .cancellation)")
       errors << "Sources/NapeGestureCore/GestureConfiguration.swift: canonical設定にcancellationがありません"
+    end
+    unless encode_body.include?(
+      "try container.encode(systemGestureSensitivity, forKey: .systemGestureSensitivity)"
+    )
+      errors << "Sources/NapeGestureCore/GestureConfiguration.swift: canonical設定にsystemGestureSensitivityがありません"
     end
 
     %w[

@@ -2,12 +2,14 @@ import Foundation
 
 public enum SettingsUISection: String, Codable, Equatable, Sendable, CaseIterable {
     case fixedMapping
+    case gestureTuning
     case cancellation
     case targetDevice
 }
 
 public enum SettingsUIControlKind: String, Codable, Equatable, Sendable {
     case readOnlyText
+    case slider
     case numberTextField
     case textField
     case checkbox
@@ -15,6 +17,7 @@ public enum SettingsUIControlKind: String, Codable, Equatable, Sendable {
 
 public enum SettingsUIValueSource: String, Codable, Equatable, Sendable {
     case fixedProductMapping
+    case editableGestureSetting
     case editableSafetySetting
 }
 
@@ -53,6 +56,7 @@ public enum SettingsUIField: String, Codable, Equatable, Sendable, CaseIterable 
     case fixedButton3Gesture
     case fixedButton4Gesture
     case fixedButton5Gesture
+    case systemGestureSensitivity
     case targetDeviceAssociationWindow
     case cancellationMaximumDuration
     case cancellationMaximumInactivityInterval
@@ -77,6 +81,16 @@ public enum SettingsUIField: String, Codable, Equatable, Sendable, CaseIterable 
             return fixed("ボタン4", "3本指システムスワイプ")
         case .fixedButton5Gesture:
             return fixed("ボタン5", "4本指システムピンチ")
+        case .systemGestureSensitivity:
+            return SettingsUIFieldDescriptor(
+                field: self,
+                label: "システムジェスチャー感度",
+                section: .gestureTuning,
+                controlKind: .slider,
+                valueSource: .editableGestureSetting,
+                isEditable: true,
+                settingsPath: "gesture.systemGestureSensitivity"
+            )
         case .targetDeviceAssociationWindow:
             return number("入力の関連付け時間", .targetDevice, "targetDeviceAssociation.associationWindow")
         case .cancellationMaximumDuration:

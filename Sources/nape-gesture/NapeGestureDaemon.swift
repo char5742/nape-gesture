@@ -20,6 +20,7 @@ final class NapeGestureDaemon {
 
     init(
         cancellation: GestureCancellationConfiguration,
+        systemGestureSensitivity: Double = GestureConfiguration.defaultSystemGestureSensitivity,
         targetGate: SharedTargetDeviceGate? = nil,
         hidInputMonitor: HIDInputMonitor? = nil,
         performanceRecorder: RuntimePerformanceRecording? = nil,
@@ -30,7 +31,10 @@ final class NapeGestureDaemon {
         onTerminalFailure: ((Error) -> Void)? = nil
     ) {
         recognizer = FixedGestureInputRecognizer(cancellation: cancellation)
-        outputExecutor = GestureOutputExecutor(output: productOutput)
+        outputExecutor = GestureOutputExecutor(
+            output: productOutput,
+            systemGestureSensitivity: systemGestureSensitivity
+        )
         self.targetGate = targetGate
         self.hidInputMonitor = hidInputMonitor
         self.performanceRecorder = performanceRecorder

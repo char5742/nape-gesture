@@ -26,7 +26,7 @@ Issue分割と完成判定は、次の固定対応を変えない。
 | mouse button 5押下中の連続mouse event量 | `pinch`（4本指system pinch相当）: type 30 `DockSwipe` motion 4 |
 | button 3 / 4 / 5未押下 | 通常mouse入力を変更せず通過 |
 
-2 / 3 / 4本指はraw contact数やgeneric `fingerCount` transportではなく、固定GestureClassの説明である。class固有adapterが異なるevent type、field、phase、companion、単位変換を生成することを前提に分担する。結果別mode、方向別action、application別設定をworkstreamにせず、OS/App結果はmacOSまたは前面applicationの解釈としてclass固有contractと別に検証する。
+2 / 3 / 4本指はraw contact数やgeneric `fingerCount` transportではなく、固定GestureClassの説明である。class固有adapterが異なるevent type、field、phase、companion、単位変換を生成することを前提に分担する。結果別mode、方向別action、application別設定をworkstreamにせず、OS/App結果はmacOSまたは前面applicationの解釈としてclass固有contractと別に検証する。唯一のgesture調整値はbutton 4 / 5共通の`systemGestureSensitivity`とし、button 3または固定mappingを変更しない。
 
 2026-07-12のbaseline `55eb991` はbuttonごとの旧mode選択を残していた移行前履歴であり、現在の実装状態を示さない。旧mode test、個別familyの投稿、`doctor`、`.app`試用だけを完成根拠にせず、固定button→GestureClass→class固有ProductOutputのend-to-end到達性を確認する。
 
@@ -195,7 +195,7 @@ Computer Use の使い分けは [ADR-0030](adr/0030-computer-use-gui-operation-e
 レビュー観点:
 
 - アプリ別設定を増やしていないか
-- buttonごとのmode / family選択、方向別action、感度、割り当てを増やしていないか
+- buttonごとのmode / family選択、方向別action、button別・方向別・application別の感度、割り当てを増やしていないか
 - 固定button→GestureClass対応を読取専用で表示しているか
 - 設定保存前に不正値を止めるか
 - `.app` が Dock に表示される通常 GUI アプリとして起動するか

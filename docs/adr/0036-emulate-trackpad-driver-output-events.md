@@ -33,7 +33,8 @@
 - sampleをdrop、duplicate、coalesce、sortしない。方向反転や軸変更で別classまたは別sessionへ切り替えない。
 - 1 commandから生成する低レベルevent数はadapter contractに従う。scroll companion batchなどの複数eventは正常である。
 - class固有の単位変換と係数はApple公式資料、Apple OSS、自前の純正trackpad / Nape Pro fixtureから再導出し、identityをversion管理する。
-- 感度、dead zone、ユーザー加速度、結果別係数で有効sampleを破棄または意味変更しない。
+- button 4 / 5のdeltaとvelocityには、100%時の`/ 600`を基準に共通の`systemGestureSensitivity`を`(source / 600) * 倍率`として適用する。倍率は0.25から2.0、既定値1.0とし、button 3のscroll contractには適用しない。
+- 共通感度は保存済みsource値を変更せずProductOutput変換時にだけ適用する。dead zone、ユーザー加速度、button別・方向別・application別の係数で有効sampleを破棄または意味変更しない。
 
 ### 投稿境界
 
@@ -66,7 +67,7 @@
 
 ## 影響
 
-- GUIと設定は固定class名だけを読み取り専用で表示し、event family selectorを公開しない。
+- GUIと設定は固定class名を読み取り専用で表示し、event family selectorを公開しない。button 4 / 5共通のシステムジェスチャー感度だけを編集可能にする。
 - doctorは製品runtimeに必要な`scroll`、`dockSwipe`、`dockSwipePinch`の3 familyを共通readiness contractで検査する。
 - 既存ProductOutput adapter、fixture、state machineは、固定class coordinatorから到達する製品実装として再利用する。
 - compatibility contractを安全に構成できない環境では、通常mouse入力を壊さず停止する。

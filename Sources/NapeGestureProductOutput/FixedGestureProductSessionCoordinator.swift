@@ -51,10 +51,21 @@ public final class FixedGestureProductSessionCoordinator {
     ]
 
     private let output: any ProductGestureOutput
+    private let systemGestureSensitivity: Double
     private var activeSession: ActiveSession?
 
-    public init(output: any ProductGestureOutput) {
+    public init(
+        output: any ProductGestureOutput,
+        systemGestureSensitivity: Double = GestureConfiguration.defaultSystemGestureSensitivity
+    ) {
+        precondition(
+            systemGestureSensitivity.isFinite
+                && systemGestureSensitivity >= GestureConfiguration.minimumSystemGestureSensitivity
+                && systemGestureSensitivity <= GestureConfiguration.maximumSystemGestureSensitivity,
+            "systemGestureSensitivityは0.25以上2.0以下である必要があります。"
+        )
         self.output = output
+        self.systemGestureSensitivity = systemGestureSensitivity
     }
 
     public func post(_ command: FixedGestureInputCommand) -> FixedGestureProductSessionPost {
@@ -111,10 +122,10 @@ public final class FixedGestureProductSessionCoordinator {
             previousTimestamp: activeSession?.machine.lastTimestamp,
             timestamp: command.timestamp
         )
-        let motionX = Self.normalizedMotion(command.deltaX)
-        let motionY = Self.normalizedMotion(command.deltaY)
-        let velocityX = Self.normalizedMotion(sourceVelocity.x)
-        let velocityY = Self.normalizedMotion(sourceVelocity.y)
+        let motionX = normalizedMotion(command.deltaX)
+        let motionY = normalizedMotion(command.deltaY)
+        let velocityX = normalizedMotion(sourceVelocity.x)
+        let velocityY = normalizedMotion(sourceVelocity.y)
 
         if command.gestureClass == .threeFingerSystemSwipe,
            candidate.dockSwipeAxis == nil,
@@ -476,8 +487,8 @@ public final class FixedGestureProductSessionCoordinator {
         return (deltaX / elapsed, deltaY / elapsed)
     }
 
-    private static func normalizedMotion(_ value: Double) -> Double {
-        value / 600
+    private func normalizedMotion(_ value: Double) -> Double {
+        (value / 600) * systemGestureSensitivity
     }
 
     private static func pinchMotion(x: Double, y: Double) -> Double {

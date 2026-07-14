@@ -733,6 +733,130 @@ private func testOrderingSessionAndClassMismatchRecovery(
     )
 }
 
+private func testSystemGestureSensitivitySurvivesCancellation(
+    _ assertions: StabilityAssertions
+) {
+    func cancelledPayloads(
+        gestureClass: FixedGestureClass,
+        sourceButton: MouseButton,
+        sessionID: UInt64,
+        deltaX: Double,
+        deltaY: Double
+    ) -> [TrackpadOutputPayload] {
+        let output = StabilityRecordingProductOutput(
+            capability: .validated(fixtureData: StabilityFixtures.contract)
+        )
+        let coordinator = FixedGestureProductSessionCoordinator(
+            output: output,
+            systemGestureSensitivity: 2.0
+        )
+        let commands = [
+            FixedGestureInputCommand(
+                sessionID: TrackpadOutputSessionID(rawValue: sessionID),
+                sourceButton: sourceButton,
+                gestureClass: gestureClass,
+                captureOrder: 0,
+                timestamp: stabilityTimestamp(MonotonicEventClock.nanosecondsPerSecond),
+                sourceKind: .buttonDown,
+                phase: .began,
+                deltaX: 0,
+                deltaY: 0
+            ),
+            FixedGestureInputCommand(
+                sessionID: TrackpadOutputSessionID(rawValue: sessionID),
+                sourceButton: sourceButton,
+                gestureClass: gestureClass,
+                captureOrder: 1,
+                timestamp: stabilityTimestamp(MonotonicEventClock.nanosecondsPerSecond * 2),
+                sourceKind: .move,
+                phase: .changed,
+                deltaX: deltaX,
+                deltaY: deltaY
+            ),
+        ]
+        assertions.expect(
+            commands.map(coordinator.post).allSatisfy { $0.result.failure == nil },
+            "感度2.0の\(gestureClass.rawValue)をキャンセル前まで投稿する"
+        )
+        let cancellation = coordinator.cancelActive(
+            reason: .runtimeStop,
+            timestamp: stabilityTimestamp(MonotonicEventClock.nanosecondsPerSecond * 3)
+        )
+        assertions.expect(
+            cancellation.failure == nil,
+            "感度2.0の\(gestureClass.rawValue)をキャンセル終端へ収束させる"
+        )
+        return output.events.compactMap { event in
+            switch event {
+            case .input(let frame): frame.payload
+            case .cancellation(let frame): frame.payload
+            case .momentum: nil
+            }
+        }
+    }
+
+    let dockSwipe = cancelledPayloads(
+        gestureClass: .threeFingerSystemSwipe,
+        sourceButton: .button4,
+        sessionID: 3_250,
+        deltaX: 30,
+        deltaY: 0
+    )
+    assertions.expect(dockSwipe.count == 2, "3本指キャンセルをinputとterminalの2 eventにする")
+    if dockSwipe.count == 2,
+       case let .dockSwipe(_, beganProgress, beganMotionX, _, _, _) = dockSwipe[0],
+       case let .dockSwipe(
+           axis,
+           terminalProgress,
+           terminalMotionX,
+           _,
+           terminalVelocityX,
+           terminalVelocityY
+       ) = dockSwipe[1] {
+        let terminalVelocity = axis == .horizontal
+            ? terminalVelocityX : terminalVelocityY
+        assertions.expect(
+            approximatelyEqual(beganProgress, 0.1)
+                && approximatelyEqual(beganMotionX, 0.1),
+            "3本指の開始progressとmotionへ感度2.0を反映する"
+        )
+        assertions.expect(
+            approximatelyEqual(terminalProgress, 0.1)
+                && approximatelyEqual(terminalMotionX, 0.1)
+                && approximatelyEqual(terminalVelocity, 0.1),
+            "3本指のキャンセルprogress、motion、terminal velocityへ同じ感度を保持する"
+        )
+    } else {
+        assertions.expect(false, "3本指キャンセルのpayload familyと構造を保持する")
+    }
+
+    let pinch = cancelledPayloads(
+        gestureClass: .pinch,
+        sourceButton: .center,
+        sessionID: 3_251,
+        deltaX: 0,
+        deltaY: -30
+    )
+    assertions.expect(pinch.count == 2, "4本指キャンセルをinputとterminalの2 eventにする")
+    if pinch.count == 2,
+       case let .dockSwipePinch(beganProgress, beganMotion, _) = pinch[0],
+       case let .dockSwipePinch(terminalProgress, terminalMotion, terminalVelocity) = pinch[1] {
+        assertions.expect(
+            approximatelyEqual(beganProgress, 0.1)
+                && approximatelyEqual(beganMotion, 0.1),
+            "4本指の開始progressとmotionへ感度2.0を反映する"
+        )
+        assertions.expect(
+            approximatelyEqual(terminalProgress, 0.1)
+                && approximatelyEqual(terminalMotion, 0)
+                && approximatelyEqual(terminalVelocity, 0.1),
+            "4本指のキャンセルprogressとterminal velocityへ同じ感度を保持する"
+        )
+    } else {
+        assertions.expect(false, "4本指キャンセルのpayload familyと構造を保持する")
+    }
+}
+
 private func testScrollCreationAndPartialPostRecovery(
     _ assertions: StabilityAssertions
 ) {
@@ -1237,6 +1361,7 @@ func runStabilityRegressionTests() -> [String] {
     let assertions = StabilityAssertions()
     testLifecycleGranularityDirectionAndBoundary(assertions)
     testOrderingSessionAndClassMismatchRecovery(assertions)
+    testSystemGestureSensitivitySurvivesCancellation(assertions)
     testScrollCreationAndPartialPostRecovery(assertions)
     testRecognizedGestureTerminalRecovery(assertions)
     testFixtureAndHashFailClosed(assertions)
